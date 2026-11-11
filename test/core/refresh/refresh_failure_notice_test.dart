@@ -39,11 +39,7 @@ void main() {
       await pumpHost(tester);
       var retryCount = 0;
 
-      RefreshFailureNotice.report(
-        source: '日记',
-        error: Exception('database is locked'),
-        retry: () => retryCount++,
-      );
+      RefreshFailureNotice.report(source: '日记', error: Exception('database is locked'), retry: () => retryCount++);
       await settleToast(tester);
 
       expect(find.text('日记列表刷新失败，显示的是上次数据'), findsOneWidget);
@@ -97,10 +93,7 @@ void main() {
       RefreshFailureNotice.report(source: '笔记', error: Exception('e2'), retry: () {});
       await tester.pump();
 
-      final added = LoggerService.instance.entries
-          .skip(entriesBefore)
-          .map((e) => e.message)
-          .toList();
+      final added = LoggerService.instance.entries.skip(entriesBefore).map((e) => e.message).toList();
       expect(added.where((m) => m.contains('笔记列表刷新失败')), hasLength(1));
       expect(find.text('笔记列表刷新失败，显示的是上次数据'), findsNothing);
 

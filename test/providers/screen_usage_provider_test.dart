@@ -101,13 +101,19 @@ void main() {
 
     test('跨天累计同一应用并按时长倒序', () {
       final days = [
-        day(DateTime(2026, 9, 14), 5000, apps: [
-          const ScreenAppUsage(packageName: 'com.a', appName: 'A', timeMs: 2000),
-          const ScreenAppUsage(packageName: 'com.b', appName: 'B', timeMs: 3000),
-        ]),
-        day(DateTime(2026, 9, 15), 4000, apps: [
-          const ScreenAppUsage(packageName: 'com.a', appName: 'A', timeMs: 4000),
-        ]),
+        day(
+          DateTime(2026, 9, 14),
+          5000,
+          apps: [
+            const ScreenAppUsage(packageName: 'com.a', appName: 'A', timeMs: 2000),
+            const ScreenAppUsage(packageName: 'com.b', appName: 'B', timeMs: 3000),
+          ],
+        ),
+        day(
+          DateTime(2026, 9, 15),
+          4000,
+          apps: [const ScreenAppUsage(packageName: 'com.a', appName: 'A', timeMs: 4000)],
+        ),
       ];
 
       final merged = ScreenUsageAggregate.mergeTopApps(days);
@@ -118,22 +124,15 @@ void main() {
     });
 
     test('明细全空时返回空榜而不报错', () {
-      final merged = ScreenUsageAggregate.mergeTopApps([
-        day(DateTime(2026, 9, 14), 1000),
-      ]);
+      final merged = ScreenUsageAggregate.mergeTopApps([day(DateTime(2026, 9, 14), 1000)]);
 
       expect(merged, isEmpty);
     });
 
     test('Top 榜按 limit 截断', () {
-      final apps = List.generate(
-        40,
-        (i) => ScreenAppUsage(packageName: 'com.p$i', appName: 'P$i', timeMs: 100000 - i),
-      );
+      final apps = List.generate(40, (i) => ScreenAppUsage(packageName: 'com.p$i', appName: 'P$i', timeMs: 100000 - i));
 
-      final merged = ScreenUsageAggregate.mergeTopApps([
-        day(DateTime(2026, 9, 14), 1000, apps: apps),
-      ], limit: 30);
+      final merged = ScreenUsageAggregate.mergeTopApps([day(DateTime(2026, 9, 14), 1000, apps: apps)], limit: 30);
 
       expect(merged.length, 30);
     });
@@ -159,10 +158,7 @@ void main() {
     });
 
     test('减少方向', () {
-      expect(
-        screenDurationDiffText(2 * 3600 * 1000, 3 * 3600 * 1000 - 1),
-        contains('减少'),
-      );
+      expect(screenDurationDiffText(2 * 3600 * 1000, 3 * 3600 * 1000 - 1), contains('减少'));
     });
   });
 

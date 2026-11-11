@@ -26,24 +26,18 @@ AiProvider _provider({
   updatedAt: DateTime(2026),
 );
 
-AiProviderModel _model(
-  String id, {
-  ReasoningEffort? effort,
-  List<ReasoningEffort>? efforts,
-}) =>
+AiProviderModel _model(String id, {ReasoningEffort? effort, List<ReasoningEffort>? efforts}) =>
     AiProviderModel.of(id, reasoningEffort: effort, reasoningEfforts: efforts);
 
-AiRouteGroup _group({
-  required List<RouteGroupMember> members,
-  RouteStrategy strategy = RouteStrategy.rotate,
-}) => AiRouteGroup(
-  id: 'g1',
-  name: '故障转移组',
-  strategy: strategy,
-  members: members,
-  createdAt: DateTime(2026),
-  updatedAt: DateTime(2026),
-);
+AiRouteGroup _group({required List<RouteGroupMember> members, RouteStrategy strategy = RouteStrategy.rotate}) =>
+    AiRouteGroup(
+      id: 'g1',
+      name: '故障转移组',
+      strategy: strategy,
+      members: members,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
 
 /// 打开面板并稳定到空闲状态（弹层有进场动画，需要落定）
 Future<void> _openSheet(
@@ -53,16 +47,8 @@ Future<void> _openSheet(
   List<AiModelRef> recent = const [],
   AiModelRef? selected,
   Future<bool> Function(AiModelRef ref)? onSelect,
-  Future<bool> Function(
-    List<ReasoningEffortTarget> targets,
-    ReasoningEffort? effort,
-  )?
-  onEffort,
-  Future<bool> Function(
-    ReasoningEffortTarget target,
-    List<ReasoningEffort>? levels,
-  )?
-  onLevels,
+  Future<bool> Function(List<ReasoningEffortTarget> targets, ReasoningEffort? effort)? onEffort,
+  Future<bool> Function(ReasoningEffortTarget target, List<ReasoningEffort>? levels)? onLevels,
 }) async {
   // 面板底部常驻思考强度区块，默认 800x600 的测试视口装不下完整列表
   tester.view.physicalSize = const Size(900, 1600);
@@ -101,21 +87,15 @@ bool _chipSelected(WidgetTester tester, String label) =>
     tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label)).selected;
 
 void main() {
-  final primary = _provider(
-    id: 'p1',
-    name: '主力',
-    models: [_model('gpt-5.4-mini'), _model('gpt-5.4')],
-    isDefault: true,
-  );
+  final primary = _provider(id: 'p1', name: '主力', models: [_model('gpt-5.4-mini'), _model('gpt-5.4')], isDefault: true);
   final backup = _provider(id: 'p2', name: '备用', models: [_model('glm-4.6')]);
 
   group('思考强度作用对象', () {
     test('具体模型就是它自己', () {
-      final targets = reasoningTargetsOf(
-        const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
-        [primary, backup],
-        const [],
-      );
+      final targets = reasoningTargetsOf(const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'), [
+        primary,
+        backup,
+      ], const []);
       expect(targets, hasLength(1));
       expect(targets.first.provider.id, 'p1');
       expect(targets.first.model.id, 'gpt-5.4-mini');
@@ -127,41 +107,21 @@ void main() {
           RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4-mini'),
           RouteGroupMember(providerId: 'p2', modelName: 'glm-4.6'),
           RouteGroupMember(providerId: 'p2', modelName: '已删除的模型'),
-          RouteGroupMember(
-            providerId: 'p1',
-            modelName: 'gpt-5.4',
-            enabled: false,
-          ),
+          RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4', enabled: false),
         ],
       );
-      final targets = reasoningTargetsOf(
-        AiModelRef.routeGroup('g1'),
-        [primary, backup],
-        [group],
-      );
-      expect(targets.map((t) => '${t.provider.id}/${t.model.id}'), [
-        'p1/gpt-5.4-mini',
-        'p2/glm-4.6',
-      ]);
+      final targets = reasoningTargetsOf(AiModelRef.routeGroup('g1'), [primary, backup], [group]);
+      expect(targets.map((t) => '${t.provider.id}/${t.model.id}'), ['p1/gpt-5.4-mini', 'p2/glm-4.6']);
     });
 
     test('绑定失效或为空时没有作用对象', () {
       expect(reasoningTargetsOf(null, [primary], const []), isEmpty);
-      expect(
-        reasoningTargetsOf(const AiModelRef(providerId: 'p9', modelName: 'x'), [
-          primary,
-        ], const []),
-        isEmpty,
-      );
+      expect(reasoningTargetsOf(const AiModelRef(providerId: 'p9', modelName: 'x'), [primary], const []), isEmpty);
     });
 
     test('同一档位给出单值，档位不一致标记混合', () {
       final same = reasoningEffortStateOf(
-        reasoningTargetsOf(
-          const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
-          [primary],
-          const [],
-        ),
+        reasoningTargetsOf(const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'), [primary], const []),
       );
       expect(same?.effort, isNull);
       expect(same?.mixed, isFalse);
@@ -169,10 +129,7 @@ void main() {
 
       final mixed = reasoningEffortStateOf([
         (provider: primary, model: _model('gpt-5.4-mini')),
-        (
-          provider: backup,
-          model: _model('glm-4.6', effort: ReasoningEffort.high),
-        ),
+        (provider: backup, model: _model('glm-4.6', effort: ReasoningEffort.high)),
       ]);
       expect(mixed?.mixed, isTrue);
     });
@@ -183,13 +140,8 @@ void main() {
         effort: ReasoningEffort.xhigh,
         efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh],
       );
-      final state = reasoningEffortStateOf([
-        (provider: primary, model: custom),
-      ]);
-      expect(state?.capability.levels, [
-        ReasoningEffort.minimal,
-        ReasoningEffort.xhigh,
-      ]);
+      final state = reasoningEffortStateOf([(provider: primary, model: custom)]);
+      expect(state?.capability.levels, [ReasoningEffort.minimal, ReasoningEffort.xhigh]);
       expect(state?.effort, ReasoningEffort.xhigh);
 
       // 当前存的是高，但自定义集合里没有高：发信层不会发，界面按自动显示
@@ -198,9 +150,7 @@ void main() {
         effort: ReasoningEffort.high,
         efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh],
       );
-      final staleState = reasoningEffortStateOf([
-        (provider: primary, model: stale),
-      ]);
+      final staleState = reasoningEffortStateOf([(provider: primary, model: stale)]);
       expect(staleState?.effort, isNull);
     });
   });
@@ -212,9 +162,7 @@ void main() {
         providers: [primary, backup],
         groups: [
           _group(
-            members: const [
-              RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4-mini'),
-            ],
+            members: const [RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4-mini')],
           ),
         ],
         selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
@@ -241,9 +189,7 @@ void main() {
       await _openSheet(
         tester,
         providers: [primary, backup],
-        recent: const [
-          AiModelRef(providerId: 'p2', modelName: 'glm-4.6'),
-        ],
+        recent: const [AiModelRef(providerId: 'p2', modelName: 'glm-4.6')],
         selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
       );
 
@@ -253,10 +199,7 @@ void main() {
       expect(find.widgetWithText(ListTile, 'gpt-5.4-mini'), findsOneWidget);
       expect(find.widgetWithText(ListTile, 'gpt-5.4'), findsOneWidget);
       // 最近使用行在「全部模型」之上
-      expect(
-        tester.getTopLeft(find.text('最近使用')).dy,
-        lessThan(tester.getTopLeft(find.text('全部模型')).dy),
-      );
+      expect(tester.getTopLeft(find.text('最近使用')).dy, lessThan(tester.getTopLeft(find.text('全部模型')).dy));
 
       await tester.tap(find.widgetWithText(ListTile, 'glm-4.6'));
       await tester.pumpAndSettle();
@@ -267,9 +210,7 @@ void main() {
       await _openSheet(
         tester,
         providers: [primary],
-        recent: const [
-          AiModelRef(providerId: 'p9', modelName: '已删除'),
-        ],
+        recent: const [AiModelRef(providerId: 'p9', modelName: '已删除')],
         selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
       );
 
@@ -382,10 +323,7 @@ void main() {
         selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
         onEffort: (targets, effort) async {
           written = effort;
-          bound = AiModelRef(
-            providerId: targets.single.provider.id,
-            modelName: targets.single.model.id,
-          );
+          bound = AiModelRef(providerId: targets.single.provider.id, modelName: targets.single.model.id);
           return true;
         },
       );
@@ -424,11 +362,7 @@ void main() {
     });
 
     testWidgets('思考强度对不支持关闭的模型只给低中高', (tester) async {
-      final oSeries = _provider(
-        id: 'p3',
-        name: '推理',
-        models: [_model('o3-mini')],
-      );
+      final oSeries = _provider(id: 'p3', name: '推理', models: [_model('o3-mini')]);
       await _openSheet(
         tester,
         providers: [oSeries],
@@ -446,11 +380,7 @@ void main() {
         members: const [
           RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4-mini'),
           RouteGroupMember(providerId: 'p2', modelName: 'glm-4.6'),
-          RouteGroupMember(
-            providerId: 'p1',
-            modelName: 'gpt-5.4',
-            enabled: false,
-          ),
+          RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4', enabled: false),
         ],
       );
       List<ReasoningEffortTarget>? targets;

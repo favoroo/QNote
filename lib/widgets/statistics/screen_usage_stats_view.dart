@@ -140,9 +140,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
 
     final selectedDate = ref.watch(selectedDateProvider);
     final dayAsync = ref.watch(screenUsageDayProvider(selectedDate));
-    final weekAsync = ref.watch(
-      screenUsageRangeProvider(ScreenUsageRangeArg(TimeRangeType.week, selectedDate)),
-    );
+    final weekAsync = ref.watch(screenUsageRangeProvider(ScreenUsageRangeArg(TimeRangeType.week, selectedDate)));
     final trendAsync = ref.watch(screenUsageTrendProvider(ScreenUsageTrendArg(selectedDate)));
     final earliestAsync = ref.watch(screenUsageEarliestDateProvider);
 
@@ -210,18 +208,12 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
             child: Icon(Icons.hourglass_top_rounded, size: 40, color: colorScheme.primary),
           ),
           const SizedBox(height: 20),
-          Text(
-            '获取屏幕使用数据',
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-          ),
+          Text('获取屏幕使用数据', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           Text(
             '需开启「有权查看使用情况的应用」权限，授权后可查看每日时长、本周汇总与应用排行。'
             '系统只保留约 7 天，App 每天自动记录，历史从今天起累积。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 28),
@@ -239,21 +231,13 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
 
   /// 区块标题：图标 + 文案，可选右侧补充说明。文案与说明都允许被压缩截断，
   /// 避免小屏上互相争抢宽度时溢出。
-  Widget _buildSectionLabel(
-    ThemeData theme,
-    String text, {
-    IconData? icon,
-    String? trailing,
-  }) {
+  Widget _buildSectionLabel(ThemeData theme, String text, {IconData? icon, String? trailing}) {
     return Row(
       children: [
         if (icon != null) ...[
           Container(
             padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: _accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
+            decoration: BoxDecoration(color: _accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
             child: Icon(icon, size: 16, color: _accent),
           ),
           const SizedBox(width: 8),
@@ -301,19 +285,11 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       constraints: minHeight == null ? null : BoxConstraints(minHeight: minHeight),
       padding: padding,
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF1E1E22)
-            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: isDark ? const Color(0xFF1E1E22) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(AppRadius.large),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
-          width: 0.8,
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15), width: 0.8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
     );
   }
 
@@ -331,10 +307,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     return _buildCard(
       theme: theme,
       children: [
-        Text(
-          message,
-          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error),
-        ),
+        Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error)),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerRight,
@@ -353,9 +326,8 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     final title = day.isToday ? '今日屏幕时长' : '${formatDayLabel(day.date)}屏幕时长';
     final topApps = day.apps.take(5).toList();
     // 历史日回落快照时没有图标字节，按包名回原生补齐
-    final icons = ref
-        .watch(screenAppIconProvider(_iconKey(topApps.map((e) => e.packageName))))
-        .valueOrNull ??
+    final icons =
+        ref.watch(screenAppIconProvider(_iconKey(topApps.map((e) => e.packageName)))).valueOrNull ??
         const <String, Uint8List>{};
 
     return _buildCard(
@@ -372,10 +344,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         if (!day.hasRecord)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '当天无记录',
-              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
-            ),
+            child: Text('当天无记录', style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline)),
           )
         else ...[
           _buildHeroValue(theme, day.formattedTotal),
@@ -403,9 +372,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
 
   /// 历史日期尚未开始采集时的说明卡
   Widget _buildNotCollectedCard(ThemeData theme, DateTime date, DateTime? earliest) {
-    final earliestText = earliest == null
-        ? '尚无记录'
-        : '${earliest.month}月${earliest.day}日';
+    final earliestText = earliest == null ? '尚无记录' : '${earliest.month}月${earliest.day}日';
     return _buildCard(
       theme: theme,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -415,10 +382,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         Text(
           '历史屏幕时长需逐日记录，最早收录 $earliestText；'
           '系统只保留约 7 天，更早的无法补回。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            height: 1.5,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(height: 1.5, color: theme.colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -456,10 +420,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         if (!agg.hasData)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '本周暂无记录',
-              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
-            ),
+            child: Text('本周暂无记录', style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline)),
           )
         else ...[
           _buildCaptionRow(theme, '本周总时长', trailing: agg.diffText),
@@ -469,20 +430,11 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           Row(
             children: [
               Expanded(
-                child: _buildStatTile(
-                  theme,
-                  label: '日均',
-                  hint: '按 ${agg.recordedDays} 天计',
-                  value: agg.formattedAvg,
-                ),
+                child: _buildStatTile(theme, label: '日均', hint: '按 ${agg.recordedDays} 天计', value: agg.formattedAvg),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _buildStatTile(
-                  theme,
-                  label: '有记录天数',
-                  value: '${agg.recordedDays}/${agg.spanDays}',
-                ),
+                child: _buildStatTile(theme, label: '有记录天数', value: '${agg.recordedDays}/${agg.spanDays}'),
               ),
             ],
           ),
@@ -499,15 +451,10 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Text(
                       '暂无足够历史记录，App 每天自动保存当日时长。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
                     ),
                   )
-                : SizedBox(
-                    height: 104,
-                    child: _buildBarChart(theme, trend, selectedDate),
-                  ),
+                : SizedBox(height: 104, child: _buildBarChart(theme, trend, selectedDate)),
           ),
         ],
       ],
@@ -550,24 +497,15 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
 
   /// 次级指标格：用底色和边框把每个指标隔成一格，标签行左名称右备注，
   /// 数字单独一行 —— 三个指标硬挤一行时长文案会互相贴在一起
-  Widget _buildStatTile(
-    ThemeData theme, {
-    required String label,
-    required String value,
-    String? hint,
-  }) {
+  Widget _buildStatTile(ThemeData theme, {required String label, required String value, String? hint}) {
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : colorScheme.surface.withValues(alpha: 0.72),
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : colorScheme.surface.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(AppRadius.medium),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
-        ),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,10 +541,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: AppTypography.title,
-            ),
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: AppTypography.title),
           ),
         ],
       ),
@@ -619,11 +554,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       value,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w800,
-        fontSize: 26,
-        letterSpacing: -0.5,
-      ),
+      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, fontSize: 26, letterSpacing: -0.5),
     );
   }
 
@@ -643,8 +574,8 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       final color = !item.collected
           ? (isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.06))
           : isSelected
-              ? _accent
-              : _accent.withValues(alpha: isDark ? 0.75 : 0.6);
+          ? _accent
+          : _accent.withValues(alpha: isDark ? 0.75 : 0.6);
 
       barGroups.add(
         BarChartGroupData(
@@ -653,14 +584,10 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
             BarChartRodData(
               // 未采集日只画一小段淡色底柱占位，整根淡柱会让空白天看起来比真实数据更高；
               // 真实值再按 maxY 兜底截断，保证任何脏数据下柱子都不会溢出卡片。
-              toY: item.collected
-                  ? item.hours.clamp(0.0, maxY)
-                  : (maxY * _uncollectedStubRatio).clamp(0.0, maxY),
+              toY: item.collected ? item.hours.clamp(0.0, maxY) : (maxY * _uncollectedStubRatio).clamp(0.0, maxY),
               color: color,
               width: 20,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(item.collected ? 4 : 2),
-              ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(item.collected ? 4 : 2)),
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
                 toY: maxY,
@@ -719,12 +646,18 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               interval: maxY / 2,
               getTitlesWidget: (value, meta) {
                 if (value == 0) {
-                  return const Text(' 0', style: TextStyle(fontSize: AppTypography.caption, color: Colors.grey));
+                  return const Text(
+                    ' 0',
+                    style: TextStyle(fontSize: AppTypography.caption, color: Colors.grey),
+                  );
                 }
                 final h = value.toInt();
                 final m = ((value - h) * 60).round();
                 final text = m > 0 ? '$h小时$m分' : '$h小时';
-                return Text(' $text', style: const TextStyle(fontSize: AppTypography.caption, color: Colors.grey));
+                return Text(
+                  ' $text',
+                  style: const TextStyle(fontSize: AppTypography.caption, color: Colors.grey),
+                );
               },
             ),
           ),
@@ -786,20 +719,15 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     }
 
     // 榜单来自逐日快照，快照只存包名/名称/时长，图标按包名回原生批量补齐
-    final icons = ref
-        .watch(screenAppIconProvider(_iconKey(apps.map((e) => e.packageName))))
-        .valueOrNull ??
+    final icons =
+        ref.watch(screenAppIconProvider(_iconKey(apps.map((e) => e.packageName)))).valueOrNull ??
         const <String, Uint8List>{};
 
     return _buildCard(
       theme: theme,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
       children: [
-        _buildSectionLabel(
-          theme,
-          '本周应用时长 Top ${apps.length}',
-          icon: Icons.apps_rounded,
-        ),
+        _buildSectionLabel(theme, '本周应用时长 Top ${apps.length}', icon: Icons.apps_rounded),
         const SizedBox(height: 4),
         ...apps.map(
           (app) => _buildAppRow(
@@ -814,10 +742,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         const SizedBox(height: 2),
         Text(
           '每日只记时长前 20 应用，按本周累计排序',
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: AppTypography.caption,
-            color: theme.colorScheme.outline,
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(fontSize: AppTypography.caption, color: theme.colorScheme.outline),
         ),
       ],
     );
@@ -839,13 +764,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       child: Row(
         children: [
           // 未安装/取图失败时回落到首字母色块
-          _buildAppIcon(
-            theme,
-            packageName: packageName,
-            appName: appName,
-            bytes: iconBytes,
-            size: iconSize,
-          ),
+          _buildAppIcon(theme, packageName: packageName, appName: appName, bytes: iconBytes, size: iconSize),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -922,12 +841,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     double size = 42,
   }) {
     if (bytes == null || bytes.isEmpty) {
-      return _buildLetterAvatar(
-        theme,
-        packageName: packageName,
-        appName: appName,
-        size: size,
-      );
+      return _buildLetterAvatar(theme, packageName: packageName, appName: appName, size: size);
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(size * 0.24),
@@ -938,12 +852,8 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         fit: BoxFit.cover,
         // 同一包名刷新时沿用旧图，避免图标闪一下
         gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => _buildLetterAvatar(
-          theme,
-          packageName: packageName,
-          appName: appName,
-          size: size,
-        ),
+        errorBuilder: (context, error, stackTrace) =>
+            _buildLetterAvatar(theme, packageName: packageName, appName: appName, size: size),
       ),
     );
   }
@@ -977,9 +887,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
   }
 
   bool _sameDay(DateTime point, DateTime selected) =>
-      point.year == selected.year &&
-      point.month == selected.month &&
-      point.day == selected.day;
+      point.year == selected.year && point.month == selected.month && point.day == selected.day;
 
   /// 柱标签用星期（今天显示「今日」），比 M月d日 更短也更好扫读
   String _weekdayLabel(DateTime date) {

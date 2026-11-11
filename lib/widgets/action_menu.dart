@@ -22,11 +22,7 @@ class ActionMenu {
   static OverlayEntry? _overlayEntry;
   static GlobalKey<_ActionMenuOverlayState>? _currentOverlayKey;
 
-  static void show({
-    required BuildContext context,
-    required GlobalKey key,
-    required List<ActionMenuItem> items,
-  }) {
+  static void show({required BuildContext context, required GlobalKey key, required List<ActionMenuItem> items}) {
     dismiss(immediate: true);
 
     final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
@@ -123,8 +119,7 @@ class _ActionMenuOverlay extends StatefulWidget {
   State<_ActionMenuOverlay> createState() => _ActionMenuOverlayState();
 }
 
-class _ActionMenuOverlayState extends State<_ActionMenuOverlay>
-    with SingleTickerProviderStateMixin {
+class _ActionMenuOverlayState extends State<_ActionMenuOverlay> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
@@ -133,22 +128,12 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: AppDurations.fast,
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: AppCurves.emphasized,
-      reverseCurve: AppCurves.exit,
-    );
-    _scaleAnimation = Tween<double>(begin: 0.92, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: AppCurves.emphasized,
-        reverseCurve: AppCurves.exit,
-      ),
-    );
+    _controller = AnimationController(vsync: this, duration: AppDurations.fast);
+    _fadeAnimation = CurvedAnimation(parent: _controller, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit);
+    _scaleAnimation = Tween<double>(
+      begin: 0.92,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit));
     _controller.forward();
   }
 
@@ -181,11 +166,7 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay>
 
     return Stack(
       children: [
-        GestureDetector(
-          onTap: widget.onDismiss,
-          behavior: HitTestBehavior.opaque,
-          child: const SizedBox.expand(),
-        ),
+        GestureDetector(onTap: widget.onDismiss, behavior: HitTestBehavior.opaque, child: const SizedBox.expand()),
         Positioned(
           top: widget.top,
           left: widget.left,
@@ -209,20 +190,14 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: widget.items.map((item) {
-                      final color = item.isDestructive
-                          ? colorScheme.error
-                          : colorScheme.onSurface;
+                      final color = item.isDestructive ? colorScheme.error : colorScheme.onSurface;
                       return InkWell(
                         onTap: () => _handleItemTap(item),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 14,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                           child: Row(
                             children: [
-                              item.iconWidget ??
-                                  Icon(item.icon, size: 22, color: color),
+                              item.iconWidget ?? Icon(item.icon, size: 22, color: color),
                               const SizedBox(width: 16),
                               Expanded(
                                 child: Text(

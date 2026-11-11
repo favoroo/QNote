@@ -7,18 +7,9 @@ import 'package:qnote_flutter/core/tts/edge_tts_drm.dart';
 void main() {
   group('EdgeTtsDrm 令牌（v2 算法 golden）', () {
     test('待摘要字符串为「100ns 时间戳 + 可信令牌」', () {
-      expect(
-        EdgeTtsDrm.hashInputForUnixSeconds(1794000000),
-        '1343847360000000006A5AA1D4EAFF4E9FB37E23D68491D6F4',
-      );
-      expect(
-        EdgeTtsDrm.hashInputForUnixSeconds(0),
-        '1164447360000000006A5AA1D4EAFF4E9FB37E23D68491D6F4',
-      );
-      expect(
-        EdgeTtsDrm.hashInputForUnixSeconds(1000000000),
-        '1264447350000000006A5AA1D4EAFF4E9FB37E23D68491D6F4',
-      );
+      expect(EdgeTtsDrm.hashInputForUnixSeconds(1794000000), '1343847360000000006A5AA1D4EAFF4E9FB37E23D68491D6F4');
+      expect(EdgeTtsDrm.hashInputForUnixSeconds(0), '1164447360000000006A5AA1D4EAFF4E9FB37E23D68491D6F4');
+      expect(EdgeTtsDrm.hashInputForUnixSeconds(1000000000), '1264447350000000006A5AA1D4EAFF4E9FB37E23D68491D6F4');
     });
 
     test('完整令牌与上游 7.3.1 输出一致', () {
@@ -45,21 +36,14 @@ void main() {
         ),
       ];
       for (final (unix, token) in cases) {
-        expect(
-          EdgeTtsDrm.generateSecMsGecForUnixSeconds(unix),
-          token,
-          reason: 'unix=$unix',
-        );
+        expect(EdgeTtsDrm.generateSecMsGecForUnixSeconds(unix), token, reason: 'unix=$unix');
       }
     });
 
     test('令牌两段各自与上游中间量一致（CS64 小端展开 / SHA256 大端展开）', () {
       const input = '1343847360000000006A5AA1D4EAFF4E9FB37E23D68491D6F4';
       expect(EdgeTtsDrm.cs64PartForInput(input), '6EA6AF6A0550F520');
-      expect(
-        EdgeTtsDrm.sha256PartForInput(input),
-        '17E5A544A1EFE811EA5248AFBD9780637964201A6D3A15ADE53A30AB9D066A4F',
-      );
+      expect(EdgeTtsDrm.sha256PartForInput(input), '17E5A544A1EFE811EA5248AFBD9780637964201A6D3A15ADE53A30AB9D066A4F');
     });
 
     test('同一 5 分钟桶内令牌相同，跨桶变化', () {

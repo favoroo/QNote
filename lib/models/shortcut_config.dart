@@ -33,9 +33,7 @@ class ShortcutConfig {
       'icon': '',
       'has_popup': hasPopup ? 1 : 0,
       'fields': jsonEncode(fields.map((f) => f.toMap()).toList()),
-      'categories': categories != null
-          ? jsonEncode(categories!.map((c) => c.toMap()).toList())
-          : null,
+      'categories': categories != null ? jsonEncode(categories!.map((c) => c.toMap()).toList()) : null,
       'sort_order': sortOrder,
       'is_visible': isVisible ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
@@ -50,13 +48,13 @@ class ShortcutConfig {
       hasPopup: (map['has_popup'] as int? ?? 0) == 1,
       fields: map['fields'] != null
           ? (jsonDecode(map['fields'] as String) as List)
-              .map((f) => ShortcutField.fromMap(f as Map<String, dynamic>))
-              .toList()
+                .map((f) => ShortcutField.fromMap(f as Map<String, dynamic>))
+                .toList()
           : [],
       categories: map['categories'] != null
           ? (jsonDecode(map['categories'] as String) as List)
-              .map((c) => ShortcutCategory.fromMap(c as Map<String, dynamic>))
-              .toList()
+                .map((c) => ShortcutCategory.fromMap(c as Map<String, dynamic>))
+                .toList()
           : null,
       sortOrder: map['sort_order'] as int? ?? 0,
       isVisible: (map['is_visible'] as int? ?? 1) == 1,
@@ -89,4 +87,3 @@ class ShortcutConfig {
     );
   }
 }
-

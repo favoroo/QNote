@@ -18,21 +18,13 @@ void main() {
   });
 
   test('付费模型：只给倍率与上下文，不出现「原价」', () {
-    final model = AiProviderModel.of(
-      'sn-glm-5-3-flash',
-      rate: 0.2,
-      contextWindow: 1000000,
-    );
+    final model = AiProviderModel.of('sn-glm-5-3-flash', rate: 0.2, contextWindow: 1000000);
 
     expect(modelMetaBadges(model), ['0.2×', '1M']);
   });
 
   test('生图模型：徽标排在上下文之后、识图之前', () {
-    final model = AiProviderModel.of(
-      'qwen-image-3.0-pro',
-      contextWindow: 128000,
-      supportsImageGeneration: true,
-    );
+    final model = AiProviderModel.of('qwen-image-3.0-pro', contextWindow: 128000, supportsImageGeneration: true);
 
     expect(modelMetaBadges(model), ['128K', '生图']);
   });

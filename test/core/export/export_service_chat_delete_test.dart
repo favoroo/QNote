@@ -49,11 +49,7 @@ void main() {
 
   setUp(() async {
     await db.delete('chat_sessions', where: 'id LIKE ?', whereArgs: ['xdel_%']);
-    await db.delete(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id LIKE ?",
-      whereArgs: ['xdel_%'],
-    );
+    await db.delete('sync_log', where: "table_name = 'chat_sessions' AND record_id LIKE ?", whereArgs: ['xdel_%']);
   });
 
   test('远端 deletes 在本端物理删行', () async {
@@ -80,11 +76,7 @@ void main() {
       where: "table_name = 'chat_sessions' AND record_id = ? AND operation = 'delete'",
       whereArgs: [id],
     );
-    expect(
-      logs,
-      hasLength(1),
-      reason: '旧实现遇行不存在直接 return，删除事件在这台设备上就断了',
-    );
+    expect(logs, hasLength(1), reason: '旧实现遇行不存在直接 return，删除事件在这台设备上就断了');
   });
 
   test('对端推来的软删墓碑不会被当普通会话插回本地', () async {

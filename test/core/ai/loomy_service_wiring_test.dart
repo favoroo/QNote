@@ -18,21 +18,19 @@ void main() {
   late AiService service;
 
   AiProvider loomyProvider() => AiProvider(
-        id: 'pLoomy',
-        vendorId: 'loomy',
-        name: 'Loomy（讯飞）',
-        providerType: 'openai',
-        baseUrl: LoomyAuthService.chatBase,
-        authMode: AiProvider.authModeLoomy,
-        apiKeys: const [],
-        models: const [AiProviderModel(id: 'Kimi-k2.6', name: 'Kimi k2.6')],
-        createdAt: now,
-        updatedAt: now,
-      );
+    id: 'pLoomy',
+    vendorId: 'loomy',
+    name: 'Loomy（讯飞）',
+    providerType: 'openai',
+    baseUrl: LoomyAuthService.chatBase,
+    authMode: AiProvider.authModeLoomy,
+    apiKeys: const [],
+    models: const [AiProviderModel(id: 'Kimi-k2.6', name: 'Kimi k2.6')],
+    createdAt: now,
+    updatedAt: now,
+  );
 
-  List<ChatMessage> messages() => [
-        ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now()),
-      ];
+  List<ChatMessage> messages() => [ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now())];
 
   setUp(() {
     LoomyAuthService.accessTokenLoaderForTest = (_) async => 'loomy-session';
@@ -52,10 +50,7 @@ void main() {
     final reply = await service.chatResponse(messages());
 
     expect(reply.content, 'ok');
-    expect(
-      adapter.uris.single,
-      'https://loomyad.xunfei.cn/api/v1/chat/completions',
-    );
+    expect(adapter.uris.single, 'https://loomyad.xunfei.cn/api/v1/chat/completions');
     expect(adapter.tokens.single, 'loomy-session');
     expect(adapter.authHeaders.single, 'Bearer loomy-session');
     // 不带 charset 时上游按 GBK 解码，中文会乱码
@@ -70,10 +65,7 @@ void main() {
     final provider = loomyProvider();
     service.updateConfig(AiConfig.fromProvider(provider, 'Kimi-k2.6'));
 
-    await expectLater(
-      service.chatResponse(messages()),
-      throwsA(isA<Exception>()),
-    );
+    await expectLater(service.chatResponse(messages()), throwsA(isA<Exception>()));
     expect(adapter.uris, isEmpty);
   });
 }

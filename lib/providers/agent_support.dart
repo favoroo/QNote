@@ -91,20 +91,14 @@ Future<bool> isWorkspacePathAbsent(String path) async {
 /// 逆序恢复一组工作区变更快照（后写入的先撤销）：
 /// existedBefore → 写回旧内容；本轮新建的 → 删除文件。
 /// 返回 `(恢复成功处数, 恢复失败处数)`。
-Future<(int restored, int failed)> restoreWorkspaceUndoEntries(
-  Ref ref,
-  List<WorkspaceUndoEntry> entries,
-) async {
+Future<(int restored, int failed)> restoreWorkspaceUndoEntries(Ref ref, List<WorkspaceUndoEntry> entries) async {
   int restored = 0;
   int failed = 0;
   for (final entry in entries.reversed) {
     try {
       if (entry.existedBefore) {
         if (entry.beforeContent != null) {
-          await VirtualWorkspaceService.instance.writeFile(
-            entry.path,
-            entry.beforeContent!,
-          );
+          await VirtualWorkspaceService.instance.writeFile(entry.path, entry.beforeContent!);
           refreshWorkspaceSideEffects(ref, entry.path);
           restored++;
         }
@@ -118,10 +112,7 @@ Future<(int restored, int failed)> restoreWorkspaceUndoEntries(
       }
     } catch (e) {
       failed++;
-      LoggerService.instance.logAI(
-        '撤回恢复工作区变更失败: ${entry.path}, $e',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('撤回恢复工作区变更失败: ${entry.path}, $e', level: LogLevel.warning);
     }
   }
   return (restored, failed);
@@ -133,10 +124,7 @@ Future<(int restored, int failed)> restoreWorkspaceUndoEntries(
 /// [personality] 传入当前激活个性时，会在最尾部复述一行语气摘要：本函数产物会被
 /// AgentLoop 拼到系统提示词的**最后**（`# 当前环境上下文`），紧邻用户消息，
 /// 是对头部人格段被数千字规范与工具流水稀释的补偿，两处同源所以改个性自动同步
-Future<String> buildBaseDynamicContext({
-  List<String> extraSections = const [],
-  QPersonality? personality,
-}) async {
+Future<String> buildBaseDynamicContext({List<String> extraSections = const [], QPersonality? personality}) async {
   final now = DateTime.now();
   final buffer = StringBuffer();
 
@@ -171,14 +159,11 @@ Future<String> buildBaseDynamicContext({
     }
 
     if (userProfile.weightHistory.isNotEmpty) {
-      final sortedWeights = [...userProfile.weightHistory]
-        ..sort((a, b) => b.time.compareTo(a.time));
+      final sortedWeights = [...userProfile.weightHistory]..sort((a, b) => b.time.compareTo(a.time));
       enrichedProfile['latestWeight'] = sortedWeights.first.weight;
     }
 
-    buffer.writeln(
-      '- 用户资料: ${const JsonEncoder.withIndent('  ').convert(enrichedProfile)}',
-    );
+    buffer.writeln('- 用户资料: ${const JsonEncoder.withIndent('  ').convert(enrichedProfile)}');
   }
 
   // 小Q长期记忆（对齐 Hermes 冻结快照语义：仅在对话开始时读取注入一次，
@@ -187,9 +172,7 @@ Future<String> buildBaseDynamicContext({
   final memoryBuffer = StringBuffer();
   for (final doc in memories) {
     final title = AgentMemoryCategory.displayName(doc.category);
-    final state = doc.content.trim().isEmpty
-        ? '暂无'
-        : '已用 ${doc.usagePercent}%';
+    final state = doc.content.trim().isEmpty ? '暂无' : '已用 ${doc.usagePercent}%';
     memoryBuffer.writeln('  【$title | $state】${AgentMemoryCategory.pathOf(doc.category)}');
     if (doc.content.trim().isNotEmpty) {
       memoryBuffer.writeln(doc.content.trimRight());
@@ -208,8 +191,8 @@ Future<String> buildBaseDynamicContext({
   if (personality != null && personality.digest.isNotEmpty) {
     buffer.writeln(
       '- 你的个性「${personality.name}」—— ${personality.digest}；'
-          '这条语气要求优先于系统提示词里所有关于简洁与格式的条款，'
-          '也优先于你在本次会话前几轮里的措辞习惯，但不得因此改动数据真实性与操作规范。',
+      '这条语气要求优先于系统提示词里所有关于简洁与格式的条款，'
+      '也优先于你在本次会话前几轮里的措辞习惯，但不得因此改动数据真实性与操作规范。',
     );
   }
 

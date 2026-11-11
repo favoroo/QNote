@@ -47,9 +47,7 @@ class ExportService {
     for (final record in records) {
       buffer.writeln('## ${record.title}');
       buffer.writeln();
-      buffer.writeln(
-        '日期: ${record.createdAt.toIso8601String().substring(0, 10)}',
-      );
+      buffer.writeln('日期: ${record.createdAt.toIso8601String().substring(0, 10)}');
       buffer.writeln('心情: ${record.mood}/5');
       if (record.weather.isNotEmpty) buffer.writeln('天气: ${record.weather}');
       if (record.tags.isNotEmpty) buffer.writeln('标签: ${record.tags}');
@@ -90,9 +88,7 @@ class ExportService {
         buffer.writeln('  - ${todo.description}');
       }
       if (todo.dueDate != null) {
-        buffer.writeln(
-          '  - 截止: ${todo.dueDate!.toIso8601String().substring(0, 10)}',
-        );
+        buffer.writeln('  - 截止: ${todo.dueDate!.toIso8601String().substring(0, 10)}');
       }
     }
     return buffer.toString();
@@ -102,9 +98,7 @@ class ExportService {
   ///
   /// P1-13: 抽出此方法以便 WebDAV 等下游消费方直接拿到 Map 而非 String，
   /// 避免「encode→decode→再 encode」的三重序列化反模式。
-  Future<Map<String, dynamic>> exportAllToMap({
-    bool includeImages = true,
-  }) async {
+  Future<Map<String, dynamic>> exportAllToMap({bool includeImages = true}) async {
     final db = await DatabaseHelper.instance.database;
     final data = <String, dynamic>{};
 
@@ -228,8 +222,7 @@ class ExportService {
 
     LoggerService.instance.logExport(
       '数据导出完成',
-      details:
-          '耗时=${duration}ms, 大小≈${(jsonStr.length / 1024).toStringAsFixed(1)}KB',
+      details: '耗时=${duration}ms, 大小≈${(jsonStr.length / 1024).toStringAsFixed(1)}KB',
     );
 
     return jsonStr;
@@ -250,26 +243,17 @@ class ExportService {
   /// 每次 [importFromJsonString] 入口都会重置，且各调用方都是串行使用。
   final List<String> _importFailures = [];
 
-  Future<void> importFromJsonString(
-    String jsonString, {
-    bool overwrite = true,
-  }) async {
+  Future<void> importFromJsonString(String jsonString, {bool overwrite = true}) async {
     final startTime = DateTime.now();
 
-    LoggerService.instance.logImport(
-      '开始导入数据',
-      details: overwrite ? '覆盖模式' : '合并模式',
-    );
+    LoggerService.instance.logImport('开始导入数据', details: overwrite ? '覆盖模式' : '合并模式');
 
     final data = jsonDecode(jsonString) as Map<String, dynamic>;
 
     Map<String, dynamic> importData = data;
 
     if (data.containsKey('metadata') && data['metadata'] is Map) {
-      LoggerService.instance.logImport(
-        '检测到WebDAV格式的备份数据',
-        details: '自动提取metadata字段中的实际数据',
-      );
+      LoggerService.instance.logImport('检测到WebDAV格式的备份数据', details: '自动提取metadata字段中的实际数据');
       importData = Map<String, dynamic>.from(data['metadata']);
     }
 
@@ -296,11 +280,8 @@ class ExportService {
     // 解析放在清库之后的话，某条记录不是对象时会「已清库 + 抛异常」，
     // 用户看到导入失败但数据已经没了。
     List<Map<String, dynamic>> parseList(String key) =>
-        ((importData[key] as List?) ?? const [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
-    Map<String, dynamic> parseMap(String key) =>
-        Map<String, dynamic>.from(importData[key] as Map);
+        ((importData[key] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    Map<String, dynamic> parseMap(String key) => Map<String, dynamic>.from(importData[key] as Map);
 
     final folders = parseList('folders');
     final records = parseList('diary_records');
@@ -315,13 +296,10 @@ class ExportService {
     final states = parseList('body_states');
     final dailyScores = parseList('daily_scores');
     final templates = parseList('fixed_event_templates');
-    final profileMap =
-        importData.containsKey('user_profile') ? parseMap('user_profile') : null;
-    final webdavMap =
-        importData.containsKey('webdav_config') ? parseMap('webdav_config') : null;
+    final profileMap = importData.containsKey('user_profile') ? parseMap('user_profile') : null;
+    final webdavMap = importData.containsKey('webdav_config') ? parseMap('webdav_config') : null;
     final rolesMap = importData.containsKey('ai_roles') ? parseMap('ai_roles') : null;
-    final tempsMap =
-        importData.containsKey('ai_temperatures') ? parseMap('ai_temperatures') : null;
+    final tempsMap = importData.containsKey('ai_temperatures') ? parseMap('ai_temperatures') : null;
 
     if (overwrite) {
       await _clearAllData(db);
@@ -438,10 +416,7 @@ class ExportService {
   /// 所以要求至少包含一张核心数据表，且各表类型必须是数组/对象。
   ///
   /// [requireCoreTables] 仅在覆盖模式为 true：合并模式不会清库，空备份无副作用。
-  void _validateBackupData(
-    Map<String, dynamic> data, {
-    bool requireCoreTables = true,
-  }) {
+  void _validateBackupData(Map<String, dynamic> data, {bool requireCoreTables = true}) {
     final validKeys = {
       'diary_records',
       'notes',
@@ -515,12 +490,7 @@ class ExportService {
       'daily_scores',
       'fixed_event_templates',
     };
-    const mapKeys = {
-      'user_profile',
-      'webdav_config',
-      'ai_roles',
-      'ai_temperatures',
-    };
+    const mapKeys = {'user_profile', 'webdav_config', 'ai_roles', 'ai_temperatures'};
     for (final key in listKeys) {
       final value = data[key];
       if (value != null && value is! List) {
@@ -538,11 +508,7 @@ class ExportService {
   /// 记录一条导入失败：既写日志，也累积到 [_importFailures] 供整体判定。
   void _recordImportFailure(String label, Object error) {
     _importFailures.add(label);
-    LoggerService.instance.logImport(
-      '导入失败: $label',
-      level: LogLevel.error,
-      details: error.toString(),
-    );
+    LoggerService.instance.logImport('导入失败: $label', level: LogLevel.error, details: error.toString());
   }
 
   /// 覆盖导入前把当前数据写成一份本地快照，返回文件路径。
@@ -557,22 +523,14 @@ class ExportService {
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
-      final stamp = DateTime.now()
-          .toIso8601String()
-          .replaceAll(':', '-')
-          .split('.')
-          .first;
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
       final file = File(p.join(dir.path, 'pre_import_$stamp.json'));
       await file.writeAsString(jsonEncode(data));
       await _pruneOldImportSnapshots(dir);
       LoggerService.instance.logImport('已保存导入前本地快照', details: file.path);
       return file.path;
     } catch (e, stackTrace) {
-      LoggerService.instance.logImport(
-        '保存导入前本地快照失败',
-        level: LogLevel.error,
-        details: '${e.toString()}\n$stackTrace',
-      );
+      LoggerService.instance.logImport('保存导入前本地快照失败', level: LogLevel.error, details: '${e.toString()}\n$stackTrace');
       return null;
     }
   }
@@ -671,24 +629,14 @@ class ExportService {
         }
       }
     } catch (e) {
-      LoggerService.instance.logDatabase(
-        '清空图片目录失败',
-        level: LogLevel.warning,
-        details: e.toString(),
-      );
+      LoggerService.instance.logDatabase('清空图片目录失败', level: LogLevel.warning, details: e.toString());
     }
 
-    LoggerService.instance.logDatabase(
-      '已清空所有本地数据',
-      details: '表=${fullWipeTables.toSet().length}, 图片=$deletedImages',
-    );
+    LoggerService.instance.logDatabase('已清空所有本地数据', details: '表=${fullWipeTables.toSet().length}, 图片=$deletedImages');
     return deletedImages;
   }
 
-  Future<void> _importFolders(
-    List<Map<String, dynamic>> folders,
-    bool merge,
-  ) async {
+  Future<void> _importFolders(List<Map<String, dynamic>> folders, bool merge) async {
     for (final map in folders) {
       if (merge) {
         final existing = await _folderRepo.getById(map['id'] as String);
@@ -702,10 +650,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importDiaryRecords(
-    List<Map<String, dynamic>> records,
-    bool merge,
-  ) async {
+  Future<void> _importDiaryRecords(List<Map<String, dynamic>> records, bool merge) async {
     for (final map in records) {
       if (merge) {
         final existing = await _diaryRepo.getById(map['id'] as String);
@@ -717,10 +662,7 @@ class ExportService {
           final photoMap = Map<String, dynamic>.from(photosBase64);
           final photos = <String>[];
           for (final entry in photoMap.entries) {
-            final savedPath = await _imageRepo.saveBase64Image(
-              entry.value as String,
-              subfolder: 'diary',
-            );
+            final savedPath = await _imageRepo.saveBase64Image(entry.value as String, subfolder: 'diary');
             photos.add(savedPath);
           }
           if (photos.isNotEmpty) {
@@ -734,10 +676,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importNotes(
-    List<Map<String, dynamic>> notes,
-    bool merge,
-  ) async {
+  Future<void> _importNotes(List<Map<String, dynamic>> notes, bool merge) async {
     for (final map in notes) {
       if (merge) {
         final existing = await _noteRepo.getById(map['id'] as String);
@@ -749,10 +688,7 @@ class ExportService {
           final imageMap = Map<String, dynamic>.from(imagesBase64);
           final images = <String>[];
           for (final entry in imageMap.entries) {
-            final savedPath = await _imageRepo.saveBase64Image(
-              entry.value as String,
-              subfolder: 'notes',
-            );
+            final savedPath = await _imageRepo.saveBase64Image(entry.value as String, subfolder: 'notes');
             images.add(savedPath);
           }
           if (images.isNotEmpty) {
@@ -766,10 +702,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importTodos(
-    List<Map<String, dynamic>> todos,
-    bool merge,
-  ) async {
+  Future<void> _importTodos(List<Map<String, dynamic>> todos, bool merge) async {
     for (final map in todos) {
       if (merge) {
         final existing = await _todoRepo.getById(map['id'] as String);
@@ -792,10 +725,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importAiProviders(
-    List<Map<String, dynamic>> providers,
-    bool overwrite,
-  ) async {
+  Future<void> _importAiProviders(List<Map<String, dynamic>> providers, bool overwrite) async {
     final repo = AiProviderRepository.instance;
     for (final map in providers) {
       try {
@@ -812,10 +742,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importAiRouteGroups(
-    List<Map<String, dynamic>> groups,
-    bool overwrite,
-  ) async {
+  Future<void> _importAiRouteGroups(List<Map<String, dynamic>> groups, bool overwrite) async {
     final repo = AiRouteGroupRepository.instance;
     for (final map in groups) {
       try {
@@ -840,19 +767,15 @@ class ExportService {
   Future<void> _importLegacyAiConfigs(List<Map<String, dynamic>> configs) async {
     final repo = AiProviderRepository.instance;
     final existing = await repo.getAll();
-    final known = existing
-        .map((p) => '${p.vendorId ?? 'custom'}|${p.baseUrl}|${p.providerType}')
-        .toSet();
+    final known = existing.map((p) => '${p.vendorId ?? 'custom'}|${p.baseUrl}|${p.providerType}').toSet();
     for (final provider in AiProvider.fromLegacyConfigMaps(configs)) {
-      final key =
-          '${provider.vendorId ?? 'custom'}|${provider.baseUrl}|${provider.providerType}';
+      final key = '${provider.vendorId ?? 'custom'}|${provider.baseUrl}|${provider.providerType}';
       if (known.contains(key)) continue;
       try {
         await repo.insertSilently(
           provider.copyWith(
             id: provider.id.isEmpty ? const Uuid().v4() : provider.id,
-            name: getProviderById(provider.vendorId ?? '')?.name ??
-                provider.name,
+            name: getProviderById(provider.vendorId ?? '')?.name ?? provider.name,
           ),
         );
       } catch (e) {
@@ -861,10 +784,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importShortcutConfigs(
-    List<Map<String, dynamic>> configs,
-    bool merge,
-  ) async {
+  Future<void> _importShortcutConfigs(List<Map<String, dynamic>> configs, bool merge) async {
     for (final map in configs) {
       if (merge) {
         final existing = await _configRepo.getShortcutConfigs();
@@ -878,10 +798,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importChatSessions(
-    List<Map<String, dynamic>> sessions,
-    bool merge,
-  ) async {
+  Future<void> _importChatSessions(List<Map<String, dynamic>> sessions, bool merge) async {
     for (final map in sessions) {
       // 旧版本备份/对端快照里可能仍带软删墓碑，导入即复活，一律跳过
       if ((map['is_deleted'] as int? ?? 0) == 1) continue;
@@ -914,10 +831,7 @@ class ExportService {
     }
   }
 
-  Future<void> _importColorMarks(
-    List<Map<String, dynamic>> marks,
-    bool merge,
-  ) async {
+  Future<void> _importColorMarks(List<Map<String, dynamic>> marks, bool merge) async {
     for (final map in marks) {
       try {
         await _colorMarkRepo.insert(DateColorMark.fromMap(map));
@@ -927,78 +841,45 @@ class ExportService {
     }
   }
 
-  Future<void> _importBodyStates(
-    List<Map<String, dynamic>> states,
-    bool merge,
-  ) async {
+  Future<void> _importBodyStates(List<Map<String, dynamic>> states, bool merge) async {
     final db = await DatabaseHelper.instance.database;
     for (final map in states) {
       if (merge) {
-        final existing = await db.query(
-          'body_states',
-          where: 'id = ?',
-          whereArgs: [map['id']],
-        );
+        final existing = await db.query('body_states', where: 'id = ?', whereArgs: [map['id']]);
         if (existing.isNotEmpty) continue;
       }
       try {
-        await db.insert(
-          'body_states',
-          map,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await db.insert('body_states', map, conflictAlgorithm: ConflictAlgorithm.replace);
       } catch (e) {
         _recordImportFailure('身体状态 ${map['id']}', e);
       }
     }
   }
 
-  Future<void> _importDailyScores(
-    List<Map<String, dynamic>> dailyScores,
-    bool merge,
-  ) async {
+  Future<void> _importDailyScores(List<Map<String, dynamic>> dailyScores, bool merge) async {
     final db = await DatabaseHelper.instance.database;
     for (final map in dailyScores) {
       if (merge) {
-        final existing = await db.query(
-          'daily_scores',
-          where: 'id = ?',
-          whereArgs: [map['id']],
-        );
+        final existing = await db.query('daily_scores', where: 'id = ?', whereArgs: [map['id']]);
         if (existing.isNotEmpty) continue;
       }
       try {
-        await db.insert(
-          'daily_scores',
-          map,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await db.insert('daily_scores', map, conflictAlgorithm: ConflictAlgorithm.replace);
       } catch (e) {
         _recordImportFailure('每日评分 ${map['id']}', e);
       }
     }
   }
 
-  Future<void> _importFixedEventTemplates(
-    List<Map<String, dynamic>> templates,
-    bool merge,
-  ) async {
+  Future<void> _importFixedEventTemplates(List<Map<String, dynamic>> templates, bool merge) async {
     final db = await DatabaseHelper.instance.database;
     for (final map in templates) {
       if (merge) {
-        final existing = await db.query(
-          'fixed_event_templates',
-          where: 'id = ?',
-          whereArgs: [map['id']],
-        );
+        final existing = await db.query('fixed_event_templates', where: 'id = ?', whereArgs: [map['id']]);
         if (existing.isNotEmpty) continue;
       }
       try {
-        await db.insert(
-          'fixed_event_templates',
-          map,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await db.insert('fixed_event_templates', map, conflictAlgorithm: ConflictAlgorithm.replace);
       } catch (e) {
         _recordImportFailure('固定事件 ${map['id']}', e);
       }
@@ -1246,24 +1127,18 @@ class ExportService {
     return file.path;
   }
 
-  Future<void> shareFile(
-    String content,
-    String fileName, {
-    String? subject,
-  }) async {
+  Future<void> shareFile(String content, String fileName, {String? subject}) async {
     final filePath = await _saveToFile(content, fileName);
     await Share.shareXFiles([XFile(filePath)], subject: subject ?? 'QNote 导出');
   }
 
   Future<void> shareMarkdown(String content, String type) async {
-    final fileName =
-        'qnote_${type}_${DateTime.now().millisecondsSinceEpoch}.md';
+    final fileName = 'qnote_${type}_${DateTime.now().millisecondsSinceEpoch}.md';
     await shareFile(content, fileName, subject: 'QNote $type 导出');
   }
 
   Future<void> shareJson(String content) async {
-    final fileName =
-        'qnote_backup_${DateTime.now().millisecondsSinceEpoch}.json';
+    final fileName = 'qnote_backup_${DateTime.now().millisecondsSinceEpoch}.json';
     await shareFile(content, fileName, subject: 'QNote 数据备份');
   }
 
@@ -1285,10 +1160,7 @@ class ExportService {
           final photoMap = Map<String, dynamic>.from(photosBase64);
           final photos = <String>[];
           for (final entry in photoMap.entries) {
-            final savedPath = await _imageRepo.saveBase64Image(
-              entry.value as String,
-              subfolder: 'diary',
-            );
+            final savedPath = await _imageRepo.saveBase64Image(entry.value as String, subfolder: 'diary');
             photos.add(savedPath);
           }
           if (photos.isNotEmpty) {
@@ -1320,10 +1192,7 @@ class ExportService {
           final imageMap = Map<String, dynamic>.from(imagesBase64);
           final images = <String>[];
           for (final entry in imageMap.entries) {
-            final savedPath = await _imageRepo.saveBase64Image(
-              entry.value as String,
-              subfolder: 'notes',
-            );
+            final savedPath = await _imageRepo.saveBase64Image(entry.value as String, subfolder: 'notes');
             images.add(savedPath);
           }
           if (images.isNotEmpty) {
@@ -1424,9 +1293,7 @@ class ExportService {
     if (changes.containsKey('ai_configs')) {
       final tableChanges = Map<String, dynamic>.from(changes['ai_configs'] as Map);
       final upserts = (tableChanges['upserts'] as List?) ?? [];
-      final legacyRows = upserts
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList();
+      final legacyRows = upserts.map((item) => Map<String, dynamic>.from(item as Map)).toList();
       if (legacyRows.isNotEmpty) {
         await _importLegacyAiConfigs(legacyRows);
       }
@@ -1474,10 +1341,7 @@ class ExportService {
           } catch (_) {}
         }
       }
-      final victimIds = <String>[
-        ...tombstoneIds,
-        ...deletes.map((id) => id as String),
-      ];
+      final victimIds = <String>[...tombstoneIds, ...deletes.map((id) => id as String)];
       if (victimIds.isNotEmpty) {
         // 与 diary/notes/todos 的 deletes 处理对齐：本端也物理删。
         // 旧的 softDeleteChatSession 在行已消失时是静默 no-op，会让「A 删 → B → C」断链

@@ -68,9 +68,7 @@ void main() {
           home: Builder(
             builder: (context) => ElevatedButton(
               onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => DiaryEditorView(record: record)),
-                );
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => DiaryEditorView(record: record)));
               },
               child: const Text('open'),
             ),
@@ -105,9 +103,7 @@ void main() {
   }
 
   bool saveButtonEnabled(WidgetTester tester) {
-    return tester
-        .widget<FilledButton>(find.widgetWithText(FilledButton, '保存修改'))
-        .enabled;
+    return tester.widget<FilledButton>(find.widgetWithText(FilledButton, '保存修改')).enabled;
   }
 
   group('DiaryEditorView 未保存保护', () {

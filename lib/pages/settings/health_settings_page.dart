@@ -38,8 +38,10 @@ class _HealthSettingsPageState extends ConsumerState<HealthSettingsPage> {
   final GlobalKey<ScreenUsagePageState> _screenKey = GlobalKey<ScreenUsagePageState>();
 
   /// 运动健康子页的顶栏状态：未绑定时顶栏不显示同步按钮
-  final ValueNotifier<MiFitnessTopBarStatus> _fitnessStatus =
-      ValueNotifier<MiFitnessTopBarStatus>((authed: false, syncing: false));
+  final ValueNotifier<MiFitnessTopBarStatus> _fitnessStatus = ValueNotifier<MiFitnessTopBarStatus>((
+    authed: false,
+    syncing: false,
+  ));
 
   /// 屏幕使用子页的刷新态：由子页在开始/结束刷新时写入
   final ValueNotifier<bool> _screenRefreshing = ValueNotifier<bool>(false);
@@ -79,11 +81,7 @@ class _HealthSettingsPageState extends ConsumerState<HealthSettingsPage> {
       ),
       body: Column(
         children: [
-          SettingsSegmentBar(
-            items: _tabs,
-            selectedIndex: _currentIndex,
-            onChanged: _switchTo,
-          ),
+          SettingsSegmentBar(items: _tabs, selectedIndex: _currentIndex, onChanged: _switchTo),
           Expanded(
             // IndexedStack 让两段各自保留日期选择与滚动位置；两段数据源互不相干，
             // 重建成本也不低（都要查库 + 平台通道），不适合按需重建
@@ -124,11 +122,7 @@ class _HealthSettingsPageState extends ConsumerState<HealthSettingsPage> {
           if (status.syncing) {
             return const Padding(
               padding: EdgeInsets.all(14),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
             );
           }
           return IconButton(
@@ -152,11 +146,7 @@ class _HealthSettingsPageState extends ConsumerState<HealthSettingsPage> {
         if (refreshing) {
           return const Padding(
             padding: EdgeInsets.all(14),
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+            child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
         return IconButton(

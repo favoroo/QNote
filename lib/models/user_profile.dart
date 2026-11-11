@@ -56,8 +56,8 @@ class UserProfile {
       height: (map['height'] as num?)?.toDouble(),
       weightHistory: map['weight_history'] != null
           ? (jsonDecode(map['weight_history'] as String) as List)
-              .map((w) => WeightRecord.fromMap(w as Map<String, dynamic>))
-              .toList()
+                .map((w) => WeightRecord.fromMap(w as Map<String, dynamic>))
+                .toList()
           : [],
       gender: map['gender'] as String?,
       otherInfo: map['other_info'] as String?,

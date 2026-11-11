@@ -13,18 +13,15 @@ final todoRepositoryProvider = Provider<TodoRepository>((ref) {
 
 final isLongTermFilterProvider = StateProvider<bool>((ref) => false);
 
-final todoListProvider = AsyncNotifierProvider<TodoListNotifier, List<Todo>>(
-  () {
-    return TodoListNotifier();
-  },
-);
+final todoListProvider = AsyncNotifierProvider<TodoListNotifier, List<Todo>>(() {
+  return TodoListNotifier();
+});
 
 final todoFilterProvider = StateProvider<TodoFilter>((ref) => TodoFilter.all);
 
-final filteredTodoListProvider =
-    AsyncNotifierProvider<FilteredTodoListNotifier, List<Todo>>(() {
-      return FilteredTodoListNotifier();
-    });
+final filteredTodoListProvider = AsyncNotifierProvider<FilteredTodoListNotifier, List<Todo>>(() {
+  return FilteredTodoListNotifier();
+});
 
 final completedTodoListProvider = FutureProvider<List<Todo>>((ref) async {
   final repo = ref.read(todoRepositoryProvider);
@@ -134,11 +131,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.update(todo);
     await NotificationService.instance.scheduleTodoReminder(todo);
     // 内存替换目标项
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((t) => t.id == todo.id ? todo : t)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == todo.id ? todo : t).toList());
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();
@@ -149,9 +142,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.softDelete(id);
     await NotificationService.instance.cancelNotification(id.hashCode);
     // 内存移除
-    state = AsyncData(
-      (state.valueOrNull ?? []).where((t) => t.id != id).toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).where((t) => t.id != id).toList());
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();
@@ -166,9 +157,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
       await NotificationService.instance.cancelNotification(id.hashCode);
     }
     final idSet = ids.toSet();
-    state = AsyncData(
-      (state.valueOrNull ?? []).where((t) => !idSet.contains(t.id)).toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).where((t) => !idSet.contains(t.id)).toList());
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();
@@ -295,11 +284,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     if (todo == null) return;
     final updated = todo.copyWith(repeatRule: repeatRule);
     await repo.update(updated);
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((t) => t.id == id ? updated : t)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
     ref.invalidate(completedTodoListProvider);
     WidgetUtils.updateHomeWidgets();
   }
@@ -309,11 +294,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     final repo = ref.read(todoRepositoryProvider);
     final updated = await repo.moveToFolder(id, folderId);
     if (updated != null) {
-      state = AsyncData(
-        (state.valueOrNull ?? [])
-            .map((t) => t.id == id ? updated : t)
-            .toList(),
-      );
+      state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
     }
     ref.invalidate(completedTodoListProvider);
     WidgetUtils.updateHomeWidgets();
@@ -327,11 +308,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.update(updated);
     await NotificationService.instance.scheduleTodoReminder(updated);
     // 内存替换
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((t) => t.id == id ? updated : t)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();
   }
@@ -340,18 +317,11 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     final repo = ref.read(todoRepositoryProvider);
     final todo = await repo.getById(id);
     if (todo == null) return;
-    final updated = todo.copyWith(
-      reminderTime: null,
-      clearReminderTime: true,
-    );
+    final updated = todo.copyWith(reminderTime: null, clearReminderTime: true);
     await repo.update(updated);
     await NotificationService.instance.cancelNotification(id.hashCode);
     // 内存替换
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((t) => t.id == id ? updated : t)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();
   }
@@ -364,11 +334,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     if (todo != null) {
       final exists = (state.valueOrNull ?? []).any((t) => t.id == id);
       if (exists) {
-        state = AsyncData(
-          (state.valueOrNull ?? [])
-              .map((t) => t.id == id ? todo : t)
-              .toList(),
-        );
+        state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? todo : t).toList());
       } else {
         state = AsyncData([...(state.valueOrNull ?? []), todo]);
       }
@@ -386,11 +352,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     if (todo != null) {
       final exists = (state.valueOrNull ?? []).any((t) => t.id == id);
       if (exists) {
-        state = AsyncData(
-          (state.valueOrNull ?? [])
-              .map((t) => t.id == id ? todo : t)
-              .toList(),
-        );
+        state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? todo : t).toList());
       } else {
         state = AsyncData([...(state.valueOrNull ?? []), todo]);
       }
@@ -408,11 +370,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     final updated = todo.copyWith(priority: newPriority);
     await repo.update(updated);
     // 内存替换，priority 变化不影响 completed/reminders 派生 Provider
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((t) => t.id == id ? updated : t)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
     WidgetUtils.updateHomeWidgets();
   }
 
@@ -424,11 +382,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.update(updated);
     await NotificationService.instance.scheduleTodoReminder(updated);
     // 内存替换
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((t) => t.id == id ? updated : t)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();
@@ -439,9 +393,7 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     await repo.hardDelete(id);
     await NotificationService.instance.cancelNotification(id.hashCode);
     // 内存移除
-    state = AsyncData(
-      (state.valueOrNull ?? []).where((t) => t.id != id).toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).where((t) => t.id != id).toList());
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);
     WidgetUtils.updateHomeWidgets();
@@ -461,17 +413,14 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     final now = DateTime.now();
     final updated = <Todo>[];
     for (int i = 0; i < reordered.length; i++) {
-      updated.add(reordered[i].copyWith(
-        sortOrder: i,
-        updatedAt: now,
-      ));
+      updated.add(reordered[i].copyWith(sortOrder: i, updatedAt: now));
     }
     // Update the state immediately in memory to prevent flashing/lag in the UI
     state = AsyncData(updated);
-    
+
     // Save to database in the background
     await repo.batchUpdate(updated);
-    
+
     // Invalidate other related providers
     ref.invalidate(completedTodoListProvider);
     ref.invalidate(upcomingRemindersProvider);

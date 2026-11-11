@@ -76,17 +76,10 @@ class _SheetSurface extends StatelessWidget {
             color: scheme.surface,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
-              BoxShadow(
-                color: scheme.shadow.withValues(alpha: 0.16),
-                blurRadius: 32,
-                offset: const Offset(0, 12),
-              ),
+              BoxShadow(color: scheme.shadow.withValues(alpha: 0.16), blurRadius: 32, offset: const Offset(0, 12)),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: child,
-          ),
+          child: ClipRRect(borderRadius: BorderRadius.circular(24), child: child),
         ),
       ),
     );
@@ -100,11 +93,7 @@ class _SheetSurface extends StatelessWidget {
 /// 如果放在 build 里临时 new，会把状态监听一次次挂到控制器上（打字每次
 /// setState 都加一份），既不干净也会拖慢长会话。
 class _Reveal extends StatefulWidget {
-  const _Reveal({
-    required this.controller,
-    required this.begin,
-    required this.child,
-  });
+  const _Reveal({required this.controller, required this.begin, required this.child});
 
   final Animation<double> controller;
   final double begin;
@@ -123,16 +112,9 @@ class _RevealState extends State<_Reveal> {
     super.initState();
     _animation = CurvedAnimation(
       parent: widget.controller,
-      curve: Interval(
-        widget.begin,
-        math.min(1.0, widget.begin + 0.64),
-        curve: Curves.easeOutCubic,
-      ),
+      curve: Interval(widget.begin, math.min(1.0, widget.begin + 0.64), curve: Curves.easeOutCubic),
     );
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(_animation);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(_animation);
   }
 
   @override
@@ -171,9 +153,7 @@ class _RecordDialogRoute extends RawDialogRoute<void> {
     required this.readAnchor,
   }) : super(
          barrierDismissible: true,
-         transitionDuration: reduceMotion
-             ? Duration.zero
-             : (useMorph ? _kMorphEnterDuration : _kDialogEnterDuration),
+         transitionDuration: reduceMotion ? Duration.zero : (useMorph ? _kMorphEnterDuration : _kDialogEnterDuration),
        );
 
   /// 系统开启「减弱动效」时直接落终态。
@@ -195,8 +175,7 @@ class _RecordDialogRoute extends RawDialogRoute<void> {
   @override
   Duration get reverseTransitionDuration {
     if (reduceMotion) return Duration.zero;
-    return _landingExitDuration ??
-        (useMorph ? _kMorphExitDuration : _kDialogExitDuration);
+    return _landingExitDuration ?? (useMorph ? _kMorphExitDuration : _kDialogExitDuration);
   }
 
   /// 面板保存成功、并且页面量到了目标卡片时调用。
@@ -221,12 +200,7 @@ class _RecordDialogRoute extends RawDialogRoute<void> {
     if (!useMorph) {
       return _DialogEntrance(animation: animation, child: child);
     }
-    return _RecordDialogTransition(
-      key: _transitionKey,
-      animation: animation,
-      route: this,
-      child: child,
-    );
+    return _RecordDialogTransition(key: _transitionKey, animation: animation, route: this, child: child);
   }
 
   @override
@@ -266,12 +240,7 @@ class _RecordDialogRoute extends RawDialogRoute<void> {
 /// 发送时面板先淡成一张空白盖板，再飞到页面量好的卡片 Rect 上；落位瞬间
 /// 页面揭开真实卡片，盖板和遮罩一起淡出。
 class _RecordDialogTransition extends StatefulWidget {
-  const _RecordDialogTransition({
-    super.key,
-    required this.animation,
-    required this.route,
-    required this.child,
-  });
+  const _RecordDialogTransition({super.key, required this.animation, required this.route, required this.child});
 
   final Animation<double> animation;
   final _RecordDialogRoute route;
@@ -281,8 +250,7 @@ class _RecordDialogTransition extends StatefulWidget {
   State<_RecordDialogTransition> createState() => _RecordDialogTransitionState();
 }
 
-class _RecordDialogTransitionState extends State<_RecordDialogTransition>
-    with SingleTickerProviderStateMixin {
+class _RecordDialogTransitionState extends State<_RecordDialogTransition> with SingleTickerProviderStateMixin {
   /// 按钮 ↔ 卡片的 Rect/圆角/配色进度。
   late final CurvedAnimation _rectProgress;
 
@@ -307,11 +275,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
   @override
   void initState() {
     super.initState();
-    _rectProgress = CurvedAnimation(
-      parent: widget.animation,
-      curve: _kMorphEnterCurve,
-      reverseCurve: _kMorphExitCurve,
-    );
+    _rectProgress = CurvedAnimation(parent: widget.animation, curve: _kMorphEnterCurve, reverseCurve: _kMorphExitCurve);
     _scrimProgress = CurvedAnimation(
       parent: widget.animation,
       curve: const Interval(0, 0.5, curve: Curves.easeOut),
@@ -322,14 +286,8 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
       curve: const Interval(0, 0.3, curve: Curves.easeOut),
       reverseCurve: const Interval(0.3, 1, curve: Curves.easeIn),
     );
-    _cardController = AnimationController(
-      vsync: this,
-      duration: _kCardFlightDuration,
-    );
-    _cardProgress = CurvedAnimation(
-      parent: _cardController,
-      curve: _kCardFlightCurve,
-    );
+    _cardController = AnimationController(vsync: this, duration: _kCardFlightDuration);
+    _cardProgress = CurvedAnimation(parent: _cardController, curve: _kCardFlightCurve);
     _cardController.addStatusListener(_handleCardStatus);
   }
 
@@ -414,10 +372,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
     final liveAnchor = widget.route.readAnchor?.call() ?? origin;
     // 收回时 FAB 可能已经因为发送清空选择而变回 44 圆钮，目标 Rect 要实时读。
     final anchor = isReversing ? liveAnchor : origin;
-    final style = DiaryRecordFabStyle.resolve(
-      widget.route.theme,
-      hasSelection: anchor.selection != null,
-    );
+    final style = DiaryRecordFabStyle.resolve(widget.route.theme, hasSelection: anchor.selection != null);
     final scheme = widget.route.theme.colorScheme;
     final target = sheetRect ?? _lastSheetRect ?? origin.rect;
 
@@ -431,13 +386,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
         fit: StackFit.expand,
         children: [
           _buildScrim(1, allowDismiss: true),
-          _buildContentWindow(
-            Offset.zero & size,
-            0,
-            1,
-            size,
-            clip: false,
-          ),
+          _buildContentWindow(Offset.zero & size, 0, 1, size, clip: false),
         ],
       );
     }
@@ -453,11 +402,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
             color: borderColor.withValues(alpha: borderColor.a * (1 - t)),
             width: style.border!.top.width,
           );
-    final shadow = _lerpShadow(
-      style.boxShadow.first,
-      _dialogShadow(widget.route.theme),
-      t,
-    );
+    final shadow = _lerpShadow(style.boxShadow.first, _dialogShadow(widget.route.theme), t);
 
     // 入场内容不套外层淡入：面板自己的 _Reveal 已经把内容错峰点亮了。
     final contentOpacity = isReversing ? _crossFade.value : 1.0;
@@ -466,33 +411,16 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
     return Stack(
       fit: StackFit.expand,
       children: [
-        _buildScrim(
-          _scrimProgress.value,
-          allowDismiss: !isReversing && widget.animation.value > 0.4,
-        ),
-        _buildContainer(
-          rect: rect,
-          radius: radius,
-          color: color,
-          border: border,
-          shadows: [shadow],
-        ),
-        _buildContentWindow(
-          rect,
-          radius,
-          contentOpacity,
-          size,
-          interactive: !isReversing,
-        ),
-        if (ghostOpacity > 0.001)          Positioned.fromRect(
+        _buildScrim(_scrimProgress.value, allowDismiss: !isReversing && widget.animation.value > 0.4),
+        _buildContainer(rect: rect, radius: radius, color: color, border: border, shadows: [shadow]),
+        _buildContentWindow(rect, radius, contentOpacity, size, interactive: !isReversing),
+        if (ghostOpacity > 0.001)
+          Positioned.fromRect(
             key: const ValueKey('record-sheet-ghost'),
             rect: anchor.rect,
             child: Opacity(
               opacity: ghostOpacity,
-              child: DiaryRecordFabPreview(
-                selection: anchor.selection,
-                hasDraft: anchor.hasDraft,
-              ),
+              child: DiaryRecordFabPreview(selection: anchor.selection, hasDraft: anchor.hasDraft),
             ),
           ),
       ],
@@ -510,11 +438,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
     final fadeOut = const Interval(0, 0.3, curve: Curves.easeOut).transform(t);
     final contentOpacity = (1 - fadeOut).clamp(0.0, 1.0).toDouble();
     // 盖板越接近卡片，阴影越轻；落到卡片上时完全交给卡片自己的阴影。
-    final shadow = _lerpShadow(
-      _dialogShadow(widget.route.theme),
-      const BoxShadow(color: Colors.transparent),
-      t,
-    );
+    final shadow = _lerpShadow(_dialogShadow(widget.route.theme), const BoxShadow(color: Colors.transparent), t);
 
     return Stack(
       fit: StackFit.expand,
@@ -527,13 +451,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
           border: null,
           shadows: [shadow],
         ),
-        _buildContentWindow(
-          rect,
-          radius,
-          contentOpacity,
-          size,
-          interactive: false,
-        ),
+        _buildContentWindow(rect, radius, contentOpacity, size, interactive: false),
       ],
     );
   }
@@ -577,11 +495,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: allowDismiss ? () => Navigator.of(context).maybePop() : () {},
-        child: ColoredBox(
-          color: Colors.black.withValues(
-            alpha: 0.4 * opacity.clamp(0.0, 1.0).toDouble(),
-          ),
-        ),
+        child: ColoredBox(color: Colors.black.withValues(alpha: 0.4 * opacity.clamp(0.0, 1.0).toDouble())),
       ),
     );
   }
@@ -698,11 +612,7 @@ class _DialogEntranceState extends State<_DialogEntrance> {
   @override
   void initState() {
     super.initState();
-    _motion = CurvedAnimation(
-      parent: widget.animation,
-      curve: _kDialogEnterCurve,
-      reverseCurve: _kDialogExitCurve,
-    );
+    _motion = CurvedAnimation(parent: widget.animation, curve: _kDialogEnterCurve, reverseCurve: _kDialogExitCurve);
     // 透明度比缩放更早到位：卡片先「看得见」，再靠缩放收尾，观感更稳。
     _fade = CurvedAnimation(
       parent: widget.animation,
@@ -711,10 +621,7 @@ class _DialogEntranceState extends State<_DialogEntrance> {
       reverseCurve: const Interval(0.4, 1, curve: Curves.easeIn),
     );
     _scale = Tween<double>(begin: 0.92, end: 1).animate(_motion);
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.035),
-      end: Offset.zero,
-    ).animate(_motion);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.035), end: Offset.zero).animate(_motion);
   }
 
   @override

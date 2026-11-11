@@ -11,23 +11,19 @@ import 'package:qnote_flutter/models/ai_config.dart';
 
 /// 构造一份最小可用的模型配置（探测只关心 modelName，其余字段占位）
 AiConfig _config(String modelName) => AiConfig(
-      providerId: 'provider-1',
-      name: modelName,
-      provider: 'openai',
-      modelName: modelName,
-      apiKey: 'sk-test',
-      baseUrl: 'https://gw.example.com/v1',
-    );
+  providerId: 'provider-1',
+  name: modelName,
+  provider: 'openai',
+  modelName: modelName,
+  apiKey: 'sk-test',
+  baseUrl: 'https://gw.example.com/v1',
+);
 
 DioException _httpError(int statusCode, Object? data) {
   final options = RequestOptions(path: '/chat/completions');
   return DioException(
     requestOptions: options,
-    response: Response<dynamic>(
-      requestOptions: options,
-      statusCode: statusCode,
-      data: data,
-    ),
+    response: Response<dynamic>(requestOptions: options, statusCode: statusCode, data: data),
     type: DioExceptionType.badResponse,
   );
 }
@@ -79,11 +75,7 @@ void main() {
 
       expect(await VisionCapabilityProbe.ensure(_config('my-private-llm')), isTrue);
       expect(calls, 1);
-      expect(
-        ModelVisionCapability.probedResult('my-private-llm'),
-        isTrue,
-        reason: '实测结论要落盘，下次进设置页/发图直接复用',
-      );
+      expect(ModelVisionCapability.probedResult('my-private-llm'), isTrue, reason: '实测结论要落盘，下次进设置页/发图直接复用');
 
       expect(await VisionCapabilityProbe.ensure(_config('my-private-llm')), isTrue);
       expect(calls, 1, reason: '已有结论时不应重复探测');
@@ -94,10 +86,7 @@ void main() {
 
       expect(await VisionCapabilityProbe.ensure(_config('my-private-llm')), isFalse);
       expect(ModelVisionCapability.probedResult('my-private-llm'), isFalse);
-      expect(
-        ModelVisionCapability.supportsVision(_config('my-private-llm')),
-        isFalse,
-      );
+      expect(ModelVisionCapability.supportsVision(_config('my-private-llm')), isFalse);
     });
 
     test('并发探测合并为一次请求', () async {
@@ -122,15 +111,13 @@ void main() {
   group('探测失败不误伤模型能力', () {
     test('网络/服务端故障时放行真实请求且不落盘', () async {
       VisionCapabilityProbe.checkerOverride = (_, _) async {
-        throw _httpError(500, {'error': {'message': 'internal error'}});
+        throw _httpError(500, {
+          'error': {'message': 'internal error'},
+        });
       };
 
       expect(await VisionCapabilityProbe.ensure(_config('my-private-llm')), isTrue);
-      expect(
-        ModelVisionCapability.probedResult('my-private-llm'),
-        isNull,
-        reason: '一次请求失败不能证明模型看不见图',
-      );
+      expect(ModelVisionCapability.probedResult('my-private-llm'), isNull, reason: '一次请求失败不能证明模型看不见图');
     });
 
     test('服务端明确拒绝图片输入时记为不支持', () async {
@@ -159,9 +146,6 @@ void main() {
   test('探测图是合法 PNG', () async {
     final imageBase64 = await VisionCapabilityProbe.generateProbeImageBase64();
     final bytes = base64Decode(imageBase64);
-    expect(
-      bytes.take(8),
-      [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
-    );
+    expect(bytes.take(8), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
   });
 }

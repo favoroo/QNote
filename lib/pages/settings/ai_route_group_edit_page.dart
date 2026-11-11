@@ -27,8 +27,7 @@ class AiRouteGroupEditPage extends ConsumerStatefulWidget {
   const AiRouteGroupEditPage({super.key, this.group});
 
   @override
-  ConsumerState<AiRouteGroupEditPage> createState() =>
-      _AiRouteGroupEditPageState();
+  ConsumerState<AiRouteGroupEditPage> createState() => _AiRouteGroupEditPageState();
 }
 
 class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
@@ -71,21 +70,13 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => _AddMemberSheet(
-        providers: providers,
-        existing: _members.map((m) => m.encode()).toSet(),
-      ),
+      builder: (ctx) => _AddMemberSheet(providers: providers, existing: _members.map((m) => m.encode()).toSet()),
     );
     if (picked == null || picked.isEmpty || !mounted) return;
     setState(() {
       for (final ref in picked) {
         if (_members.any((m) => m.encode() == ref.encode())) continue;
-        _members.add(
-          RouteGroupMember(
-            providerId: ref.providerId,
-            modelName: ref.modelName,
-          ),
-        );
+        _members.add(RouteGroupMember(providerId: ref.providerId, modelName: ref.modelName));
       }
       _dirty = true;
     });
@@ -184,18 +175,11 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除路由组'),
-        content: Text(
-          '删除「${group.name}」？绑定角色会回落到默认厂商的首个模型。',
-        ),
+        content: Text('删除「${group.name}」？绑定角色会回落到默认厂商的首个模型。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -243,21 +227,14 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
                 itemBuilder: (ctx) => [
                   PopupMenuItem(
                     value: 'delete',
-                    child: Text(
-                      '删除',
-                      style: TextStyle(color: Theme.of(ctx).colorScheme.error),
-                    ),
+                    child: Text('删除', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                   ),
                 ],
               ),
             TextButton(
               onPressed: _saving ? null : _save,
               child: _saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('保存'),
             ),
           ],
@@ -267,11 +244,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
           children: [
             TextField(
               controller: _nameCtl,
-              decoration: const InputDecoration(
-                labelText: '名称',
-                hintText: '如：小Q 主模型池',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: '名称', hintText: '如：小Q 主模型池', border: OutlineInputBorder()),
               maxLength: 24,
             ),
             _sectionTitle(theme, '调用策略', _strategy.description),
@@ -309,16 +282,10 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
                 label: const Text('添加模型'),
               ),
             ),
-            if (_members.isEmpty)
-              _buildEmptyMembers(theme)
-            else
-              _buildMemberList(theme, providers),
+            if (_members.isEmpty) _buildEmptyMembers(theme) else _buildMemberList(theme, providers),
             if (_members.isNotEmpty && !_meetsStrategyMinimum()) ...[
               const SizedBox(height: 8),
-              _hint(
-                theme,
-                '只有一个启用成员，当前策略不会生效。',
-              ),
+              _hint(theme, '只有一个启用成员，当前策略不会生效。'),
             ],
             const SizedBox(height: 8),
             SwitchListTile(
@@ -354,14 +321,8 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
         title: const Text('放弃修改'),
         content: const Text('修改尚未保存，确定离开？'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('继续编辑'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('放弃'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('继续编辑')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('放弃')),
         ],
       ),
     );
@@ -374,19 +335,14 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
         : (options.isEmpty ? null : options.first.encode());
     return DropdownButtonFormField<String>(
       initialValue: value,
-      decoration: const InputDecoration(
-        labelText: '当前固定成员',
-        border: OutlineInputBorder(),
-        isDense: true,
-      ),
+      decoration: const InputDecoration(labelText: '当前固定成员', border: OutlineInputBorder(), isDense: true),
       items: options
-          .map((m) => DropdownMenuItem(
-                value: m.encode(),
-                child: Text(
-                  aiModelDisplayName(m.ref, providers, fallback: m.modelName),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ))
+          .map(
+            (m) => DropdownMenuItem(
+              value: m.encode(),
+              child: Text(aiModelDisplayName(m.ref, providers, fallback: m.modelName), overflow: TextOverflow.ellipsis),
+            ),
+          )
           .toList(),
       onChanged: (selected) => setState(() {
         _pinnedMember = selected;
@@ -402,15 +358,11 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Text(
         '还没有成员，点「添加模型」挑选',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -421,19 +373,11 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
       onReorderItem: _reorder,
-      children: [
-        for (var i = 0; i < _members.length; i++)
-          _memberTile(theme, providers, _members[i], i),
-      ],
+      children: [for (var i = 0; i < _members.length; i++) _memberTile(theme, providers, _members[i], i)],
     );
   }
 
-  Widget _memberTile(
-    ThemeData theme,
-    List<AiProvider> providers,
-    RouteGroupMember member,
-    int index,
-  ) {
+  Widget _memberTile(ThemeData theme, List<AiProvider> providers, RouteGroupMember member, int index) {
     final colorScheme = theme.colorScheme;
     final provider = providers.where((p) => p.id == member.providerId).firstOrNull;
     final live = provider != null && provider.hasModel(member.modelName);
@@ -445,9 +389,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
@@ -455,11 +397,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
             index: index,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-              child: Icon(
-                Icons.drag_handle_rounded,
-                size: 20,
-                color: colorScheme.outline,
-              ),
+              child: Icon(Icons.drag_handle_rounded, size: 20, color: colorScheme.outline),
             ),
           ),
           Expanded(
@@ -479,10 +417,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
                         ),
                       ),
                     ),
-                    if (!live) ...[
-                      const SizedBox(width: 6),
-                      _badge(theme, '已失效', colorScheme.error),
-                    ],
+                    if (!live) ...[const SizedBox(width: 6), _badge(theme, '已失效', colorScheme.error)],
                   ],
                 ),
                 const SizedBox(height: 1),
@@ -490,19 +425,13 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
                   provider?.name ?? '未知厂商',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
           ),
-          if (_strategy == RouteStrategy.weight)
-            _weightStepper(theme, member),
-          Switch(
-            value: member.enabled,
-            onChanged: (value) => _setEnabled(member, value),
-          ),
+          if (_strategy == RouteStrategy.weight) _weightStepper(theme, member),
+          Switch(value: member.enabled, onChanged: (value) => _setEnabled(member, value)),
           IconButton(
             tooltip: '移除',
             visualDensity: VisualDensity.compact,
@@ -522,24 +451,15 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
           tooltip: '减少权重',
           visualDensity: VisualDensity.compact,
           iconSize: 18,
-          onPressed: member.weight <= RouteGroupMember.minWeight
-              ? null
-              : () => _setWeight(member, member.weight - 1),
+          onPressed: member.weight <= RouteGroupMember.minWeight ? null : () => _setWeight(member, member.weight - 1),
           icon: const Icon(Icons.remove_circle_outline_rounded),
         ),
-        Text(
-          '${member.weight}',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        Text('${member.weight}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
         IconButton(
           tooltip: '增加权重',
           visualDensity: VisualDensity.compact,
           iconSize: 18,
-          onPressed: member.weight >= RouteGroupMember.maxWeight
-              ? null
-              : () => _setWeight(member, member.weight + 1),
+          onPressed: member.weight >= RouteGroupMember.maxWeight ? null : () => _setWeight(member, member.weight + 1),
           icon: const Icon(Icons.add_circle_outline_rounded),
         ),
       ],
@@ -549,16 +469,10 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
   Widget _badge(ThemeData theme, String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
       child: Text(
         text,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+        style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -566,21 +480,11 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
   Widget _hint(ThemeData theme, String text) {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Text(
-        text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
+      child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
     );
   }
 
-  Widget _sectionTitle(
-    ThemeData theme,
-    String title,
-    String subtitle, {
-    Widget? action,
-  }) {
+  Widget _sectionTitle(ThemeData theme, String title, String subtitle, {Widget? action}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 18, 2, 8),
       child: Row(
@@ -590,19 +494,9 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                 if (subtitle.isNotEmpty)
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+                  Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -661,12 +555,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    '添加成员',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('添加成员', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 ),
                 IconButton(
                   tooltip: '关闭',
@@ -699,8 +588,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                     child: Center(child: Text('还没有已启用的模型')),
                   ),
-                for (final provider in widget.providers)
-                  ..._providerSection(theme, provider),
+                for (final provider in widget.providers) ..._providerSection(theme, provider),
               ],
             ),
           ),
@@ -713,20 +601,15 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
                   Expanded(
                     child: Text(
                       '已选 ${_picked.length} 个',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ),
                   FilledButton(
                     onPressed: _picked.isEmpty
                         ? null
-                        : () => Navigator.of(context).pop(
-                              _picked
-                                  .map(AiModelRef.tryParse)
-                                  .whereType<AiModelRef>()
-                                  .toList(),
-                            ),
+                        : () => Navigator.of(
+                            context,
+                          ).pop(_picked.map(AiModelRef.tryParse).whereType<AiModelRef>().toList()),
                     child: const Text('添加'),
                   ),
                 ],
@@ -746,10 +629,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
         child: Text(
           provider.name,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.outline,
-            fontWeight: FontWeight.bold,
-          ),
+          style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.outline, fontWeight: FontWeight.bold),
         ),
       ),
       ...models.map((model) {
@@ -763,16 +643,14 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
           onChanged: alreadyAdded
               ? null
               : (value) => setState(() {
-                    if (value == true) {
-                      _picked.add(encoded);
-                    } else {
-                      _picked.remove(encoded);
-                    }
-                  }),
+                  if (value == true) {
+                    _picked.add(encoded);
+                  } else {
+                    _picked.remove(encoded);
+                  }
+                }),
           title: Text(model.name),
-          subtitle: alreadyAdded
-              ? const Text('已在组内')
-              : (model.name == model.id ? null : Text(model.id)),
+          subtitle: alreadyAdded ? const Text('已在组内') : (model.name == model.id ? null : Text(model.id)),
         );
       }),
     ];
@@ -784,11 +662,8 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
 /// 上次使用的成员只存在于进程内（[AiRouteService.lastUsedMember]），重启后消失，
 /// 因此这里缺省不显示，避免出现「上次」字样却没有值。
 String routeGroupSummary(AiRouteGroup group, List<AiProvider> providers) {
-  final buffer = StringBuffer('${group.enabledMembers.length} 个模型 · ')
-    ..write(group.strategy.label);
-  final lastRef = AiModelRef.tryParse(
-    AiRouteService.instance.lastUsedMember(group.id),
-  );
+  final buffer = StringBuffer('${group.enabledMembers.length} 个模型 · ')..write(group.strategy.label);
+  final lastRef = AiModelRef.tryParse(AiRouteService.instance.lastUsedMember(group.id));
   if (lastRef != null) {
     buffer.write(' · 上次 ${aiModelDisplayName(lastRef, providers, fallback: lastRef.modelName)}');
   }

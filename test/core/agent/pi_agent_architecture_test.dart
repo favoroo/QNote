@@ -23,11 +23,7 @@ class MockAiService extends AiService {
   /// 模拟的工具参数流式生成进度片段（在正文前依次吐出）
   final List<ToolCallProgress> progressChunks;
 
-  MockAiService({
-    this.textDeltas = const ['测试回答'],
-    this.returnToolCalls = const [],
-    this.progressChunks = const [],
-  });
+  MockAiService({this.textDeltas = const ['测试回答'], this.returnToolCalls = const [], this.progressChunks = const []});
 
   @override
   Stream<AiToolStreamChunk> chatStreamWithTools({
@@ -146,10 +142,7 @@ void main() {
       );
 
       final events = <AgentEventType>[];
-      await for (final event in loop.run(
-        conversationHistory: [],
-        systemPrompt: '测试系统提示词',
-      )) {
+      await for (final event in loop.run(conversationHistory: [], systemPrompt: '测试系统提示词')) {
         events.add(event.type);
       }
 
@@ -172,11 +165,7 @@ void main() {
       final loop = AgentLoop(aiService: mockAi, dispatcher: dispatcher);
 
       final events = <AgentEventType>[];
-      await for (final event in loop.run(
-        conversationHistory: [],
-        systemPrompt: '系统提示词',
-        cancellationToken: token,
-      )) {
+      await for (final event in loop.run(conversationHistory: [], systemPrompt: '系统提示词', cancellationToken: token)) {
         events.add(event.type);
       }
 
@@ -193,11 +182,7 @@ void main() {
       final loop = AgentLoop(aiService: mockAi, dispatcher: dispatcher);
 
       final events = <AgentEventType>[];
-      await for (final event in loop.run(
-        conversationHistory: [],
-        systemPrompt: '系统提示词',
-        cancellationToken: token,
-      )) {
+      await for (final event in loop.run(conversationHistory: [], systemPrompt: '系统提示词', cancellationToken: token)) {
         events.add(event.type);
         // 模拟用户在收到首个正文增量时点击停止
         if (event.type == AgentEventType.contentDelta && !token.isCancelled) {
@@ -215,15 +200,9 @@ void main() {
       final mockAi = MockAiService(
         progressChunks: const [
           // path 已流出：应产出 toolCalling 事件并携带提取的路径
-          ToolCallProgress(
-            toolName: 'write_file',
-            partialArguments: '{"path": "/notes/a.md", "content": "第一段',
-          ),
+          ToolCallProgress(toolName: 'write_file', partialArguments: '{"path": "/notes/a.md", "content": "第一段'),
           // 工具与关键信息均未变化：应被去重
-          ToolCallProgress(
-            toolName: 'write_file',
-            partialArguments: '{"path": "/notes/a.md", "content": "第一段第二段',
-          ),
+          ToolCallProgress(toolName: 'write_file', partialArguments: '{"path": "/notes/a.md", "content": "第一段第二段'),
           // 换了另一个工具：应再次产出事件
           ToolCallProgress(toolName: 'read_file', partialArguments: '{"path": "/notes/b.md"}'),
         ],
@@ -231,10 +210,7 @@ void main() {
       final loop = AgentLoop(aiService: mockAi, dispatcher: ToolDispatcher());
 
       final callingEvents = <AgentEvent>[];
-      await for (final event in loop.run(
-        conversationHistory: [],
-        systemPrompt: '系统提示词',
-      )) {
+      await for (final event in loop.run(conversationHistory: [], systemPrompt: '系统提示词')) {
         if (event.type == AgentEventType.toolCalling) {
           callingEvents.add(event);
         }
@@ -248,17 +224,11 @@ void main() {
     });
 
     test('7. 只吐过思考时断流重发 → 旧碎片作废，不与新片段叠加', () async {
-      final loop = AgentLoop(
-        aiService: InterruptedThenRetriedAiService(),
-        dispatcher: ToolDispatcher(),
-      );
+      final loop = AgentLoop(aiService: InterruptedThenRetriedAiService(), dispatcher: ToolDispatcher());
 
       final trace = <String>[];
       String? finalThought;
-      await for (final event in loop.run(
-        conversationHistory: [],
-        systemPrompt: '系统提示词',
-      )) {
+      await for (final event in loop.run(conversationHistory: [], systemPrompt: '系统提示词')) {
         switch (event.type) {
           case AgentEventType.turnStart:
             trace.add('turnStart');
@@ -279,21 +249,8 @@ void main() {
 
       // 复位必须落在两段思考之间：provider 收到第二个 turnStart 就清空自己的
       // contentBuffer / thoughtBuffer（两条对话链路已有的语义），旧碎片不再续接
-      expect(
-        trace,
-        equals([
-          'turnStart',
-          'reasoning:被掐断的半截思考',
-          'turnStart',
-          'reasoning:重发后的完整思考',
-          'content:最终回答',
-        ]),
-      );
-      expect(
-        finalThought,
-        equals('重发后的完整思考'),
-        reason: '落库的 thought 取自本轮累积，不能带上被掐断的旧碎片',
-      );
+      expect(trace, equals(['turnStart', 'reasoning:被掐断的半截思考', 'turnStart', 'reasoning:重发后的完整思考', 'content:最终回答']));
+      expect(finalThought, equals('重发后的完整思考'), reason: '落库的 thought 取自本轮累积，不能带上被掐断的旧碎片');
     });
   });
 }

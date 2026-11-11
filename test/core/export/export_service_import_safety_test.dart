@@ -34,18 +34,18 @@ void main() {
   String diaryId(String name) => 'ximp_${name}_$stamp';
 
   Map<String, dynamic> diaryMap(String id) => {
-        'id': id,
-        'title': '已有日记',
-        'content': '不能被空备份清掉',
-        'time': DateTime.now().toIso8601String(),
-        'mood': 3,
-        'weather': '',
-        'tags': '[]',
-        'photos': '[]',
-        'is_deleted': 0,
-        'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-      };
+    'id': id,
+    'title': '已有日记',
+    'content': '不能被空备份清掉',
+    'time': DateTime.now().toIso8601String(),
+    'mood': 3,
+    'weather': '',
+    'tags': '[]',
+    'photos': '[]',
+    'is_deleted': 0,
+    'created_at': DateTime.now().toIso8601String(),
+    'updated_at': DateTime.now().toIso8601String(),
+  };
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -73,10 +73,7 @@ void main() {
       final id = diaryId('empty');
       await db.insert('diary_records', diaryMap(id));
 
-      await expectLater(
-        ExportService().importFromJsonString('{}', overwrite: true),
-        throwsA(isA<Exception>()),
-      );
+      await expectLater(ExportService().importFromJsonString('{}', overwrite: true), throwsA(isA<Exception>()));
 
       expect(
         await db.query('diary_records', where: 'id = ?', whereArgs: [id]),
@@ -87,10 +84,7 @@ void main() {
 
     test('只有版本号字段的备份同样被拒绝', () async {
       await expectLater(
-        ExportService().importFromJsonString(
-          jsonEncode({'export_version': 2}),
-          overwrite: true,
-        ),
+        ExportService().importFromJsonString(jsonEncode({'export_version': 2}), overwrite: true),
         throwsA(isA<Exception>()),
       );
     });
@@ -100,17 +94,11 @@ void main() {
       await db.insert('diary_records', diaryMap(id));
 
       await expectLater(
-        ExportService().importFromJsonString(
-          jsonEncode({'diary_records': 'not-a-list'}),
-          overwrite: true,
-        ),
+        ExportService().importFromJsonString(jsonEncode({'diary_records': 'not-a-list'}), overwrite: true),
         throwsA(isA<Exception>()),
       );
 
-      expect(
-        await db.query('diary_records', where: 'id = ?', whereArgs: [id]),
-        hasLength(1),
-      );
+      expect(await db.query('diary_records', where: 'id = ?', whereArgs: [id]), hasLength(1));
     });
 
     test('记录项不是对象时不会先清库再抛异常', () async {
@@ -140,10 +128,7 @@ void main() {
 
       await ExportService().importFromJsonString('{}', overwrite: false);
 
-      expect(
-        await db.query('diary_records', where: 'id = ?', whereArgs: [id]),
-        hasLength(1),
-      );
+      expect(await db.query('diary_records', where: 'id = ?', whereArgs: [id]), hasLength(1));
     });
   });
 
@@ -152,30 +137,18 @@ void main() {
       final id = diaryId('snapshot');
       await db.insert('diary_records', diaryMap(id));
 
-      final emptyBackup = jsonEncode({
-        'export_version': 2,
-        'diary_records': <dynamic>[],
-      });
+      final emptyBackup = jsonEncode({'export_version': 2, 'diary_records': <dynamic>[]});
       await ExportService().importFromJsonString(emptyBackup, overwrite: true);
 
       final dir = Directory('${tempDir.path}/import_snapshots');
       expect(await dir.exists(), isTrue, reason: '快照目录必须真实创建');
 
-      final snapshots = await dir
-          .list()
-          .where((f) => f is File)
-          .cast<File>()
-          .toList();
+      final snapshots = await dir.list().where((f) => f is File).cast<File>().toList();
       expect(snapshots, hasLength(1));
 
-      final content =
-          jsonDecode(await snapshots.single.readAsString()) as Map<String, dynamic>;
+      final content = jsonDecode(await snapshots.single.readAsString()) as Map<String, dynamic>;
       final diaries = content['diary_records'] as List;
-      expect(
-        diaries.any((e) => (e as Map)['id'] == id),
-        isTrue,
-        reason: '快照要能捞回被清掉的数据，否则等于没做',
-      );
+      expect(diaries.any((e) => (e as Map)['id'] == id), isTrue, reason: '快照要能捞回被清掉的数据，否则等于没做');
     });
   });
 
@@ -205,10 +178,7 @@ void main() {
         isEmpty,
         reason: '残留变更日志会让下次同步把清空前的数据当增量重新上传',
       );
-      expect(
-        await db.query('diary_records', where: 'id = ?', whereArgs: [id]),
-        isEmpty,
-      );
+      expect(await db.query('diary_records', where: 'id = ?', whereArgs: [id]), isEmpty);
     });
   });
 }

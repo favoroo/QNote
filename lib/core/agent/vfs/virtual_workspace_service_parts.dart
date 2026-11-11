@@ -6,10 +6,7 @@ part of 'virtual_workspace_service.dart';
 /// 通过 part 与主文件共享同一 library，可访问 [VirtualWorkspaceService] 的私有字段与私有方法；
 /// 这些方法仅在 [VirtualWorkspaceService.writeFile] 内部派发使用，不是公共 API。
 extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
-  Future<Map<String, dynamic>> _writeTodoFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeTodoFile(String path, String content) async {
     final segments = path.substring('/todos/'.length).split('/');
     String folderName = '今日';
     if (segments.length >= 2) {
@@ -23,19 +20,13 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     final description = parsed.body.trim();
 
     final status = (meta['status'] as String? ?? '').toLowerCase();
-    final isCompleted =
-        status == 'completed' || status == 'done' || path.contains('[x]');
+    final isCompleted = status == 'completed' || status == 'done' || path.contains('[x]');
     final rawPriority = (meta['priority'] as String? ?? 'normal').toLowerCase();
-    final priority = (rawPriority == 'important' || rawPriority == 'high')
-        ? 'important'
-        : 'normal';
+    final priority = (rawPriority == 'important' || rawPriority == 'high') ? 'important' : 'normal';
     final isLongTerm = meta['is_long_term'] == true || folderName == '长期';
 
     // 重复规则
-    final rawRepeat = (meta['repeat_rule'] ?? meta['repeat'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
+    final rawRepeat = (meta['repeat_rule'] ?? meta['repeat'] ?? '').toString().trim().toLowerCase();
     String repeatRule = 'none';
     if (rawRepeat == 'daily' || rawRepeat == '每天' || rawRepeat == '每日') {
       repeatRule = 'daily';
@@ -47,14 +38,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       repeatRule = 'monthly';
     } else if (rawRepeat == 'yearly' || rawRepeat == '每年') {
       repeatRule = 'yearly';
-    } else if ([
-      'daily',
-      'workday',
-      'weekly',
-      'monthly',
-      'yearly',
-      'none',
-    ].contains(rawRepeat)) {
+    } else if (['daily', 'workday', 'weekly', 'monthly', 'yearly', 'none'].contains(rawRepeat)) {
       repeatRule = rawRepeat;
     }
 
@@ -64,21 +48,14 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       if (meta['tags'] is List) {
         tags = (meta['tags'] as List).map((e) => e.toString().trim()).join(',');
       } else {
-        tags = meta['tags']
-            .toString()
-            .replaceAll('[', '')
-            .replaceAll(']', '')
-            .replaceAll('"', '')
-            .trim();
+        tags = meta['tags'].toString().replaceAll('[', '').replaceAll(']', '').replaceAll('"', '').trim();
       }
     }
 
     DateTime? dueDate;
     if (meta['due_date'] != null) {
       try {
-        dueDate = DateTime.parse(
-          meta['due_date'].toString().replaceAll('"', ''),
-        );
+        dueDate = DateTime.parse(meta['due_date'].toString().replaceAll('"', ''));
       } catch (_) {
         // 忽略：待办 meta 里的 due_date 非法时按无截止日期处理
       }
@@ -91,10 +68,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     );
 
     // 2. 解析或自动创建分类
-    final folderId = await _resolveTodoFolder(
-      folderName,
-      isLongTerm: isLongTerm,
-    );
+    final folderId = await _resolveTodoFolder(folderName, isLongTerm: isLongTerm);
 
     // 3. 判断是更新还是创建
     final allTodos = await _todoRepo.getAll();
@@ -105,14 +79,10 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       // 撤回恢复场景：id 命中已软删除的记录时复活，否则被删待办写回后仍然不可见
       if (existing == null) {
         final allWithDeleted = await _todoRepo.getAll(includeDeleted: true);
-        existing = allWithDeleted
-            .where((t) => t.id == existingId && t.isDeleted)
-            .firstOrNull;
+        existing = allWithDeleted.where((t) => t.id == existingId && t.isDeleted).firstOrNull;
       }
     }
-    existing ??= allTodos
-        .where((t) => t.title.trim() == title && t.folderId == folderId)
-        .firstOrNull;
+    existing ??= allTodos.where((t) => t.title.trim() == title && t.folderId == folderId).firstOrNull;
 
     // 路径末段直接是实体 id 的 canonical 形态（/todos/<分类>/<id>.md：grep 命中、撤回快照、
     // 页面上下文提示都会产出这种路径）。两条防护缺一不可：
@@ -146,11 +116,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       );
       await _todoRepo.update(updated);
       await NotificationService.instance.scheduleTodoReminder(updated);
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        updated,
-      );
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updated);
       return {
         'status': 'updated',
         'path': path,
@@ -183,11 +149,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       );
       await _todoRepo.insert(newTodo);
       await NotificationService.instance.scheduleTodoReminder(newTodo);
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.created,
-        newTodo,
-      );
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.created, newTodo);
       return {
         'status': 'created',
         'path': path,
@@ -207,29 +169,20 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
   /// 供工具返回结果展示的截止时间文本（应用内提醒实际依赖 reminder_time）
   String? _formatDueForDisplay(DateTime? due) => formatWorkspaceDueTime(due);
 
-  Future<String> _resolveTodoFolder(
-    String folderName, {
-    bool isLongTerm = false,
-  }) async {
+  Future<String> _resolveTodoFolder(String folderName, {bool isLongTerm = false}) async {
     final folders = await _folderRepo.getByType('todo');
     final trimmed = folderName.trim();
 
     if (trimmed == '今日' || trimmed == 'today') {
-      final today = folders
-          .where((f) => f.id == 'todo_default_today' || f.name == '今日')
-          .firstOrNull;
+      final today = folders.where((f) => f.id == 'todo_default_today' || f.name == '今日').firstOrNull;
       if (today != null) return today.id;
     }
     if (trimmed == '长期' || trimmed == 'longterm' || isLongTerm) {
-      final longterm = folders
-          .where((f) => f.id == 'todo_default_longterm' || f.name == '长期')
-          .firstOrNull;
+      final longterm = folders.where((f) => f.id == 'todo_default_longterm' || f.name == '长期').firstOrNull;
       if (longterm != null) return longterm.id;
     }
 
-    final matched = folders
-        .where((f) => f.name.toLowerCase() == trimmed.toLowerCase())
-        .firstOrNull;
+    final matched = folders.where((f) => f.name.toLowerCase() == trimmed.toLowerCase()).firstOrNull;
     if (matched != null) return matched.id;
 
     // 不存在则自动新建待办分类
@@ -266,10 +219,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     return newFolder.id;
   }
 
-  Future<Map<String, dynamic>> _writeNoteFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeNoteFile(String path, String content) async {
     final segments = path.substring('/notes/'.length).split('/');
     String? folderName;
     String titleWithExt;
@@ -297,14 +247,10 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       // 撤回恢复场景：id 命中已软删除的记录时复活，否则被删笔记写回后仍然不可见
       if (existing == null) {
         final allWithDeleted = await _noteRepo.getAll(includeDeleted: true);
-        existing = allWithDeleted
-            .where((n) => n.id == existingId && n.isDeleted)
-            .firstOrNull;
+        existing = allWithDeleted.where((n) => n.id == existingId && n.isDeleted).firstOrNull;
       }
     }
-    existing ??= allNotes
-        .where((n) => n.title.trim() == title && n.folderId == folderId)
-        .firstOrNull;
+    existing ??= allNotes.where((n) => n.title.trim() == title && n.folderId == folderId).firstOrNull;
 
     // 路径末段是笔记 id 的 canonical 形态（/notes/<id>.md）时，命中既有实体且标题沿用原值，
     // 避免把 id 顶成笔记标题（撤回恢复的正文自带 `id:`，重写路径时会走到这里）；
@@ -318,9 +264,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     }
     final effectiveTitle = isEntityIdPath ? existing!.title : title;
 
-    final tagsStr = meta['tags'] is List
-        ? (meta['tags'] as List).join(', ')
-        : (meta['tags']?.toString() ?? '');
+    final tagsStr = meta['tags'] is List ? (meta['tags'] as List).join(', ') : (meta['tags']?.toString() ?? '');
 
     // 从 Markdown 正文提取图片链接回填 images 索引列：
     // WebDAV 同步只认 notes.images 列收集活动图片，不回填会导致小Q插入的
@@ -340,17 +284,8 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         updatedAt: now,
       );
       await _noteRepo.update(updated);
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        updated,
-      );
-      return {
-        'status': 'updated',
-        'path': path,
-        'id': updated.id,
-        'title': updated.title,
-      };
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updated);
+      return {'status': 'updated', 'path': path, 'id': updated.id, 'title': updated.title};
     } else {
       final newNote = Note(
         id: const Uuid().v4(),
@@ -364,17 +299,8 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         updatedAt: now,
       );
       await _noteRepo.insert(newNote);
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.created,
-        newNote,
-      );
-      return {
-        'status': 'created',
-        'path': path,
-        'id': newNote.id,
-        'title': newNote.title,
-      };
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.created, newNote);
+      return {'status': 'created', 'path': path, 'id': newNote.id, 'title': newNote.title};
     }
   }
 
@@ -382,17 +308,10 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
   ///
   /// 与笔记编辑器的图片段识别规则一致：仅匹配独立成行的图片语法；
   /// data URI（Web 端内嵌图）体积过大且无需同步，跳过不入索引。
-  static List<String> _extractImagesFromMarkdown(String content) =>
-      extractWorkspaceMarkdownImages(content);
+  static List<String> _extractImagesFromMarkdown(String content) => extractWorkspaceMarkdownImages(content);
 
-  Future<Map<String, dynamic>> _writeTimelineFile(
-    String path,
-    String content,
-  ) async {
-    final dateStr = path
-        .substring('/timeline/'.length)
-        .replaceAll('.md', '')
-        .trim();
+  Future<Map<String, dynamic>> _writeTimelineFile(String path, String content) async {
+    final dateStr = path.substring('/timeline/'.length).replaceAll('.md', '').trim();
     DateTime baseDate;
     try {
       baseDate = DateTime.parse(dateStr);
@@ -419,9 +338,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       final startTimeStr = m.group(1)!.trim();
       final endTimeStr = m.group(2)?.trim();
       var title = m.group(3) ?? '';
-      final inlineId = RegExp(
-        r'<!--\s*id:\s*([^\s>]+)\s*-->',
-      ).firstMatch(title);
+      final inlineId = RegExp(r'<!--\s*id:\s*([^\s>]+)\s*-->').firstMatch(title);
       final recordId = inlineId?.group(1)?.trim() ?? m.group(4)?.trim();
       title = title.replaceAll(RegExp(r'<!--.*?-->'), '').trim();
       final body = m.group(5)?.trim() ?? '';
@@ -459,9 +376,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         final l = line.trim().replaceAll('：', ':');
         if (l.startsWith('- 分类:') || l.startsWith('- category:')) {
           category = _fieldValue(l);
-        } else if (l.startsWith('- 标签:') ||
-            l.startsWith('- tags:') ||
-            l.startsWith('- tag:')) {
+        } else if (l.startsWith('- 标签:') || l.startsWith('- tags:') || l.startsWith('- tag:')) {
           final tStr = _fieldValue(l);
           for (final part in tStr.split(RegExp('[,，、 ]+'))) {
             final t = part.trim();
@@ -473,9 +388,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
           mood = int.tryParse(_fieldValue(l));
         } else if (l.startsWith('- 天气:') || l.startsWith('- weather:')) {
           weather = _fieldValue(l);
-        } else if (l.startsWith('- 标记颜色:') ||
-            l.startsWith('- 颜色标记:') ||
-            l.startsWith('- color_mark:')) {
+        } else if (l.startsWith('- 标记颜色:') || l.startsWith('- 颜色标记:') || l.startsWith('- color_mark:')) {
           final colorVal = _fieldValue(l);
           if (colorVal.isNotEmpty) {
             String hexColor = '#FFFF3B30';
@@ -492,26 +405,16 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
             } else {
               final c = _parseColor(colorVal);
               if (c != null) {
-                hexColor =
-                    '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
+                hexColor = '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
               }
             }
-            _colorMarkRepo.insert(
-              DateColorMark(
-                id: const Uuid().v4(),
-                date: baseDate,
-                color: hexColor,
-              ),
-            );
-            WorkspaceEventBus.instance.emit(
-              '/settings/color_marks.json',
-              WorkspaceChangeType.updated,
-              {'date': dateStr, 'color': hexColor},
-            );
+            _colorMarkRepo.insert(DateColorMark(id: const Uuid().v4(), date: baseDate, color: hexColor));
+            WorkspaceEventBus.instance.emit('/settings/color_marks.json', WorkspaceChangeType.updated, {
+              'date': dateStr,
+              'color': hexColor,
+            });
           }
-        } else if (l.startsWith('- 图片:') ||
-            l.startsWith('- photo:') ||
-            l.startsWith('- photos:')) {
+        } else if (l.startsWith('- 图片:') || l.startsWith('- photo:') || l.startsWith('- photos:')) {
           final pStr = _fieldValue(l);
           for (final p in pStr.split(',')) {
             // 读取时行尾附加了 view_image 提示标注，写回解析时剥离，避免混入图片路径
@@ -548,8 +451,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
 
       // 饮食/活动常见二级字段标准化兼容：
       if (category == '饮食') {
-        if (!customFields.containsKey('rating') &&
-            !customFields.containsKey('评价')) {
+        if (!customFields.containsKey('rating') && !customFields.containsKey('评价')) {
           if (customFields.containsKey('健康度')) {
             customFields['评价'] = customFields.remove('健康度');
           } else if (customFields.containsKey('健康评价')) {
@@ -557,8 +459,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
           }
         }
       } else if (category == '活动') {
-        if (!customFields.containsKey('type') &&
-            !customFields.containsKey('类型')) {
+        if (!customFields.containsKey('type') && !customFields.containsKey('类型')) {
           if (customFields.containsKey('活动类型')) {
             customFields['类型'] = customFields.remove('活动类型');
           } else if (customFields.containsKey('项目')) {
@@ -574,8 +475,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
             id: const Uuid().v4(),
             name: category,
             fields: customFields,
-            time:
-                '${recordTime.hour.toString().padLeft(2, '0')}:${recordTime.minute.toString().padLeft(2, '0')}',
+            time: '${recordTime.hour.toString().padLeft(2, '0')}:${recordTime.minute.toString().padLeft(2, '0')}',
           ),
         );
       }
@@ -646,11 +546,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       for (final oldRecord in existingRecords) {
         if (!retainedIds.contains(oldRecord.id)) {
           await _diaryRepo.softDelete(oldRecord.id);
-          WorkspaceEventBus.instance.emit(
-            path,
-            WorkspaceChangeType.deleted,
-            oldRecord,
-          );
+          WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, oldRecord);
           deletedCount++;
         }
       }
@@ -668,11 +564,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         // 显式清空：若当天有记录，则全部软删除
         for (final oldRecord in existingRecords) {
           await _diaryRepo.softDelete(oldRecord.id);
-          WorkspaceEventBus.instance.emit(
-            path,
-            WorkspaceChangeType.deleted,
-            oldRecord,
-          );
+          WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.deleted, oldRecord);
           deletedCount++;
         }
         WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {
@@ -722,32 +614,20 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
   }
 
   /// 按「同一天 + 同一时刻 + 同一标题」查找已有时间线记录，作为 id 注释丢失时的去重兜底
-  Future<DiaryRecord?> _findTimelineRecord(
-    DateTime date,
-    DateTime recordTime,
-    String title,
-  ) async {
+  Future<DiaryRecord?> _findTimelineRecord(DateTime date, DateTime recordTime, String title) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return null;
     final records = await _diaryRepo.getByDate(date);
     return records.where((r) {
-      return r.time.hour == recordTime.hour &&
-          r.time.minute == recordTime.minute &&
-          r.title.trim() == trimmed;
+      return r.time.hour == recordTime.hour && r.time.minute == recordTime.minute && r.title.trim() == trimmed;
     }).firstOrNull;
   }
 
   /// 取「字段名: 值」中第一个冒号之后的全部内容（值本身可含冒号，不能用 split 取固定下标）
   String _fieldValue(String line) => workspaceFieldValue(line);
 
-  Future<Map<String, dynamic>> _writeJournalFile(
-    String path,
-    String content,
-  ) async {
-    final dateStr = path
-        .substring('/journal/'.length)
-        .replaceAll('.md', '')
-        .trim();
+  Future<Map<String, dynamic>> _writeJournalFile(String path, String content) async {
+    final dateStr = path.substring('/journal/'.length).replaceAll('.md', '').trim();
     DateTime date;
     try {
       date = DateTime.parse(dateStr);
@@ -755,18 +635,13 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       date = DateTime.now();
     }
     await _journalService.saveJournal(date, content);
-    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {
-      'date': dateStr,
-    });
+    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {'date': dateStr});
     return {'status': 'saved', 'path': path, 'date': dateStr};
   }
 
   /// 写入小Q长期记忆文档：校验分类与容量上限，保存并广播事件。
   /// 容量超限直接抛错（对齐 Hermes 有界记忆），引导小Q先整合再写入
-  Future<Map<String, dynamic>> _writeMemoryFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeMemoryFile(String path, String content) async {
     final category = AgentMemoryCategory.fromPath(path);
     if (category == null) {
       throw Exception('未知的记忆文件: $path（仅支持 /memory/user.md 与 /memory/agent.md）');
@@ -774,32 +649,19 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     final normalized = content.trim();
     final maxChars = AgentMemoryCategory.maxChars(category);
     if (normalized.length > maxChars) {
-      throw Exception(
-        '记忆容量已超限（${normalized.length}/$maxChars 字符）。请先 read_file 查阅现有条目，整合或删除过时内容后再写入。',
-      );
+      throw Exception('记忆容量已超限（${normalized.length}/$maxChars 字符）。请先 read_file 查阅现有条目，整合或删除过时内容后再写入。');
     }
     final doc = AgentMemoryDocument(category: category, content: normalized);
     await _configRepo.saveAgentMemory(doc);
-    WorkspaceEventBus.instance.emit(
-      path,
-      WorkspaceChangeType.updated,
-      doc.toMap(),
-    );
-    return {
-      'status': 'updated',
-      'path': path,
-      'usage': '${doc.usagePercent}%（${normalized.length}/$maxChars 字符）',
-    };
+    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, doc.toMap());
+    return {'status': 'updated', 'path': path, 'usage': '${doc.usagePercent}%（${normalized.length}/$maxChars 字符）'};
   }
 
   /// 写入常用提示词列表：`/quick_prompts/prompts.md`
   ///
   /// 每行解析为一条提示词，以 "- " 开头的行自动剥离前缀；
   /// 空行自动跳过。全量覆写替换整个列表。
-  Future<Map<String, dynamic>> _writeQuickPromptsFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeQuickPromptsFile(String path, String content) async {
     final name = path.substring('/quick_prompts/'.length).trim();
     if (name != 'prompts.md' && name.isNotEmpty) {
       throw Exception('未知的提示词文件: $path（仅支持 /quick_prompts/prompts.md）');
@@ -810,26 +672,17 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         .where((line) => line.isNotEmpty)
         .toList();
     await QuickPromptService.instance.setPrompts(prompts);
-    WorkspaceEventBus.instance.emit(
-      '/quick_prompts/prompts.md',
-      WorkspaceChangeType.updated,
-      {'count': prompts.length},
-    );
-    return {
-      'status': 'updated',
-      'path': '/quick_prompts/prompts.md',
+    WorkspaceEventBus.instance.emit('/quick_prompts/prompts.md', WorkspaceChangeType.updated, {
       'count': prompts.length,
-    };
+    });
+    return {'status': 'updated', 'path': '/quick_prompts/prompts.md', 'count': prompts.length};
   }
 
   /// 写入用户自定义技能：`/skills/<名称>.md`（内置技能只读，直接拒绝）
   ///
   /// 正文为 Markdown 手册，frontmatter 的 `description` 作为技能索引描述；
   /// 缺失时回退取正文首个非空非标题行截断，避免索引里出现空描述。
-  Future<Map<String, dynamic>> _writeSkillFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeSkillFile(String path, String content) async {
     final name = path.substring('/skills/'.length).trim();
     if (name.isEmpty || !name.endsWith('.md') || name.contains('/')) {
       throw Exception('非法的技能路径: $path（应为 /skills/<名称>.md，不支持子目录）');
@@ -852,30 +705,18 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     // 正文只有标题时退而取首个标题文本，避免索引里出现空描述
     var description = (parsed.meta['description'] as String? ?? '').trim();
     if (description.isEmpty) {
-      final lines = body
-          .split('\n')
-          .map((l) => l.trim())
-          .where((l) => l.isNotEmpty)
-          .toList();
+      final lines = body.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
       var fallback = lines.firstWhere(
         (l) => !l.startsWith('#'),
-        orElse: () => lines.isEmpty
-            ? ''
-            : lines.first.replaceFirst(RegExp(r'^#+\s*'), ''),
+        orElse: () => lines.isEmpty ? '' : lines.first.replaceFirst(RegExp(r'^#+\s*'), ''),
       );
       if (fallback.length > 80) fallback = '${fallback.substring(0, 80)}…';
       description = fallback;
     }
 
     final existed = _skillRegistry.getUserSkill(skillName) != null;
-    await _skillRegistry.saveUserSkill(
-      AgentSkill(name: skillName, description: description, content: body),
-    );
-    WorkspaceEventBus.instance.emit(
-      AgentSkill.pathOf(skillName),
-      WorkspaceChangeType.updated,
-      {'name': skillName},
-    );
+    await _skillRegistry.saveUserSkill(AgentSkill(name: skillName, description: description, content: body));
+    WorkspaceEventBus.instance.emit(AgentSkill.pathOf(skillName), WorkspaceChangeType.updated, {'name': skillName});
     return {
       'status': existed ? 'updated' : 'created',
       'path': AgentSkill.pathOf(skillName),
@@ -884,10 +725,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     };
   }
 
-  Future<Map<String, dynamic>> _writeSettingsFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeSettingsFile(String path, String content) async {
     final name = path.substring('/settings/'.length).trim();
     dynamic decoded;
     try {
@@ -917,11 +755,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         'themeMode': _themeModeToString(ThemeMode.values[currentThemeIndex]),
         'accentColor': _colorToHex(Color(currentColorVal)),
       };
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        updatedData,
-      );
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updatedData);
       return {'status': 'updated', 'path': path, 'data': updatedData};
     }
 
@@ -944,18 +778,11 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         }
         await prefs.setBool(HealthSyncService.keyAutoSync, decoded['autoSync'] as bool);
       }
-      final currentTarget = prefs.getInt(HealthSyncService.keyDailyStepTarget) ??
-          HealthSyncService.defaultDailyStepTarget;
+      final currentTarget =
+          prefs.getInt(HealthSyncService.keyDailyStepTarget) ?? HealthSyncService.defaultDailyStepTarget;
       final currentAutoSync = prefs.getBool(HealthSyncService.keyAutoSync) ?? true;
-      final updatedData = {
-        'dailyStepTarget': currentTarget,
-        'autoSync': currentAutoSync,
-      };
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        updatedData,
-      );
+      final updatedData = {'dailyStepTarget': currentTarget, 'autoSync': currentAutoSync};
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updatedData);
       return {'status': 'updated', 'path': path, 'data': updatedData};
     }
 
@@ -964,85 +791,57 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         throw Exception('ai.json 必须是 JSON 对象');
       }
       // 1. 更新 roles（绑定值为「厂商id::模型名」，写 null 清空绑定）
-      if (decoded.containsKey('roles') &&
-          decoded['roles'] is Map<String, dynamic>) {
+      if (decoded.containsKey('roles') && decoded['roles'] is Map<String, dynamic>) {
         final rolesMap = decoded['roles'] as Map<String, dynamic>;
         var currentRoles = await _configRepo.getAiRoles() ?? const AiRoles();
-        if (rolesMap.containsKey('assistant') &&
-            rolesMap['assistant'] is Map<String, dynamic>) {
+        if (rolesMap.containsKey('assistant') && rolesMap['assistant'] is Map<String, dynamic>) {
           final ast = rolesMap['assistant'] as Map<String, dynamic>;
           if (ast.containsKey('model')) {
-            currentRoles = currentRoles.copyWith(
-              assistant: AiModelRef.tryParse(ast['model'] as String?),
-            );
+            currentRoles = currentRoles.copyWith(assistant: AiModelRef.tryParse(ast['model'] as String?));
           }
         }
-        if (rolesMap.containsKey('timelineOptimization') &&
-            rolesMap['timelineOptimization'] is Map<String, dynamic>) {
+        if (rolesMap.containsKey('timelineOptimization') && rolesMap['timelineOptimization'] is Map<String, dynamic>) {
           final tlo = rolesMap['timelineOptimization'] as Map<String, dynamic>;
           if (tlo.containsKey('model')) {
-            currentRoles = currentRoles.copyWith(
-              timelineOptimization: AiModelRef.tryParse(tlo['model'] as String?),
-            );
+            currentRoles = currentRoles.copyWith(timelineOptimization: AiModelRef.tryParse(tlo['model'] as String?));
           }
         }
-        if (rolesMap.containsKey('imageGeneration') &&
-            rolesMap['imageGeneration'] is Map<String, dynamic>) {
+        if (rolesMap.containsKey('imageGeneration') && rolesMap['imageGeneration'] is Map<String, dynamic>) {
           final img = rolesMap['imageGeneration'] as Map<String, dynamic>;
           if (img.containsKey('model')) {
-            currentRoles = currentRoles.copyWith(
-              imageGeneration: AiModelRef.tryParse(img['model'] as String?),
-            );
+            currentRoles = currentRoles.copyWith(imageGeneration: AiModelRef.tryParse(img['model'] as String?));
           }
         }
         await _configRepo.saveAiRoles(currentRoles);
       }
 
       // 2. 更新 temperatures
-      if (decoded.containsKey('temperatures') &&
-          decoded['temperatures'] is Map<String, dynamic>) {
+      if (decoded.containsKey('temperatures') && decoded['temperatures'] is Map<String, dynamic>) {
         final tempsMap = decoded['temperatures'] as Map<String, dynamic>;
-        var currentTemps =
-            await _configRepo.getAiTemperatures() ?? const AiTemperatures();
-        if (tempsMap.containsKey('assistant') &&
-            tempsMap['assistant'] is Map<String, dynamic>) {
+        var currentTemps = await _configRepo.getAiTemperatures() ?? const AiTemperatures();
+        if (tempsMap.containsKey('assistant') && tempsMap['assistant'] is Map<String, dynamic>) {
           final ast = tempsMap['assistant'] as Map<String, dynamic>;
           currentTemps = currentTemps.copyWith(
             assistant: currentTemps.assistant.copyWith(
-              temperature:
-                  (ast['temperature'] as num?)?.toDouble() ??
-                  currentTemps.assistant.temperature,
-              maxTokens:
-                  (ast['maxTokens'] as num?)?.toInt() ??
-                  currentTemps.assistant.maxTokens,
+              temperature: (ast['temperature'] as num?)?.toDouble() ?? currentTemps.assistant.temperature,
+              maxTokens: (ast['maxTokens'] as num?)?.toInt() ?? currentTemps.assistant.maxTokens,
             ),
           );
         }
-        if (tempsMap.containsKey('timelineOptimization') &&
-            tempsMap['timelineOptimization'] is Map<String, dynamic>) {
+        if (tempsMap.containsKey('timelineOptimization') && tempsMap['timelineOptimization'] is Map<String, dynamic>) {
           final tlo = tempsMap['timelineOptimization'] as Map<String, dynamic>;
           currentTemps = currentTemps.copyWith(
             timelineOptimization: currentTemps.timelineOptimization.copyWith(
-              temperature:
-                  (tlo['temperature'] as num?)?.toDouble() ??
-                  currentTemps.timelineOptimization.temperature,
-              maxTokens:
-                  (tlo['maxTokens'] as num?)?.toInt() ??
-                  currentTemps.timelineOptimization.maxTokens,
-              extractImages:
-                  (tlo['extractImages'] as bool?) ??
-                  currentTemps.timelineOptimization.extractImages,
+              temperature: (tlo['temperature'] as num?)?.toDouble() ?? currentTemps.timelineOptimization.temperature,
+              maxTokens: (tlo['maxTokens'] as num?)?.toInt() ?? currentTemps.timelineOptimization.maxTokens,
+              extractImages: (tlo['extractImages'] as bool?) ?? currentTemps.timelineOptimization.extractImages,
             ),
           );
         }
         await _configRepo.saveAiTemperatures(currentTemps);
       }
 
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        decoded,
-      );
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, decoded);
       return {'status': 'updated', 'path': path};
     }
 
@@ -1051,15 +850,8 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         throw Exception('personality.json 必须是 JSON 对象');
       }
       await QPersonalityService.instance.applyPartialConfig(decoded);
-      final updatedData = {
-        'activeId': await QPersonalityService.instance.getActiveId(),
-        'note': '个性已更新，下轮对话生效',
-      };
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        updatedData,
-      );
+      final updatedData = {'activeId': await QPersonalityService.instance.getActiveId(), 'note': '个性已更新，下轮对话生效'};
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updatedData);
       return {'status': 'updated', 'path': path, 'data': updatedData};
     }
 
@@ -1067,8 +859,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       List<dynamic> list;
       if (decoded is List) {
         list = decoded;
-      } else if (decoded is Map<String, dynamic> &&
-          decoded['shortcuts'] is List) {
+      } else if (decoded is Map<String, dynamic> && decoded['shortcuts'] is List) {
         list = decoded['shortcuts'] as List;
       } else if (decoded is Map<String, dynamic>) {
         list = [decoded];
@@ -1091,8 +882,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
           id: id,
           name: (map['name'] ?? map['label'] ?? '未命名快捷键').toString(),
           hasPopup: map['has_popup'] == 1 || map['hasPopup'] == true,
-          sortOrder:
-              (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i,
+          sortOrder: (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i,
           isVisible: map['is_visible'] != 0 && map['isVisible'] != false,
           createdAt: currentMap[id]?.createdAt ?? now,
           updatedAt: now,
@@ -1133,20 +923,14 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         map['id'] = id;
         final now = DateTime.now();
         final name = (map['name'] ?? map['title'] ?? '未命名习惯').toString();
-        final isTimePoint =
-            map['is_time_point'] == 1 || map['isTimePoint'] == true;
+        final isTimePoint = map['is_time_point'] == 1 || map['isTimePoint'] == true;
         final content = map['content']?.toString();
         final isEnabled = map['is_enabled'] != 0 && map['isEnabled'] != false;
-        final sortOrder =
-            (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i;
+        final sortOrder = (map['sort_order'] ?? map['sortOrder'] as num?)?.toInt() ?? i;
 
         // 解析多时间段（兼顾标准 timePeriods、下划线 time_periods，以及模型自拟的 timeSlots / periods）
         final List<TimePeriod> periods = [];
-        dynamic rawPeriods =
-            map['timePeriods'] ??
-            map['time_periods'] ??
-            map['timeSlots'] ??
-            map['periods'];
+        dynamic rawPeriods = map['timePeriods'] ?? map['time_periods'] ?? map['timeSlots'] ?? map['periods'];
         if (rawPeriods is String && rawPeriods.isNotEmpty) {
           try {
             rawPeriods = jsonDecode(rawPeriods);
@@ -1157,31 +941,19 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         if (rawPeriods is List) {
           for (final p in rawPeriods) {
             if (p is Map) {
-              final s =
-                  (p['startTime'] ?? p['start_time'] ?? p['start'] ?? '08:00')
-                      .toString();
-              final e = (p['endTime'] ?? p['end_time'] ?? p['end'] ?? '')
-                  .toString();
-              periods.add(
-                TimePeriod(startTime: s, endTime: isTimePoint ? '' : e),
-              );
+              final s = (p['startTime'] ?? p['start_time'] ?? p['start'] ?? '08:00').toString();
+              final e = (p['endTime'] ?? p['end_time'] ?? p['end'] ?? '').toString();
+              periods.add(TimePeriod(startTime: s, endTime: isTimePoint ? '' : e));
             }
           }
         }
 
         // 如果没有提供多时段数组，则使用顶层的 start_time/startTime 与 end_time/endTime
-        final fallbackStart = (map['start_time'] ?? map['startTime'] ?? '08:00')
-            .toString();
-        final fallbackEnd = (map['end_time'] ?? map['endTime'] ?? '')
-            .toString();
+        final fallbackStart = (map['start_time'] ?? map['startTime'] ?? '08:00').toString();
+        final fallbackEnd = (map['end_time'] ?? map['endTime'] ?? '').toString();
 
         if (periods.isEmpty) {
-          periods.add(
-            TimePeriod(
-              startTime: fallbackStart,
-              endTime: isTimePoint ? '' : fallbackEnd,
-            ),
-          );
+          periods.add(TimePeriod(startTime: fallbackStart, endTime: isTimePoint ? '' : fallbackEnd));
         }
 
         final startTime = periods.first.startTime;
@@ -1190,8 +962,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         List<String> tags = currentMap[id]?.tags ?? [];
         if (map['tags'] is List) {
           tags = (map['tags'] as List).map((e) => e.toString()).toList();
-        } else if (map['tags'] is String &&
-            (map['tags'] as String).isNotEmpty) {
+        } else if (map['tags'] is String && (map['tags'] as String).isNotEmpty) {
           try {
             final decodedTags = jsonDecode(map['tags'] as String);
             if (decodedTags is List) {
@@ -1249,36 +1020,13 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       }
       final profile =
           await _configRepo.getUserProfile() ??
-          UserProfile(
-            id: const Uuid().v4(),
-            createdAt: DateTime.now(),
-            updatedAt: DateTime.now(),
-          );
-      final record = WeightRecord(
-        id: const Uuid().v4(),
-        weight: newWeight,
-        time: time,
-      );
-      final updatedProfile = profile.copyWith(
-        weightHistory: [...profile.weightHistory, record],
-      );
+          UserProfile(id: const Uuid().v4(), createdAt: DateTime.now(), updatedAt: DateTime.now());
+      final record = WeightRecord(id: const Uuid().v4(), weight: newWeight, time: time);
+      final updatedProfile = profile.copyWith(weightHistory: [...profile.weightHistory, record]);
       await _configRepo.saveUserProfile(updatedProfile);
-      WorkspaceEventBus.instance.emit(
-        '/settings/profile.json',
-        WorkspaceChangeType.updated,
-        updatedProfile,
-      );
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        record,
-      );
-      return {
-        'status': 'created',
-        'path': path,
-        'weight': newWeight,
-        'time': time.toIso8601String(),
-      };
+      WorkspaceEventBus.instance.emit('/settings/profile.json', WorkspaceChangeType.updated, updatedProfile);
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, record);
+      return {'status': 'created', 'path': path, 'weight': newWeight, 'time': time.toIso8601String()};
     }
 
     if (name == 'profile.json') {
@@ -1290,12 +1038,10 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       mergedMap.addAll(decoded);
 
       // 类型归一化：若模型传入原生 List/Map，转换为 JSON 字符串以防 ClassCastException
-      if (mergedMap['weight_history'] != null &&
-          mergedMap['weight_history'] is! String) {
+      if (mergedMap['weight_history'] != null && mergedMap['weight_history'] is! String) {
         mergedMap['weight_history'] = jsonEncode(mergedMap['weight_history']);
       }
-      if (mergedMap['custom_fields'] != null &&
-          mergedMap['custom_fields'] is! String) {
+      if (mergedMap['custom_fields'] != null && mergedMap['custom_fields'] is! String) {
         mergedMap['custom_fields'] = jsonEncode(mergedMap['custom_fields']);
       }
 
@@ -1307,11 +1053,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
 
       final profile = UserProfile.fromMap(mergedMap);
       await _configRepo.saveUserProfile(profile);
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        profile,
-      );
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, profile);
       return {'status': 'updated', 'path': path, 'name': profile.name};
     }
 
@@ -1341,11 +1083,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
           continue;
         }
 
-        if (rawColor == null ||
-            rawColor.isEmpty ||
-            rawColor == 'none' ||
-            rawColor == 'clear' ||
-            rawColor == '清除') {
+        if (rawColor == null || rawColor.isEmpty || rawColor == 'none' || rawColor == 'clear' || rawColor == '清除') {
           await _colorMarkRepo.deleteByDate(date);
           processed++;
           continue;
@@ -1366,30 +1104,17 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         } else {
           final c = _parseColor(rawColor);
           if (c != null) {
-            hexColor =
-                '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
+            hexColor = '#${c.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
           }
         }
 
-        final mark = DateColorMark(
-          id: const Uuid().v4(),
-          date: date,
-          color: hexColor,
-        );
+        final mark = DateColorMark(id: const Uuid().v4(), date: date, color: hexColor);
         await _colorMarkRepo.insert(mark);
         processed++;
       }
 
-      WorkspaceEventBus.instance.emit(
-        '/settings/color_marks.json',
-        WorkspaceChangeType.updated,
-        {'count': processed},
-      );
-      WorkspaceEventBus.instance.emit(
-        '/timeline/',
-        WorkspaceChangeType.updated,
-        {'count': processed},
-      );
+      WorkspaceEventBus.instance.emit('/settings/color_marks.json', WorkspaceChangeType.updated, {'count': processed});
+      WorkspaceEventBus.instance.emit('/timeline/', WorkspaceChangeType.updated, {'count': processed});
       return {'status': 'updated', 'path': path, 'count': processed};
     }
 
@@ -1407,21 +1132,14 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
 
       final webdav = WebdavConfig.fromMap(mergedMap);
       await _configRepo.upsertWebdavConfig(webdav);
-      WorkspaceEventBus.instance.emit(
-        path,
-        WorkspaceChangeType.updated,
-        webdav,
-      );
+      WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, webdav);
       return {'status': 'updated', 'path': path};
     }
 
     throw Exception('不支持修改此配置: $path');
   }
 
-  Future<Map<String, dynamic>> _writeFoldersFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeFoldersFile(String path, String content) async {
     final name = path.substring('/folders/'.length).trim();
     dynamic decoded;
     try {
@@ -1430,9 +1148,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       throw Exception('分类配置必须为合法 JSON 格式: $e');
     }
 
-    final type = name == 'todos.json'
-        ? 'todo'
-        : (name == 'notes.json' ? 'note' : null);
+    final type = name == 'todos.json' ? 'todo' : (name == 'notes.json' ? 'note' : null);
     if (type == null) {
       throw Exception('不支持修改的分类配置: $path');
     }
@@ -1460,10 +1176,8 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       if (rawName.isEmpty) continue;
 
       final id = map['id']?.toString() ?? const Uuid().v4();
-      final parentId =
-          map['parentId']?.toString() ?? map['parent_id']?.toString();
-      final sortOrder =
-          (map['sortOrder'] ?? map['sort_order'] as num?)?.toInt() ?? i;
+      final parentId = map['parentId']?.toString() ?? map['parent_id']?.toString();
+      final sortOrder = (map['sortOrder'] ?? map['sort_order'] as num?)?.toInt() ?? i;
       final isExpanded = map['isExpanded'] != false && map['is_expanded'] != 0;
       final now = DateTime.now();
 
@@ -1486,17 +1200,11 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       count++;
     }
 
-    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {
-      'type': type,
-      'count': count,
-    });
+    WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, {'type': type, 'count': count});
     return {'status': 'updated', 'path': path, 'type': type, 'count': count};
   }
 
-  Future<Map<String, dynamic>> _writeChatsFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeChatsFile(String path, String content) async {
     final name = path.substring('/chats/'.length).trim();
     if (name != 'sessions.json') {
       throw Exception('不支持修改的会话文件: $path');
@@ -1531,28 +1239,18 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
 
       final existing = await _configRepo.getChatSession(id);
       if (existing != null) {
-        final updated = existing.copyWith(
-          title: newTitle,
-          updatedAt: DateTime.now(),
-        );
+        final updated = existing.copyWith(title: newTitle, updatedAt: DateTime.now());
         await _configRepo.updateChatSession(updated);
         updatedCount++;
       }
     }
 
-    WorkspaceEventBus.instance.emit(
-      '/chats/sessions.json',
-      WorkspaceChangeType.updated,
-      {'count': updatedCount},
-    );
+    WorkspaceEventBus.instance.emit('/chats/sessions.json', WorkspaceChangeType.updated, {'count': updatedCount});
     return {'status': 'updated', 'path': path, 'updated_count': updatedCount};
   }
 
   /// 写入 /stats/ 下的评分数据
-  Future<Map<String, dynamic>> _writeStatsFile(
-    String path,
-    String content,
-  ) async {
+  Future<Map<String, dynamic>> _writeStatsFile(String path, String content) async {
     if (path == VirtualWorkspaceService.kStatsAdjustPath) {
       return await _writeStatsAdjustFile(content);
     }
@@ -1562,10 +1260,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       );
     }
 
-    final dateStr = path
-        .substring('/stats/scores/'.length)
-        .replaceAll('.json', '')
-        .trim();
+    final dateStr = path.substring('/stats/scores/'.length).replaceAll('.json', '').trim();
     DateTime date;
     try {
       date = DateTime.parse(dateStr);
@@ -1585,14 +1280,10 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     }
 
     // 未出现的字段一律不改：缺省的总分不再兜成 60，缺失的维度不再被总分覆盖
-    final rawTotal =
-        decoded['totalScore'] ?? decoded['total_score'] ?? decoded['score'];
+    final rawTotal = decoded['totalScore'] ?? decoded['total_score'] ?? decoded['score'];
     final int? totalScore = rawTotal is num ? rawTotal.toInt() : null;
 
-    final rawDims =
-        decoded['dimensionScores'] ??
-        decoded['dimension_scores'] ??
-        decoded['dimensions'];
+    final rawDims = decoded['dimensionScores'] ?? decoded['dimension_scores'] ?? decoded['dimensions'];
     final Map<String, int> dimensionScores = {};
     if (rawDims is Map) {
       for (final entry in rawDims.entries) {
@@ -1606,9 +1297,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
 
     // 总结与建议
     final summary = (decoded['summary'] ?? '').toString().trim();
-    final suggestions = (decoded['suggestions'] ?? decoded['suggestion'] ?? '')
-        .toString()
-        .trim();
+    final suggestions = (decoded['suggestions'] ?? decoded['suggestion'] ?? '').toString().trim();
 
     // 记录数量：payload 未给时按当天流水数；0 视为未提供，保留库里原值
     int? recordCount;
@@ -1655,14 +1344,8 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       throw Exception('评分调整指令必须是 JSON 对象');
     }
 
-    final from = _parseStatsDate(
-      decoded['dateFrom'] ?? decoded['from'] ?? decoded['start'],
-      'dateFrom',
-    );
-    final to = _parseStatsDate(
-      decoded['dateTo'] ?? decoded['to'] ?? decoded['end'],
-      'dateTo',
-    );
+    final from = _parseStatsDate(decoded['dateFrom'] ?? decoded['from'] ?? decoded['start'], 'dateFrom');
+    final to = _parseStatsDate(decoded['dateTo'] ?? decoded['to'] ?? decoded['end'], 'dateTo');
     final fields = _parseScoreFields(decoded['fields']);
 
     final rawDelta = decoded['delta'] ?? decoded['offset'];
@@ -1678,25 +1361,13 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
     final service = DailyScoreService.instance;
     if (!dryRun) {
       // 先算一遍拿到「实际会变更的日期」，逐天补捕撤回快照
-      final preview = await service.adjustRange(
-        from: from,
-        to: to,
-        spec: spec,
-        dryRun: true,
-      );
+      final preview = await service.adjustRange(from: from, to: to, spec: spec, dryRun: true);
       for (final outcome in preview.outcomes) {
-        await _captureUndoState(
-          '/stats/scores/${_statsDateKey(outcome.before.date)}.json',
-        );
+        await _captureUndoState('/stats/scores/${_statsDateKey(outcome.before.date)}.json');
       }
     }
 
-    final adjusted = await service.adjustRange(
-      from: from,
-      to: to,
-      spec: spec,
-      dryRun: dryRun,
-    );
+    final adjusted = await service.adjustRange(from: from, to: to, spec: spec, dryRun: dryRun);
     return {
       'status': dryRun ? 'preview' : 'adjusted',
       'range': '${_statsDateKey(from)} ~ ${_statsDateKey(to)}',
@@ -1710,9 +1381,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
           .map(
             (o) => {
               'date': _statsDateKey(o.before.date),
-              'fields': o.changes
-                  .map((c) => '${c.field.label} ${c.before ?? '—'}→${c.after}')
-                  .toList(),
+              'fields': o.changes.map((c) => '${c.field.label} ${c.before ?? '—'}→${c.after}').toList(),
             },
           )
           .toList(),
@@ -1722,8 +1391,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
   /// 评分端点里的日期归一化为 `YYYY-MM-DD`
   String _statsDateKey(DateTime date) => workspaceStatsDateKey(date);
 
-  DateTime _parseStatsDate(dynamic raw, String label) =>
-      parseWorkspaceStatsDate(raw, label);
+  DateTime _parseStatsDate(dynamic raw, String label) => parseWorkspaceStatsDate(raw, label);
 
   Set<ScoreField> _parseScoreFields(dynamic raw) {
     if (raw is! List || raw.isEmpty) return kAllScoreFields;
@@ -1748,6 +1416,5 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
   ThemeMode _parseThemeMode(dynamic raw) => parseWorkspaceThemeMode(raw);
 
   /// 将 ThemeMode 转为字符串
-  String _themeModeToString(ThemeMode mode) =>
-      workspaceThemeModeToString(mode);
+  String _themeModeToString(ThemeMode mode) => workspaceThemeModeToString(mode);
 }

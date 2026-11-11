@@ -15,14 +15,7 @@ class UnifiedImage extends StatefulWidget {
   final BorderRadius? borderRadius;
   final BoxFit fit;
 
-  const UnifiedImage({
-    super.key,
-    this.imagePath,
-    this.width,
-    this.height,
-    this.borderRadius,
-    this.fit = BoxFit.cover,
-  });
+  const UnifiedImage({super.key, this.imagePath, this.width, this.height, this.borderRadius, this.fit = BoxFit.cover});
 
   @override
   State<UnifiedImage> createState() => _UnifiedImageState();
@@ -94,13 +87,9 @@ class _UnifiedImageState extends State<UnifiedImage> {
         _fileExists = exists;
         _resolvedPath = path;
       });
-      
+
       if (!exists) {
-        LoggerService.instance.logUI(
-          '图片文件不存在',
-          details: widget.imagePath,
-          level: LogLevel.warning
-        );
+        LoggerService.instance.logUI('图片文件不存在', details: widget.imagePath, level: LogLevel.warning);
       }
     }
   }
@@ -112,19 +101,11 @@ class _UnifiedImageState extends State<UnifiedImage> {
     }
 
     if (!_hasChecked) {
-      return SizedBox(
-        width: widget.width,
-        height: widget.height,
-        child: _buildLoading(context),
-      );
+      return SizedBox(width: widget.width, height: widget.height, child: _buildLoading(context));
     }
 
     if (!_fileExists) {
-      return SizedBox(
-        width: widget.width,
-        height: widget.height,
-        child: _buildError(context),
-      );
+      return SizedBox(width: widget.width, height: widget.height, child: _buildError(context));
     }
 
     return SizedBox(
@@ -143,7 +124,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
                   LoggerService.instance.logUI(
                     '图片加载失败 (Web): $error',
                     level: LogLevel.error,
-                    details: widget.imagePath
+                    details: widget.imagePath,
                   );
                   return _buildError(context);
                 },
@@ -155,16 +136,10 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 fit: widget.fit,
                 // Downsample image decoding sizes on mobile to prevent memory spikes (OOM) and black screen freezes.
                 // We use 2.0x display width to match device pixel ratios for sharp rendering.
-                cacheWidth: widget.width != null 
-                    ? (widget.width! * 2.0).clamp(100.0, 1080.0).round() 
-                    : 720,
+                cacheWidth: widget.width != null ? (widget.width! * 2.0).clamp(100.0, 1080.0).round() : 720,
                 frameBuilder: _fadeInFrame,
                 errorBuilder: (context, error, stackTrace) {
-                  LoggerService.instance.logUI(
-                    '图片加载失败: $error',
-                    level: LogLevel.error,
-                    details: widget.imagePath
-                  );
+                  LoggerService.instance.logUI('图片加载失败: $error', level: LogLevel.error, details: widget.imagePath);
                   return _buildError(context);
                 },
               ),
@@ -173,12 +148,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
   }
 
   /// 图片首帧到达时淡入，避免解码完成后「啪」地出现；同步命中缓存时直接返回。
-  Widget _fadeInFrame(
-    BuildContext context,
-    Widget child,
-    int? frame,
-    bool wasSynchronouslyLoaded,
-  ) {
+  Widget _fadeInFrame(BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
     if (wasSynchronouslyLoaded || MediaQuery.disableAnimationsOf(context)) {
       return child;
     }
@@ -198,11 +168,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: widget.borderRadius ?? BorderRadius.zero,
       ),
-      child: Icon(
-        Icons.image_outlined,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        size: _iconSize,
-      ),
+      child: Icon(Icons.image_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant, size: _iconSize),
     );
   }
 
@@ -216,10 +182,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
         child: SizedBox(
           width: _iconSize,
           height: _iconSize,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ),
     );
@@ -231,11 +194,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: widget.borderRadius ?? BorderRadius.zero,
       ),
-      child: Icon(
-        Icons.broken_image_outlined,
-        color: Theme.of(context).colorScheme.error,
-        size: _iconSize,
-      ),
+      child: Icon(Icons.broken_image_outlined, color: Theme.of(context).colorScheme.error, size: _iconSize),
     );
   }
 
@@ -255,12 +214,7 @@ class FullScreenImageGallery extends StatefulWidget {
   /// 保证日记/笔记等既有调用点行为不变。
   final void Function(String path)? onSave;
 
-  const FullScreenImageGallery({
-    super.key,
-    required this.images,
-    this.initialIndex = 0,
-    this.onSave,
-  });
+  const FullScreenImageGallery({super.key, required this.images, this.initialIndex = 0, this.onSave});
 
   @override
   State<FullScreenImageGallery> createState() => _FullScreenImageGalleryState();
@@ -330,10 +284,7 @@ class _FullScreenImageGalleryState extends State<FullScreenImageGallery> {
             child: InteractiveViewer(
               minScale: 1.0,
               maxScale: 4.0,
-              child: UnifiedImage(
-                imagePath: widget.images[index],
-                fit: BoxFit.contain,
-              ),
+              child: UnifiedImage(imagePath: widget.images[index], fit: BoxFit.contain),
             ),
           );
         },
@@ -341,4 +292,3 @@ class _FullScreenImageGalleryState extends State<FullScreenImageGallery> {
     );
   }
 }
-

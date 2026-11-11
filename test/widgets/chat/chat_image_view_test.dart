@@ -12,10 +12,7 @@ Widget _bodyWithImages(String markdown, Set<String> generatedKeys) {
       body: MarkdownBody(
         data: markdown,
         selectable: false,
-        sizedImageBuilder: (config) => ChatBodyImage(
-          src: config.uri.toString(),
-          generatedImageKeys: generatedKeys,
-        ),
+        sizedImageBuilder: (config) => ChatBodyImage(src: config.uri.toString(), generatedImageKeys: generatedKeys),
       ),
     ),
   );
@@ -60,12 +57,7 @@ void main() {
     });
 
     testWidgets('去重集合为空时所有内联图都正常渲染', (tester) async {
-      await tester.pumpWidget(
-        _bodyWithImages(
-          '![a](/x/a.png)\n\n![b](/x/b.png)',
-          const <String>{},
-        ),
-      );
+      await tester.pumpWidget(_bodyWithImages('![a](/x/a.png)\n\n![b](/x/b.png)', const <String>{}));
       expect(find.byType(ChatImageView), findsNWidgets(2));
     });
   });
@@ -93,10 +85,7 @@ void main() {
     });
 
     testWidgets('长按弹出菜单，未提供「给小Q」回调时不显示该项', (tester) async {
-      await _mount(
-        tester,
-        const ChatImageView(imagePath: '/x/a.png', width: 60, height: 60),
-      );
+      await _mount(tester, const ChatImageView(imagePath: '/x/a.png', width: 60, height: 60));
 
       await tester.longPress(find.byType(ChatImageView));
       await _settleMenu(tester);
@@ -108,15 +97,7 @@ void main() {
     });
 
     testWidgets('提供「给小Q」回调时菜单出现该项', (tester) async {
-      await _mount(
-        tester,
-        ChatImageView(
-          imagePath: '/x/a.png',
-          width: 60,
-          height: 60,
-          onSendToQ: (_) {},
-        ),
-      );
+      await _mount(tester, ChatImageView(imagePath: '/x/a.png', width: 60, height: 60, onSendToQ: (_) {}));
 
       await tester.longPress(find.byType(ChatImageView));
       await _settleMenu(tester);
@@ -127,11 +108,7 @@ void main() {
     testWidgets('Web 端 data URI 形态不显示「复制路径」', (tester) async {
       await _mount(
         tester,
-        const ChatImageView(
-          imagePath: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg',
-          width: 60,
-          height: 60,
-        ),
+        const ChatImageView(imagePath: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg', width: 60, height: 60),
       );
 
       await tester.longPress(find.byType(ChatImageView));

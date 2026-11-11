@@ -123,32 +123,24 @@ class LoomyAuthService extends AccountAuthServiceBase {
 
   @override
   @protected
-  Future<List<AiAccount>> Function(String providerId)?
-  get accountsLoaderHook => accountsLoaderForTest;
+  Future<List<AiAccount>> Function(String providerId)? get accountsLoaderHook => accountsLoaderForTest;
 
   @override
   @protected
-  Future<String?> Function(String providerId)? get accessTokenLoaderHook =>
-      accessTokenLoaderForTest;
+  Future<String?> Function(String providerId)? get accessTokenLoaderHook => accessTokenLoaderForTest;
 
   @override
   @protected
-  Future<void> Function(AiAccount account)? get accountSaverHook =>
-      accountSaverForTest;
+  Future<void> Function(AiAccount account)? get accountSaverHook => accountSaverForTest;
 
   /// Loomy 的登录态是固定 14 天的 session，到期只能重新登录
   @override
   AccountAuthRequiredException authExpired(String providerId) =>
-      AccountAuthRequiredException(
-        providerId,
-        message: 'Loomy 登录已失效，请重新登录（session 有效期 14 天，到期需重登）',
-        kind: kind,
-      );
+      AccountAuthRequiredException(providerId, message: 'Loomy 登录已失效，请重新登录（session 有效期 14 天，到期需重登）', kind: kind);
 
   /// 测试注入：绕开数据库直接给账号列表
   @visibleForTesting
-  static Future<List<AiAccount>> Function(String providerId)?
-  accountsLoaderForTest;
+  static Future<List<AiAccount>> Function(String providerId)? accountsLoaderForTest;
 
   // ── token 读取 ───────────────────────────────────────────
 
@@ -160,9 +152,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
     final loader = accessTokenLoaderHook;
     if (loader != null) return loader(account.providerId);
 
-    final current = accountsLoaderHook != null
-        ? account
-        : await refreshCacheFromStore(account);
+    final current = accountsLoaderHook != null ? account : await refreshCacheFromStore(account);
     if (current.accessToken.trim().isEmpty) return null;
     if (current.isExpired) return null;
     if (current.isStale(margin: expiryMargin)) {
@@ -185,10 +175,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
   ///
   /// 未过期就原样返回（顺带更新缓存）；已过期直接抛「请重新登录」。
   @override
-  Future<AiAccount> reloadAccount(
-    String accountId, {
-    required bool force,
-  }) async {
+  Future<AiAccount> reloadAccount(String accountId, {required bool force}) async {
     final stored = await repository.getById(accountId);
     if (stored == null) {
       evictCachedAccount(accountId);
@@ -206,10 +193,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
 
   /// 发送短信验证码；返回的 [AccountSmsChallenge.ticket] 是发码接口给的 msgid
   @override
-  Future<AccountSmsChallenge> sendLoginCode(
-    String providerId,
-    String phone,
-  ) async {
+  Future<AccountSmsChallenge> sendLoginCode(String providerId, String phone) async {
     final normalized = normalizePhone(phone);
     if (normalized == null) {
       throw const FormatException('请输入 11 位中国大陆手机号');
@@ -220,14 +204,10 @@ class LoomyAuthService extends AccountAuthServiceBase {
     });
     if (envelope.code != codeOk) {
       throw FormatException(
-        envelope.message.isEmpty
-            ? '验证码发送失败（code=${envelope.code}）'
-            : '验证码发送失败：${envelope.message}',
+        envelope.message.isEmpty ? '验证码发送失败（code=${envelope.code}）' : '验证码发送失败：${envelope.message}',
       );
     }
-    final msgid = envelope.data is Map
-        ? (envelope.data as Map)['msgid']?.toString().trim() ?? ''
-        : '';
+    final msgid = envelope.data is Map ? (envelope.data as Map)['msgid']?.toString().trim() ?? '' : '';
     if (msgid.isEmpty) {
       throw const FormatException('验证码已发送，但上游没有返回 msgid，请重试');
     }
@@ -261,11 +241,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
       throw const FormatException('登录失败：登录态已失效，请重新获取验证码');
     }
     if (envelope.code != codeOk) {
-      throw FormatException(
-        envelope.message.isEmpty
-            ? '登录失败（code=${envelope.code}）'
-            : '登录失败：${envelope.message}',
-      );
+      throw FormatException(envelope.message.isEmpty ? '登录失败（code=${envelope.code}）' : '登录失败：${envelope.message}');
     }
     final data = envelope.data;
     if (data is! Map) throw const FormatException('登录失败：响应缺少账号信息');
@@ -294,12 +270,8 @@ class LoomyAuthService extends AccountAuthServiceBase {
     return persistLogin(
       providerId,
       accountId: accountId,
-      buildAccount:
-          ({
-            required String accountId,
-            AiAccount? previous,
-            required bool fetchProfile,
-          }) async => _accountFromSession(
+      buildAccount: ({required String accountId, AiAccount? previous, required bool fetchProfile}) async =>
+          _accountFromSession(
             providerId,
             accountId: accountId,
             session: session,
@@ -344,9 +316,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
 
   /// 登录后以厂商实时目录为准；请求失败时回落到静态目录，不让设置页空着
   @override
-  Future<List<AiProviderModel>> fetchModelsForProvider(
-    String providerId,
-  ) async {
+  Future<List<AiProviderModel>> fetchModelsForProvider(String providerId) async {
     final accounts = await accountsFor(providerId, forceReload: true);
     if (accounts.isEmpty) throw notLoggedIn(providerId);
     final token = await accessTokenForAccount(accounts.first);
@@ -363,9 +333,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
       for (final entry in entries.whereType<Map>()) {
         final id = (entry['id'] ?? '').toString().trim();
         if (id.isEmpty || !seen.add(id)) continue;
-        final rawName = (entry['name'] ?? entry['display_name'] ?? id)
-            .toString()
-            .trim();
+        final rawName = (entry['name'] ?? entry['display_name'] ?? id).toString().trim();
         // 倍率只藏在展示名尾部（`Kimi k2.6 (x6.5)`）：拆出来单独存，
         // 界面才能像其他厂商一样把「免费 / 倍率」当徽标展示
         final split = splitRateSuffix(rawName);
@@ -382,10 +350,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
       }
       return models.isEmpty ? List<AiProviderModel>.of(_catalog) : models;
     } catch (e) {
-      LoggerService.instance.logAI(
-        'Loomy 模型目录拉取失败，回落静态目录: $e',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('Loomy 模型目录拉取失败，回落静态目录: $e', level: LogLevel.warning);
       return List<AiProviderModel>.of(_catalog);
     }
   }
@@ -405,11 +370,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
     );
     _rejectIfAuthCode(envelope, account.providerId);
     if (envelope.code != codeOk) {
-      throw FormatException(
-        envelope.message.isEmpty
-            ? '积分查询失败（code=${envelope.code}）'
-            : '积分查询失败：${envelope.message}',
-      );
+      throw FormatException(envelope.message.isEmpty ? '积分查询失败（code=${envelope.code}）' : '积分查询失败：${envelope.message}');
     }
     // 该接口是「积分流水」，响应里没有余额字段是常态：这时必须报「未知」，
     // 不能冒充 0（卡片显示 0 会让人以为积分已经花光）
@@ -417,9 +378,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
     final balance = _intOf(data is Map ? data['balance'] : null);
     final daily = _intOf(data is Map ? data['dailyBalance'] : null);
     final dailyLimit = _intOf(data is Map ? data['dailyLimitPoints'] : null);
-    final dailyRemaining = _intOf(
-      data is Map ? data['dailyRemainingPoints'] : null,
-    );
+    final dailyRemaining = _intOf(data is Map ? data['dailyRemainingPoints'] : null);
     if (balance == null && daily == null && dailyRemaining == null) {
       throw const FormatException('积分响应没有返回余额字段');
     }
@@ -434,8 +393,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
 
     return AccountQuota(
       // 主数值用两个钱包之和：单看永久积分会漏掉每天赠送的那部分
-      balance: (balance ?? 0) +
-          (dailyRemaining ?? daily ?? 0),
+      balance: (balance ?? 0) + (dailyRemaining ?? daily ?? 0),
       detail: parts.join(' · '),
       fetchedAt: DateTime.now(),
     );
@@ -454,24 +412,15 @@ class LoomyAuthService extends AccountAuthServiceBase {
       throw notLoggedIn(account.providerId);
     }
     final before = await _readDailyBalance(token);
-    final envelope = await _tokenRequest(
-      'POST',
-      '/api/v1/points/first-login',
-      token,
-      data: const <String, dynamic>{},
-    );
+    final envelope = await _tokenRequest('POST', '/api/v1/points/first-login', token, data: const <String, dynamic>{});
     _rejectIfAuthCode(envelope, account.providerId);
     final checkedAt = DateTime.now();
     if (envelope.code != codeOk) {
       throw FormatException(
-        envelope.message.isEmpty
-            ? '每日积分刷新失败（code=${envelope.code}）'
-            : '每日积分刷新失败：${envelope.message}',
+        envelope.message.isEmpty ? '每日积分刷新失败（code=${envelope.code}）' : '每日积分刷新失败：${envelope.message}',
       );
     }
-    final fromBody = envelope.data is Map
-        ? _intOf((envelope.data as Map)['dailyBalance'])
-        : null;
+    final fromBody = envelope.data is Map ? _intOf((envelope.data as Map)['dailyBalance']) : null;
     final after = fromBody ?? await _readDailyBalance(token);
     if (before != null && after != null && after > before) {
       final gained = after - before;
@@ -551,14 +500,8 @@ class LoomyAuthService extends AccountAuthServiceBase {
 
   /// 账号域的 HMAC-SHA1 签名头（9 段待签串，后两段固定为空）
   @visibleForTesting
-  static Map<String, String> signHeaders(
-    String method,
-    String path,
-    String body,
-  ) {
-    final contentMd5 = body.isEmpty
-        ? ''
-        : base64Encode(md5.convert(utf8.encode(body)).bytes);
+  static Map<String, String> signHeaders(String method, String path, String body) {
+    final contentMd5 = body.isEmpty ? '' : base64Encode(md5.convert(utf8.encode(body)).bytes);
     final date = _utcDateString(DateTime.now().toUtc());
     final nonce = const Uuid().v4();
     final stringToSign = [
@@ -572,11 +515,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
       '',
       '',
     ].join('\n');
-    final signature = base64Encode(
-      Hmac(sha1, utf8.encode(accessKeySecret))
-          .convert(utf8.encode(stringToSign))
-          .bytes,
-    );
+    final signature = base64Encode(Hmac(sha1, utf8.encode(accessKeySecret)).convert(utf8.encode(stringToSign)).bytes);
     final headers = <String, String>{
       'Authorization': 'account $accessKeyId:$signature',
       'Date': date,
@@ -601,28 +540,14 @@ class LoomyAuthService extends AccountAuthServiceBase {
 
   static String _escapeSegment(String segment) {
     // Uri.encodeComponent 保留 !'()* 原样，客户端签名时会把它们转成 %XX
-    return Uri.encodeComponent(segment).replaceAllMapped(
-      RegExp(r"[!'()*]"),
-      (match) => '%${match[0]!.codeUnitAt(0).toRadixString(16).toUpperCase()}',
-    );
+    return Uri.encodeComponent(
+      segment,
+    ).replaceAllMapped(RegExp(r"[!'()*]"), (match) => '%${match[0]!.codeUnitAt(0).toRadixString(16).toUpperCase()}');
   }
 
   static String _utcDateString(DateTime utc) {
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     String two(int value) => value.toString().padLeft(2, '0');
     return '${weekdays[utc.weekday - 1]}, ${two(utc.day)} '
         '${months[utc.month - 1]} ${utc.year} '
@@ -639,10 +564,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
       response = await _dio.request<dynamic>(
         '$accountHost$path',
         data: bodyString,
-        options: Options(
-          method: 'POST',
-          headers: signHeaders('POST', path, bodyString),
-        ),
+        options: Options(method: 'POST', headers: signHeaders('POST', path, bodyString)),
       );
     } on DioException catch (e) {
       throw FormatException('Loomy 账号接口请求失败：${e.message ?? e.type.name}');
@@ -650,14 +572,9 @@ class LoomyAuthService extends AccountAuthServiceBase {
     final payload = response.data;
     final map = payload is Map ? Map<String, dynamic>.from(payload) : null;
     if (map == null) {
-      throw FormatException(
-        'Loomy 账号接口返回了无法解析的内容（HTTP ${response.statusCode}）',
-      );
+      throw FormatException('Loomy 账号接口返回了无法解析的内容（HTTP ${response.statusCode}）');
     }
-    final envelope = _LoomyEnvelope.from(
-      status: response.statusCode ?? 0,
-      payload: map,
-    );
+    final envelope = _LoomyEnvelope.from(status: response.statusCode ?? 0, payload: map);
     if ((response.statusCode ?? 0) >= 400) {
       throw FormatException(
         'Loomy 账号接口返回 HTTP ${response.statusCode}'
@@ -668,12 +585,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
   }
 
   /// 网关的一次请求：同时带 `token` 与 `Authorization`
-  Future<_LoomyEnvelope> _tokenRequest(
-    String method,
-    String path,
-    String token, {
-    Map<String, dynamic>? data,
-  }) async {
+  Future<_LoomyEnvelope> _tokenRequest(String method, String path, String token, {Map<String, dynamic>? data}) async {
     final clean = _bareToken(token);
     if (clean.isEmpty) throw authExpired('');
     final Response<dynamic> response;
@@ -683,11 +595,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
         data: data,
         options: Options(
           method: method,
-          headers: {
-            'Content-Type': 'application/json;charset=utf-8',
-            'token': clean,
-            'Authorization': 'Bearer $clean',
-          },
+          headers: {'Content-Type': 'application/json;charset=utf-8', 'token': clean, 'Authorization': 'Bearer $clean'},
         ),
       );
     } on DioException catch (e) {
@@ -696,10 +604,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
     final payload = response.data;
     final map = payload is Map ? Map<String, dynamic>.from(payload) : null;
     if (map == null) throw const FormatException('Loomy 接口返回了无法解析的内容');
-    return _LoomyEnvelope.from(
-      status: response.statusCode ?? 0,
-      payload: map,
-    );
+    return _LoomyEnvelope.from(status: response.statusCode ?? 0, payload: map);
   }
 
   // ── 内部 ─────────────────────────────────────────────────
@@ -751,10 +656,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
   @visibleForTesting
   static ({String name, String? rate}) splitRateSuffix(String raw) {
     final trimmed = raw.trimRight();
-    for (final pair in [
-      (')', '('),
-      ('）', '（'),
-    ]) {
+    for (final pair in [(')', '('), ('）', '（')]) {
       if (!trimmed.endsWith(pair.$1)) continue;
       final body = trimmed.substring(0, trimmed.length - 1);
       final at = body.lastIndexOf(pair.$2);
@@ -778,10 +680,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
   /// 上下文窗口：实时目录给 `context_length`，旧版/兼容字段一并兜住
   static int? _contextOf(Map<dynamic, dynamic> entry) {
     final limit = entry['limit'];
-    final raw =
-        entry['context_window'] ??
-        entry['context_length'] ??
-        (limit is Map ? limit['context'] : null);
+    final raw = entry['context_window'] ?? entry['context_length'] ?? (limit is Map ? limit['context'] : null);
     if (raw is num) return raw.floor();
     return num.tryParse(raw?.toString().trim() ?? '')?.floor();
   }
@@ -796,9 +695,7 @@ class LoomyAuthService extends AccountAuthServiceBase {
     if (vision is bool) return vision;
     final modalities = caps['input_modalities'];
     if (modalities is! List) return null;
-    return modalities.any(
-      (item) => item.toString().trim().toLowerCase() == 'image',
-    );
+    return modalities.any((item) => item.toString().trim().toLowerCase() == 'image');
   }
 
   /// 旧版 DeepSeek 只认 `<image_base64>` 标记，不认 OpenAI 的 image_url 分段
@@ -833,14 +730,10 @@ class LoomyAuthService extends AccountAuthServiceBase {
         if (url is! String || !url.startsWith('data:')) continue;
         final tag = '<image_base64>$url</image_base64>';
         content.removeAt(i);
-        final prev = i > 0 && content[i - 1] is Map && content[i - 1]['type'] == 'text'
-            ? content[i - 1] as Map
-            : null;
+        final prev = i > 0 && content[i - 1] is Map && content[i - 1]['type'] == 'text' ? content[i - 1] as Map : null;
         if (prev != null) {
           prev['text'] = '${prev['text']}\n$tag';
-        } else if (i < content.length &&
-            content[i] is Map &&
-            content[i]['type'] == 'text') {
+        } else if (i < content.length && content[i] is Map && content[i]['type'] == 'text') {
           final next = content[i] as Map;
           next['text'] = '$tag\n${next['text']}';
         } else {
@@ -902,10 +795,8 @@ class LoomyAuthService extends AccountAuthServiceBase {
   // ── 测试用入口 ───────────────────────────────────────────
 
   @visibleForTesting
-  static Map<String, dynamic> requestHeadersForTest(
-    String token, {
-    String model = 'auto',
-  }) => LoomyAuthService.instance.requestHeaders(token, model: model);
+  static Map<String, dynamic> requestHeadersForTest(String token, {String model = 'auto'}) =>
+      LoomyAuthService.instance.requestHeaders(token, model: model);
 
   @visibleForTesting
   void resetForTest() {
@@ -923,17 +814,9 @@ class _LoomyEnvelope {
   final String message;
   final dynamic data;
 
-  const _LoomyEnvelope({
-    required this.status,
-    required this.code,
-    required this.message,
-    required this.data,
-  });
+  const _LoomyEnvelope({required this.status, required this.code, required this.message, required this.data});
 
-  factory _LoomyEnvelope.from({
-    required int status,
-    required Map<String, dynamic> payload,
-  }) {
+  factory _LoomyEnvelope.from({required int status, required Map<String, dynamic> payload}) {
     final rawData = payload['data'];
     return _LoomyEnvelope(
       status: status,

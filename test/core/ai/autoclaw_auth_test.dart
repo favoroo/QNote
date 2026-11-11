@@ -16,11 +16,7 @@ void main() {
   late _AutoClawAdapter adapter;
   late List<AiAccount> saved;
 
-  AiAccount account({
-    String id = 'a1',
-    String access = 'access-1',
-    String refresh = 'refresh-1',
-  }) {
+  AiAccount account({String id = 'a1', String access = 'access-1', String refresh = 'refresh-1'}) {
     final now = DateTime(2026, 1, 1);
     return AiAccount(
       id: id,
@@ -63,10 +59,7 @@ void main() {
           'code': 0,
           'data': {
             'access_token': access,
-            'refresh_token': _jwt(
-              exp: _futureSeconds() + 86400,
-              device: 'dev-1',
-            ),
+            'refresh_token': _jwt(exp: _futureSeconds() + 86400, device: 'dev-1'),
             'user_id': 'u1',
           },
         },
@@ -77,21 +70,13 @@ void main() {
         200,
         {
           'code': 0,
-          'data': {
-            'user_id': 'u1',
-            'user_name': '小浣熊用户',
-            'user_phone': '13800138000',
-          },
+          'data': {'user_id': 'u1', 'user_name': '小浣熊用户', 'user_phone': '13800138000'},
         },
       ),
     ];
 
     final challenge = await auth.sendLoginCode('pAutoClaw', '13800138000');
-    final result = await auth.verifyLoginCode(
-      'pAutoClaw',
-      challenge,
-      '123456',
-    );
+    final result = await auth.verifyLoginCode('pAutoClaw', challenge, '123456');
 
     expect(result.kind, AiAccount.kindAutoClaw);
     expect(result.uid, 'u1');
@@ -101,9 +86,7 @@ void main() {
     expect(saved.single.id, result.id);
 
     // 登录请求必须带短信验证码（数字）与同一个 device_id
-    final loginCall = adapter.calls.firstWhere(
-      (call) => call.path.contains('/agent-login'),
-    );
+    final loginCall = adapter.calls.firstWhere((call) => call.path.contains('/agent-login'));
     // 不能带尾斜杠：服务端会 307 到无斜杠地址，而 dart:io 的 POST 不跟随重定向
     expect(loginCall.path, '/userapi/v1/agent-login');
     final loginBody = loginCall.body;
@@ -111,19 +94,14 @@ void main() {
     expect(loginBody['device_id'], challenge.ticket);
     expect(loginBody['phone'], '13800138000');
     // WAF 签名头
-    final headers = adapter.calls
-        .firstWhere((call) => call.path.contains('/agent-send-code'))
-        .headers;
+    final headers = adapter.calls.firstWhere((call) => call.path.contains('/agent-send-code')).headers;
     expect(headers['X-Auth-Sign'], isNotEmpty);
     expect(headers['X-Product'], 'autoclaw');
     expect(headers['X-Channel'], 'AutoClaw4');
   });
 
   test('手机号格式不对时直接报错，不发请求', () async {
-    await expectLater(
-      auth.sendLoginCode('pAutoClaw', '12345'),
-      throwsA(isA<FormatException>()),
-    );
+    await expectLater(auth.sendLoginCode('pAutoClaw', '12345'), throwsA(isA<FormatException>()));
     expect(adapter.calls, isEmpty);
   });
 
@@ -131,39 +109,21 @@ void main() {
     auth.httpClientAdapterForTest = const _EmptyBodyAdapter(307);
 
     await expectLater(
-      auth.verifyLoginCode(
-        'pAutoClaw',
-        const AccountSmsChallenge(phone: '13800138000', ticket: 'dev-1'),
-        '123456',
-      ),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          contains('HTTP 307'),
-        ),
-      ),
+      auth.verifyLoginCode('pAutoClaw', const AccountSmsChallenge(phone: '13800138000', ticket: 'dev-1'), '123456'),
+      throwsA(isA<FormatException>().having((error) => error.message, 'message', contains('HTTP 307'))),
     );
   });
 
   test('静态模型目录带上下文与识图，倍率留空（厂商不暴露）', () async {
     final models = await auth.fetchModelsForProvider('pAutoClaw');
 
-    expect(models.map((m) => m.id), [
-      'zai_auto',
-      'zai_auto-fast',
-      'zaicoding_glm-5.3',
-      'zai_glm-5.3-flash',
-    ]);
+    expect(models.map((m) => m.id), ['zai_auto', 'zai_auto-fast', 'zaicoding_glm-5.3', 'zai_glm-5.3-flash']);
     expect(models.every((m) => m.contextWindow == 1048576), isTrue);
     // AutoClaw 按积分池计费、没有逐模型倍率接口：不能默认成 1× 或免费
     expect(models.every((m) => m.rate == null), isTrue);
     expect(models.every((m) => m.isFree), isFalse);
     expect(models.first.supportsVision, isTrue);
-    expect(
-      models.firstWhere((m) => m.id == 'zaicoding_glm-5.3').supportsVision,
-      isFalse,
-    );
+    expect(models.firstWhere((m) => m.id == 'zaicoding_glm-5.3').supportsVision, isFalse);
   });
 
   test('额度：总余额 + 钱包拆分 + 今日签到状态', () async {
@@ -189,11 +149,7 @@ void main() {
         {
           'code': 0,
           'data': [
-            {
-              'task_id': 'daily_signin',
-              'status': 'completed',
-              'reward_points': 5,
-            },
+            {'task_id': 'daily_signin', 'status': 'completed', 'reward_points': 5},
           ],
         },
       ),
@@ -215,11 +171,7 @@ void main() {
         200,
         {
           'code': 0,
-          'data': {
-            'success': true,
-            'reward_points': 5,
-            'continuous_days': 3,
-          },
+          'data': {'success': true, 'reward_points': 5, 'continuous_days': 3},
         },
       ),
     ];
@@ -239,11 +191,7 @@ void main() {
         200,
         {
           'code': 0,
-          'data': {
-            'success': false,
-            'already_completed': true,
-            'reward_points': 5,
-          },
+          'data': {'success': false, 'already_completed': true, 'reward_points': 5},
         },
       ),
     ];
@@ -260,23 +208,20 @@ void main() {
       (401, {'code': 401, 'message': 'authorization invalid'}),
       (
         200,
-        {'code': 0, 'data': {'total_balance': 88, 'wallets': <Map>[]}},
+        {
+          'code': 0,
+          'data': {'total_balance': 88, 'wallets': <Map>[]},
+        },
       ),
     ];
-    AutoClawAuthService.accountRefresherForTest = (current) async =>
-        current.copyWith(accessToken: 'access-2');
+    AutoClawAuthService.accountRefresherForTest = (current) async => current.copyWith(accessToken: 'access-2');
 
     final quota = await auth.fetchQuota(account());
 
     expect(quota.balance, 88);
-    final walletCalls = adapter.calls
-        .where((call) => call.path.contains('/wallets'))
-        .toList();
+    final walletCalls = adapter.calls.where((call) => call.path.contains('/wallets')).toList();
     expect(walletCalls.length, 2);
-    expect(
-      walletCalls.last.headers['Authorization'],
-      'Bearer access-2',
-    );
+    expect(walletCalls.last.headers['Authorization'], 'Bearer access-2');
   });
 
   test('刷新后仍被拒：标记账号过期并提示重新登录', () async {
@@ -284,18 +229,11 @@ void main() {
       (401, {'code': 401, 'message': 'authorization invalid'}),
       (401, {'code': 401, 'message': 'authorization invalid'}),
     ];
-    AutoClawAuthService.accountRefresherForTest = (current) async =>
-        current.copyWith(accessToken: 'access-2');
+    AutoClawAuthService.accountRefresherForTest = (current) async => current.copyWith(accessToken: 'access-2');
 
     await expectLater(
       auth.fetchQuota(account()),
-      throwsA(
-        isA<AccountAuthRequiredException>().having(
-          (error) => error.message,
-          'message',
-          'AutoClaw 登录已失效，请重新登录',
-        ),
-      ),
+      throwsA(isA<AccountAuthRequiredException>().having((error) => error.message, 'message', 'AutoClaw 登录已失效，请重新登录')),
     );
     expect(saved.single.status, AiAccount.statusExpired);
   });
@@ -307,22 +245,13 @@ void main() {
 
     await expectLater(
       auth.fetchQuota(account()),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          contains('额度已用完'),
-        ),
-      ),
+      throwsA(isA<FormatException>().having((error) => error.message, 'message', contains('额度已用完'))),
     );
     expect(saved, isEmpty);
   });
 
   test('网关请求头：X-Authorization + 国内客户端指纹', () {
-    final headers = AutoClawAuthService.requestHeadersForTest(
-      'access-1',
-      model: 'zaicoding_glm-5.3',
-    );
+    final headers = AutoClawAuthService.requestHeadersForTest('access-1', model: 'zaicoding_glm-5.3');
 
     expect(headers['X-Authorization'], 'Bearer access-1');
     expect(headers['Authorization'], isNull);
@@ -349,22 +278,14 @@ void main() {
     expect(body.containsKey('tools'), isFalse);
     expect(body.containsKey('tool_choice'), isFalse);
     final messages = body['messages'] as List;
-    expect(
-      (messages.first as Map)['content'],
-      startsWith(AutoClawAuthService.officialSystemPrompt),
-    );
+    expect((messages.first as Map)['content'], startsWith(AutoClawAuthService.officialSystemPrompt));
     expect((messages.first as Map)['content'], contains('你是小Q'));
   });
 
   test('没有 token 时不发请求，直接要求重新登录', () async {
-    AutoClawAuthService.accountsLoaderForTest = (_) async => [
-      account(access: ''),
-    ];
+    AutoClawAuthService.accountsLoaderForTest = (_) async => [account(access: '')];
 
-    await expectLater(
-      auth.fetchQuota(account(access: '')),
-      throwsA(isA<AccountAuthRequiredException>()),
-    );
+    await expectLater(auth.fetchQuota(account(access: '')), throwsA(isA<AccountAuthRequiredException>()));
     expect(adapter.calls, isEmpty);
   });
 }
@@ -374,13 +295,8 @@ int _futureSeconds() {
 }
 
 String _jwt({int? exp, String sub = 'u1', String device = 'dev-1'}) {
-  String encode(Map<String, dynamic> value) =>
-      base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-  return '${encode({'alg': 'none'})}.${encode({
-        'exp': exp ?? _futureSeconds(),
-        'sub': sub,
-        'device_id': device,
-      })}.sig';
+  String encode(Map<String, dynamic> value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+  return '${encode({'alg': 'none'})}.${encode({'exp': exp ?? _futureSeconds(), 'sub': sub, 'device_id': device})}.sig';
 }
 
 class _Call {
@@ -388,11 +304,7 @@ class _Call {
   final Map<String, dynamic> body;
   final Map<String, dynamic> headers;
 
-  const _Call({
-    required this.path,
-    required this.body,
-    required this.headers,
-  });
+  const _Call({required this.path, required this.body, required this.headers});
 }
 
 class _AutoClawAdapter implements HttpClientAdapter {
@@ -407,9 +319,7 @@ class _AutoClawAdapter implements HttpClientAdapter {
   ) async {
     final path = options.uri.path;
     final data = options.data;
-    final body = data is Map
-        ? Map<String, dynamic>.from(data)
-        : <String, dynamic>{};
+    final body = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
     calls.add(
       _Call(
         path: path,
@@ -435,14 +345,13 @@ class _AutoClawAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 
-  static ResponseBody _json(int status, Map<String, dynamic> body) =>
-      ResponseBody.fromString(
-        jsonEncode(body),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
+  static ResponseBody _json(int status, Map<String, dynamic> body) => ResponseBody.fromString(
+    jsonEncode(body),
+    status,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
 }
 
 /// 模拟 dart:io 对 POST 307 的行为：返回空 body，不自动跟随重定向

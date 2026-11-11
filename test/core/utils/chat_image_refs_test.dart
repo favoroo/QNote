@@ -16,13 +16,7 @@ ChatMessage _generatedToolMessage(List<String> paths) {
 }
 
 ChatSession _session(String id, List<ChatMessage> messages) {
-  return ChatSession(
-    id: id,
-    title: '测试对话',
-    messages: messages,
-    createdAt: DateTime.now(),
-    updatedAt: DateTime.now(),
-  );
+  return ChatSession(id: id, title: '测试对话', messages: messages, createdAt: DateTime.now(), updatedAt: DateTime.now());
 }
 
 void main() {
@@ -30,9 +24,7 @@ void main() {
     test('命中 POSIX 绝对路径里的 images/ai 文件', () {
       final json = jsonEncode([
         {
-          'paths': [
-            '/data/user/0/com.appone.qnote_flutter/app_document/images/ai/7f3a.png',
-          ],
+          'paths': ['/data/user/0/com.appone.qnote_flutter/app_document/images/ai/7f3a.png'],
         },
       ]);
       expect(extractChatAiImageKeys(json), {'7f3a.png'});
@@ -45,10 +37,7 @@ void main() {
     });
 
     test('文件名归一为小写 basename，便于与目录实际文件比对', () {
-      expect(
-        extractChatAiImageKeys('/x/images/ai/A1B2.PNG 和 /y/images/ai/A1B2.PNG'),
-        {'a1b2.png'},
-      );
+      expect(extractChatAiImageKeys('/x/images/ai/A1B2.PNG 和 /y/images/ai/A1B2.PNG'), {'a1b2.png'});
     });
 
     test('data URI、网络外链与相册路径都不参与回收', () {
@@ -61,10 +50,7 @@ void main() {
     });
 
     test('images/note 与 images/diary 目录下的文件不属于生图回收范围', () {
-      expect(
-        extractChatAiImageKeys('/x/images/note/n1.png /x/images/diary/d2.jpg'),
-        isEmpty,
-      );
+      expect(extractChatAiImageKeys('/x/images/note/n1.png /x/images/diary/d2.jpg'), isEmpty);
     });
 
     test('空文本与 null 返回空集合', () {
@@ -86,10 +72,7 @@ void main() {
 
     test('多张生成图全部收集', () {
       final session = _session('s2', [
-        _generatedToolMessage([
-          '/a/images/ai/one.png',
-          '/a/images/ai/two.webp',
-        ]),
+        _generatedToolMessage(['/a/images/ai/one.png', '/a/images/ai/two.webp']),
       ]);
       expect(sessionAiImageKeys(session), {'one.png', 'two.webp'});
     });
@@ -110,20 +93,13 @@ void main() {
     });
 
     test('无图会话计数为 0', () {
-      final session = _session(
-        's4',
-        [ChatMessage(role: 'user', content: '你好')],
-      );
+      final session = _session('s4', [ChatMessage(role: 'user', content: '你好')]);
       expect(countSessionImageRefs(session), 0);
     });
 
     test('data URI 与文件路径不会被算作同一张图', () {
       final session = _session('s5', [
-        ChatMessage(
-          role: 'user',
-          content: '',
-          images: ['data:image/png;base64,AAA', '/x/images/ai/bbb.png'],
-        ),
+        ChatMessage(role: 'user', content: '', images: ['data:image/png;base64,AAA', '/x/images/ai/bbb.png']),
       ]);
       expect(countSessionImageRefs(session), 2);
     });

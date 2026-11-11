@@ -17,21 +17,16 @@ class ModelPickerResult {
 /// 取默认生效的模型引用（默认厂商首个已启用模型 → 首个可用厂商首个已启用模型）
 AiModelRef? defaultModelRef(List<AiProvider> providers) {
   final provider =
-      providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
-      providers.where((p) => p.isUsable).firstOrNull;
+      providers.where((p) => p.isDefault && p.isUsable).firstOrNull ?? providers.where((p) => p.isUsable).firstOrNull;
   final model = provider?.firstModel;
-  return model == null
-      ? null
-      : AiModelRef(providerId: provider!.id, modelName: model.id);
+  return model == null ? null : AiModelRef(providerId: provider!.id, modelName: model.id);
 }
 
 /// 厂商条目里全部已启用模型（按厂商顺序展开）
 ///
 /// 已停用的厂商整条跳过：选择器、路由组成员源与页面空态判断都汇聚到这里，
 /// 在入口过滤一次就不必各处再判 `provider.enabled`。
-List<({AiProvider provider, AiProviderModel model})> enabledModelEntries(
-  List<AiProvider> providers,
-) {
+List<({AiProvider provider, AiProviderModel model})> enabledModelEntries(List<AiProvider> providers) {
   final entries = <({AiProvider provider, AiProviderModel model})>[];
   for (final provider in providers) {
     if (!provider.enabled) continue;
@@ -45,11 +40,7 @@ List<({AiProvider provider, AiProviderModel model})> enabledModelEntries(
 /// 模型引用 → 展示名（如「deepseek · deepseek-v4-flash」）
 ///
 /// 厂商或模型已被删除时回退到裸模型名，保证界面不出现空标题。
-String aiModelDisplayName(
-  AiModelRef? ref,
-  List<AiProvider> providers, {
-  String fallback = '未配置模型',
-}) {
+String aiModelDisplayName(AiModelRef? ref, List<AiProvider> providers, {String fallback = '未配置模型'}) {
   if (ref == null) return fallback;
   final provider = providers.where((p) => p.id == ref.providerId).firstOrNull;
   if (provider == null) return ref.modelName;
@@ -61,12 +52,8 @@ String aiModelDisplayName(
 int routeGroupLiveMemberCount(AiRouteGroup group, List<AiProvider> providers) {
   var live = 0;
   for (final member in group.enabledMembers) {
-    final provider = providers
-        .where((p) => p.id == member.providerId)
-        .firstOrNull;
-    if (provider != null &&
-        provider.enabled &&
-        provider.hasModel(member.modelName)) {
+    final provider = providers.where((p) => p.id == member.providerId).firstOrNull;
+    if (provider != null && provider.enabled && provider.hasModel(member.modelName)) {
       live++;
     }
   }
@@ -107,9 +94,7 @@ String aiBindingShortName(
     return group == null ? fallback : group.name;
   }
   final provider = providers.where((p) => p.id == ref.providerId).firstOrNull;
-  final model = provider?.models
-      .where((m) => m.id == ref.modelName)
-      .firstOrNull;
+  final model = provider?.models.where((m) => m.id == ref.modelName).firstOrNull;
   return model?.name ?? ref.modelName;
 }
 
@@ -207,18 +192,10 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
           Expanded(
             child: Text(
               '路由组',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: colorScheme.outline,
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.labelMedium?.copyWith(color: colorScheme.outline, fontWeight: FontWeight.bold),
             ),
           ),
-          Text(
-            '多模型轮流/故障转移',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.outline,
-            ),
-          ),
+          Text('多模型轮流/故障转移', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline)),
         ],
       ),
     );
@@ -230,14 +207,10 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
     final colorScheme = theme.colorScheme;
     final allEntries = enabledModelEntries(widget.providers);
     // 没有成员的组绑上也是坏体验，这里直接不出现在选择器里
-    final allGroups = widget.groups
-        .where((g) => g.enabledMembers.isNotEmpty && _matchesGroup(g))
-        .toList();
+    final allGroups = widget.groups.where((g) => g.enabledMembers.isNotEmpty && _matchesGroup(g)).toList();
     // 生图角色不套用默认对话模型，否则筛选后的列表里会多出一个
     // 被选中标记的对话模型，看起来像「已经选了它」
-    final effectiveSelected =
-        widget.selected ??
-        (widget.imageGeneration ? null : defaultModelRef(widget.providers));
+    final effectiveSelected = widget.selected ?? (widget.imageGeneration ? null : defaultModelRef(widget.providers));
     final onlyImageModels = widget.imageGeneration && _onlyImageModels;
     final selected = effectiveSelected;
     // 已绑定的模型始终保留：即使它没被识别成生图模型，用户也能看到当前选择
@@ -258,13 +231,9 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
     // 厂商分组按 ID 过滤：entries 已经决定了哪些模型可见（生图筛选/保留已绑定）
     final visibleIds = <String, Set<String>>{};
     for (final entry in entries) {
-      visibleIds
-          .putIfAbsent(entry.provider.id, () => <String>{})
-          .add(entry.model.id);
+      visibleIds.putIfAbsent(entry.provider.id, () => <String>{}).add(entry.model.id);
     }
-    final imageModelCount = allEntries
-        .where((entry) => isImageGenerationModel(entry.model))
-        .length;
+    final imageModelCount = allEntries.where((entry) => isImageGenerationModel(entry.model)).length;
     final hasModels = entries.isNotEmpty || groups.isNotEmpty;
     // 模型少时不做搜索框，减少一个视觉层级
     final showSearch = allEntries.length > 8 || allGroups.isNotEmpty;
@@ -281,12 +250,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    widget.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text(widget.title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 ),
                 IconButton(
                   tooltip: '关闭',
@@ -325,14 +289,9 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                 alignment: Alignment.centerLeft,
                 child: FilterChip(
                   selected: _onlyImageModels,
-                  onSelected: (value) =>
-                      setState(() => _onlyImageModels = value),
+                  onSelected: (value) => setState(() => _onlyImageModels = value),
                   visualDensity: VisualDensity.compact,
-                  label: Text(
-                    imageModelCount == 0
-                        ? '仅看生图模型'
-                        : '仅看生图模型（$imageModelCount）',
-                  ),
+                  label: Text(imageModelCount == 0 ? '仅看生图模型' : '仅看生图模型（$imageModelCount）'),
                 ),
               ),
             ),
@@ -345,10 +304,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                       ? const Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            NoModelGuideCard(
-                              scene: '',
-                              padding: EdgeInsets.zero,
-                            ),
+                            NoModelGuideCard(scene: '', padding: EdgeInsets.zero),
                             SizedBox(height: 8),
                           ],
                         )
@@ -361,14 +317,11 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                               '厂商目录没声明生图能力，模型名里也没有生图关键词。'
                               '可以显示全部模型，手动选择你的生图中转。',
                               textAlign: TextAlign.center,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
+                              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 12),
                             FilledButton.tonal(
-                              onPressed: () =>
-                                  setState(() => _onlyImageModels = false),
+                              onPressed: () => setState(() => _onlyImageModels = false),
                               child: const Text('显示全部模型'),
                             ),
                             const SizedBox(height: 8),
@@ -388,45 +341,26 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                     ...groups.map((group) {
                       final ref = AiModelRef.routeGroup(group.id);
                       final isSelected = ref == effectiveSelected;
-                      final live = routeGroupLiveMemberCount(
-                        group,
-                        widget.providers,
-                      );
+                      final live = routeGroupLiveMemberCount(group, widget.providers);
                       return ListTile(
                         dense: true,
                         leading: Icon(
                           Icons.alt_route_rounded,
                           size: 20,
-                          color: isSelected
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant,
+                          color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
                         ),
                         title: Text(
                           group.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: isSelected ? colorScheme.primary : null,
-                          ),
+                          style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
                         ),
                         subtitle: Text(
-                          live == 0
-                              ? '${group.strategy.label} · 模型均已停用'
-                              : '$live 个模型 · ${group.strategy.label}',
+                          live == 0 ? '${group.strategy.label} · 模型均已停用' : '$live 个模型 · ${group.strategy.label}',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: live == 0
-                                ? colorScheme.error
-                                : colorScheme.onSurfaceVariant,
+                            color: live == 0 ? colorScheme.error : colorScheme.onSurfaceVariant,
                           ),
                         ),
-                        trailing: isSelected
-                            ? Icon(
-                                Icons.check_rounded,
-                                size: 20,
-                                color: colorScheme.primary,
-                              )
-                            : null,
-                        onTap: () =>
-                            Navigator.of(context).pop(ModelPickerResult(ref)),
+                        trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary) : null,
+                        onTap: () => Navigator.of(context).pop(ModelPickerResult(ref)),
                       );
                     }),
                     const SizedBox(height: 2),
@@ -436,11 +370,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                     if (!provider.enabled) return const <Widget>[];
                     final visible = visibleIds[provider.id];
                     final models = provider.models
-                        .where(
-                          (m) =>
-                              (visible != null && visible.contains(m.id)) &&
-                              _matches(provider, m),
-                        )
+                        .where((m) => (visible != null && visible.contains(m.id)) && _matches(provider, m))
                         .toList();
                     if (models.isEmpty) return const <Widget>[];
                     return <Widget>[
@@ -458,30 +388,18 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                               ),
                             ),
                             if (provider.isDefault)
-                              Text(
-                                '默认',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: colorScheme.primary,
-                                ),
-                              ),
+                              Text('默认', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.primary)),
                           ],
                         ),
                       ),
                       ...models.map((model) {
-                        final ref = AiModelRef(
-                          providerId: provider.id,
-                          modelName: model.id,
-                        );
+                        final ref = AiModelRef(providerId: provider.id, modelName: model.id);
                         final isSelected = ref == effectiveSelected;
                         return ListTile(
                           dense: true,
                           leading: Icon(
-                            isSelected
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked,
-                            color: isSelected
-                                ? colorScheme.primary
-                                : colorScheme.onSurfaceVariant,
+                            isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                            color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
                             size: 20,
                           ),
                           title: Text(
@@ -492,8 +410,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                             ),
                           ),
                           subtitle: _modelSubtitle(theme, model),
-                          onTap: () =>
-                              Navigator.of(context).pop(ModelPickerResult(ref)),
+                          onTap: () => Navigator.of(context).pop(ModelPickerResult(ref)),
                         );
                       }),
                     ];
@@ -512,10 +429,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
 /// 按积分计费的厂商（小浣熊、Loomy）里，倍率与限免状态直接决定一次对话花多少
 /// 额度，选模型时必须和模型名一起看到；两者都没有时返回 null，不留空行。
 String? modelMetaLine(AiProviderModel model) {
-  final line = [
-    if (model.name != model.id) model.id,
-    ...modelMetaBadges(model),
-  ].join(' · ');
+  final line = [if (model.name != model.id) model.id, ...modelMetaBadges(model)].join(' · ');
   return line.isEmpty ? null : line;
 }
 
@@ -523,10 +437,5 @@ String? modelMetaLine(AiProviderModel model) {
 Widget? _modelSubtitle(ThemeData theme, AiProviderModel model) {
   final line = modelMetaLine(model);
   if (line == null) return null;
-  return Text(
-    line,
-    style: theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    ),
-  );
+  return Text(line, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant));
 }

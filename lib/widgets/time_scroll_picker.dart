@@ -7,13 +7,9 @@ class TimeScrollPicker extends StatefulWidget {
   final int initialMinute;
   final ValueChanged<TimeOfDay> onTimeSelected;
 
-  TimeScrollPicker({
-    super.key,
-    int? initialHour,
-    int? initialMinute,
-    required this.onTimeSelected,
-  })  : initialHour = initialHour ?? TimeOfDay.now().hour,
-        initialMinute = initialMinute ?? TimeOfDay.now().minute;
+  TimeScrollPicker({super.key, int? initialHour, int? initialMinute, required this.onTimeSelected})
+    : initialHour = initialHour ?? TimeOfDay.now().hour,
+      initialMinute = initialMinute ?? TimeOfDay.now().minute;
 
   @override
   State<TimeScrollPicker> createState() => _TimeScrollPickerState();
@@ -67,9 +63,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _isKeyboardMode
-            ? _buildKeyboardInput(theme, height)
-            : _buildScrollPickers(theme, height),
+        _isKeyboardMode ? _buildKeyboardInput(theme, height) : _buildScrollPickers(theme, height),
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: () {
@@ -90,10 +84,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
             });
           },
           icon: Icon(_isKeyboardMode ? Icons.view_day_outlined : Icons.keyboard_outlined, size: 14),
-          label: Text(
-            _isKeyboardMode ? '滑动选择' : '键盘输入',
-            style: const TextStyle(fontSize: 12),
-          ),
+          label: Text(_isKeyboardMode ? '滑动选择' : '键盘输入', style: const TextStyle(fontSize: 12)),
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             minimumSize: Size.zero,
@@ -128,11 +119,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                         index.toString().padLeft(2, '0'),
                         style: TextStyle(
                           fontSize: 22,
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurfaceVariant,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                           height: 1.0,
                           leadingDistribution: TextLeadingDistribution.even,
                         ),
@@ -178,11 +166,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                         index.toString().padLeft(2, '0'),
                         style: TextStyle(
                           fontSize: 22,
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurfaceVariant,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                           height: 1.0,
                           leadingDistribution: TextLeadingDistribution.even,
                         ),
@@ -225,10 +210,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                 counterText: '',
                 filled: true,
                 fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
@@ -280,10 +262,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                 counterText: '',
                 filled: true,
                 fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
@@ -314,14 +293,8 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
           decoration: BoxDecoration(
             color: Colors.transparent,
             border: Border(
-              top: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-                width: 1,
-              ),
-              bottom: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-                width: 1,
-              ),
+              top: BorderSide(color: theme.colorScheme.outlineVariant, width: 1),
+              bottom: BorderSide(color: theme.colorScheme.outlineVariant, width: 1),
             ),
           ),
         ),
@@ -330,10 +303,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
   }
 
   void _notifyChanged() {
-    widget.onTimeSelected(TimeOfDay(
-      hour: _selectedHour,
-      minute: _selectedMinute,
-    ));
+    widget.onTimeSelected(TimeOfDay(hour: _selectedHour, minute: _selectedMinute));
   }
 }
 
@@ -345,10 +315,7 @@ Future<TimeScrollPickerResult?> showTimeScrollPicker({
   return showDialog<TimeScrollPickerResult>(
     context: context,
     builder: (context) {
-      return _TimeScrollPickerDialog(
-        initialHour: initialHour,
-        initialMinute: initialMinute,
-      );
+      return _TimeScrollPickerDialog(initialHour: initialHour, initialMinute: initialMinute);
     },
   );
 }
@@ -388,14 +355,8 @@ class _TimeScrollPickerDialogState extends State<_TimeScrollPickerDialog> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
-                  ),
-                  Text(
-                    '选择时间',
-                    style: theme.textTheme.titleMedium,
-                  ),
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+                  Text('选择时间', style: theme.textTheme.titleMedium),
                   TextButton(
                     onPressed: () {
                       Navigator.pop(

@@ -10,25 +10,17 @@ enum NoteSegmentType { text, image, link }
 
 /// 一段笔记内容的值对象，只承载解析结果，不持有任何 UI 资源。
 class NoteSegmentData {
-  const NoteSegmentData._({
-    required this.type,
-    this.text = '',
-    this.path = '',
-    this.url,
-    this.title,
-  });
+  const NoteSegmentData._({required this.type, this.text = '', this.path = '', this.url, this.title});
 
   /// 纯文本段。
-  const NoteSegmentData.text(String text)
-      : this._(type: NoteSegmentType.text, text: text);
+  const NoteSegmentData.text(String text) : this._(type: NoteSegmentType.text, text: text);
 
   /// 图片段；[path] 为图片本地路径或网络地址。
-  const NoteSegmentData.image(String path)
-      : this._(type: NoteSegmentType.image, path: path);
+  const NoteSegmentData.image(String path) : this._(type: NoteSegmentType.image, path: path);
 
   /// 链接段；[title] 为空时按裸 URL 输出。
   const NoteSegmentData.link({required String url, String? title})
-      : this._(type: NoteSegmentType.link, url: url, title: title);
+    : this._(type: NoteSegmentType.link, url: url, title: title);
 
   final NoteSegmentType type;
 
@@ -65,10 +57,7 @@ class NoteSegmentData {
 
 /// 行内链接切分结果。
 class NoteInlineSplitResult {
-  const NoteInlineSplitResult({
-    required this.segments,
-    required this.lastMatchIndex,
-  });
+  const NoteInlineSplitResult({required this.segments, required this.lastMatchIndex});
 
   /// 切分后的分段；可能以链接段结尾，调用方按需补一个空文本段。
   final List<NoteSegmentData> segments;
@@ -111,10 +100,7 @@ final RegExp _trailingPunctuationPattern = RegExp(r'[\.\,\?\!\:\;]+$');
 ///
 /// [plainCode] 为 true 时（html/svg/json/code 笔记）整篇作为单个文本段，
 /// 不解析任何图片/链接语法。
-List<NoteSegmentData> parseNoteSegments(
-  String content, {
-  bool plainCode = false,
-}) {
+List<NoteSegmentData> parseNoteSegments(String content, {bool plainCode = false}) {
   if (plainCode) {
     return <NoteSegmentData>[NoteSegmentData.text(content)];
   }
@@ -177,9 +163,7 @@ NoteInlineSplitResult splitNoteTextByLinks(String text) {
 
     final markdownTitle = match.group(1);
     if (markdownTitle != null) {
-      segments.add(
-        NoteSegmentData.link(url: match.group(2)!, title: markdownTitle),
-      );
+      segments.add(NoteSegmentData.link(url: match.group(2)!, title: markdownTitle));
     } else {
       var url = match.group(3)!;
       final punctuationMatch = _trailingPunctuationPattern.firstMatch(url);
@@ -204,10 +188,7 @@ NoteInlineSplitResult splitNoteTextByLinks(String text) {
     segments.add(NoteSegmentData.text(remaining));
   }
 
-  return NoteInlineSplitResult(
-    segments: segments,
-    lastMatchIndex: lastMatchIndex,
-  );
+  return NoteInlineSplitResult(segments: segments, lastMatchIndex: lastMatchIndex);
 }
 
 /// 文本中是否存在可识别的行内链接（Markdown 链接或裸 URL）。

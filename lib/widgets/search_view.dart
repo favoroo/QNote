@@ -90,10 +90,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).pop()),
         title: TextField(
           controller: _searchController,
           focusNode: _focusNode,
@@ -102,9 +99,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
           decoration: InputDecoration(
             hintText: '搜索日记或笔记',
             border: InputBorder.none,
-            hintStyle: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            hintStyle: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
         actions: [
@@ -128,58 +123,46 @@ class _SearchViewState extends ConsumerState<SearchView> {
         switchInCurve: AppCurves.emphasized,
         switchOutCurve: AppCurves.exit,
         layoutBuilder: (currentChild, previousChildren) {
-          return Stack(
-            alignment: Alignment.topCenter,
-            children: <Widget>[
-              ...previousChildren,
-              ?currentChild,
-            ],
-          );
+          return Stack(alignment: Alignment.topCenter, children: <Widget>[...previousChildren, ?currentChild]);
         },
         child: _isSearching
-            ? const Center(
-                key: ValueKey('search_loading'),
-                child: CircularProgressIndicator(),
-              )
+            ? const Center(key: ValueKey('search_loading'), child: CircularProgressIndicator())
             : showEmpty
-                ? KeyedSubtree(
-                    key: const ValueKey('search_empty'),
-                    child: _buildEmptyState(theme),
-                  )
-                : KeyedSubtree(
-                    key: const ValueKey('search_results'),
-                    child: ListView(
-                      children: [
-                        if (_diaryResults.isNotEmpty) ...[
-                          _buildSectionHeader(theme, '日记', Icons.book),
-                          ..._diaryResults.map(
-                            (d) => _DiaryResultTile(
-                              diary: d,
-                              query: _query,
-                              onTap: () {
-                                widget.onResultSelected?.call(d);
-                                Navigator.of(context).pop(d);
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        if (_noteResults.isNotEmpty) ...[
-                          _buildSectionHeader(theme, '笔记', Icons.note),
-                          ..._noteResults.map(
-                            (n) => _NoteResultTile(
-                              note: n,
-                              query: _query,
-                              onTap: () {
-                                widget.onResultSelected?.call(n);
-                                Navigator.of(context).pop(n);
-                              },
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+            ? KeyedSubtree(key: const ValueKey('search_empty'), child: _buildEmptyState(theme))
+            : KeyedSubtree(
+                key: const ValueKey('search_results'),
+                child: ListView(
+                  children: [
+                    if (_diaryResults.isNotEmpty) ...[
+                      _buildSectionHeader(theme, '日记', Icons.book),
+                      ..._diaryResults.map(
+                        (d) => _DiaryResultTile(
+                          diary: d,
+                          query: _query,
+                          onTap: () {
+                            widget.onResultSelected?.call(d);
+                            Navigator.of(context).pop(d);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    if (_noteResults.isNotEmpty) ...[
+                      _buildSectionHeader(theme, '笔记', Icons.note),
+                      ..._noteResults.map(
+                        (n) => _NoteResultTile(
+                          note: n,
+                          query: _query,
+                          onTap: () {
+                            widget.onResultSelected?.call(n);
+                            Navigator.of(context).pop(n);
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -193,10 +176,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
           const SizedBox(width: 8),
           Text(
             title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
+            style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -208,18 +188,9 @@ class _SearchViewState extends ConsumerState<SearchView> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.search,
-            size: 72,
-            color: theme.colorScheme.outlineVariant,
-          ),
+          Icon(Icons.search, size: 72, color: theme.colorScheme.outlineVariant),
           const SizedBox(height: 16),
-          Text(
-            '未找到相关内容',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text('未找到相关内容', style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -231,18 +202,12 @@ class _DiaryResultTile extends StatelessWidget {
   final String query;
   final VoidCallback onTap;
 
-  const _DiaryResultTile({
-    required this.diary,
-    required this.query,
-    required this.onTap,
-  });
+  const _DiaryResultTile({required this.diary, required this.query, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final contentPreview = diary.content.length > 80
-        ? '${diary.content.substring(0, 80)}...'
-        : diary.content;
+    final contentPreview = diary.content.length > 80 ? '${diary.content.substring(0, 80)}...' : diary.content;
 
     return ListTile(
       leading: Icon(Icons.book_outlined, color: theme.colorScheme.primary),
@@ -257,9 +222,7 @@ class _DiaryResultTile extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             diary.time.toIso8601String().substring(0, 10),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -273,11 +236,7 @@ class _NoteResultTile extends StatelessWidget {
   final String query;
   final VoidCallback onTap;
 
-  const _NoteResultTile({
-    required this.note,
-    required this.query,
-    required this.onTap,
-  });
+  const _NoteResultTile({required this.note, required this.query, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -295,9 +254,7 @@ class _NoteResultTile extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             note.updatedAt.toIso8601String().substring(0, 10),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),

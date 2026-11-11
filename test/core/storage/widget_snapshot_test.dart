@@ -62,19 +62,12 @@ void main() {
 
   group('WidgetSnapshotRepository', () {
     test('表已由数据库迁移创建，且支持 put/get 往返', () async {
-      final tables = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
-        [WidgetSnapshotRepository.table],
-      );
+      final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", [
+        WidgetSnapshotRepository.table,
+      ]);
       expect(tables, hasLength(1));
 
-      await repo.put(
-        WidgetSnapshot(
-          key: 'todo.pending_today',
-          valueNum: 3,
-          updatedAt: DateTime.now(),
-        ),
-      );
+      await repo.put(WidgetSnapshot(key: 'todo.pending_today', valueNum: 3, updatedAt: DateTime.now()));
       final loaded = await repo.get('todo.pending_today');
       expect(loaded?.intValue, 3);
       expect(loaded?.date, '');

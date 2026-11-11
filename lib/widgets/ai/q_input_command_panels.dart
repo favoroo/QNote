@@ -14,12 +14,7 @@ class SlashCommandPanel extends StatelessWidget {
   /// 选中某个技能（参数为技能名）
   final ValueChanged<String> onSelected;
 
-  const SlashCommandPanel({
-    super.key,
-    required this.skills,
-    required this.query,
-    required this.onSelected,
-  });
+  const SlashCommandPanel({super.key, required this.skills, required this.query, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -31,9 +26,7 @@ class SlashCommandPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-        ),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -43,11 +36,7 @@ class SlashCommandPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
             child: Row(
               children: [
-                Icon(
-                  Icons.bolt_rounded,
-                  size: 14,
-                  color: colorScheme.primary,
-                ),
+                Icon(Icons.bolt_rounded, size: 14, color: colorScheme.primary),
                 const SizedBox(width: 4),
                 Text(
                   '斜杠命令',
@@ -69,17 +58,10 @@ class SlashCommandPanel extends StatelessWidget {
           Flexible(
             child: skills.isEmpty
                 ? Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                     child: Text(
-                      query.isEmpty
-                          ? '暂无可用技能'
-                          : '没有匹配「$query」的技能，按普通消息发送',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      query.isEmpty ? '暂无可用技能' : '没有匹配「$query」的技能，按普通消息发送',
+                      style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                     ),
                   )
                 : ListView.builder(
@@ -89,16 +71,12 @@ class SlashCommandPanel extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final skill = skills[index];
                       final name = skill['name'] ?? '';
-                      final usageCount =
-                          int.tryParse(skill['usageCount'] ?? '') ?? 0;
+                      final usageCount = int.tryParse(skill['usageCount'] ?? '') ?? 0;
                       return InkWell(
                         onTap: () => onSelected(name),
                         borderRadius: BorderRadius.circular(10),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           child: Row(
                             children: [
                               Text(
@@ -111,13 +89,9 @@ class SlashCommandPanel extends StatelessWidget {
                               if (usageCount > 0) ...[
                                 const SizedBox(width: 6),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 1,
-                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                                   decoration: BoxDecoration(
-                                    color: colorScheme.secondaryContainer
-                                        .withValues(alpha: 0.7),
+                                    color: colorScheme.secondaryContainer.withValues(alpha: 0.7),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
@@ -134,9 +108,7 @@ class SlashCommandPanel extends StatelessWidget {
                                   skill['description'] ?? '',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
+                                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                                 ),
                               ),
                             ],
@@ -183,9 +155,7 @@ class AtReferencePanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-        ),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -206,30 +176,16 @@ class AtReferencePanel extends StatelessWidget {
               onTap: () => onSelected(kind),
               borderRadius: BorderRadius.circular(10),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 9,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: Row(
                   children: [
-                    Icon(
-                      kind.icon,
-                      size: 18,
-                      color: colorScheme.primary,
-                    ),
+                    Icon(kind.icon, size: 18, color: colorScheme.primary),
                     const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        kind.label,
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
+                    Expanded(child: Text(kind.label, style: theme.textTheme.bodyMedium)),
                     Icon(
                       Icons.chevron_right_rounded,
                       size: 18,
-                      color: colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.6,
-                      ),
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                     ),
                   ],
                 ),

@@ -75,14 +75,8 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
         title: const Text('重新评分'),
         content: const Text('将清除该日期的旧评分并重新评估。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('确定'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('确定')),
         ],
       ),
     );
@@ -98,12 +92,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
     BatchScoreAdjustSheet.show(
       context,
       adjust: ({required from, required to, required spec, required dryRun}) {
-        return DailyScoreService.instance.adjustRange(
-          from: from,
-          to: to,
-          spec: spec,
-          dryRun: dryRun,
-        );
+        return DailyScoreService.instance.adjustRange(from: from, to: to, spec: spec, dryRun: dryRun);
       },
     );
   }
@@ -122,11 +111,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Date selection header
-        DateNavigationHeader(
-          selectedDate: selectedDate,
-          onDateChanged: _onDateChanged,
-          enabled: !_isScoring,
-        ),
+        DateNavigationHeader(selectedDate: selectedDate, onDateChanged: _onDateChanged, enabled: !_isScoring),
         const SizedBox(height: 12),
 
         // Core scoring display
@@ -134,22 +119,13 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                width: 0.5,
-              ),
+              side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
             ),
             elevation: 0,
             child: const Padding(
               padding: EdgeInsets.symmetric(vertical: 48),
               child: Center(
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('正在评估今日数据'),
-                  ],
-                ),
+                child: Column(children: [CircularProgressIndicator(), SizedBox(height: 16), Text('正在评估今日数据')]),
               ),
             ),
           )
@@ -158,10 +134,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
             loading: () => Card(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                  width: 0.5,
-                ),
+                side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
               ),
               elevation: 0,
               child: const Padding(
@@ -172,10 +145,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
             error: (err, stack) => Card(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                  width: 0.5,
-                ),
+                side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
               ),
               elevation: 0,
               child: Padding(
@@ -192,10 +162,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     Card(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(
-                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                          width: 0.5,
-                        ),
+                        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
                       ),
                       elevation: 0,
                       color: theme.colorScheme.surface,
@@ -220,10 +187,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     Card(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(
-                          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                          width: 0.5,
-                        ),
+                        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
                       ),
                       elevation: 0,
                       color: theme.colorScheme.surface,
@@ -282,10 +246,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     const SizedBox(height: 16),
 
                     // AI Comments and Suggestions
-                    _AiSuggestionCard(
-                      summary: score.summary,
-                      suggestions: score.suggestions,
-                    ),
+                    _AiSuggestionCard(summary: score.summary, suggestions: score.suggestions),
                   ],
                 );
               } else {
@@ -294,10 +255,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                   loading: () => Card(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                        width: 0.5,
-                      ),
+                      side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
                     ),
                     elevation: 0,
                     child: const Padding(
@@ -308,10 +266,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                   error: (err, stack) => Card(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                        width: 0.5,
-                      ),
+                      side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
                     ),
                     elevation: 0,
                     child: Padding(
@@ -325,10 +280,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                       return Card(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(
-                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                            width: 0.5,
-                          ),
+                          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
                         ),
                         elevation: 0,
                         child: Padding(
@@ -343,9 +295,9 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                               ),
                               const SizedBox(height: 16),
                               const Text(
-                                  '记录过少',
-                                  style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
-                                ),
+                                '记录过少',
+                                style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
+                              ),
                               const SizedBox(height: 12),
                               Text(
                                 '今日仅 $count 条记录。AI 至少需要 3 条才能评分，再记几条试试。',
@@ -364,10 +316,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                       return Card(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(
-                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                            width: 0.5,
-                          ),
+                          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
                         ),
                         elevation: 0,
                         child: Padding(
@@ -375,16 +324,12 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                Icons.insights,
-                                size: 48,
-                                color: theme.colorScheme.primary,
-                              ),
+                              Icon(Icons.insights, size: 48, color: theme.colorScheme.primary),
                               const SizedBox(height: 16),
                               const Text(
-                                  '今日表现',
-                                  style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
-                                ),
+                                '今日表现',
+                                style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
+                              ),
                               const SizedBox(height: 12),
                               Text(
                                 '今天已记录 $count 条，让 AI 给出全天健康评分与建议。',
@@ -424,10 +369,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
         Card(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-              width: 0.5,
-            ),
+            side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
           ),
           elevation: 0,
           color: theme.colorScheme.surface,
@@ -455,14 +397,8 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                 ),
                 const SizedBox(height: 16),
                 heatmapAsync.when(
-                  loading: () => const SizedBox(
-                    height: 140,
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                  error: (err, stack) => SizedBox(
-                    height: 140,
-                    child: Center(child: Text('热力图加载失败：$err')),
-                  ),
+                  loading: () => const SizedBox(height: 140, child: Center(child: CircularProgressIndicator())),
+                  error: (err, stack) => SizedBox(height: 140, child: Center(child: Text('热力图加载失败：$err'))),
                   data: (scores) => ScoreHeatmap(scores: scores, isDark: isDark),
                 ),
               ],
@@ -474,10 +410,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
         Card(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-              width: 0.5,
-            ),
+            side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
           ),
           elevation: 0,
           color: theme.colorScheme.surface,
@@ -515,18 +448,9 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                 ),
                 const SizedBox(height: 16),
                 historyAsync.when(
-                  loading: () => const SizedBox(
-                    height: 160,
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                  error: (err, stack) => SizedBox(
-                    height: 160,
-                    child: Center(child: Text('历史加载失败：$err')),
-                  ),
-                  data: (historyScores) => _ScoreHistoryChart(
-                    historyScores: historyScores,
-                    isDark: isDark,
-                  ),
+                  loading: () => const SizedBox(height: 160, child: Center(child: CircularProgressIndicator())),
+                  error: (err, stack) => SizedBox(height: 160, child: Center(child: Text('历史加载失败：$err'))),
+                  data: (historyScores) => _ScoreHistoryChart(historyScores: historyScores, isDark: isDark),
                 ),
               ],
             ),
@@ -595,7 +519,10 @@ class _ScoreCircle extends StatelessWidget {
                         ),
                         Text(
                           '/ 100',
-                          style: TextStyle(fontSize: AppTypography.bodyLarge, color: theme.colorScheme.onSurfaceVariant),
+                          style: TextStyle(
+                            fontSize: AppTypography.bodyLarge,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -605,11 +532,7 @@ class _ScoreCircle extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 _getScoreLabel(score),
-                style: TextStyle(
-                  fontSize: AppTypography.headline,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
+                style: TextStyle(fontSize: AppTypography.headline, fontWeight: FontWeight.bold, color: color),
               ),
             ],
           ),
@@ -624,11 +547,7 @@ class _DimensionScoreBar extends StatelessWidget {
   final int score;
   final Color color;
 
-  const _DimensionScoreBar({
-    required this.name,
-    required this.score,
-    required this.color,
-  });
+  const _DimensionScoreBar({required this.name, required this.score, required this.color});
 
   String _getScoreLabel(int score) {
     if (score >= 90) return '优秀';
@@ -680,10 +599,7 @@ class _DimensionScoreBar extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(4),
-            ),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
             child: Text(
               _getScoreLabel(score),
               style: TextStyle(fontSize: AppTypography.caption, color: color, fontWeight: FontWeight.bold),
@@ -723,10 +639,7 @@ class _AiSuggestionCard extends StatelessWidget {
     final numberedMatch = RegExp(r'\d+\.\s').hasMatch(text);
     if (numberedMatch) {
       // 在每个 "数字. " 前面插入换行（第一个除外）
-      final result = text.replaceAllMapped(
-        RegExp(r'(?<=\S)\s*(\d+\.\s)'),
-        (match) => '\n${match.group(1)}',
-      );
+      final result = text.replaceAllMapped(RegExp(r'(?<=\S)\s*(\d+\.\s)'), (match) => '\n${match.group(1)}');
       return result;
     }
 
@@ -741,10 +654,7 @@ class _AiSuggestionCard extends StatelessWidget {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: 0.5,
-        ),
+        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
       ),
       color: theme.colorScheme.surface,
       elevation: 0,
@@ -817,10 +727,7 @@ class _ScoreHistoryChart extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (historyScores.isEmpty) {
-      return const SizedBox(
-        height: 160,
-        child: Center(child: Text('近 7 天暂无评分')),
-      );
+      return const SizedBox(height: 160, child: Center(child: Text('近 7 天暂无评分')));
     }
 
     final spots = <FlSpot>[];
@@ -837,10 +744,8 @@ class _ScoreHistoryChart extends StatelessWidget {
             show: true,
             drawVerticalLine: false,
             horizontalInterval: 20,
-            getDrawingHorizontalLine: (value) => FlLine(
-              color: isDark ? const Color(0xFF2A2D36) : const Color(0xFFE4E4E7),
-              strokeWidth: 1,
-            ),
+            getDrawingHorizontalLine: (value) =>
+                FlLine(color: isDark ? const Color(0xFF2A2D36) : const Color(0xFFE4E4E7), strokeWidth: 1),
           ),
           titlesData: FlTitlesData(
             bottomTitles: AxisTitles(
@@ -898,10 +803,7 @@ class _ScoreHistoryChart extends StatelessWidget {
               color: theme.colorScheme.primary,
               barWidth: 3,
               dotData: const FlDotData(show: true),
-              belowBarData: BarAreaData(
-                show: true,
-                color: theme.colorScheme.primary.withValues(alpha: 0.1),
-              ),
+              belowBarData: BarAreaData(show: true, color: theme.colorScheme.primary.withValues(alpha: 0.1)),
             ),
           ],
         ),

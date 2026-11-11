@@ -21,12 +21,7 @@ class SettingsSegmentItem {
 ///
 /// [items] 按等分宽度排布，建议不超过 4 个（再多文字会挤成省略号）。
 class SettingsSegmentBar extends StatelessWidget {
-  const SettingsSegmentBar({
-    super.key,
-    required this.items,
-    required this.selectedIndex,
-    required this.onChanged,
-  });
+  const SettingsSegmentBar({super.key, required this.items, required this.selectedIndex, required this.onChanged});
 
   final List<SettingsSegmentItem> items;
   final int selectedIndex;
@@ -152,18 +147,13 @@ class SettingsSegmentContent extends StatefulWidget {
   final int index;
   final Widget child;
 
-  const SettingsSegmentContent({
-    super.key,
-    required this.index,
-    required this.child,
-  });
+  const SettingsSegmentContent({super.key, required this.index, required this.child});
 
   @override
   State<SettingsSegmentContent> createState() => _SettingsSegmentContentState();
 }
 
-class _SettingsSegmentContentState extends State<SettingsSegmentContent>
-    with SingleTickerProviderStateMixin {
+class _SettingsSegmentContentState extends State<SettingsSegmentContent> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _opacity;
   late final Animation<Offset> _offset;
@@ -171,21 +161,10 @@ class _SettingsSegmentContentState extends State<SettingsSegmentContent>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: AppDurations.normal,
-      value: 1.0,
-    );
-    final curved = CurvedAnimation(
-      parent: _controller,
-      curve: AppCurves.emphasized,
-      reverseCurve: AppCurves.exit,
-    );
+    _controller = AnimationController(vsync: this, duration: AppDurations.normal, value: 1.0);
+    final curved = CurvedAnimation(parent: _controller, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit);
     _opacity = Tween<double>(begin: 0.55, end: 1.0).animate(curved);
-    _offset = Tween<Offset>(
-      begin: const Offset(0, 0.008),
-      end: Offset.zero,
-    ).animate(curved);
+    _offset = Tween<Offset>(begin: const Offset(0, 0.008), end: Offset.zero).animate(curved);
   }
 
   @override
@@ -210,10 +189,7 @@ class _SettingsSegmentContentState extends State<SettingsSegmentContent>
     return RepaintBoundary(
       child: FadeTransition(
         opacity: _opacity,
-        child: SlideTransition(
-          position: _offset,
-          child: widget.child,
-        ),
+        child: SlideTransition(position: _offset, child: widget.child),
       ),
     );
   }

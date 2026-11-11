@@ -58,7 +58,7 @@ void main() {
         content: '忙碌的一天',
         tags: ['activity'],
         tagFields: {
-          'activity': {'duration': '8.0'}
+          'activity': {'duration': '8.0'},
         },
         sortOrder: 5,
         isEnabled: true,

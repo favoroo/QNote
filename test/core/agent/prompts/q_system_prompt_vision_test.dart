@@ -11,10 +11,7 @@ void main() {
   String build({required bool supportsVisionInput, bool toolEnabled = true}) {
     final enabled = AgentToolRegistry.optionalToolNames.toSet();
     if (!toolEnabled) enabled.remove('describe_image');
-    return QSystemPrompt.buildSystemPrompt(
-      enabledOptionalTools: enabled,
-      supportsVisionInput: supportsVisionInput,
-    );
+    return QSystemPrompt.buildSystemPrompt(enabledOptionalTools: enabled, supportsVisionInput: supportsVisionInput);
   }
 
   group('当前模型看不了图', () {

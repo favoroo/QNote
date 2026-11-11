@@ -22,17 +22,12 @@ class AiErrorExplainer {
 
     final statusCode = _extractStatusCode(error, raw);
 
-    if (error is NoModelConfiguredException ||
-        raw.contains('尚未配置可用的 AI 模型')) {
+    if (error is NoModelConfiguredException || raw.contains('尚未配置可用的 AI 模型')) {
       problem = '还没有可用的 AI 模型';
       advice = '到「设置 → AI 模型配置」添加模型服务（地址 + 密钥），扫描并启用模型。';
     } else if (raw.contains('Failed host lookup')) {
-      final host = RegExp(r"Failed host lookup:\s*'?(.+?)'?(?:\s|\(|$)")
-          .firstMatch(raw)
-          ?.group(1);
-      problem = host == null
-          ? '无法解析服务器地址（域名解析不到 IP）'
-          : '无法解析服务器地址 `$host`（域名解析不到 IP）';
+      final host = RegExp(r"Failed host lookup:\s*'?(.+?)'?(?:\s|\(|$)").firstMatch(raw)?.group(1);
+      problem = host == null ? '无法解析服务器地址（域名解析不到 IP）' : '无法解析服务器地址 `$host`（域名解析不到 IP）';
       advice = '内网/自建域名（如 Tailscale）需先连 VPN；公网请检查域名拼写。';
     } else if (raw.contains('Connection timed out') ||
         raw.contains('connection timeout') ||
@@ -72,12 +67,8 @@ class AiErrorExplainer {
       // 网关有两层限流，文案要分开：rps 是「你自己发太快了、几秒自愈」，
       // TPM 是「共享额度用完了、要等回填」，混成一句「请求过于频繁」会让人反复重发
       final isBurst = raw.contains('rps') || raw.contains('exhausted');
-      problem = isBurst
-          ? '短时间内请求太密集，被服务端的排队保护挡下（HTTP 429 · rps）'
-          : '模型服务额度暂时用满（HTTP 429 · 限流）';
-      advice = isBurst
-          ? '小Q 会自动换下一把 Key 重发，通常几秒内自愈；可等上一条回复出来再发。'
-          : '额度按分钟滚动恢复，多 Key 自动轮询；也可到「AI 模型配置」补密钥。';
+      problem = isBurst ? '短时间内请求太密集，被服务端的排队保护挡下（HTTP 429 · rps）' : '模型服务额度暂时用满（HTTP 429 · 限流）';
+      advice = isBurst ? '小Q 会自动换下一把 Key 重发，通常几秒内自愈；可等上一条回复出来再发。' : '额度按分钟滚动恢复，多 Key 自动轮询；也可到「AI 模型配置」补密钥。';
     } else if (statusCode != null && statusCode >= 500) {
       problem = '服务器内部故障（HTTP $statusCode）';
       advice = '服务端暂时不可用，稍后重试。';
@@ -88,9 +79,7 @@ class AiErrorExplainer {
 
     // 压成单行再截断，避免多行堆栈把气泡撑爆
     final detail = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final truncated = detail.length > _maxDetailLength
-        ? '${detail.substring(0, _maxDetailLength)}…'
-        : detail;
+    final truncated = detail.length > _maxDetailLength ? '${detail.substring(0, _maxDetailLength)}…' : detail;
 
     return '**问题**：$problem\n'
         '**建议**：$advice\n\n'
@@ -108,8 +97,7 @@ class AiErrorExplainer {
     final badStatus = RegExp(r'invalid status code of (\d{3})').firstMatch(raw);
     if (badStatus != null) return int.tryParse(badStatus.group(1)!);
     // 部分网关的包装形态："Bad response: 502"
-    final badResponse =
-        RegExp(r'[Bb]ad response:?\s*(\d{3})').firstMatch(raw);
+    final badResponse = RegExp(r'[Bb]ad response:?\s*(\d{3})').firstMatch(raw);
     return badResponse == null ? null : int.tryParse(badResponse.group(1)!);
   }
 }

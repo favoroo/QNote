@@ -20,31 +20,23 @@ class ReadFileTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'path': {
-            'type': 'string',
-            'description': '虚拟文件绝对路径（以 "/" 开头），如 "/todos/今日/拿快递.md"、'
-                '"/notes/技术/架构.md"、"/timeline/2026-09-11.md"、"/journal/2026-09-11.md"、'
-                '"/stats/summary.json"、"/settings/appearance.json"、"/memory/user.md"',
-          },
-          'offset': {
-            'type': 'integer',
-            'description': '起始行号（从 1 开始，选填；grep 返回的行号可直接用作起点）',
-          },
-          'limit': {
-            'type': 'integer',
-            'description': '读取行数上限（选填）',
-          },
-        },
-        'required': ['path'],
-      };
+    'type': 'object',
+    'properties': {
+      'path': {
+        'type': 'string',
+        'description':
+            '虚拟文件绝对路径（以 "/" 开头），如 "/todos/今日/拿快递.md"、'
+            '"/notes/技术/架构.md"、"/timeline/2026-09-11.md"、"/journal/2026-09-11.md"、'
+            '"/stats/summary.json"、"/settings/appearance.json"、"/memory/user.md"',
+      },
+      'offset': {'type': 'integer', 'description': '起始行号（从 1 开始，选填；grep 返回的行号可直接用作起点）'},
+      'limit': {'type': 'integer', 'description': '读取行数上限（选填）'},
+    },
+    'required': ['path'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final path = arguments['path'] as String? ?? '';
     final offset = arguments['offset'] as int?;
     final limit = arguments['limit'] as int?;

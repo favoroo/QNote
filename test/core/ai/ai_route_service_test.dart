@@ -17,15 +17,15 @@ void main() {
   var seq = 0;
 
   AiProvider provider(String id, List<String> models) => AiProvider(
-        id: id,
-        name: id,
-        providerType: 'openai',
-        baseUrl: 'https://$id.example.com/v1',
-        apiKeys: const ['sk-test-00000000'],
-        models: models.map((m) => AiProviderModel.of(m)).toList(),
-        createdAt: now,
-        updatedAt: now,
-      );
+    id: id,
+    name: id,
+    providerType: 'openai',
+    baseUrl: 'https://$id.example.com/v1',
+    apiKeys: const ['sk-test-00000000'],
+    models: models.map((m) => AiProviderModel.of(m)).toList(),
+    createdAt: now,
+    updatedAt: now,
+  );
 
   final providers = [
     provider('pA', ['a1', 'a2']),
@@ -53,11 +53,7 @@ void main() {
   }
 
   RouteGroupMember m(String providerId, String modelName, {int weight = 1}) =>
-      RouteGroupMember(
-        providerId: providerId,
-        modelName: modelName,
-        weight: weight,
-      );
+      RouteGroupMember(providerId: providerId, modelName: modelName, weight: weight);
 
   setUp(() {
     service.resetForTest();
@@ -65,24 +61,15 @@ void main() {
   });
 
   test('轮流策略按游标推进，跨厂商也按成员顺序换下一个', () {
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')]);
 
-    final picks = List.generate(
-      4,
-      (_) => service.select(g, providers).config.modelName,
-    );
+    final picks = List.generate(4, (_) => service.select(g, providers).config.modelName);
 
     expect(picks, ['a1', 'b1', 'c1', 'a1']);
   });
 
   test('顺序策略始终从第一个可用成员开始，冷却后跳过它', () {
-    final g = group(
-      strategy: RouteStrategy.failover,
-      members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')],
-    );
+    final g = group(strategy: RouteStrategy.failover, members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')]);
 
     final first = service.select(g, providers).config;
     expect(first.modelName, 'a1');
@@ -94,24 +81,15 @@ void main() {
   });
 
   test('权重策略按 3:1 平滑分配（A A B A）', () {
-    final g = group(
-      strategy: RouteStrategy.weight,
-      members: [m('pA', 'a1', weight: 3), m('pB', 'b1', weight: 1)],
-    );
+    final g = group(strategy: RouteStrategy.weight, members: [m('pA', 'a1', weight: 3), m('pB', 'b1', weight: 1)]);
 
-    final picks = List.generate(
-      4,
-      (_) => service.select(g, providers).config.modelName,
-    );
+    final picks = List.generate(4, (_) => service.select(g, providers).config.modelName);
 
     expect(picks, ['a1', 'a1', 'b1', 'a1']);
   });
 
   test('智能策略跳过冷却成员并偏向少用的成员', () {
-    final g = group(
-      strategy: RouteStrategy.smart,
-      members: [m('pA', 'a1'), m('pB', 'b1')],
-    );
+    final g = group(strategy: RouteStrategy.smart, members: [m('pA', 'a1'), m('pB', 'b1')]);
 
     final first = service.select(g, providers).config;
     service.markMemberSucceeded(first);
@@ -123,10 +101,7 @@ void main() {
   });
 
   test('智能策略下失败成员被排除，即使它本该最优先', () {
-    final g = group(
-      strategy: RouteStrategy.smart,
-      members: [m('pA', 'a1'), m('pB', 'b1')],
-    );
+    final g = group(strategy: RouteStrategy.smart, members: [m('pA', 'a1'), m('pB', 'b1')]);
 
     service.markMemberFailed(
       const AiConfig(
@@ -144,11 +119,7 @@ void main() {
   });
 
   test('手动策略固定成员；固定项失效时回落首个可用成员', () {
-    final g = group(
-      strategy: RouteStrategy.manual,
-      members: [m('pA', 'a1'), m('pB', 'b1')],
-      pinnedMember: 'pB::b1',
-    );
+    final g = group(strategy: RouteStrategy.manual, members: [m('pA', 'a1'), m('pB', 'b1')], pinnedMember: 'pB::b1');
     expect(service.select(g, providers).config.modelName, 'b1');
 
     final stale = group(
@@ -160,39 +131,24 @@ void main() {
   });
 
   test('成员模型被停用/厂商被删时自动跳过', () {
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pGone', 'x'), m('pA', 'a9'), m('pB', 'b1')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pGone', 'x'), m('pA', 'a9'), m('pB', 'b1')]);
 
     expect(service.select(g, providers).config.modelName, 'b1');
   });
 
   test('厂商被手动停用时该厂商的成员让位给其它厂商', () {
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pA', 'a1'), m('pB', 'b1')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pA', 'a1'), m('pB', 'b1')]);
     // pA 停用：模型仍留在条目里，只是不参与选路
-    final withDisabled = [
-      providers.first.copyWith(enabled: false),
-      providers[1],
-    ];
+    final withDisabled = [providers.first.copyWith(enabled: false), providers[1]];
 
     expect(service.select(g, withDisabled).config.modelName, 'b1');
 
     // 组内成员所属厂商全部停用时等同于「没有可用成员」
-    expect(
-      () => service.select(g, [withDisabled.first]),
-      throwsA(isA<NoModelConfiguredException>()),
-    );
+    expect(() => service.select(g, [withDisabled.first]), throwsA(isA<NoModelConfiguredException>()));
   });
 
   test('组内没有任何可用成员时抛「未配置」异常（交给角色回落与引导）', () {
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pGone', 'x')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pGone', 'x')]);
 
     expect(() => service.select(g, providers), throwsA(isA<NoModelConfiguredException>()));
   });
@@ -215,10 +171,7 @@ void main() {
       provider('pV', ['qwen-vl-max']),
       provider('pT', ['plain-chat']),
     ];
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pV', 'qwen-vl-max'), m('pT', 'plain-chat')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pV', 'qwen-vl-max'), m('pT', 'plain-chat')]);
 
     final selection = service.select(g, visionProviders, preferVision: true);
     expect(selection.config.modelName, 'qwen-vl-max');
@@ -237,15 +190,9 @@ void main() {
       provider('pV', ['qwen-vl-max']),
       provider('pT', ['plain-chat']),
     ];
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pV', 'qwen-vl-max'), m('pT', 'plain-chat')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pV', 'qwen-vl-max'), m('pT', 'plain-chat')]);
 
-    final picks = List.generate(
-      2,
-      (_) => service.select(g, visionProviders).config.modelName,
-    );
+    final picks = List.generate(2, (_) => service.select(g, visionProviders).config.modelName);
     expect(picks, ['qwen-vl-max', 'plain-chat']);
   });
 
@@ -265,10 +212,7 @@ void main() {
   });
 
   test('AiModelRoute.next 依次尝试其余成员，用尽后返回 null，且不改动已用成员', () {
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')]);
     final selection = service.select(g, providers);
     final route = selection.toRoute();
 
@@ -288,10 +232,7 @@ void main() {
       provider('pV', ['qwen-vl-max']),
       provider('pT', ['plain-chat']),
     ];
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pV', 'qwen-vl-max'), m('pT', 'plain-chat')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pV', 'qwen-vl-max'), m('pT', 'plain-chat')]);
     final route = service.select(g, visionProviders, preferVision: true).toRoute();
 
     expect(route.requireVision, isTrue);
@@ -299,10 +240,7 @@ void main() {
   });
 
   test('advance: false 的预检不推进轮次（否则真正请求会「跳号」）', () {
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pA', 'a1'), m('pB', 'b1'), m('pC', 'c1')]);
 
     // 连续预检都停在同一个成员上，且不写「上次使用」
     for (var i = 0; i < 3; i++) {
@@ -317,30 +255,18 @@ void main() {
   });
 
   test('权重策略下预检同样不消耗权重轮次', () {
-    final g = group(
-      strategy: RouteStrategy.weight,
-      members: [m('pA', 'a1', weight: 3), m('pB', 'b1', weight: 1)],
-    );
+    final g = group(strategy: RouteStrategy.weight, members: [m('pA', 'a1', weight: 3), m('pB', 'b1', weight: 1)]);
 
     for (var i = 0; i < 5; i++) {
-      expect(
-        service.select(g, providers, advance: false).config.modelName,
-        'a1',
-      );
+      expect(service.select(g, providers, advance: false).config.modelName, 'a1');
     }
 
-    final picks = List.generate(
-      4,
-      (_) => service.select(g, providers).config.modelName,
-    );
+    final picks = List.generate(4, (_) => service.select(g, providers).config.modelName);
     expect(picks, ['a1', 'a1', 'b1', 'a1']);
   });
 
   test('成员失败进入冷却，冷却结束自动回池', () {
-    final g = group(
-      strategy: RouteStrategy.failover,
-      members: [m('pA', 'a1'), m('pB', 'b1')],
-    );
+    final g = group(strategy: RouteStrategy.failover, members: [m('pA', 'a1'), m('pB', 'b1')]);
     final config = service.select(g, providers).config;
 
     service.markMemberFailed(config, Exception('429 too many requests'));
@@ -353,10 +279,7 @@ void main() {
   });
 
   test('resetGroup 清掉游标与成员健康度（改了配置不该沿用旧轮次）', () {
-    final g = group(
-      strategy: RouteStrategy.rotate,
-      members: [m('pA', 'a1'), m('pB', 'b1')],
-    );
+    final g = group(strategy: RouteStrategy.rotate, members: [m('pA', 'a1'), m('pB', 'b1')]);
     service.select(g, providers);
     expect(service.lastUsedMember(g.id), 'pA::a1');
 

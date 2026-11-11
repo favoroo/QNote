@@ -16,31 +16,28 @@ void main() {
   late AiService service;
 
   AiConfig config() => const AiConfig(
-        providerId: 'provider-1',
-        name: 'demo',
-        provider: 'openai',
-        modelName: 'demo-model',
-        apiKey: 'sk-first-0000000000',
-        baseUrl: 'https://gw.example.com/v1',
-        vendorId: 'custom',
-      );
+    providerId: 'provider-1',
+    name: 'demo',
+    provider: 'openai',
+    modelName: 'demo-model',
+    apiKey: 'sk-first-0000000000',
+    baseUrl: 'https://gw.example.com/v1',
+    vendorId: 'custom',
+  );
 
   setUp(() {
     ApiKeyPool.instance.resetForTest();
     adapter = _RecordingAdapter();
     service = AiService();
     service.httpClientAdapterForTest = adapter;
-    AiService.providerKeysLoaderForTest =
-        (_) async => ['sk-aaa-11111111', 'sk-bbb-22222222'];
+    AiService.providerKeysLoaderForTest = (_) async => ['sk-aaa-11111111', 'sk-bbb-22222222'];
   });
 
   tearDown(() {
     AiService.providerKeysLoaderForTest = null;
   });
 
-  Future<String> send() => service.chat([
-        ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now()),
-      ]);
+  Future<String> send() => service.chat([ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now())]);
 
   test('多 Key 厂商逐请求轮换 Authorization（成功也换）', () async {
     service.updateConfig(config());
@@ -49,11 +46,7 @@ void main() {
     await send();
     await send();
 
-    expect(adapter.authHeaders, [
-      'Bearer sk-aaa-11111111',
-      'Bearer sk-bbb-22222222',
-      'Bearer sk-aaa-11111111',
-    ]);
+    expect(adapter.authHeaders, ['Bearer sk-aaa-11111111', 'Bearer sk-bbb-22222222', 'Bearer sk-aaa-11111111']);
   });
 
   test('单 Key 厂商沿用配置里的 Key，不额外覆写', () async {
@@ -67,11 +60,7 @@ void main() {
 
   test('429 撞墙后冷却当前 Key，并换下一把重试', () async {
     service.updateConfig(config());
-    adapter.failWith(
-      statusCode: 429,
-      body: '{"error":{"message":"rate limit exceeded"}}',
-      failFirst: 1,
-    );
+    adapter.failWith(statusCode: 429, body: '{"error":{"message":"rate limit exceeded"}}', failFirst: 1);
 
     final reply = await send();
 
@@ -121,11 +110,7 @@ class _RecordingAdapter implements HttpClientAdapter {
   int _calls = 0;
   String _failBody = '';
 
-  void failWith({
-    required int statusCode,
-    required String body,
-    int failFirst = 1,
-  }) {
+  void failWith({required int statusCode, required String body, int failFirst = 1}) {
     _failStatus = statusCode;
     _failFirst = failFirst;
     _failBody = body;
@@ -162,5 +147,6 @@ class _RecordingAdapter implements HttpClientAdapter {
   }
 }
 
-const String _okBody = '{"choices":[{"message":{"role":"assistant","content":"ok"}}],'
+const String _okBody =
+    '{"choices":[{"message":{"role":"assistant","content":"ok"}}],'
     '"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}';

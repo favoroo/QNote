@@ -2,10 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 
 class ModelFetchService {
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(connectTimeout: const Duration(seconds: 15), receiveTimeout: const Duration(seconds: 15)),
+  );
 
   /// 获取指定厂商的模型列表
   Future<List<String>> fetchModels({
@@ -22,7 +21,7 @@ class ModelFetchService {
 
     // 2. 规范化 baseUrl 和 endpoint 路径
     String cleanedBaseUrl = baseUrl.trim().replaceAll(RegExp(r'[,\s]+$'), '').replaceAll(RegExp(r'/+$'), '');
-    
+
     // 如果是 Gemini 并且 baseUrl 为空，使用官方 API 端点
     if (vendorId == 'gemini' && cleanedBaseUrl.isEmpty) {
       cleanedBaseUrl = 'https://generativelanguage.googleapis.com';
@@ -55,7 +54,7 @@ class ModelFetchService {
     }
 
     final mergedSegs = [...baseSegs, ...pathSegs.sublist(overlapCount)];
-    
+
     final Map<String, dynamic> combinedQuery = {};
     if (baseUri.hasQuery) {
       combinedQuery.addAll(baseUri.queryParameters);
@@ -69,15 +68,14 @@ class ModelFetchService {
       queryParameters: combinedQuery.isNotEmpty ? combinedQuery : null,
     );
     String requestUrl = requestUri.toString();
-    final Map<String, dynamic> headers = {
-      'Accept': 'application/json',
-    };
+    final Map<String, dynamic> headers = {'Accept': 'application/json'};
     final Map<String, dynamic> queryParameters = {};
 
     // OpenRouter 免费模型获取的特殊接口处理
     if (vendorId == 'openrouter') {
       requestUrl = 'https://openrouter.ai/api/frontend/models/find?active=true&fmt=cards&q=free';
-      headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      headers['User-Agent'] =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
       headers['Referer'] = 'https://openrouter.ai/';
     } else {
       if (authType == 'bearer' && apiKey != null) {
@@ -87,10 +85,7 @@ class ModelFetchService {
       }
     }
 
-    LoggerService.instance.logAI(
-      '开始获取厂商模型列表: vendorId=$vendorId',
-      details: 'URL=$requestUrl, authType=$authType',
-    );
+    LoggerService.instance.logAI('开始获取厂商模型列表: vendorId=$vendorId', details: 'URL=$requestUrl, authType=$authType');
 
     try {
       // 4. 执行 HTTP GET 请求
@@ -130,11 +125,7 @@ class ModelFetchService {
           details = 'Response Body: $respData\n\n$details';
         }
       }
-      LoggerService.instance.logAI(
-        '获取厂商模型列表失败: vendorId=$vendorId, 错误=$e',
-        level: LogLevel.error,
-        details: details,
-      );
+      LoggerService.instance.logAI('获取厂商模型列表失败: vendorId=$vendorId, 错误=$e', level: LogLevel.error, details: details);
       rethrow;
     }
   }
@@ -156,19 +147,21 @@ class ModelFetchService {
               final permaslug = endpoint['model_variant_permaslug'];
               if (slug is String && slug.isNotEmpty) {
                 int usage = 0;
-                
+
                 int getUsage(String key) {
                   final cleanKey = key.replaceAll(':free', '');
                   if (analytics[cleanKey] != null) {
                     final a = analytics[cleanKey];
                     if (a is Map) {
-                      return ((a['total_prompt_tokens'] ?? 0) as num).toInt() + ((a['total_completion_tokens'] ?? 0) as num).toInt();
+                      return ((a['total_prompt_tokens'] ?? 0) as num).toInt() +
+                          ((a['total_completion_tokens'] ?? 0) as num).toInt();
                     }
                   }
                   if (analytics[key] != null) {
                     final a = analytics[key];
                     if (a is Map) {
-                      return ((a['total_prompt_tokens'] ?? 0) as num).toInt() + ((a['total_completion_tokens'] ?? 0) as num).toInt();
+                      return ((a['total_prompt_tokens'] ?? 0) as num).toInt() +
+                          ((a['total_completion_tokens'] ?? 0) as num).toInt();
                     }
                   }
                   return 0;
@@ -177,10 +170,7 @@ class ModelFetchService {
                 usage = getUsage(permaslug ?? slug);
                 if (usage == 0) usage = getUsage(slug);
 
-                parsedModels.add({
-                  'slug': slug,
-                  'usage': usage,
-                });
+                parsedModels.add({'slug': slug, 'usage': usage});
               }
             }
           }

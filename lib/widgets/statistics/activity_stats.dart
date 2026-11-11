@@ -7,13 +7,7 @@ import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
 
-const _activityColors = [
-  Color(0xFF8B5CF6),
-  Color(0xFFEC4899),
-  Color(0xFFF43F5E),
-  Color(0xFF3B82F6),
-  Color(0xFF10B981),
-];
+const _activityColors = [Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFFF43F5E), Color(0xFF3B82F6), Color(0xFF10B981)];
 
 /// 将小时数格式化为整数或一位小数的展示文本。
 String _formatHours(double value) {
@@ -137,10 +131,7 @@ class _ActivityBarChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: AppPalette.chartGrid(isDark),
-            strokeWidth: 1,
-          ),
+          getDrawingHorizontalLine: (value) => FlLine(color: AppPalette.chartGrid(isDark), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -165,10 +156,8 @@ class _ActivityBarChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 30,
-              getTitlesWidget: (value, meta) => Text(
-                '${value.toInt()}',
-                style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
-              ),
+              getTitlesWidget: (value, meta) =>
+                  Text('${value.toInt()}', style: const TextStyle(fontSize: 10, color: AppPalette.textMuted)),
             ),
           ),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -207,10 +196,7 @@ class _DurationBarChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: AppPalette.chartGrid(isDark),
-            strokeWidth: 1,
-          ),
+          getDrawingHorizontalLine: (value) => FlLine(color: AppPalette.chartGrid(isDark), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -238,10 +224,8 @@ class _DurationBarChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 36,
-              getTitlesWidget: (value, meta) => Text(
-                '${value.toInt()}',
-                style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
-              ),
+              getTitlesWidget: (value, meta) =>
+                  Text('${value.toInt()}', style: const TextStyle(fontSize: 10, color: AppPalette.textMuted)),
             ),
           ),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),

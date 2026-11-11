@@ -7,10 +7,9 @@ import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 /// 数据经 [QuickPromptService]（单 key JSON + 内存缓存）；
 /// 小Q Agent 经 VFS `/quick_prompts/prompts.md` 写入时广播事件，
 /// 此处监听后刷新缓存与 UI，保证弹窗与管理页双向实时同步
-final quickPromptListProvider =
-    AsyncNotifierProvider<QuickPromptNotifier, List<String>>(() {
-      return QuickPromptNotifier();
-    });
+final quickPromptListProvider = AsyncNotifierProvider<QuickPromptNotifier, List<String>>(() {
+  return QuickPromptNotifier();
+});
 
 class QuickPromptNotifier extends AsyncNotifier<List<String>> {
   void _onWorkspaceChange(WorkspaceChangeEvent event) {
@@ -25,9 +24,7 @@ class QuickPromptNotifier extends AsyncNotifier<List<String>> {
   @override
   Future<List<String>> build() async {
     WorkspaceEventBus.instance.addListener(_onWorkspaceChange);
-    ref.onDispose(
-      () => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange),
-    );
+    ref.onDispose(() => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange));
     return QuickPromptService.instance.getPrompts();
   }
 

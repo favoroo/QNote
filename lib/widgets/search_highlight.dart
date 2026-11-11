@@ -14,9 +14,7 @@ Widget highlightSearchMatch(
   bool isSubtitle = false,
   TextStyle? baseStyle,
 }) {
-  final lineStyle = isSubtitle
-      ? theme.textTheme.bodySmall
-      : (baseStyle ?? theme.textTheme.bodyLarge);
+  final lineStyle = isSubtitle ? theme.textTheme.bodySmall : (baseStyle ?? theme.textTheme.bodyLarge);
   // 未命中分支保持「不传 style」以继承宿主（ListTile）默认样式，与原实现一致：
   // 只有高亮分支需要自己拿一套样式来铺 RichText。
   final plain = Text(
@@ -51,9 +49,7 @@ Widget highlightSearchMatch(
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: theme.colorScheme.primary,
-            backgroundColor: theme.colorScheme.primaryContainer.withValues(
-              alpha: 0.3,
-            ),
+            backgroundColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
           ),
         ),
         TextSpan(text: after),

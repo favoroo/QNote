@@ -5,34 +5,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum LogLevel { info, warning, error }
 
-enum LogCategory {
-  system,
-  ai,
-  database,
-  network,
-  ui,
-  sync,
-  export,
-  import,
-  config,
-}
+enum LogCategory { system, ai, database, network, ui, sync, export, import, config }
 
 class LogEntry {
   final DateTime timestamp;
   final String message;
   final LogLevel level;
 
-  LogEntry({
-    required this.timestamp,
-    required this.message,
-    required this.level,
-  });
+  LogEntry({required this.timestamp, required this.message, required this.level});
 
-  Map<String, dynamic> toMap() => {
-    'timestamp': timestamp.toIso8601String(),
-    'message': message,
-    'level': level.index,
-  };
+  Map<String, dynamic> toMap() => {'timestamp': timestamp.toIso8601String(), 'message': message, 'level': level.index};
 
   factory LogEntry.fromMap(Map<String, dynamic> map) => LogEntry(
     timestamp: DateTime.parse(map['timestamp'] as String),
@@ -78,13 +60,7 @@ class LoggerService extends ChangeNotifier {
         final lines = filteredMessage.split('\n');
         for (final line in lines) {
           if (line.trim().isNotEmpty) {
-            _addEntry(
-              LogEntry(
-                timestamp: DateTime.now(),
-                message: line,
-                level: LogLevel.info,
-              ),
-            );
+            _addEntry(LogEntry(timestamp: DateTime.now(), message: line, level: LogLevel.info));
           }
         }
       }
@@ -93,12 +69,7 @@ class LoggerService extends ChangeNotifier {
 
     FlutterError.onError = (FlutterErrorDetails details) {
       final errorMsg = 'Flutter异常: ${details.exceptionAsString()}';
-      logger.error(
-        errorMsg,
-        category: LogCategory.ui,
-        stackTrace: details.stack,
-        details: details.summary.toString(),
-      );
+      logger.error(errorMsg, category: LogCategory.ui, stackTrace: details.stack, details: details.summary.toString());
     };
 
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
@@ -118,10 +89,7 @@ class LoggerService extends ChangeNotifier {
       (match) => 'data:image/*;base64;<IMAGE_DATA>',
     );
 
-    result = result.replaceAllMapped(
-      RegExp(r'"/[A-Za-z0-9+/=]{1000,}"'),
-      (match) => '"<BASE64_IMAGE_STRING>"',
-    );
+    result = result.replaceAllMapped(RegExp(r'"/[A-Za-z0-9+/=]{1000,}"'), (match) => '"<BASE64_IMAGE_STRING>"');
 
     result = result.replaceAllMapped(
       RegExp(r'(?:^|\n)([A-Za-z0-9+/=]{3000,})(?:\n|$)'),
@@ -131,108 +99,51 @@ class LoggerService extends ChangeNotifier {
     return result;
   }
 
-  void info(
-    String message, {
-    LogCategory category = LogCategory.system,
-    String? details,
-  }) {
+  void info(String message, {LogCategory category = LogCategory.system, String? details}) {
     _log(message, LogLevel.info, category: category, details: details);
   }
 
-  void warning(
-    String message, {
-    LogCategory category = LogCategory.system,
-    String? details,
-  }) {
+  void warning(String message, {LogCategory category = LogCategory.system, String? details}) {
     _log(message, LogLevel.warning, category: category, details: details);
   }
 
-  void error(
-    String message, {
-    LogCategory category = LogCategory.system,
-    String? details,
-    StackTrace? stackTrace,
-  }) {
-    _log(
-      message,
-      LogLevel.error,
-      category: category,
-      details: details,
-      stackTrace: stackTrace,
-    );
+  void error(String message, {LogCategory category = LogCategory.system, String? details, StackTrace? stackTrace}) {
+    _log(message, LogLevel.error, category: category, details: details, stackTrace: stackTrace);
   }
 
-  void logAI(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logAI(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.ai, details: details);
   }
 
-  void logDatabase(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logDatabase(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.database, details: details);
   }
 
-  void logNetwork(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logNetwork(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.network, details: details);
   }
 
-  void logSync(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logSync(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.sync, details: details);
   }
 
-  void logUI(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logUI(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.ui, details: details);
   }
 
-  void logExport(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logExport(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.export, details: details);
   }
 
-  void logImport(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logImport(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.import, details: details);
   }
 
-  void logConfig(
-    String message, {
-    LogLevel level = LogLevel.info,
-    String? details,
-  }) {
+  void logConfig(String message, {LogLevel level = LogLevel.info, String? details}) {
     _log(message, level, category: LogCategory.config, details: details);
   }
 
-  void _log(
-    String message,
-    LogLevel level, {
-    required LogCategory category,
-    String? details,
-    StackTrace? stackTrace,
-  }) {
+  void _log(String message, LogLevel level, {required LogCategory category, String? details, StackTrace? stackTrace}) {
     final categoryName = category.name.toUpperCase();
     final buffer = StringBuffer();
     buffer.write('[$categoryName] $message');
@@ -242,11 +153,7 @@ class LoggerService extends ChangeNotifier {
     if (stackTrace != null) {
       buffer.write('\n堆栈:\n$stackTrace');
     }
-    final entry = LogEntry(
-      timestamp: DateTime.now(),
-      message: buffer.toString(),
-      level: level,
-    );
+    final entry = LogEntry(timestamp: DateTime.now(), message: buffer.toString(), level: level);
     _addEntry(entry);
   }
 
@@ -258,7 +165,7 @@ class LoggerService extends ChangeNotifier {
     // P1-10: entriesStream 无订阅方时 List.from 复制是无效开销；改传引用
     _entriesController.add(_entries);
     notifyListeners();
-    
+
     _pendingPersistCount++;
     if (_pendingPersistCount >= 10) {
       _persistLogsImmediate();
@@ -284,9 +191,7 @@ class LoggerService extends ChangeNotifier {
       if (jsonStr != null) {
         final List<dynamic> list = jsonDecode(jsonStr);
         _entries.clear();
-        _entries.addAll(
-          list.map((e) => LogEntry.fromMap(e as Map<String, dynamic>)),
-        );
+        _entries.addAll(list.map((e) => LogEntry.fromMap(e as Map<String, dynamic>)));
         if (_entries.length > _maxEntries) {
           _entries.removeRange(0, _entries.length - _maxEntries);
         }
@@ -320,31 +225,22 @@ class LoggerService extends ChangeNotifier {
     info('日志已清除', category: LogCategory.system);
   }
 
-  String getAllLogsAsString({
-    LogCategory? filterCategory,
-    LogLevel? filterLevel,
-  }) {
+  String getAllLogsAsString({LogCategory? filterCategory, LogLevel? filterLevel}) {
     final buffer = StringBuffer();
     var filteredEntries = _entries;
 
     if (filterCategory != null) {
       final prefix = '[${filterCategory.name.toUpperCase()}]';
-      filteredEntries = filteredEntries
-          .where((e) => e.message.startsWith(prefix))
-          .toList();
+      filteredEntries = filteredEntries.where((e) => e.message.startsWith(prefix)).toList();
     }
 
     if (filterLevel != null) {
-      filteredEntries = filteredEntries
-          .where((e) => e.level == filterLevel)
-          .toList();
+      filteredEntries = filteredEntries.where((e) => e.level == filterLevel).toList();
     }
 
     for (final entry in filteredEntries.reversed) {
       final levelStr = entry.level.name.toUpperCase();
-      buffer.write(
-        '[${_formatTimestamp(entry.timestamp)}] [$levelStr] ${entry.message}',
-      );
+      buffer.write('[${_formatTimestamp(entry.timestamp)}] [$levelStr] ${entry.message}');
       buffer.writeln();
     }
     return buffer.toString();

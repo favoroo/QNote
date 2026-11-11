@@ -56,18 +56,11 @@ class VisionCapabilityProbe {
   static Future<String> generateProbeImageBase64() async {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder, const ui.Rect.fromLTWH(0, 0, 100, 100));
-    canvas.drawRect(
-      const ui.Rect.fromLTWH(0, 0, 100, 100),
-      ui.Paint()..color = const ui.Color(0xFFFFFFFF),
-    );
+    canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 100, 100), ui.Paint()..color = const ui.Color(0xFFFFFFFF));
     final textPainter = TextPainter(
       text: const TextSpan(
         text: '11',
-        style: TextStyle(
-          color: ui.Color(0xFF000000),
-          fontSize: 60,
-          fontWeight: FontWeight.bold,
-        ),
+        style: TextStyle(color: ui.Color(0xFF000000), fontSize: 60, fontWeight: FontWeight.bold),
       ),
       textDirection: ui.TextDirection.ltr,
     );
@@ -98,17 +91,12 @@ class VisionCapabilityProbe {
     try {
       final capable = await checker(config, imageBase64);
       await _record(config.modelName, capable);
-      LoggerService.instance.logAI(
-        '识图能力自动探测 [${config.modelName}]：${capable ? '支持' : '不支持'}',
-      );
+      LoggerService.instance.logAI('识图能力自动探测 [${config.modelName}]：${capable ? '支持' : '不支持'}');
       return capable;
     } catch (e, stackTrace) {
       if (_isDefinitiveRejection(e)) {
         await _record(config.modelName, false);
-        LoggerService.instance.logAI(
-          '识图能力自动探测 [${config.modelName}]：服务端拒绝图片输入，记为不支持',
-          level: LogLevel.warning,
-        );
+        LoggerService.instance.logAI('识图能力自动探测 [${config.modelName}]：服务端拒绝图片输入，记为不支持', level: LogLevel.warning);
         return false;
       }
       _logInconclusive(config, '探测请求未成功', e, stackTrace);
@@ -132,15 +120,7 @@ class VisionCapabilityProbe {
     if (status == 415) return true;
     if (status != 400 && status != 422) return false;
     final body = error.response?.data?.toString().toLowerCase() ?? '';
-    return const [
-      'image',
-      'vision',
-      'multimodal',
-      'modality',
-      '图片',
-      '视觉',
-      '识图',
-    ].any(body.contains);
+    return const ['image', 'vision', 'multimodal', 'modality', '图片', '视觉', '识图'].any(body.contains);
   }
 
   static Future<void> _record(String modelName, bool capable) async {
@@ -156,12 +136,7 @@ class VisionCapabilityProbe {
     }
   }
 
-  static void _logInconclusive(
-    AiConfig config,
-    String reason,
-    Object error,
-    StackTrace? stackTrace,
-  ) {
+  static void _logInconclusive(AiConfig config, String reason, Object error, StackTrace? stackTrace) {
     LoggerService.instance.logAI(
       '识图能力自动探测未得出结论 [$reason] [${config.modelName}]，本次放行：$error',
       level: LogLevel.warning,

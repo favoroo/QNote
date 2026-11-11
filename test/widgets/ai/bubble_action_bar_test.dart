@@ -38,41 +38,22 @@ class _FakeTtsPlayer extends TtsPlayer {
   }
 }
 
-Widget _harness(
-  Widget child, {
-  TtsPlaybackState playback = TtsPlaybackState.idle,
-  _FakeTtsPlayer? player,
-}) {
+Widget _harness(Widget child, {TtsPlaybackState playback = TtsPlaybackState.idle, _FakeTtsPlayer? player}) {
   return ProviderScope(
-    overrides: [
-      ttsPlaybackProvider.overrideWith(
-        () => player ?? _FakeTtsPlayer(playback),
-      ),
-    ],
+    overrides: [ttsPlaybackProvider.overrideWith(() => player ?? _FakeTtsPlayer(playback))],
     child: MaterialApp(home: Scaffold(body: child)),
   );
 }
 
-ChatMessage _assistantReply() => ChatMessage(
-  role: 'assistant',
-  content: '今天已经完成 3 项待办',
-  timestamp: DateTime(2026, 9, 19),
-);
+ChatMessage _assistantReply() =>
+    ChatMessage(role: 'assistant', content: '今天已经完成 3 项待办', timestamp: DateTime(2026, 9, 19));
 
 /// 渲染完整 [ChatBubble]：气泡会 watch 用户资料，需一并 override
-Widget _bubbleHarness(
-  ChatBubble bubble, {
-  _FakeTtsPlayer? player,
-  TtsPlaybackState playback = TtsPlaybackState.idle,
-}) {
+Widget _bubbleHarness(ChatBubble bubble, {_FakeTtsPlayer? player, TtsPlaybackState playback = TtsPlaybackState.idle}) {
   return ProviderScope(
     overrides: [
-      userProfileNotifierProvider.overrideWith(
-        (ref) => _EmptyProfileNotifier(),
-      ),
-      ttsPlaybackProvider.overrideWith(
-        () => player ?? _FakeTtsPlayer(playback),
-      ),
+      userProfileNotifierProvider.overrideWith((ref) => _EmptyProfileNotifier()),
+      ttsPlaybackProvider.overrideWith(() => player ?? _FakeTtsPlayer(playback)),
     ],
     child: MaterialApp(
       home: Scaffold(body: ListView(children: [bubble])),
@@ -82,11 +63,7 @@ Widget _bubbleHarness(
 
 void main() {
   testWidgets('助手气泡操作条渲染三个纯图标按钮', (tester) async {
-    await tester.pumpWidget(
-      _harness(
-        BubbleActionBar(message: _assistantReply(), onRegenerate: () {}),
-      ),
-    );
+    await tester.pumpWidget(_harness(BubbleActionBar(message: _assistantReply(), onRegenerate: () {})));
 
     expect(find.byIcon(Icons.copy_rounded), findsOneWidget);
     expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
@@ -98,9 +75,7 @@ void main() {
   });
 
   testWidgets('未提供重新生成回调时不渲染该入口', (tester) async {
-    await tester.pumpWidget(
-      _harness(BubbleActionBar(message: _assistantReply())),
-    );
+    await tester.pumpWidget(_harness(BubbleActionBar(message: _assistantReply())));
 
     expect(find.byIcon(Icons.refresh_rounded), findsNothing);
     expect(find.byIcon(Icons.copy_rounded), findsOneWidget);
@@ -108,20 +83,17 @@ void main() {
 
   testWidgets('点击复制写入正文并提示已复制', (tester) async {
     String? copied;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'Clipboard.setData') {
-            copied =
-                (call.arguments as Map<Object?, Object?>)['text'] as String?;
-          }
-          return null;
-        });
-
-    await tester.pumpWidget(
-      _harness(
-        BubbleActionBar(message: _assistantReply(), onRegenerate: () {}),
-      ),
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
     );
+
+    await tester.pumpWidget(_harness(BubbleActionBar(message: _assistantReply(), onRegenerate: () {})));
     await tester.tap(find.byIcon(Icons.copy_rounded));
     await tester.pump();
 
@@ -131,8 +103,10 @@ void main() {
     // 放完 Toast 的驻留与淡出，避免遗留 Timer
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    );
   });
 
   testWidgets('点击朗读走 TTS 切换入口', (tester) async {
@@ -155,10 +129,7 @@ void main() {
     await tester.pumpWidget(
       _harness(
         BubbleActionBar(message: message, onRegenerate: () {}),
-        playback: TtsPlaybackState(
-          messageId: TtsPlayer.messageKeyOf(message),
-          status: TtsPlaybackStatus.playing,
-        ),
+        playback: TtsPlaybackState(messageId: TtsPlayer.messageKeyOf(message), status: TtsPlaybackStatus.playing),
       ),
     );
 
@@ -170,10 +141,7 @@ void main() {
     await tester.pumpWidget(
       _harness(
         BubbleActionBar(message: _assistantReply(), onRegenerate: () {}),
-        playback: const TtsPlaybackState(
-          messageId: 'msg_assistant_other',
-          status: TtsPlaybackStatus.playing,
-        ),
+        playback: const TtsPlaybackState(messageId: 'msg_assistant_other', status: TtsPlaybackStatus.playing),
       ),
     );
 
@@ -183,25 +151,12 @@ void main() {
 
   testWidgets('重新生成按钮触发回调，禁用时不可点', (tester) async {
     var pressed = 0;
-    await tester.pumpWidget(
-      _harness(
-        BubbleActionBar(
-          message: _assistantReply(),
-          onRegenerate: () => pressed++,
-        ),
-      ),
-    );
+    await tester.pumpWidget(_harness(BubbleActionBar(message: _assistantReply(), onRegenerate: () => pressed++)));
     await tester.tap(find.byIcon(Icons.refresh_rounded));
     expect(pressed, 1);
 
     await tester.pumpWidget(
-      _harness(
-        BubbleActionBar(
-          message: _assistantReply(),
-          onRegenerate: () => pressed++,
-          regenerateEnabled: false,
-        ),
-      ),
+      _harness(BubbleActionBar(message: _assistantReply(), onRegenerate: () => pressed++, regenerateEnabled: false)),
     );
     await tester.tap(find.byIcon(Icons.refresh_rounded));
     await tester.pumpAndSettle();
@@ -211,21 +166,12 @@ void main() {
 
   group('与气泡的连体几何', () {
     testWidgets('操作条与助手气泡同宽同左、间距收到 6', (tester) async {
-      await tester.pumpWidget(
-        _bubbleHarness(
-          ChatBubble(message: _assistantReply(), onRegenerate: () {}),
-        ),
-      );
+      await tester.pumpWidget(_bubbleHarness(ChatBubble(message: _assistantReply(), onRegenerate: () {})));
       await tester.pump();
 
       // 量装饰盒而非 Container：Container 的 margin 会计入 getRect，
       // 用 DecoratedBox 才能测出两段之间真实的视觉间距
-      final bubble = find
-          .ancestor(
-            of: find.byType(MarkdownBody),
-            matching: find.byType(DecoratedBox),
-          )
-          .first;
+      final bubble = find.ancestor(of: find.byType(MarkdownBody), matching: find.byType(DecoratedBox)).first;
       final bar = find.byType(BubbleActionBar);
       expect(bar, findsOneWidget);
 
@@ -249,11 +195,7 @@ void main() {
       await tester.pumpWidget(
         _bubbleHarness(
           ChatBubble(
-            message: ChatMessage(
-              role: 'assistant',
-              content: '请求失败',
-              isError: true,
-            ),
+            message: ChatMessage(role: 'assistant', content: '请求失败', isError: true),
           ),
         ),
       );
@@ -265,10 +207,7 @@ void main() {
     testWidgets('本条正在播放时点击卡片停止朗读', (tester) async {
       final message = _assistantReply();
       final player = _FakeTtsPlayer(
-        TtsPlaybackState(
-          messageId: TtsPlayer.messageKeyOf(message),
-          status: TtsPlaybackStatus.playing,
-        ),
+        TtsPlaybackState(messageId: TtsPlayer.messageKeyOf(message), status: TtsPlaybackStatus.playing),
       );
       await tester.pumpWidget(
         _bubbleHarness(
@@ -280,12 +219,7 @@ void main() {
 
       // 点卡片留白处也要能中断：命中区域是整张气泡而非正文文本
       final bubbleRect = tester.getRect(
-        find
-            .ancestor(
-              of: find.byType(MarkdownBody),
-              matching: find.byType(DecoratedBox),
-            )
-            .first,
+        find.ancestor(of: find.byType(MarkdownBody), matching: find.byType(DecoratedBox)).first,
       );
       await tester.tapAt(Offset(bubbleRect.left + 6, bubbleRect.center.dy));
       await tester.pump();
@@ -297,10 +231,7 @@ void main() {
     testWidgets('合成中同样可点击中断', (tester) async {
       final message = _assistantReply();
       final player = _FakeTtsPlayer(
-        TtsPlaybackState(
-          messageId: TtsPlayer.messageKeyOf(message),
-          status: TtsPlaybackStatus.synthesizing,
-        ),
+        TtsPlaybackState(messageId: TtsPlayer.messageKeyOf(message), status: TtsPlaybackStatus.synthesizing),
       );
       await tester.pumpWidget(
         _bubbleHarness(
@@ -331,10 +262,7 @@ void main() {
 
       // 正在读的是另一条：点本条不应把那条停掉
       final otherPlayer = _FakeTtsPlayer(
-        const TtsPlaybackState(
-          messageId: 'msg_assistant_other',
-          status: TtsPlaybackStatus.playing,
-        ),
+        const TtsPlaybackState(messageId: 'msg_assistant_other', status: TtsPlaybackStatus.playing),
       );
       await tester.pumpWidget(
         _bubbleHarness(

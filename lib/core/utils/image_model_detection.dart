@@ -13,8 +13,7 @@ import 'package:qnote_flutter/models/ai_provider.dart';
 /// UI 与生图模型筛选都走这一个入口：老配置没有 `image_gen` 字段时也能
 /// 靠模型名立刻识别出 `gpt-image-1`、`seedream` 这类模型，不必先重新扫描。
 bool isImageGenerationModel(AiProviderModel model) =>
-    model.supportsImageGeneration ??
-    looksLikeImageGenerationModel(model.id);
+    model.supportsImageGeneration ?? looksLikeImageGenerationModel(model.id);
 
 /// 厂商目录条目 → 是否生图模型；null 表示厂商没有声明，不能据此否定
 ///
@@ -33,29 +32,17 @@ bool? imageGenerationFromCatalogEntry(Object? entry) {
       entry['output_modalities'] ??
       (modalities is Map ? modalities['output'] : null);
   if (outputs is List && outputs.isNotEmpty) {
-    return outputs.any(
-      (item) => item.toString().trim().toLowerCase() == 'image',
-    );
+    return outputs.any((item) => item.toString().trim().toLowerCase() == 'image');
   }
 
   final tags = entry['tags'];
   if (tags is List) {
-    const imageTags = {
-      'image-generation',
-      'image_generation',
-      'text-to-image',
-      'text_to_image',
-    };
-    final matched = tags.any(
-      (tag) => imageTags.contains(tag.toString().trim().toLowerCase()),
-    );
+    const imageTags = {'image-generation', 'image_generation', 'text-to-image', 'text_to_image'};
+    final matched = tags.any((tag) => imageTags.contains(tag.toString().trim().toLowerCase()));
     if (matched) return true;
   }
 
-  final type = (entry['type'] ?? entry['model_type'])
-      ?.toString()
-      .trim()
-      .toLowerCase();
+  final type = (entry['type'] ?? entry['model_type'])?.toString().trim().toLowerCase();
   if (type == 'image' || type == 'image-generation' || type == 'image_generation') {
     return true;
   }

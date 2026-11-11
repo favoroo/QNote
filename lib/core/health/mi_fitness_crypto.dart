@@ -72,12 +72,7 @@ class MiFitnessCrypto {
 
   /// 构建 SHA-1 签名
   /// 待签字符串规范：METHOD&PATH&key1=val1&key2=val2&...&signedNonceB64 (按 key ASCII 升序)
-  static String buildSignature(
-    String method,
-    String path,
-    Map<String, String> params,
-    String signedNonceB64,
-  ) {
+  static String buildSignature(String method, String path, Map<String, String> params, String signedNonceB64) {
     final sortedKeys = params.keys.toList()..sort();
     final parts = <String>[method.toUpperCase(), path];
     for (final k in sortedKeys) {
@@ -123,21 +118,14 @@ class MiFitnessCrypto {
     // 2. 对所有参数值执行 RC4-drop1024 加密并 Base64
     final encParams = <String, String>{};
     for (final entry in rawParams.entries) {
-      final cipherBytes = rc4Drop1024(
-        signedNonceBytes,
-        Uint8List.fromList(utf8.encode(entry.value)),
-      );
+      final cipherBytes = rc4Drop1024(signedNonceBytes, Uint8List.fromList(utf8.encode(entry.value)));
       encParams[entry.key] = base64.encode(cipherBytes);
     }
 
     // 3. 计算加密后的最终 signature
     final signature = buildSignature(method, path, encParams, signedNonceB64);
 
-    return {
-      ...encParams,
-      'signature': signature,
-      '_nonce': nonceB64,
-    };
+    return {...encParams, 'signature': signature, '_nonce': nonceB64};
   }
 
   /// 解密服务端响应数据

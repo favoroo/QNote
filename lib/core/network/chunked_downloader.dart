@@ -10,11 +10,7 @@ import 'package:qnote_flutter/core/logger/logger_service.dart';
 /// [receivedBytes] 已接收的字节数。
 /// [totalBytes] 文件的总字节数（若未知则为 -1）。
 /// [speedBytesPerSec] 实时下载速度（字节/秒）。
-typedef OnChunkedDownloadProgress = void Function(
-  int receivedBytes,
-  int totalBytes,
-  double speedBytesPerSec,
-);
+typedef OnChunkedDownloadProgress = void Function(int receivedBytes, int totalBytes, double speedBytesPerSec);
 
 /// 单个分块信息模型。
 class DownloadChunk {
@@ -33,12 +29,7 @@ class DownloadChunk {
   /// 该分块预期总大小。
   int get totalSize => end - start + 1;
 
-  DownloadChunk({
-    required this.index,
-    required this.start,
-    required this.end,
-    required this.tempFilePath,
-  });
+  DownloadChunk({required this.index, required this.start, required this.end, required this.tempFilePath});
 }
 
 /// 服务端 Range 支持与直链元数据探测结果。
@@ -52,11 +43,7 @@ class _ProbeResult {
   /// 服务端是否明确支持 HTTP Range 请求（HTTP 206）。
   final bool supportsRange;
 
-  const _ProbeResult({
-    required this.finalUrl,
-    required this.totalBytes,
-    required this.supportsRange,
-  });
+  const _ProbeResult({required this.finalUrl, required this.totalBytes, required this.supportsRange});
 }
 
 /// 高性能分片多线程并发下载器。
@@ -77,18 +64,17 @@ class ChunkedDownloader {
   final Dio _dio;
   final int concurrency;
 
-  ChunkedDownloader({
-    Dio? dio,
-    this.concurrency = defaultConcurrency,
-  }) : _dio = dio ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 15),
-                receiveTimeout: const Duration(minutes: 5),
-                followRedirects: true,
-                maxRedirects: 8,
-              ),
-            );
+  ChunkedDownloader({Dio? dio, this.concurrency = defaultConcurrency})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 15),
+              receiveTimeout: const Duration(minutes: 5),
+              followRedirects: true,
+              maxRedirects: 8,
+            ),
+          );
 
   /// 启动下载任务。
   ///
@@ -109,9 +95,7 @@ class ChunkedDownloader {
     final probe = await _probeDownloadCapability(url, cancelToken);
 
     // 2. 判断是否满足多线程并发分块条件
-    final canUseChunks = probe.supportsRange &&
-        probe.totalBytes >= minChunkSizeThreshold &&
-        concurrency > 1;
+    final canUseChunks = probe.supportsRange && probe.totalBytes >= minChunkSizeThreshold && concurrency > 1;
 
     if (!canUseChunks) {
       LoggerService.instance.info(
@@ -143,10 +127,7 @@ class ChunkedDownloader {
   }
 
   /// 探测服务端的 Range 分片支持与文件长度。
-  Future<_ProbeResult> _probeDownloadCapability(
-    String url,
-    CancelToken? cancelToken,
-  ) async {
+  Future<_ProbeResult> _probeDownloadCapability(String url, CancelToken? cancelToken) async {
     try {
       // 发送一个只请求第一个字节的微型 Range 请求 (bytes=0-0)
       final response = await _dio.get<ResponseBody>(
@@ -190,21 +171,10 @@ class ChunkedDownloader {
         }
       }
 
-      return _ProbeResult(
-        finalUrl: realUrl,
-        totalBytes: totalBytes,
-        supportsRange: supportsRange,
-      );
+      return _ProbeResult(finalUrl: realUrl, totalBytes: totalBytes, supportsRange: supportsRange);
     } catch (e) {
-      LoggerService.instance.warning(
-        '探测下载能力失败，降级使用原始地址单线程处理: $e',
-        category: LogCategory.network,
-      );
-      return _ProbeResult(
-        finalUrl: url,
-        totalBytes: -1,
-        supportsRange: false,
-      );
+      LoggerService.instance.warning('探测下载能力失败，降级使用原始地址单线程处理: $e', category: LogCategory.network);
+      return _ProbeResult(finalUrl: url, totalBytes: -1, supportsRange: false);
     }
   }
 
@@ -292,9 +262,7 @@ class ChunkedDownloader {
         final deltaBytes = currentTotal - lastTotalReceived;
         final instantSpeed = deltaBytes / (deltaMs / 1000.0);
         // 使用一阶低通滤波平滑瞬时速度抖动
-        smoothedSpeed = smoothedSpeed == 0.0
-            ? instantSpeed
-            : (smoothedSpeed * 0.7 + instantSpeed * 0.3);
+        smoothedSpeed = smoothedSpeed == 0.0 ? instantSpeed : (smoothedSpeed * 0.7 + instantSpeed * 0.3);
         lastTime = now;
         lastTotalReceived = currentTotal;
       }
@@ -329,10 +297,7 @@ class ChunkedDownloader {
       if (cancelToken?.isCancelled ?? false) {
         LoggerService.instance.info('用户取消了分片下载任务', category: LogCategory.network);
       } else {
-        LoggerService.instance.error(
-          '分片下载发生异常: $e',
-          category: LogCategory.network,
-        );
+        LoggerService.instance.error('分片下载发生异常: $e', category: LogCategory.network);
       }
       rethrow;
     }
@@ -386,11 +351,7 @@ class ChunkedDownloader {
     try {
       await for (final data in stream) {
         if (cancelToken?.isCancelled ?? false) {
-          throw DioException(
-            requestOptions: response.requestOptions,
-            type: DioExceptionType.cancel,
-            error: '用户取消下载',
-          );
+          throw DioException(requestOptions: response.requestOptions, type: DioExceptionType.cancel, error: '用户取消下载');
         }
         sink.add(data);
         onChunkProgress(data.length);
@@ -402,11 +363,7 @@ class ChunkedDownloader {
   }
 
   /// 将多个分块文件按序合并写入目标文件。
-  Future<void> _mergeChunks(
-    List<DownloadChunk> chunks,
-    File targetFile,
-    int totalBytes,
-  ) async {
+  Future<void> _mergeChunks(List<DownloadChunk> chunks, File targetFile, int totalBytes) async {
     if (await targetFile.exists()) {
       await targetFile.delete();
     }
@@ -422,9 +379,7 @@ class ChunkedDownloader {
 
         final partLength = await partFile.length();
         if (partLength != chunk.totalSize) {
-          throw Exception(
-            '分片 ${chunk.index} 大小异常: 实际 $partLength 字节，预期 ${chunk.totalSize} 字节',
-          );
+          throw Exception('分片 ${chunk.index} 大小异常: 实际 $partLength 字节，预期 ${chunk.totalSize} 字节');
         }
 
         final inputRaf = await partFile.open(mode: FileMode.read);
@@ -461,34 +416,20 @@ class ChunkedDownloader {
         }
       } catch (e) {
         // 清理临时文件失败仅记录日志，不阻断主流程
-        LoggerService.instance.warning(
-          '清理分片临时文件失败: ${chunk.tempFilePath}, $e',
-          category: LogCategory.network,
-        );
+        LoggerService.instance.warning('清理分片临时文件失败: ${chunk.tempFilePath}, $e', category: LogCategory.network);
       }
     }
   }
 
   /// 根据总字节数和并发数均匀切分分片区间。
-  List<DownloadChunk> _calculateChunks(
-    String targetPath,
-    int totalBytes,
-    int chunkCount,
-  ) {
+  List<DownloadChunk> _calculateChunks(String targetPath, int totalBytes, int chunkCount) {
     final chunks = <DownloadChunk>[];
     final chunkSize = totalBytes ~/ chunkCount;
 
     for (int i = 0; i < chunkCount; i++) {
       final start = i * chunkSize;
       final end = (i == chunkCount - 1) ? totalBytes - 1 : (start + chunkSize - 1);
-      chunks.add(
-        DownloadChunk(
-          index: i,
-          start: start,
-          end: end,
-          tempFilePath: '$targetPath.part_$i',
-        ),
-      );
+      chunks.add(DownloadChunk(index: i, start: start, end: end, tempFilePath: '$targetPath.part_$i'));
     }
 
     return chunks;

@@ -34,10 +34,7 @@ class AiProviderMigration {
   ///
   /// 刻意不含 `ai_temps_migration_version`：那是仍在生效的温度/图片提取迁移标记，
   /// 清掉会让「已手动关闭图片提取」的用户被重新强制打开。
-  static const List<String> _legacyPrefKeys = [
-    'selected_free_model',
-    'default_model_migration_v5',
-  ];
+  static const List<String> _legacyPrefKeys = ['selected_free_model', 'default_model_migration_v5'];
 
   /// SP 里需要清掉的免费模型时代遗留键（前缀匹配）
   static const List<String> _legacyPrefPrefixes = [
@@ -63,11 +60,7 @@ class AiProviderMigration {
       }
     } catch (e, st) {
       // 迁移失败不阻断启动：数据还在旧表里，下一次启动会重试（标记位不写）
-      LoggerService.instance.logAI(
-        '厂商条目迁移失败，将在下次启动重试',
-        details: '$e\n$st',
-        level: LogLevel.error,
-      );
+      LoggerService.instance.logAI('厂商条目迁移失败，将在下次启动重试', details: '$e\n$st', level: LogLevel.error);
       return;
     }
 
@@ -78,10 +71,7 @@ class AiProviderMigration {
   ///
   /// 返回是否真的发生了迁移；[deleteLegacyRows] 为 false 时不清空本地旧行
   /// （导入旧备份的场景旧行本来就不来自本地表）。
-  Future<bool> migrateLegacyConfigRows(
-    List<Map<String, dynamic>> rows, {
-    bool deleteLegacyRows = true,
-  }) async {
+  Future<bool> migrateLegacyConfigRows(List<Map<String, dynamic>> rows, {bool deleteLegacyRows = true}) async {
     if (rows.isEmpty) {
       // 无旧数据也要尝试改写角色：老用户可能只有内置模型绑定（useFreeModel）
       return _migrateRoles(const {});
@@ -95,32 +85,25 @@ class AiProviderMigration {
       final resolvedId = provider.id.isEmpty ? const Uuid().v4() : provider.id;
       // 展示名优先取厂商模板名（'deepseek' → 'DeepSeek'），自定义地址保持原样
       final vendorName = getProviderById(provider.vendorId ?? '')?.name;
-      final saved = provider.copyWith(
-        id: resolvedId,
-        name: vendorName ?? provider.name,
-      );
+      final saved = provider.copyWith(id: resolvedId, name: vendorName ?? provider.name);
       await repo.insertSilently(saved);
 
       // 记录「旧行 id → 新引用」：角色绑定靠它改写
       final vendorId = (provider.vendorId ?? 'custom');
       for (final row in rows) {
         final rowVendor = (row['vendor_id'] as String?)?.trim();
-        final rowProviderVendor =
-            (rowVendor == null || rowVendor.isEmpty) ? 'custom' : rowVendor;
+        final rowProviderVendor = (rowVendor == null || rowVendor.isEmpty) ? 'custom' : rowVendor;
         if (rowProviderVendor != vendorId) continue;
-        if (((row['base_url'] as String?) ?? '').trim() !=
-            provider.baseUrl.trim()) {
+        if (((row['base_url'] as String?) ?? '').trim() != provider.baseUrl.trim()) {
           continue;
         }
-        if (((row['provider'] as String?) ?? 'openai') !=
-            provider.providerType) {
+        if (((row['provider'] as String?) ?? 'openai') != provider.providerType) {
           continue;
         }
         final id = (row['id'] as String?) ?? '';
         final modelName = ((row['model_name'] as String?) ?? '').trim();
         if (id.isEmpty || modelName.isEmpty) continue;
-        configIdToRef[id] =
-            AiModelRef(providerId: saved.id, modelName: modelName);
+        configIdToRef[id] = AiModelRef(providerId: saved.id, modelName: modelName);
       }
     }
 
@@ -147,11 +130,7 @@ class AiProviderMigration {
       final maps = await db.query('ai_configs', orderBy: 'created_at ASC');
       return maps.map((m) => Map<String, dynamic>.from(m)).toList();
     } catch (e) {
-      LoggerService.instance.logAI(
-        '读取旧 ai_configs 失败，按无可迁移数据处理',
-        details: e.toString(),
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('读取旧 ai_configs 失败，按无可迁移数据处理', details: e.toString(), level: LogLevel.warning);
       return const [];
     }
   }
@@ -189,18 +168,17 @@ class AiProviderMigration {
       imageGeneration: refOf(legacy['imageGeneration']),
     );
 
-    final hadLegacyFreeModelFields = legacy.keys.any((key) =>
-        key.contains('UseFreeModel') ||
-        key.contains('FreeModelId') ||
-        key == 'imageGenerationFreeModelId');
-    final hasBindings =
-        migrated.assistant != null || migrated.timelineOptimization != null;
+    final hadLegacyFreeModelFields = legacy.keys.any(
+      (key) => key.contains('UseFreeModel') || key.contains('FreeModelId') || key == 'imageGenerationFreeModelId',
+    );
+    final hasBindings = migrated.assistant != null || migrated.timelineOptimization != null;
     if (!hadLegacyFreeModelFields && !hasBindings) return false;
 
     await repo.saveAiRoles(migrated);
     LoggerService.instance.logAI(
       '角色绑定迁移完成',
-      details: 'assistant=${migrated.assistant?.encode() ?? '未绑定'}, '
+      details:
+          'assistant=${migrated.assistant?.encode() ?? '未绑定'}, '
           'timeline=${migrated.timelineOptimization?.encode() ?? '未绑定'}',
     );
     return true;

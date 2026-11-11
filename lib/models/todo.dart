@@ -84,16 +84,12 @@ class Todo {
       description: map['description'] as String? ?? '',
       isCompleted: (map['is_completed'] as int? ?? 0) == 1,
       priority: map['priority'] as String? ?? 'normal',
-      dueDate: map['due_date'] != null
-          ? DateTime.parse(map['due_date'] as String)
-          : null,
+      dueDate: map['due_date'] != null ? DateTime.parse(map['due_date'] as String) : null,
       tags: map['tags'] as String? ?? '',
       folderId: map['folder_id'] as String?,
       isLongTerm: (map['is_long_term'] as int? ?? 0) == 1,
       reminderTime: map['reminder_time'] as String?,
-      deadline: map['deadline'] != null
-          ? DateTime.parse(map['deadline'] as String)
-          : null,
+      deadline: map['deadline'] != null ? DateTime.parse(map['deadline'] as String) : null,
       repeatRule: map['repeat_rule'] as String? ?? 'none',
       sortOrder: map['sort_order'] as int? ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),

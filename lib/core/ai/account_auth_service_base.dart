@@ -51,13 +51,11 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   ///
   /// 子类必须返回自己的 static 字段，不能共用一份，否则测试会互相串数据。
   @protected
-  Future<List<AiAccount>> Function(String providerId)? get accountsLoaderHook =>
-      null;
+  Future<List<AiAccount>> Function(String providerId)? get accountsLoaderHook => null;
 
   /// 测试注入：绕开数据库直接返回 token（默认无注入）
   @protected
-  Future<String?> Function(String providerId)? get accessTokenLoaderHook =>
-      null;
+  Future<String?> Function(String providerId)? get accessTokenLoaderHook => null;
 
   /// 测试注入：登录落库（默认写 `ai_accounts` 表）
   @protected
@@ -65,8 +63,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
 
   /// 测试注入：额度/签到被拒后刷新账号（默认走 [refreshAccount]）
   @protected
-  Future<AiAccount> Function(AiAccount account)? get accountRefresherHook =>
-      null;
+  Future<AiAccount> Function(AiAccount account)? get accountRefresherHook => null;
 
   /// 是否支持通过厂商续期接口刷新 access token
   ///
@@ -89,10 +86,8 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   String get vendorLabelPrefix => '$vendorLabel ';
 
   @override
-  AccountAuthRequiredException notLoggedIn(String providerId) => authRequired(
-    providerId,
-    '$vendorLabelPrefix账号未登录或已过期，请到「设置 → AI 模型配置」重新登录',
-  );
+  AccountAuthRequiredException notLoggedIn(String providerId) =>
+      authRequired(providerId, '$vendorLabelPrefix账号未登录或已过期，请到「设置 → AI 模型配置」重新登录');
 
   @override
   AccountAuthRequiredException authExpired(String providerId) =>
@@ -103,22 +98,13 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   /// 小浣熊保留自己的异常子类（现有调用方与测试按类型断言），其余厂商用
   /// 通用异常，由 `kind` 区分。文案由子类传入，基类只负责带上 [kind]。
   @protected
-  AccountAuthRequiredException authRequired(
-    String providerId,
-    String message,
-  ) => AccountAuthRequiredException(
-    providerId,
-    message: message,
-    kind: kind,
-  );
+  AccountAuthRequiredException authRequired(String providerId, String message) =>
+      AccountAuthRequiredException(providerId, message: message, kind: kind);
 
   // ── 账号读取 ─────────────────────────────────────────────
 
   @override
-  Future<List<AiAccount>> accountsFor(
-    String providerId, {
-    bool forceReload = false,
-  }) async {
+  Future<List<AiAccount>> accountsFor(String providerId, {bool forceReload = false}) async {
     final loader = accountsLoaderHook;
     if (loader != null) {
       final accounts = await loader(providerId);
@@ -131,9 +117,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
       final cached = _cachedFor(providerId);
       if (cached.isNotEmpty) return cached;
     }
-    final stored = (await repository.getByProvider(providerId))
-        .where((account) => account.kind == kind)
-        .toList();
+    final stored = (await repository.getByProvider(providerId)).where((account) => account.kind == kind).toList();
     for (final account in stored) {
       _cache[account.id] = account;
     }
@@ -141,11 +125,8 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   }
 
   List<AiAccount> _cachedFor(String providerId) {
-    final result =
-        _cache.values
-            .where((a) => a.providerId == providerId && a.kind == kind)
-            .toList()
-          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final result = _cache.values.where((a) => a.providerId == providerId && a.kind == kind).toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return result;
   }
 
@@ -193,19 +174,11 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
     if (selection == null) {
       final enabled = accounts.where((a) => a.enabled).toList();
       if (enabled.isEmpty) {
-        throw authRequired(
-          providerId,
-          '$vendorLabelPrefix账号已全部停用，请到「设置 → AI 模型配置」启用一个账号',
-        );
+        throw authRequired(providerId, '$vendorLabelPrefix账号已全部停用，请到「设置 → AI 模型配置」启用一个账号');
       }
-      final untried = enabled
-          .where((a) => !triedAccountIds.contains(a.id))
-          .toList();
+      final untried = enabled.where((a) => !triedAccountIds.contains(a.id)).toList();
       if (untried.isNotEmpty) {
-        throw authRequired(
-          providerId,
-          '$vendorLabelPrefix账号都在限流冷却中，稍后重试',
-        );
+        throw authRequired(providerId, '$vendorLabelPrefix账号都在限流冷却中，稍后重试');
       }
       // 本次请求已经把能用的账号都试过了：交回调用方 rethrow 原始错误
       return null;
@@ -228,16 +201,8 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   void markAccountSucceeded(AiAccount account) => router.markSucceeded(account);
 
   @override
-  void markAccountFailed(
-    AiAccount account,
-    Object error, {
-    String affinity = AiProvider.defaultAccountAffinity,
-  }) {
-    router.markFailed(
-      account,
-      error,
-      affinity: AccountAffinity.fromId(affinity),
-    );
+  void markAccountFailed(AiAccount account, Object error, {String affinity = AiProvider.defaultAccountAffinity}) {
+    router.markFailed(account, error, affinity: AccountAffinity.fromId(affinity));
   }
 
   @override
@@ -288,12 +253,9 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
     if (loader != null) return loader(account.providerId);
 
     // 账号列表来自测试注入时不要去读库：那个账号对象就是唯一事实
-    final current = accountsLoaderHook != null
-        ? account
-        : await refreshCacheFromStore(account);
+    final current = accountsLoaderHook != null ? account : await refreshCacheFromStore(account);
     if (current.accessToken.trim().isEmpty) return null;
-    final needsRefresh =
-        current.isExpired || current.isStale(margin: tokenRefreshMargin);
+    final needsRefresh = current.isExpired || current.isStale(margin: tokenRefreshMargin);
     if (!needsRefresh) return current.accessToken;
     try {
       final refreshed = await refreshAccount(current.id, force: true);
@@ -343,17 +305,11 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   Future<AiAccount> persistLogin(
     String providerId, {
     String? accountId,
-    required Future<AiAccount> Function({
-      required String accountId,
-      AiAccount? previous,
-      required bool fetchProfile,
-    })
+    required Future<AiAccount> Function({required String accountId, AiAccount? previous, required bool fetchProfile})
     buildAccount,
   }) async {
     final existing = await accountsFor(providerId, forceReload: true);
-    AiAccount? previous = accountId == null
-        ? null
-        : existing.where((a) => a.id == accountId).firstOrNull;
+    AiAccount? previous = accountId == null ? null : existing.where((a) => a.id == accountId).firstOrNull;
     if (previous == null) {
       final probe = await buildAccount(accountId: '', fetchProfile: false);
       for (final account in existing) {
@@ -369,14 +325,10 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
       previous: previous,
       fetchProfile: true,
     );
-    final next = previous == null
-        ? account.copyWith(sortOrder: _nextSortOrder(existing))
-        : account;
+    final next = previous == null ? account.copyWith(sortOrder: _nextSortOrder(existing)) : account;
     await saveAccount(next);
     LoggerService.instance.logAI(
-      previous == null
-          ? '$vendorLabelPrefix新增账号: ${next.label}'
-          : '$vendorLabelPrefix账号已更新: ${next.label}',
+      previous == null ? '$vendorLabelPrefix新增账号: ${next.label}' : '$vendorLabelPrefix账号已更新: ${next.label}',
     );
     return next;
   }
@@ -399,9 +351,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   Future<void> logoutProvider(String providerId) async {
     // 缓存与库里可能各有一部分账号（后者是其他入口刚写入的），两边并集都要
     // 清掉选号状态，避免已删除账号的冷却/亲和残留。
-    final cached = _cache.values
-        .where((account) => account.providerId == providerId)
-        .toList();
+    final cached = _cache.values.where((account) => account.providerId == providerId).toList();
     final stored = await accountsFor(providerId, forceReload: true);
     final accountsById = <String, AiAccount>{
       for (final account in cached) account.id: account,
@@ -416,21 +366,14 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   }
 
   @override
-  Future<AiAccount> updateAccount(
-    AiAccount account, {
-    String? alias,
-    bool? enabled,
-  }) async {
+  Future<AiAccount> updateAccount(AiAccount account, {String? alias, bool? enabled}) async {
     final next = account.copyWith(alias: alias, enabled: enabled);
     await saveAccount(next);
     return next;
   }
 
   @override
-  Future<List<AiAccount>> reorderAccounts(
-    String providerId,
-    List<String> orderedIds,
-  ) async {
+  Future<List<AiAccount>> reorderAccounts(String providerId, List<String> orderedIds) async {
     final accounts = await accountsFor(providerId, forceReload: true);
     final byId = {for (final a in accounts) a.id: a};
     final next = <AiAccount>[];
@@ -490,12 +433,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   /// 把账号标记为过期（只有厂商明确拒绝时才调用，网络抖动不算）
   @protected
   Future<void> markAccountExpired(AiAccount account) async {
-    await saveAccount(
-      account.copyWith(
-        status: AiAccount.statusExpired,
-        updatedAt: DateTime.now(),
-      ),
-    );
+    await saveAccount(account.copyWith(status: AiAccount.statusExpired, updatedAt: DateTime.now()));
   }
 
   /// 按 id 标记账号过期；账号已被删除时直接忽略
@@ -515,10 +453,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
   /// 带登录态执行一次只读/签到接口：被服务端拒绝时刷新一次再试，仍被拒才
   /// 标记过期——与发信层的 401 处理口径一致，不把「接口查不到」当成「登录失效」。
   @protected
-  Future<T> runWithToken<T>(
-    AiAccount account,
-    Future<T> Function(String token) run,
-  ) async {
+  Future<T> runWithToken<T>(AiAccount account, Future<T> Function(String token) run) async {
     final token = await accessTokenForAccount(account);
     if (token == null || token.trim().isEmpty) {
       throw notLoggedIn(account.providerId);
@@ -529,9 +464,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
       final refresher = accountRefresherHook;
       final AiAccount refreshed;
       try {
-        refreshed = refresher != null
-            ? await refresher(account)
-            : await refreshAccount(account.id, force: true);
+        refreshed = refresher != null ? await refresher(account) : await refreshAccount(account.id, force: true);
       } on AccountAuthRequiredException {
         rethrow;
       }

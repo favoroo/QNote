@@ -102,12 +102,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('快捷按钮'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showEditDialog(context, null),
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.add), onPressed: () => _showEditDialog(context, null))],
       ),
       body: body,
     );
@@ -120,15 +115,10 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
         title: const Text('恢复默认设置'),
         content: const Text('恢复默认将覆盖当前所有快捷按钮配置，不可撤销。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             child: const Text('恢复'),
           ),
         ],
@@ -151,14 +141,8 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
       key: key,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
-        leading: ReorderableDragStartListener(
-          index: shortcutsIndexOf(config),
-          child: const Icon(Icons.drag_handle),
-        ),
-        title: Text(
-          config.name,
-          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-        ),
+        leading: ReorderableDragStartListener(index: shortcutsIndexOf(config), child: const Icon(Icons.drag_handle)),
+        title: Text(config.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
         subtitle: Text('$fieldCount 个字段', style: theme.textTheme.bodySmall),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -170,26 +154,17 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                 // 开关值来自 notifier state，失败时会自然回弹；这里接住异常是为了
                 // 不让它变成未捕获异步错误，并给用户一个明确的失败反馈。
                 try {
-                  await ref
-                      .read(shortcutListNotifierProvider.notifier)
-                      .update(updated);
+                  await ref.read(shortcutListNotifierProvider.notifier).update(updated);
                 } catch (e) {
                   if (context.mounted) {
                     Toast.error(context, '保存失败，请重试');
                   }
-                  LoggerService.instance.logDatabase(
-                    '切换快捷按钮显示状态失败',
-                    level: LogLevel.error,
-                    details: e.toString(),
-                  );
+                  LoggerService.instance.logDatabase('切换快捷按钮显示状态失败', level: LogLevel.error, details: e.toString());
                 }
               },
             ),
             const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_right,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-            ),
+            Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3)),
           ],
         ),
         onTap: () => _showEditDialog(context, config),
@@ -210,9 +185,10 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
         ? existingConfig.fields.map((f) => f.copyWith()).toList()
         : [];
     final List<ShortcutCategory> categories = existingConfig != null
-        ? (existingConfig.categories?.map((c) => c.copyWith(
-            fields: c.fields.map((f) => f.copyWith()).toList(),
-          )).toList() ?? [])
+        ? (existingConfig.categories
+                  ?.map((c) => c.copyWith(fields: c.fields.map((f) => f.copyWith()).toList()))
+                  .toList() ??
+              [])
         : [];
 
     int activeCategoryIdx = 0;
@@ -233,15 +209,15 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('名称', style: Theme.of(context).textTheme.labelSmall),
-                      TextField(controller: nameCtl, decoration: const InputDecoration(hintText: '例如：睡眠')),
+                      TextField(
+                        controller: nameCtl,
+                        decoration: const InputDecoration(hintText: '例如：睡眠'),
+                      ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(child: Text('启用弹窗配置', style: Theme.of(context).textTheme.bodyMedium)),
-                          Switch(
-                            value: hasPopup,
-                            onChanged: (v) => setDialogState(() => hasPopup = v),
-                          ),
+                          Switch(value: hasPopup, onChanged: (v) => setDialogState(() => hasPopup = v)),
                         ],
                       ),
                       const Divider(),
@@ -266,18 +242,17 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            Text('分类管理', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                            Text(
+                              '分类管理',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                            ),
                             const Spacer(),
                             TextButton.icon(
                               icon: const Icon(Icons.add, size: 16),
                               label: const Text('添加分类'),
                               onPressed: () {
                                 setDialogState(() {
-                                  categories.add(ShortcutCategory(
-                                    id: const Uuid().v4(),
-                                    name: '新分类',
-                                    fields: [],
-                                  ));
+                                  categories.add(ShortcutCategory(id: const Uuid().v4(), name: '新分类', fields: []));
                                   activeCategoryIdx = categories.length - 1;
                                 });
                               },
@@ -329,19 +304,19 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            Text('字段管理', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                            Text(
+                              '字段管理',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                            ),
                             const Spacer(),
                             TextButton.icon(
                               icon: const Icon(Icons.add, size: 16),
                               label: const Text('添加字段'),
                               onPressed: () {
                                 setDialogState(() {
-                                  fields.add(ShortcutField(
-                                    id: const Uuid().v4(),
-                                    label: '',
-                                    type: 'input',
-                                    options: [],
-                                  ));
+                                  fields.add(
+                                    ShortcutField(id: const Uuid().v4(), label: '', type: 'input', options: []),
+                                  );
                                 });
                               },
                             ),
@@ -384,15 +359,10 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                               title: const Text('确认删除'),
                               content: Text('删除 "${existingConfig.name}"？'),
                               actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx2, false),
-                                  child: const Text('取消'),
-                                ),
+                                TextButton(onPressed: () => Navigator.pop(ctx2, false), child: const Text('取消')),
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx2, true),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Theme.of(context).colorScheme.error,
-                                  ),
+                                  style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
                                   child: const Text('删除'),
                                 ),
                               ],
@@ -406,9 +376,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                             }
                           }
                         },
-                        style: TextButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.error,
-                        ),
+                        style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
                         child: const Text('删除'),
                       )
                     else
@@ -416,10 +384,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('取消'),
-                        ),
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
                         const SizedBox(width: 8),
                         FilledButton(
                           onPressed: () async {
@@ -479,13 +444,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -512,7 +471,10 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                           contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                           filled: true,
                           fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                         onChanged: (v) => onChanged(field.copyWith(label: v)),
                       ),
@@ -539,10 +501,9 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                           underline: const SizedBox.shrink(),
                           icon: const Icon(Icons.keyboard_arrow_down, size: 16),
                           style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
-                          items: fieldTypeMap.entries.map((e) => DropdownMenuItem(
-                            value: e.key,
-                            child: Text(e.value),
-                          )).toList(),
+                          items: fieldTypeMap.entries
+                              .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                              .toList(),
                           onChanged: (v) {
                             if (v != null) onChanged(field.copyWith(type: v));
                           },
@@ -685,11 +646,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
               Expanded(
                 child: TextField(
                   controller: nameCtl,
-                  decoration: const InputDecoration(
-                    labelText: '分类名称',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: '分类名称', isDense: true, border: OutlineInputBorder()),
                   onChanged: (v) => onChanged(category.copyWith(name: v)),
                 ),
               ),
@@ -709,12 +666,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                 label: const Text('添加字段'),
                 onPressed: () {
                   final updatedFields = List<ShortcutField>.from(category.fields);
-                  updatedFields.add(ShortcutField(
-                    id: const Uuid().v4(),
-                    label: '',
-                    type: 'input',
-                    options: [],
-                  ));
+                  updatedFields.add(ShortcutField(id: const Uuid().v4(), label: '', type: 'input', options: []));
                   onChanged(category.copyWith(fields: updatedFields));
                 },
               ),

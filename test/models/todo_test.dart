@@ -5,12 +5,7 @@ void main() {
   group('Todo toMap/fromMap roundtrip', () {
     test('should survive roundtrip with default values', () {
       final now = DateTime(2026, 6, 14, 10, 30);
-      final todo = Todo(
-        id: 'todo-1',
-        title: '测试待办',
-        createdAt: now,
-        updatedAt: now,
-      );
+      final todo = Todo(id: 'todo-1', title: '测试待办', createdAt: now, updatedAt: now);
 
       final map = todo.toMap();
       final restored = Todo.fromMap(map);
@@ -68,12 +63,7 @@ void main() {
   group('Todo copyWith', () {
     test('should return new instance with changed fields', () {
       final now = DateTime(2026, 6, 14);
-      final todo = Todo(
-        id: '1',
-        title: '原任务',
-        createdAt: now,
-        updatedAt: now,
-      );
+      final todo = Todo(id: '1', title: '原任务', createdAt: now, updatedAt: now);
 
       final copied = todo.copyWith(title: '新任务', isCompleted: true);
       expect(copied.title, '新任务');
@@ -83,12 +73,7 @@ void main() {
 
     test('should not mutate original', () {
       final now = DateTime(2026, 6, 14);
-      final todo = Todo(
-        id: '1',
-        title: '原任务',
-        createdAt: now,
-        updatedAt: now,
-      );
+      final todo = Todo(id: '1', title: '原任务', createdAt: now, updatedAt: now);
 
       todo.copyWith(title: '新任务');
       expect(todo.title, '原任务');
@@ -96,13 +81,7 @@ void main() {
 
     test('clearFolderId should set folderId to null', () {
       final now = DateTime(2026, 6, 14);
-      final todo = Todo(
-        id: '1',
-        title: 'Test',
-        folderId: 'folder-1',
-        createdAt: now,
-        updatedAt: now,
-      );
+      final todo = Todo(id: '1', title: 'Test', folderId: 'folder-1', createdAt: now, updatedAt: now);
 
       final copied = todo.copyWith(clearFolderId: true);
       expect(copied.folderId, isNull);
@@ -110,17 +89,10 @@ void main() {
 
     test('clearReminderTime should set reminderTime to null', () {
       final now = DateTime(2026, 6, 14);
-      final todo = Todo(
-        id: '1',
-        title: 'Test',
-        reminderTime: '09:00',
-        createdAt: now,
-        updatedAt: now,
-      );
+      final todo = Todo(id: '1', title: 'Test', reminderTime: '09:00', createdAt: now, updatedAt: now);
 
       final copied = todo.copyWith(clearReminderTime: true);
       expect(copied.reminderTime, isNull);
     });
   });
 }
-

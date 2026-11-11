@@ -7,32 +7,21 @@ import 'package:qnote_flutter/core/ai/raccoon_auth_service.dart';
 /// 小浣熊登录态的纯解析逻辑（不触库、不联网）
 void main() {
   String jwt(Map<String, dynamic> claims) {
-    String enc(dynamic value) =>
-        base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+    String enc(dynamic value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
     return '${enc({'alg': 'none'})}.${enc(claims)}.sig';
   }
 
   test('JWT 解析出过期时间与账号 id（sid 十六进制转十进制）', () {
-    final token = jwt({
-      'sid': '0x1f',
-      'name': '张三',
-      'exp': 2000000000,
-    });
+    final token = jwt({'sid': '0x1f', 'name': '张三', 'exp': 2000000000});
 
     final claims = RaccoonAuthService.decodeJwtForTest(token);
     expect(claims?['name'], '张三');
     expect(RaccoonAuthService.extractUidForTest(token), '31');
-    expect(
-      RaccoonAuthService.jwtExpiryForTest(token),
-      DateTime.fromMillisecondsSinceEpoch(2000000000 * 1000),
-    );
+    expect(RaccoonAuthService.jwtExpiryForTest(token), DateTime.fromMillisecondsSinceEpoch(2000000000 * 1000));
   });
 
   test('JWT 没有 sid 时回落到 sub/id/user_id', () {
-    expect(
-      RaccoonAuthService.extractUidForTest(jwt({'sub': 'user-1'})),
-      'user-1',
-    );
+    expect(RaccoonAuthService.extractUidForTest(jwt({'sub': 'user-1'})), 'user-1');
     expect(RaccoonAuthService.extractUidForTest(jwt({'id': 42})), '42');
   });
 
@@ -64,11 +53,7 @@ void main() {
       },
     });
 
-    expect(models.map((m) => m.id), [
-      'raccoon-8c4485',
-      'sn-glm-5-3',
-      'raccoon-chat-ml-5-5',
-    ]);
+    expect(models.map((m) => m.id), ['raccoon-8c4485', 'sn-glm-5-3', 'raccoon-chat-ml-5-5']);
     expect(models.first.name, 'Raccoon-Work');
     expect(models[1].name, 'GLM-5-3');
     expect(models.last.name, 'Raccoon Chat (默认)');

@@ -21,25 +21,14 @@ Future<bool> showUpdateDialog({
   return showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (dialogContext) => _UpdateDialog(
-      updateInfo: updateInfo,
-      currentVersion: currentVersion,
-    ),
+    builder: (dialogContext) => _UpdateDialog(updateInfo: updateInfo, currentVersion: currentVersion),
   ).then((value) => value ?? false);
 }
 
-enum _DownloadState {
-  idle,
-  downloading,
-  completed,
-  failed,
-}
+enum _DownloadState { idle, downloading, completed, failed }
 
 class _UpdateDialog extends StatefulWidget {
-  const _UpdateDialog({
-    required this.updateInfo,
-    required this.currentVersion,
-  });
+  const _UpdateDialog({required this.updateInfo, required this.currentVersion});
 
   final UpdateInfo updateInfo;
   final String currentVersion;
@@ -234,16 +223,11 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         ),
         icon: Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: colorScheme.primaryContainer, shape: BoxShape.circle),
           child: Icon(
             _state == _DownloadState.completed
                 ? Icons.check_circle_outline_rounded
-                : (_state == _DownloadState.failed
-                    ? Icons.error_outline_rounded
-                    : Icons.system_update_rounded),
+                : (_state == _DownloadState.failed ? Icons.error_outline_rounded : Icons.system_update_rounded),
             color: colorScheme.onPrimaryContainer,
             size: 26,
           ),
@@ -251,14 +235,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         title: Text(
           _state == _DownloadState.downloading
               ? '正在下载更新'
-              : (_state == _DownloadState.completed
-                  ? '下载完成'
-                  : (_state == _DownloadState.failed ? '下载失败' : '发现新版本')),
+              : (_state == _DownloadState.completed ? '下载完成' : (_state == _DownloadState.failed ? '下载失败' : '发现新版本')),
           textAlign: TextAlign.center,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: colorScheme.onSurface,
-          ),
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurface),
         ),
         content: SizedBox(
           width: double.maxFinite,
@@ -271,22 +250,12 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _VersionBadge(
-                      label: widget.currentVersion,
-                      highlighted: false,
-                    ),
+                    _VersionBadge(label: widget.currentVersion, highlighted: false),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 16,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      child: Icon(Icons.arrow_forward_rounded, size: 16, color: colorScheme.onSurfaceVariant),
                     ),
-                    _VersionBadge(
-                      label: widget.updateInfo.version,
-                      highlighted: true,
-                    ),
+                    _VersionBadge(label: widget.updateInfo.version, highlighted: true),
                   ],
                 ),
               ),
@@ -295,9 +264,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 Center(
                   child: Text(
                     '安装包 $sizeText',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                   ),
                 ),
               ],
@@ -319,9 +286,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      _totalBytes > 0
-                          ? '${(_progress * 100).toStringAsFixed(1)}%'
-                          : '下载中',
+                      _totalBytes > 0 ? '${(_progress * 100).toStringAsFixed(1)}%' : '下载中',
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.bold,
@@ -331,9 +296,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                       _totalBytes > 0
                           ? '${_formatBytes(_receivedBytes)} / ${_formatBytes(_totalBytes)}'
                           : _formatBytes(_receivedBytes),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -346,11 +309,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.speed_rounded,
-                              size: 14,
-                              color: colorScheme.primary.withValues(alpha: 0.8),
-                            ),
+                            Icon(Icons.speed_rounded, size: 14, color: colorScheme.primary.withValues(alpha: 0.8)),
                             const SizedBox(width: 4),
                             Text(
                               _formatSpeed(_speedBytesPerSec),
@@ -384,10 +343,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   child: Text(
                     '未自动弹出安装器时，点下方按钮重新安装。',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      height: 1.5,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
                   ),
                 ),
               ],
@@ -404,9 +360,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   ),
                   child: Text(
                     _errorMessage ?? '请稍后重试',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.error,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error),
                   ),
                 ),
               ],
@@ -435,56 +389,21 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         }
                       },
                       styleSheet: MarkdownStyleSheet(
-                        p: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 13,
-                          height: 1.6,
-                        ),
+                        p: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13, height: 1.6),
                         pPadding: const EdgeInsets.symmetric(vertical: 2),
-                        h1: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        h2: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        h3: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        listBullet: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 13,
-                          height: 1.6,
-                        ),
-                        strong: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        a: TextStyle(
-                          color: colorScheme.primary,
-                          fontSize: 13,
-                          decoration: TextDecoration.underline,
-                        ),
+                        h1: TextStyle(color: colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.bold),
+                        h2: TextStyle(color: colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.bold),
+                        h3: TextStyle(color: colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
+                        listBullet: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13, height: 1.6),
+                        strong: TextStyle(color: colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
+                        a: TextStyle(color: colorScheme.primary, fontSize: 13, decoration: TextDecoration.underline),
                         code: TextStyle(
                           color: colorScheme.onSurfaceVariant,
                           backgroundColor: colorScheme.surfaceContainerHighest,
                           fontSize: 12,
                         ),
-                        tableBody: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                        tableHead: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        tableBody: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+                        tableHead: TextStyle(color: colorScheme.onSurface, fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -494,9 +413,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           ),
         ),
         actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-        actions: [
-          _buildActionButtons(context, colorScheme),
-        ],
+        actions: [_buildActionButtons(context, colorScheme)],
       ),
     );
   }
@@ -524,9 +441,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               Expanded(
                 child: FilledButton(
                   onPressed: _handleBrowserDownload,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
+                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   child: const Text('浏览器打开'),
                 ),
               ),
@@ -544,9 +459,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     onPressed: _handleBrowserDownload,
                     icon: const Icon(Icons.open_in_browser_rounded, size: 18),
                     label: const Text('浏览器下载'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -555,9 +468,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     onPressed: _handleStartUpdate,
                     icon: const Icon(Icons.download_rounded, size: 18),
                     label: const Text('应用内下载'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   ),
                 ),
               ],
@@ -604,9 +515,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             Expanded(
               child: FilledButton(
                 onPressed: _installApk,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                 child: const Text('立即安装'),
               ),
             ),
@@ -632,9 +541,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             Expanded(
               child: FilledButton(
                 onPressed: _startDownload,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                 child: const Text('重试'),
               ),
             ),
@@ -646,10 +553,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
 /// 版本号徽标，最新一版用主色高亮。
 class _VersionBadge extends StatelessWidget {
-  const _VersionBadge({
-    required this.label,
-    required this.highlighted,
-  });
+  const _VersionBadge({required this.label, required this.highlighted});
 
   final String label;
   final bool highlighted;
@@ -661,9 +565,7 @@ class _VersionBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: highlighted
-            ? colorScheme.primaryContainer
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+        color: highlighted ? colorScheme.primaryContainer : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(

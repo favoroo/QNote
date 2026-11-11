@@ -14,9 +14,7 @@ class _UnsupportedUsageService extends ScreenUsageService {
 void main() {
   testWidgets('ScreenUsagePage 传入 initialDate 时同步更新 selectedDateProvider', (tester) async {
     final container = ProviderContainer(
-      overrides: [
-        screenUsageServiceProvider.overrideWithValue(_UnsupportedUsageService()),
-      ],
+      overrides: [screenUsageServiceProvider.overrideWithValue(_UnsupportedUsageService())],
     );
     addTearDown(container.dispose);
 
@@ -25,9 +23,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp(
-          home: ScreenUsagePage(initialDate: targetDate),
-        ),
+        child: MaterialApp(home: ScreenUsagePage(initialDate: targetDate)),
       ),
     );
     await tester.pumpAndSettle();

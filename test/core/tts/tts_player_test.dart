@@ -15,21 +15,11 @@ void main() {
       // just_audio 的 playing 只在 pause/stop 时回落，自然播完是
       // PlayerState(playing: true, completed)；若额外要求 !playing，
       // 朗读状态永远停在 playing，气泡按钮会卡在停止图标（需点两下才恢复）
-      expect(
-        TtsPlayer.playbackFinished(
-          PlayerState(true, ProcessingState.completed),
-        ),
-        isTrue,
-      );
+      expect(TtsPlayer.playbackFinished(PlayerState(true, ProcessingState.completed)), isTrue);
     });
 
     test('暂停后的 completed 同样判定为结束', () {
-      expect(
-        TtsPlayer.playbackFinished(
-          PlayerState(false, ProcessingState.completed),
-        ),
-        isTrue,
-      );
+      expect(TtsPlayer.playbackFinished(PlayerState(false, ProcessingState.completed)), isTrue);
     });
 
     test('加载/就绪/空闲等中间态不算结束', () {
@@ -39,48 +29,30 @@ void main() {
         ProcessingState.buffering,
         ProcessingState.ready,
       ]) {
-        expect(
-          TtsPlayer.playbackFinished(PlayerState(true, state)),
-          isFalse,
-          reason: 'processingState=$state 仍在朗读中',
-        );
+        expect(TtsPlayer.playbackFinished(PlayerState(true, state)), isFalse, reason: 'processingState=$state 仍在朗读中');
       }
     });
   });
 
   group('TtsPlayer.messageKeyOf', () {
     test('内容相同的不同对象产生相同 key（自动朗读与气泡渲染对齐）', () {
-      final a = ChatMessage(
-        role: 'assistant',
-        content: '最终答复内容',
-        timestamp: DateTime(2026, 9, 19, 12, 0, 0),
-      );
+      final a = ChatMessage(role: 'assistant', content: '最终答复内容', timestamp: DateTime(2026, 9, 19, 12, 0, 0));
       // AgentLoop 的 assistantMessage 与 finished 事件各构造一次时，
       // 时间戳会有毫秒级差异，key 仍必须一致
-      final b = ChatMessage(
-        role: 'assistant',
-        content: '最终答复内容',
-        timestamp: DateTime(2026, 9, 19, 12, 0, 0, 123),
-      );
+      final b = ChatMessage(role: 'assistant', content: '最终答复内容', timestamp: DateTime(2026, 9, 19, 12, 0, 0, 123));
       expect(TtsPlayer.messageKeyOf(a), TtsPlayer.messageKeyOf(b));
     });
 
     test('不同内容产生不同 key', () {
       final a = ChatMessage(role: 'assistant', content: '回复一');
       final b = ChatMessage(role: 'assistant', content: '回复二');
-      expect(
-        TtsPlayer.messageKeyOf(a),
-        isNot(TtsPlayer.messageKeyOf(b)),
-      );
+      expect(TtsPlayer.messageKeyOf(a), isNot(TtsPlayer.messageKeyOf(b)));
     });
 
     test('相同内容不同角色产生不同 key', () {
       final a = ChatMessage(role: 'user', content: '同样的话');
       final b = ChatMessage(role: 'assistant', content: '同样的话');
-      expect(
-        TtsPlayer.messageKeyOf(a),
-        isNot(TtsPlayer.messageKeyOf(b)),
-      );
+      expect(TtsPlayer.messageKeyOf(a), isNot(TtsPlayer.messageKeyOf(b)));
     });
   });
 
@@ -91,15 +63,8 @@ void main() {
       addTearDown(container.dispose);
       final player = container.read(ttsPlaybackProvider.notifier);
 
-      player.beginSpeech(
-        'stream#0',
-        voice: 'zh-CN-XiaoxiaoNeural',
-        rate: 1.0,
-      );
-      expect(
-        container.read(ttsPlaybackProvider).status,
-        TtsPlaybackStatus.synthesizing,
-      );
+      player.beginSpeech('stream#0', voice: 'zh-CN-XiaoxiaoNeural', rate: 1.0);
+      expect(container.read(ttsPlaybackProvider).status, TtsPlaybackStatus.synthesizing);
 
       player.retagMessage('stream#0', 'msg_assistant_final');
       final retagged = container.read(ttsPlaybackProvider);
@@ -118,10 +83,7 @@ void main() {
       player.retagMessage('stream#0', 'msg_assistant_first');
       // 上一轮的迟到收尾不能把这一轮的朗读改错名字
       player.retagMessage('stream#0', 'msg_assistant_stale');
-      expect(
-        container.read(ttsPlaybackProvider).messageId,
-        'msg_assistant_first',
-      );
+      expect(container.read(ttsPlaybackProvider).messageId, 'msg_assistant_first');
     });
   });
 
@@ -134,26 +96,23 @@ void main() {
 
     setUpAll(() {
       TestWidgetsFlutterBinding.ensureInitialized();
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(const MethodChannel('flutter_tts'), (
-            call,
-          ) async {
-            if (call.method == 'speak') {
-              // Android 端 speak 传 Map，其余平台直接传文本字符串
-              final arg = call.arguments;
-              spokenTexts.add(arg is Map ? arg['text'] as String : arg as String);
-            } else if (call.method == 'stop') {
-              stopCount++;
-            }
-            return 1;
-          });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('flutter_tts'),
+        (call) async {
+          if (call.method == 'speak') {
+            // Android 端 speak 传 Map，其余平台直接传文本字符串
+            final arg = call.arguments;
+            spokenTexts.add(arg is Map ? arg['text'] as String : arg as String);
+          } else if (call.method == 'stop') {
+            stopCount++;
+          }
+          return 1;
+        },
+      );
     });
 
     /// 轮询等待状态迁移；死锁回归时条件永假，靠超时把测试打红
-    Future<void> waitUntil(
-      bool Function() condition, {
-      required String timeoutMessage,
-    }) async {
+    Future<void> waitUntil(bool Function() condition, {required String timeoutMessage}) async {
       final deadline = DateTime.now().add(const Duration(seconds: 5));
       while (!condition()) {
         if (DateTime.now().isAfter(deadline)) fail(timeoutMessage);
@@ -169,11 +128,7 @@ void main() {
       addTearDown(container.dispose);
       final player = container.read(ttsPlaybackProvider.notifier);
 
-      player.beginSpeech(
-        'stream#0',
-        voice: QVoiceConfig.systemVoiceId,
-        rate: 1.0,
-      );
+      player.beginSpeech('stream#0', voice: QVoiceConfig.systemVoiceId, rate: 1.0);
       player.enqueueSpeech('第一段。');
       player.enqueueSpeech('第二段。');
       player.enqueueSpeech('第三段。');
@@ -182,8 +137,7 @@ void main() {
       // 回归点：清场与播放循环曾被串行链互相堵死，状态永远卡在
       // synthesizing、整场无声；此处等不到 idle 即超时失败
       await waitUntil(
-        () =>
-            container.read(ttsPlaybackProvider).status == TtsPlaybackStatus.idle,
+        () => container.read(ttsPlaybackProvider).status == TtsPlaybackStatus.idle,
         timeoutMessage: '分段朗读链路死锁：finishSpeech 后状态未回到 idle',
       );
       expect(spokenTexts, ['第一段。', '第二段。', '第三段。']);
@@ -198,11 +152,7 @@ void main() {
       addTearDown(container.dispose);
       final player = container.read(ttsPlaybackProvider.notifier);
 
-      player.beginSpeech(
-        'stream#1',
-        voice: QVoiceConfig.systemVoiceId,
-        rate: 1.0,
-      );
+      player.beginSpeech('stream#1', voice: QVoiceConfig.systemVoiceId, rate: 1.0);
       player.enqueueSpeech('不该被念出来。');
       await player.stop();
 
@@ -233,8 +183,7 @@ void main() {
       player.finishSpeech();
 
       await waitUntil(
-        () =>
-            container.read(ttsPlaybackProvider).status == TtsPlaybackStatus.idle,
+        () => container.read(ttsPlaybackProvider).status == TtsPlaybackStatus.idle,
         timeoutMessage: '降级场次未能正常收尾（预取失败把整场打断了？）',
       );
       final state = container.read(ttsPlaybackProvider);

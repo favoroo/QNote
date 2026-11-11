@@ -10,12 +10,10 @@ class ReminderUtils {
   ReminderUtils._();
 
   /// `YYYY-MM-DD HH:mm` / `YYYY/MM/DDTHH:mm:ss` 等带年份写法
-  static final RegExp _fullPattern =
-      RegExp(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})[ T](\d{1,2}):(\d{2})');
+  static final RegExp _fullPattern = RegExp(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})[ T](\d{1,2}):(\d{2})');
 
   /// `MM-DD HH:mm` / `M/D HH:mm` 等不带年份写法
-  static final RegExp _monthDayPattern =
-      RegExp(r'^(\d{1,2})[-/.](\d{1,2})[ T](\d{1,2}):(\d{2})');
+  static final RegExp _monthDayPattern = RegExp(r'^(\d{1,2})[-/.](\d{1,2})[ T](\d{1,2}):(\d{2})');
 
   /// 裸时间 `HH:mm`，按「今天」处理
   static final RegExp _timeOnlyPattern = RegExp(r'^(\d{1,2}):(\d{2})$');
@@ -28,9 +26,7 @@ class ReminderUtils {
     var s = raw.toString().trim();
     if (s.isEmpty) return null;
     // 去掉包裹的引号
-    if (s.length >= 2 &&
-        ((s.startsWith('"') && s.endsWith('"')) ||
-            (s.startsWith("'") && s.endsWith("'")))) {
+    if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
       s = s.substring(1, s.length - 1).trim();
     }
 
@@ -47,12 +43,7 @@ class ReminderUtils {
     m = _timeOnlyPattern.firstMatch(s);
     if (m != null) {
       final now = DateTime.now();
-      return _compose(
-        now.month.toString(),
-        now.day.toString(),
-        m.group(1)!,
-        m.group(2)!,
-      );
+      return _compose(now.month.toString(), now.day.toString(), m.group(1)!, m.group(2)!);
     }
 
     return null;

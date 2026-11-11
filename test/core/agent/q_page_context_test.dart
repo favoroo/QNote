@@ -20,11 +20,7 @@ void main() {
     });
 
     test('设置类页面归入 other 且共享同一签名', () {
-      for (final location in [
-        '/settings/profile',
-        '/settings/ai-config',
-        '/settings/data?tab=backup',
-      ]) {
+      for (final location in ['/settings/profile', '/settings/ai-config', '/settings/data?tab=backup']) {
         final ctx = QPageContext.fromLocation(location);
         expect(ctx.type, QContextType.other, reason: location);
         expect(ctx.signature, 'page:settings', reason: location);
@@ -62,11 +58,7 @@ void main() {
     });
 
     test('列表类上下文无文件目标', () {
-      const list = QPageContext(
-        type: QContextType.notesList,
-        signature: 'page:notes',
-        displayLabel: '笔记库',
-      );
+      const list = QPageContext(type: QContextType.notesList, signature: 'page:notes', displayLabel: '笔记库');
       expect(list.hasFileTarget, isFalse);
     });
   });
@@ -88,11 +80,7 @@ void main() {
     });
 
     test('列表页注入页面说明但不含文件路径', () async {
-      const ctx = QPageContext(
-        type: QContextType.todoList,
-        signature: 'page:todo',
-        displayLabel: '待办',
-      );
+      const ctx = QPageContext(type: QContextType.todoList, signature: 'page:todo', displayLabel: '待办');
       final block = await ctx.toPromptBlock();
       expect(block, isNotNull);
       expect(block, contains('待办页'));
@@ -100,16 +88,8 @@ void main() {
     });
 
     test('other/aiPage 类型无需注入（返回 null）', () async {
-      const other = QPageContext(
-        type: QContextType.other,
-        signature: 'page:settings',
-        displayLabel: '设置',
-      );
-      const ai = QPageContext(
-        type: QContextType.aiPage,
-        signature: 'page:ai',
-        displayLabel: '小Q',
-      );
+      const other = QPageContext(type: QContextType.other, signature: 'page:settings', displayLabel: '设置');
+      const ai = QPageContext(type: QContextType.aiPage, signature: 'page:ai', displayLabel: '小Q');
       expect(await other.toPromptBlock(), isNull);
       expect(await ai.toPromptBlock(), isNull);
     });

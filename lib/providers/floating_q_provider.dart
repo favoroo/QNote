@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart'
-    show debugPrint, kDebugMode, visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
@@ -33,8 +32,7 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 
 // 引用模型本体在 core 层（QTargetBridge 桥接钩子需要该类型），
 // 这里 re-export 保持既有 import 路径兼容
-export 'package:qnote_flutter/core/agent/services/q_text_quote.dart'
-    show QQuoteSource, QTextQuote;
+export 'package:qnote_flutter/core/agent/services/q_text_quote.dart' show QQuoteSource, QTextQuote;
 
 // ==========================================
 // 全局悬浮小Q快捷入口
@@ -95,9 +93,7 @@ class FloatingQModalRouteObserver extends NavigatorObserver {
   void _onRouteAnimationStatus(AnimationStatus status) {
     if (status != AnimationStatus.dismissed) return;
     final stale = _openPopups
-        .where((r) =>
-            r.animation == null ||
-            r.animation!.status == AnimationStatus.dismissed)
+        .where((r) => r.animation == null || r.animation!.status == AnimationStatus.dismissed)
         .toList();
     if (stale.isEmpty) return;
     for (final route in stale) {
@@ -205,8 +201,7 @@ class FloatingQState {
   });
 
   /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文
-  QPageContext? get effectiveContext =>
-      overlayStack.isNotEmpty ? overlayStack.last : baseContext;
+  QPageContext? get effectiveContext => overlayStack.isNotEmpty ? overlayStack.last : baseContext;
 
   /// 悬浮面板弹出的锚点对齐方式（默认底边居中 Alignment.bottomCenter）
   final Alignment anchorAlignment;
@@ -244,38 +239,25 @@ class FloatingQState {
       overlayStack: overlayStack ?? this.overlayStack,
       phase: phase ?? this.phase,
       panelOpen: panelOpen ?? this.panelOpen,
-      contextSignature:
-          clearSignature ? null : (contextSignature ?? this.contextSignature),
+      contextSignature: clearSignature ? null : (contextSignature ?? this.contextSignature),
       contextLabel: clearSignature ? null : (contextLabel ?? this.contextLabel),
       messages: messages ?? this.messages,
-      statusText:
-          clearStatusText ? null : (statusText ?? this.statusText),
-      streamingThought: clearStreamingThought
-          ? null
-          : (streamingThought ?? this.streamingThought),
-      streamingText:
-          clearStreamingText ? null : (streamingText ?? this.streamingText),
-      streamingStartedAt: clearStreamingStartedAt
-          ? null
-          : (streamingStartedAt ?? this.streamingStartedAt),
+      statusText: clearStatusText ? null : (statusText ?? this.statusText),
+      streamingThought: clearStreamingThought ? null : (streamingThought ?? this.streamingThought),
+      streamingText: clearStreamingText ? null : (streamingText ?? this.streamingText),
+      streamingStartedAt: clearStreamingStartedAt ? null : (streamingStartedAt ?? this.streamingStartedAt),
       pendingUndoCount: pendingUndoCount ?? this.pendingUndoCount,
       isUndoing: isUndoing ?? this.isUndoing,
       pendingQuote: clearQuote ? null : (pendingQuote ?? this.pendingQuote),
       externalShareMode: externalShareMode ?? this.externalShareMode,
-      pendingImages:
-          clearPendingImages ? null : (pendingImages ?? this.pendingImages),
-      attachedImages: clearAttachedImages
-          ? const []
-          : (attachedImages ?? this.attachedImages),
+      pendingImages: clearPendingImages ? null : (pendingImages ?? this.pendingImages),
+      attachedImages: clearAttachedImages ? const [] : (attachedImages ?? this.attachedImages),
       anchorAlignment: anchorAlignment ?? this.anchorAlignment,
     );
   }
 }
 
-final floatingQProvider =
-    NotifierProvider<FloatingQNotifier, FloatingQState>(
-  FloatingQNotifier.new,
-);
+final floatingQProvider = NotifierProvider<FloatingQNotifier, FloatingQState>(FloatingQNotifier.new);
 
 class FloatingQNotifier extends Notifier<FloatingQState> {
   AgentCancellationToken? _currentToken;
@@ -362,11 +344,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 手动点开面板：回到页面上下文模式（外部分享模式仅在分享唤起时生效）
   void openPanel({Alignment anchorAlignment = Alignment.bottomCenter}) =>
-      state = state.copyWith(
-        panelOpen: true,
-        externalShareMode: false,
-        anchorAlignment: anchorAlignment,
-      );
+      state = state.copyWith(panelOpen: true, externalShareMode: false, anchorAlignment: anchorAlignment);
 
   void closePanel() => state = state.copyWith(panelOpen: false);
 
@@ -375,16 +353,12 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   /// 小Q工作中同样允许挂起（send 在 working 期是 no-op，引用保留待发），
   /// 引用在发送时一次性消费，期间可在面板引用卡片上移除。
   /// 外部内容（第三方分享/划词）唤起时进入外部模式：不展示也不注入页面位置
-  void openWithQuote(
-    QTextQuote quote, {
-    Alignment anchorAlignment = Alignment.bottomCenter,
-  }) =>
-      state = state.copyWith(
-        pendingQuote: quote,
-        panelOpen: true,
-        externalShareMode: quote.source == QQuoteSource.external,
-        anchorAlignment: anchorAlignment,
-      );
+  void openWithQuote(QTextQuote quote, {Alignment anchorAlignment = Alignment.bottomCenter}) => state = state.copyWith(
+    pendingQuote: quote,
+    panelOpen: true,
+    externalShareMode: quote.source == QQuoteSource.external,
+    anchorAlignment: anchorAlignment,
+  );
 
   /// 移除挂起的引用（引用卡片 × 按钮）
   void clearPendingQuote() => state = state.copyWith(clearQuote: true);
@@ -392,11 +366,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   /// 外部分享图片入口：挂起待挂载图片并展开面板（同样进入外部模式）
   void openWithImages(List<String> paths) {
     if (paths.isEmpty) return;
-    state = state.copyWith(
-      pendingImages: List.of(paths),
-      panelOpen: true,
-      externalShareMode: true,
-    );
+    state = state.copyWith(pendingImages: List.of(paths), panelOpen: true, externalShareMode: true);
   }
 
   /// 面板消费挂起的分享图片：转入附件区展示，随下一轮发送一次性携带。
@@ -406,10 +376,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     if (pending == null || pending.isEmpty) return;
     final existing = state.attachedImages.toSet();
     final added = pending.where((p) => !existing.contains(p)).toList();
-    state = state.copyWith(
-      attachedImages: [...state.attachedImages, ...added],
-      clearPendingImages: true,
-    );
+    state = state.copyWith(attachedImages: [...state.attachedImages, ...added], clearPendingImages: true);
   }
 
   /// 「给小Q」：把面板里看到的图片直接挂到当前附件区，供就这张图继续追问。
@@ -423,17 +390,12 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     if (state.attachedImages.contains(path)) {
       return;
     }
-    state = state.copyWith(
-      attachedImages: [...state.attachedImages, path],
-    );
+    state = state.copyWith(attachedImages: [...state.attachedImages, path]);
   }
 
   /// 移除一张附件图片（缩略图 × 按钮）
   void removeAttachedImage(String path) {
-    state = state.copyWith(
-      attachedImages:
-          state.attachedImages.where((p) => p != path).toList(),
-    );
+    state = state.copyWith(attachedImages: state.attachedImages.where((p) => p != path).toList());
   }
 
   /// 手动开启新对话（清空历史；进行中的任务与待撤回变更不受影响）
@@ -460,16 +422,14 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   Future<void> send(String content) async {
     final text = content.trim();
     final images = List<String>.of(state.attachedImages);
-    if ((text.isEmpty && images.isEmpty) ||
-        state.phase == FloatingQPhase.working) {
+    if ((text.isEmpty && images.isEmpty) || state.phase == FloatingQPhase.working) {
       return;
     }
 
     // 外部分享模式：独立会话签名（不与页面会话互串），不读取页面上下文
     final isExternal = state.externalShareMode;
     final ctx = isExternal ? null : state.effectiveContext;
-    final signature =
-        isExternal ? 'external:share' : (ctx?.signature ?? 'page:none');
+    final signature = isExternal ? 'external:share' : (ctx?.signature ?? 'page:none');
 
     // 撤回就绪期发起新任务：保留并继续累加旧修改，撤回语义仍为
     // "撤销本会话小Q的全部修改"（逆序恢复天然按时间倒序覆盖多次任务）
@@ -488,8 +448,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       phase: FloatingQPhase.working,
       contextSignature: signature,
       contextLabel: ctx?.displayLabel,
-      messages:
-          isNewConversation ? [userMessage] : [...state.messages, userMessage],
+      messages: isNewConversation ? [userMessage] : [...state.messages, userMessage],
       statusText: '小Q准备中',
       streamingStartedAt: DateTime.now(),
       clearStreamingText: true,
@@ -519,9 +478,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     final messages = List<ChatMessage>.from(_sessionMessages);
     for (var i = messages.length - 1; i >= 0; i--) {
       if (messages[i].uiDetails?['type'] == 'turn_limit') {
-        messages[i] = messages[i].copyWith(
-          uiDetails: {...?messages[i].uiDetails, 'handled': true},
-        );
+        messages[i] = messages[i].copyWith(uiDetails: {...?messages[i].uiDetails, 'handled': true});
         _sessionMessages = messages;
         state = state.copyWith(messages: List.of(messages));
         return;
@@ -544,9 +501,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 撤回本会话小Q的全部修改，返回 (恢复成功处数, 失败处数)；不可撤回时返回 null
   Future<(int restored, int failed)?> undo() async {
-    if (state.phase != FloatingQPhase.countdown ||
-        state.isUndoing ||
-        _pendingUndo.isEmpty) {
+    if (state.phase != FloatingQPhase.countdown || state.isUndoing || _pendingUndo.isEmpty) {
       return null;
     }
     state = state.copyWith(isUndoing: true);
@@ -567,10 +522,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       );
       return result;
     } catch (e) {
-      LoggerService.instance.logAI(
-        '悬浮小Q撤回失败: $e',
-        level: LogLevel.error,
-      );
+      LoggerService.instance.logAI('悬浮小Q撤回失败: $e', level: LogLevel.error);
       state = state.copyWith(isUndoing: false);
       return null;
     }
@@ -580,11 +532,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   // Agent 任务管线（与 AI 主会话同源的引擎与联动，独立轻量事件消费）
   // ==========================================
 
-  Future<void> _runAgentTask(
-    QPageContext? ctx,
-    String signature, {
-    QTextQuote? quote,
-  }) async {
+  Future<void> _runAgentTask(QPageContext? ctx, String signature, {QTextQuote? quote}) async {
     final token = AgentCancellationToken();
     _currentToken = token;
     _streamBuffer.clear();
@@ -615,42 +563,27 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       final quoteBlock = quote == null ? null : await _quotePromptBlock(quote);
       final dynamicContext = await buildBaseDynamicContext(
         personality: personality,
-        extraSections: [
-          ?pageBlock,
-          ?quoteBlock,
-        ],
+        extraSections: [?pageBlock, ?quoteBlock],
       );
 
       final aiService = ref.read(aiServiceProvider);
-      final roleSettings = await AiRoleService.instance.getSettingsForRole(
-        'assistant',
-      );
+      final roleSettings = await AiRoleService.instance.getSettingsForRole('assistant');
       // 绑定路由组时按组策略选成员并把组内切换器交给 AgentLoop；本轮带图片时
       // 优先选支持识图的成员，避免把图片发给看不见画面的模型
-      final runHasImages =
-          _sessionMessages.any((m) => m.images?.isNotEmpty ?? false);
-      final assistantResolution = await AiRoleService.instance.resolveForRole(
-        'assistant',
-        preferVision: runHasImages,
-      );
+      final runHasImages = _sessionMessages.any((m) => m.images?.isNotEmpty ?? false);
+      final assistantResolution = await AiRoleService.instance.resolveForRole('assistant', preferVision: runHasImages);
       final assistantConfig = assistantResolution.config;
       // 当前模型能否看图：同时决定提示词措辞与本轮图片是否进上下文。
       // 能力未知时先自动实测一次并落盘，避免把新加的视觉模型误判为不支持
       final supportsVisionInput = await VisionCapabilityProbe.ensure(assistantConfig);
-      aiService.updateConfig(
-        assistantConfig,
-        temperature: roleSettings.temperature,
-        maxTokens: roleSettings.maxTokens,
-      );
+      aiService.updateConfig(assistantConfig, temperature: roleSettings.temperature, maxTokens: roleSettings.maxTokens);
 
       // 预加载用户技能缓存，保证本次会话系统提示词中的技能索引完整
       await SkillRegistry.instance.ensureLoaded();
 
       // 可选工具按用户配置裁剪：禁用的工具不注册，系统提示词对应准则段也不注入
       final disabledTools = await AgentToolConfig.instance.getDisabledTools();
-      final dispatcher = AgentToolRegistry.createDefaultDispatcher(
-        disabledTools: disabledTools,
-      );
+      final dispatcher = AgentToolRegistry.createDefaultDispatcher(disabledTools: disabledTools);
       final agentLoop = AgentLoop(
         aiService: aiService,
         dispatcher: dispatcher,
@@ -660,18 +593,12 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         route: assistantResolution.route,
         // 账号型选号作用域：悬浮窗是一段独立对话，按会话固定账号；
         // turnKey 用消息数近似「本轮」，同一条消息内的工具循环不换号
-        requestScope: AiRequestScope(
-          sessionKey: 'floating',
-          turnKey: 'floating:${_sessionMessages.length}',
-        ),
+        requestScope: AiRequestScope(sessionKey: 'floating', turnKey: 'floating:${_sessionMessages.length}'),
         // 整池限流时不报错、不静默：与主聊天一致，把排队秒数写到悬浮窗状态行
         onQuotaHold: (hold) => _setStatus('服务商限流 · ${hold.inSeconds}s 后重试'),
         afterToolCall: (call, result) async {
           // 按 VFS 路径前缀联动刷新对应业务数据
-          refreshWorkspaceSideEffects(
-            ref,
-            call.arguments['path'] as String? ?? '',
-          );
+          refreshWorkspaceSideEffects(ref, call.arguments['path'] as String? ?? '');
         },
       );
 
@@ -681,8 +608,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         systemPrompt: QSystemPrompt.buildSystemPrompt(
           personalityPrompt: personality.prompt,
           personalityName: personality.name,
-          enabledOptionalTools:
-              AgentToolRegistry.optionalToolNames.difference(disabledTools),
+          enabledOptionalTools: AgentToolRegistry.optionalToolNames.difference(disabledTools),
           supportsVisionInput: supportsVisionInput,
         ),
         dynamicContext: dynamicContext,
@@ -700,9 +626,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             _speech?.onTurnStart();
             state = state.copyWith(clearStreamingThought: true);
             // 首轮不展示步数，避免"第 1 步"这类无信息量文案
-            _setStatus((event.turn ?? 0) > 1
-                ? '小Q思考中 · 第 ${event.turn} 步'
-                : '小Q思考中');
+            _setStatus((event.turn ?? 0) > 1 ? '小Q思考中 · 第 ${event.turn} 步' : '小Q思考中');
             break;
           case AgentEventType.contentDelta:
             if (event.text != null) {
@@ -734,17 +658,13 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             // 提前展示目标文件等信息，避免状态行停留在「思考中」形似卡死
             final callingTool = event.toolCall;
             if (callingTool != null && callingTool.name.isNotEmpty) {
-              _setStatus(
-                AgentToolLabels.progressLabel(callingTool.name, callingTool.arguments),
-              );
+              _setStatus(AgentToolLabels.progressLabel(callingTool.name, callingTool.arguments));
             }
             break;
           case AgentEventType.toolExecuting:
             final toolName = event.toolCall?.name ?? '';
             final extraProgress = event.text != null ? '（${event.text}）' : '';
-            _setStatus(
-              '${AgentToolLabels.progressLabel(toolName, event.toolCall?.arguments)}$extraProgress',
-            );
+            _setStatus('${AgentToolLabels.progressLabel(toolName, event.toolCall?.arguments)}$extraProgress');
             break;
           case AgentEventType.toolCompleted:
           case AgentEventType.assistantMessage:
@@ -765,10 +685,10 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
       if (finalResponse != null) {
         // 避免重复追加相同内容的最终答复
-        final isDup = _sessionMessages.isNotEmpty &&
+        final isDup =
+            _sessionMessages.isNotEmpty &&
             _sessionMessages.last.role == 'assistant' &&
-            _sessionMessages.last.content.trim() ==
-                finalResponse.content.trim();
+            _sessionMessages.last.content.trim() == finalResponse.content.trim();
         if (!isDup) _appendSessionMessage(finalResponse, signature);
 
         // 语音回复：与 AI 主页面共用「小Q语音 → 自动朗读回复」开关。
@@ -785,11 +705,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         final last = _sessionMessages.last;
         if (last.role != 'assistant' || !last.content.contains('中止')) {
           _appendSessionMessage(
-            ChatMessage(
-              role: 'assistant',
-              content: '(已中止，可重新发送)',
-              timestamp: DateTime.now(),
-            ),
+            ChatMessage(role: 'assistant', content: '(已中止，可重新发送)', timestamp: DateTime.now()),
             signature,
           );
         }
@@ -797,11 +713,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     } catch (e, stackTrace) {
       // 报错路径下已开口的半句不再续播，避免错误提示和语音打架
       _speech?.onAbort();
-      LoggerService.instance.logAI(
-        '悬浮小Q任务执行失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logAI('悬浮小Q任务执行失败: $e', level: LogLevel.error, details: stackTrace.toString());
       _appendSessionMessage(
         ChatMessage(
           role: 'assistant',
@@ -815,8 +727,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       _flushTimer?.cancel();
       _flushTimer = null;
       _currentToken = null;
-      final undoEntries =
-          VirtualWorkspaceService.instance.stopRecording(recorderHandle);
+      final undoEntries = VirtualWorkspaceService.instance.stopRecording(recorderHandle);
 
       // 任务结束：目标编辑页指纹未变则重载刷新 UI（保留用户手动编辑的版本）
       await QTargetBridge.instance.notifyTaskEnd(ctx?.signature);
@@ -889,8 +800,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       case QQuoteSource.diary:
         // 记录内嵌在天文件中，修改时必须保留 <!-- id: ... --> 标记
         path = await workspace.resolveTimelineDayPath(quote.sourceId);
-        idHint =
-            '记录 id: ${quote.sourceId}（记录以 <!-- id: ... --> 标记内嵌在天文件中，修改单条记录时保留其标记）';
+        idHint = '记录 id: ${quote.sourceId}（记录以 <!-- id: ... --> 标记内嵌在天文件中，修改单条记录时保留其标记）';
       case QQuoteSource.journal:
         final date = DateTime.tryParse(quote.sourceId);
         if (date == null) return null;
@@ -917,8 +827,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     return [
       '用户引用的内容（用户通过「给小Q」主动引用，接下来的指令通常针对这段内容提问或要求修改）',
       '来源：$sourceLabel《${quote.sourceTitle}》（$idHint${path == null ? '' : '，虚拟工作区文件: $path'}）',
-      if (quote.locationDesc != null)
-        '位置：${quote.locationDesc}（按引用时的内容估算，可能与文件当前实际内容有细微出入）',
+      if (quote.locationDesc != null) '位置：${quote.locationDesc}（按引用时的内容估算，可能与文件当前实际内容有细微出入）',
       '引用文本：',
       '"""',
       text,
@@ -931,8 +840,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   }
 
   @visibleForTesting
-  Future<String?> quotePromptBlockForTest(QTextQuote quote) =>
-      _quotePromptBlock(quote);
+  Future<String?> quotePromptBlockForTest(QTextQuote quote) => _quotePromptBlock(quote);
 
   /// 组装外部分享内容的注入块：无应用内来源实体，直接注入文本本身，
   /// 并显式告知小Q不要尝试 read_file 定位。返回 null 表示无可注入内容
@@ -993,11 +901,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     _flushTimer = Timer(const Duration(milliseconds: 60), () {
       final content = _streamBuffer.toString();
       if (content.isNotEmpty) {
-        state = state.copyWith(
-          streamingText: content,
-          clearStatusText: true,
-          clearStreamingThought: true,
-        );
+        state = state.copyWith(streamingText: content, clearStatusText: true, clearStreamingThought: true);
       } else if (_thoughtBuffer.isNotEmpty) {
         state = state.copyWith(streamingThought: _thoughtBuffer.toString());
       }

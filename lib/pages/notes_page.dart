@@ -45,9 +45,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   List<FlattenedItem>? _cachedFlattened;
 
   List<FlattenedItem> _getFlattenedItems(List<Folder> folders, List<Note> notes) {
-    if (identical(folders, _lastFolders) &&
-        identical(notes, _lastNotes) &&
-        _cachedFlattened != null) {
+    if (identical(folders, _lastFolders) && identical(notes, _lastNotes) && _cachedFlattened != null) {
       return _cachedFlattened!;
     }
     final result = _flattenTree(null, 0, folders, notes);
@@ -152,58 +150,49 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     return Scaffold(
       appBar: AppBar(
         leading: _isSelectionMode
-            ? IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: _exitSelectionMode,
-              )
-            : IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
-              ),
-        title: Text(
-          _isSelectionMode
-              ? '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项'
-              : '笔记',
-        ),
+            ? IconButton(icon: const Icon(Icons.close), onPressed: _exitSelectionMode)
+            : IconButton(icon: const Icon(Icons.menu), onPressed: () => rootScaffoldKey.currentState?.openDrawer()),
+        title: Text(_isSelectionMode ? '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项' : '笔记'),
         actions: [
           if (_isSelectionMode)
-            Consumer(builder: (context, ref, _) {
-              // 日记体系节点不参与批量选择与全选
-              final notes = ref.watch(noteListProvider).value ?? [];
-              final folders = ref.watch(folderListProvider).value ?? [];
-              final selectableNoteIds =
-                  notes.where((n) => !JournalService.isJournalNote(n.id)).map((n) => n.id).toSet();
-              final selectableFolderIds =
-                  folders.where((f) => !JournalService.isJournalFolder(f)).map((f) => f.id).toSet();
-              final isAllSelected = _selectedNoteIds.length == selectableNoteIds.length &&
-                  _selectedFolderIds.length == selectableFolderIds.length;
-              return TextButton(
-                onPressed: () {
-                  setState(() {
-                    if (isAllSelected) {
-                      _selectedNoteIds.clear();
-                      _selectedFolderIds.clear();
-                    } else {
-                      _selectedNoteIds = Set<String>.from(selectableNoteIds);
-                      _selectedFolderIds = Set<String>.from(selectableFolderIds);
-                    }
-                  });
-                },
-                child: Text(
-                  isAllSelected ? '取消全选' : '全选',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
+            Consumer(
+              builder: (context, ref, _) {
+                // 日记体系节点不参与批量选择与全选
+                final notes = ref.watch(noteListProvider).value ?? [];
+                final folders = ref.watch(folderListProvider).value ?? [];
+                final selectableNoteIds = notes
+                    .where((n) => !JournalService.isJournalNote(n.id))
+                    .map((n) => n.id)
+                    .toSet();
+                final selectableFolderIds = folders
+                    .where((f) => !JournalService.isJournalFolder(f))
+                    .map((f) => f.id)
+                    .toSet();
+                final isAllSelected =
+                    _selectedNoteIds.length == selectableNoteIds.length &&
+                    _selectedFolderIds.length == selectableFolderIds.length;
+                return TextButton(
+                  onPressed: () {
+                    setState(() {
+                      if (isAllSelected) {
+                        _selectedNoteIds.clear();
+                        _selectedFolderIds.clear();
+                      } else {
+                        _selectedNoteIds = Set<String>.from(selectableNoteIds);
+                        _selectedFolderIds = Set<String>.from(selectableFolderIds);
+                      }
+                    });
+                  },
+                  child: Text(
+                    isAllSelected ? '取消全选' : '全选',
+                    style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold),
                   ),
-                ),
-              );
-            })
+                );
+              },
+            )
           else ...[
             IconButton(
-              icon: Icon(
-                Icons.checklist_outlined,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+              icon: Icon(Icons.checklist_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant),
               tooltip: '批量管理',
               onPressed: _enterSelectionMode,
             ),
@@ -211,35 +200,28 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               icon: const Icon(Icons.search),
               tooltip: '搜索',
               onPressed: () {
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const SearchView()));
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchView()));
               },
             ),
           ],
         ],
       ),
-      body: Consumer(builder: (context, ref, _) {
-        final noteListAsync = ref.watch(noteListProvider);
-        final folderListAsync = ref.watch(folderListProvider);
-        return noteListAsync.when(
-          data: (notes) => folderListAsync.when(
-            data: (folders) => _buildTree(context, folders, notes),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => AppErrorState(
-              error: e,
-              action: '加载文件夹失败',
-              onRetry: () => ref.invalidate(folderListProvider),
+      body: Consumer(
+        builder: (context, ref, _) {
+          final noteListAsync = ref.watch(noteListProvider);
+          final folderListAsync = ref.watch(folderListProvider);
+          return noteListAsync.when(
+            data: (notes) => folderListAsync.when(
+              data: (folders) => _buildTree(context, folders, notes),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) =>
+                  AppErrorState(error: e, action: '加载文件夹失败', onRetry: () => ref.invalidate(folderListProvider)),
             ),
-          ),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => AppErrorState(
-            error: e,
-            action: '加载笔记失败',
-            onRetry: () => ref.invalidate(noteListProvider),
-          ),
-        );
-      }),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => AppErrorState(error: e, action: '加载笔记失败', onRetry: () => ref.invalidate(noteListProvider)),
+          );
+        },
+      ),
       floatingActionButton: AppMotion.switcher(
         context: context,
         baseDuration: AppDurations.fast,
@@ -254,10 +236,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     heroTag: 'add_folder_fab',
                     shape: const CircleBorder(),
                     onPressed: () => _showCreateFolderDialog(),
-                    backgroundColor:
-                        Theme.of(context).colorScheme.secondaryContainer,
-                    foregroundColor:
-                        Theme.of(context).colorScheme.onSecondaryContainer,
+                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                    foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
                     child: const Icon(Icons.create_new_folder_outlined),
                   ),
                   const SizedBox(height: 12),
@@ -284,12 +264,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outlineVariant
-                          .withValues(alpha: 0.1),
-                    ),
+                    top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.1)),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -307,14 +282,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                       children: [
                         Text(
                           '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         FilledButton(
-                          onPressed: (_selectedNoteIds.isEmpty &&
-                                  _selectedFolderIds.isEmpty)
+                          onPressed: (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty)
                               ? null
                               : _handleBatchDelete,
                           style: FilledButton.styleFrom(
@@ -322,20 +293,14 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                                 ? Theme.of(context).colorScheme.error
                                 : Theme.of(context).colorScheme.error,
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Icon(Icons.delete_outline, size: 16),
                               const SizedBox(width: 6),
-                              Text(
-                                _isConfirming ? '再点确认' : '删除',
-                                style:
-                                    const TextStyle(fontWeight: FontWeight.bold),
-                              ),
+                              Text(_isConfirming ? '再点确认' : '删除', style: const TextStyle(fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -358,10 +323,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '名称',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: '名称', border: OutlineInputBorder()),
           onSubmitted: (value) {
             if (value.isNotEmpty) {
               ref.read(folderListProvider.notifier).addFolder(value, parentId);
@@ -370,16 +332,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           },
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
-                ref
-                    .read(folderListProvider.notifier)
-                    .addFolder(controller.text, parentId);
+                ref.read(folderListProvider.notifier).addFolder(controller.text, parentId);
               }
               Navigator.pop(ctx);
             },
@@ -391,22 +348,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 
   void _createNote([String? folderId]) async {
-    final note = await ref
-        .read(noteListProvider.notifier)
-        .addNote(title: '新笔记', folderId: folderId);
+    final note = await ref.read(noteListProvider.notifier).addNote(title: '新笔记', folderId: folderId);
     if (mounted) {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
     }
   }
 
-  List<FlattenedItem> _flattenTree(
-    String? parentId,
-    int depth,
-    List<Folder> folders,
-    List<Note> notes,
-  ) {
+  List<FlattenedItem> _flattenTree(String? parentId, int depth, List<Folder> folders, List<Note> notes) {
     final List<FlattenedItem> result = [];
 
     // 获取该层级的文件夹和笔记
@@ -434,40 +382,46 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
     // 1. 先加入置顶的笔记
     for (final note in pinnedNotes) {
-      result.add(FlattenedItem(
-        id: note.id,
-        isFolder: false,
-        note: note,
-        depth: depth,
-        parentId: parentId,
-        isPinned: true,
-        isJournal: JournalService.isJournalNote(note.id),
-      ));
+      result.add(
+        FlattenedItem(
+          id: note.id,
+          isFolder: false,
+          note: note,
+          depth: depth,
+          parentId: parentId,
+          isPinned: true,
+          isJournal: JournalService.isJournalNote(note.id),
+        ),
+      );
     }
 
     // 2. 加入排序后的可排项（文件夹和未置顶笔记）
     for (final item in sortableItems) {
       if (item is Note) {
-        result.add(FlattenedItem(
-          id: item.id,
-          isFolder: false,
-          note: item,
-          depth: depth,
-          parentId: parentId,
-          isPinned: false,
-          isJournal: JournalService.isJournalNote(item.id),
-        ));
+        result.add(
+          FlattenedItem(
+            id: item.id,
+            isFolder: false,
+            note: item,
+            depth: depth,
+            parentId: parentId,
+            isPinned: false,
+            isJournal: JournalService.isJournalNote(item.id),
+          ),
+        );
       } else {
         final folder = item as Folder;
-        result.add(FlattenedItem(
-          id: folder.id,
-          isFolder: true,
-          folder: folder,
-          depth: depth,
-          parentId: parentId,
-          isPinned: false,
-          isJournal: JournalService.isJournalFolder(folder),
-        ));
+        result.add(
+          FlattenedItem(
+            id: folder.id,
+            isFolder: true,
+            folder: folder,
+            depth: depth,
+            parentId: parentId,
+            isPinned: false,
+            isJournal: JournalService.isJournalFolder(folder),
+          ),
+        );
         // 如果文件夹展开，递归将其子孙节点也加入展平列表
         if (folder.isExpanded) {
           result.addAll(_flattenTree(folder.id, depth + 1, folders, notes));
@@ -529,24 +483,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (draggedItem.isFolder) {
       final folder = draggedItem.folder!;
       if (folder.parentId != destParentId) {
-        await ref.read(folderListProvider.notifier).updateFolder(
-          folder.copyWith(
-            parentId: destParentId,
-            clearParentId: destParentId == null,
-            updatedAt: now,
-          ),
-        );
+        await ref
+            .read(folderListProvider.notifier)
+            .updateFolder(folder.copyWith(parentId: destParentId, clearParentId: destParentId == null, updatedAt: now));
       }
     } else {
       final note = draggedItem.note!;
       if (note.folderId != destParentId) {
-        await ref.read(noteListProvider.notifier).updateNote(
-          note.copyWith(
-            folderId: destParentId,
-            clearFolderId: destParentId == null,
-            updatedAt: now,
-          ),
-        );
+        await ref
+            .read(noteListProvider.notifier)
+            .updateNote(note.copyWith(folderId: destParentId, clearFolderId: destParentId == null, updatedAt: now));
       }
     }
 
@@ -569,14 +515,14 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
       if (draggedItem.isFolder) {
         final folder = refreshedFolders.firstWhere((f) => f.id == draggedItem.id);
-        await ref.read(folderListProvider.notifier).updateFolder(
-          folder.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now),
-        );
+        await ref
+            .read(folderListProvider.notifier)
+            .updateFolder(folder.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now));
       } else {
         final note = allNotes.firstWhere((n) => n.id == draggedItem.id);
-        await ref.read(noteListProvider.notifier).updateNote(
-          note.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now),
-        );
+        await ref
+            .read(noteListProvider.notifier)
+            .updateNote(note.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now));
       }
       return;
     }
@@ -585,8 +531,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final allNotes = ref.read(noteListProvider).value ?? [];
     final refreshedFolders = ref.read(folderListProvider).value ?? [];
 
-    final isPinnedSort = !draggedItem.isFolder && draggedItem.note!.isPinned && 
-                         !targetItem.isFolder && targetItem.note!.isPinned;
+    final isPinnedSort =
+        !draggedItem.isFolder && draggedItem.note!.isPinned && !targetItem.isFolder && targetItem.note!.isPinned;
 
     if (isPinnedSort) {
       final siblingPinnedNotes = allNotes
@@ -674,11 +620,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
   }
 
-  Widget _buildTree(
-    BuildContext context,
-    List<Folder> folders,
-    List<Note> notes,
-  ) {
+  Widget _buildTree(BuildContext context, List<Folder> folders, List<Note> notes) {
     if (folders.isEmpty && notes.isEmpty) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -694,11 +636,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 label: const Text('新建文件夹'),
               ),
               const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: () => _createNote(),
-                icon: const Icon(Icons.add),
-                label: const Text('新建笔记'),
-              ),
+              FilledButton.icon(onPressed: () => _createNote(), icon: const Icon(Icons.add), label: const Text('新建笔记')),
             ],
           ),
         ],
@@ -721,9 +659,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               item: item,
               index: index,
               isSelectionMode: _isSelectionMode,
-              isSelected: item.isFolder
-                  ? _selectedFolderIds.contains(item.id)
-                  : _selectedNoteIds.contains(item.id),
+              isSelected: item.isFolder ? _selectedFolderIds.contains(item.id) : _selectedNoteIds.contains(item.id),
               onToggleSelection: () {
                 setState(() {
                   if (item.isFolder) {
@@ -775,20 +711,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 final draggedItem = details.data;
                 HapticFeedback.mediumImpact();
                 if (draggedItem.isFolder) {
-                  await ref.read(folderListProvider.notifier).moveFolderToParent(
-                    draggedItem.id,
-                    null,
-                  );
+                  await ref.read(folderListProvider.notifier).moveFolderToParent(draggedItem.id, null);
                 } else {
-                  await ref.read(noteListProvider.notifier).moveNoteToFolder(
-                    draggedItem.id,
-                    null,
-                  );
+                  await ref.read(noteListProvider.notifier).moveNoteToFolder(draggedItem.id, null);
                 }
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('已将 "${draggedItem.isFolder ? draggedItem.folder!.name : draggedItem.note!.title}" 移至根目录'),
+                      content: Text(
+                        '已将 "${draggedItem.isFolder ? draggedItem.folder!.name : draggedItem.note!.title}" 移至根目录',
+                      ),
                       behavior: SnackBarBehavior.floating,
                       duration: const Duration(seconds: 2),
                     ),
@@ -807,9 +739,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                         : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
-                      color: isHovering
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outlineVariant,
+                      color: isHovering ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
                       width: isHovering ? 2.0 : 1.2,
                     ),
                     boxShadow: [
@@ -826,17 +756,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                       Icon(
                         Icons.drive_file_move_outlined,
                         size: isHovering ? 24 : 20,
-                        color: isHovering
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant,
+                        color: isHovering ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         isHovering ? '松手移至根目录' : '移至根目录',
                         style: TextStyle(
-                          color: isHovering
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurfaceVariant,
+                          color: isHovering ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                           fontWeight: isHovering ? FontWeight.bold : FontWeight.w600,
                           fontSize: 15,
                         ),
@@ -856,21 +782,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (JournalService.isJournalNote(note.id)) {
       final date = DateTime.tryParse(note.title);
       if (date != null) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => JournalEditorView(date: date)),
-        );
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalEditorView(date: date)));
         return;
       }
     }
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
   }
 
   void _toggleFolder(Folder folder) {
-    ref
-        .read(folderListProvider.notifier)
-        .toggleExpanded(folder.id, !folder.isExpanded);
+    ref.read(folderListProvider.notifier).toggleExpanded(folder.id, !folder.isExpanded);
   }
 
   void _showMoveToFolderDialog(BuildContext context, {Note? note, Folder? folder}) {
@@ -892,6 +812,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           }
         }
       }
+
       addDescendants(folder.id);
     }
 
@@ -906,6 +827,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         traverse(child.id, depth + 1);
       }
     }
+
     traverse(null, 0);
 
     final theme = Theme.of(context);
@@ -958,8 +880,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     color: isInvalid
                         ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2)
                         : (isCurrentParent
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.primary.withValues(alpha: 0.5)),
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.primary.withValues(alpha: 0.5)),
                   ),
                   title: Text(
                     f.name,
@@ -981,12 +903,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-        ],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消'))],
       ),
     );
   }
@@ -997,18 +914,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       key: key,
       items: [
         ActionMenuItem(
-          iconWidget: QIcon(
-            size: 20,
-            color: Theme.of(context).colorScheme.primary,
-          ),
+          iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.primary),
           label: '给小Q',
           onTap: () => _quoteNoteToQ(note),
         ),
-        ActionMenuItem(
-          icon: Icons.edit_outlined,
-          label: '编辑笔记',
-          onTap: () => _editNote(note),
-        ),
+        ActionMenuItem(icon: Icons.edit_outlined, label: '编辑笔记', onTap: () => _editNote(note)),
         ActionMenuItem(
           icon: Icons.drive_file_move_outlined,
           label: '移至文件夹',
@@ -1041,14 +951,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     HapticFeedback.lightImpact();
     final content = decodeNoteContent(note.content).trim();
     final excerpt = content.isNotEmpty ? content : note.title.trim();
-    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
-          source: QQuoteSource.note,
-          sourceId: note.id,
-          sourceTitle:
-              note.title.trim().isEmpty ? '无标题' : note.title.trim(),
-          quotedText:
-              excerpt.length > 500 ? '${excerpt.substring(0, 500)}…' : excerpt,
-        ));
+    ref
+        .read(floatingQProvider.notifier)
+        .openWithQuote(
+          QTextQuote(
+            source: QQuoteSource.note,
+            sourceId: note.id,
+            sourceTitle: note.title.trim().isEmpty ? '无标题' : note.title.trim(),
+            quotedText: excerpt.length > 500 ? '${excerpt.substring(0, 500)}…' : excerpt,
+          ),
+        );
   }
 
   void _showFolderMenu(Folder folder, GlobalKey key) {
@@ -1056,21 +968,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       context: context,
       key: key,
       items: [
-        ActionMenuItem(
-          icon: Icons.edit_outlined,
-          label: '重命名文件夹',
-          onTap: () => _renameFolder(folder),
-        ),
+        ActionMenuItem(icon: Icons.edit_outlined, label: '重命名文件夹', onTap: () => _renameFolder(folder)),
         ActionMenuItem(
           icon: Icons.create_new_folder_outlined,
           label: '新建子文件夹',
           onTap: () => _showCreateFolderDialog(folder.id),
         ),
-        ActionMenuItem(
-          icon: Icons.add,
-          label: '新建笔记',
-          onTap: () => _createNote(folder.id),
-        ),
+        ActionMenuItem(icon: Icons.add, label: '新建笔记', onTap: () => _createNote(folder.id)),
         ActionMenuItem(
           icon: Icons.drive_file_move_outlined,
           label: '移动文件夹',
@@ -1090,8 +994,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           icon: Icons.delete_outline,
           label: '删除文件夹',
           isDestructive: true,
-          onTap: () =>
-              ref.read(folderListProvider.notifier).deleteFolder(folder.id),
+          onTap: () => ref.read(folderListProvider.notifier).deleteFolder(folder.id),
         ),
       ],
     );
@@ -1109,16 +1012,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           decoration: const InputDecoration(hintText: '名称'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           TextButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
-                ref
-                    .read(folderListProvider.notifier)
-                    .updateFolder(folder.copyWith(name: controller.text));
+                ref.read(folderListProvider.notifier).updateFolder(folder.copyWith(name: controller.text));
               }
               Navigator.pop(ctx);
             },
@@ -1177,7 +1075,8 @@ class _FlattenedTile extends ConsumerStatefulWidget {
     required FlattenedItem draggedItem,
     required FlattenedItem targetItem,
     required String dropPosition,
-  }) onDrop;
+  })
+  onDrop;
 
   const _FlattenedTile({
     super.key,
@@ -1328,9 +1227,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             decoration: BoxDecoration(
               color: isJournal
                   ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
-                  : theme.colorScheme.primary.withValues(
-                      alpha: isFolder ? 0.08 : 0.1,
-                    ),
+                  : theme.colorScheme.primary.withValues(alpha: isFolder ? 0.08 : 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: _buildLeadingIcon(theme, isFolder, isJournal),
@@ -1346,10 +1243,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: theme.colorScheme.surface,
-                  border: Border.all(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
-                    width: 0.8,
-                  ),
+                  border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7), width: 0.8),
                 ),
                 child: AnimatedRotation(
                   // 展开朝下，收起朝右（-0.25 圈 = 逆时针 90°）
@@ -1407,27 +1301,18 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                isFolder ? Icons.folder : Icons.description,
-                color: theme.colorScheme.primary,
-              ),
+              Icon(isFolder ? Icons.folder : Icons.description, color: theme.colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   isFolder ? widget.item.folder!.name : widget.item.note!.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1443,9 +1328,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
           child: Icon(
             Icons.drag_indicator,
             size: 18,
-            color: theme.colorScheme.onSurfaceVariant.withValues(
-              alpha: 0.35,
-            ),
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
           ),
         ),
       ),
@@ -1472,10 +1355,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
           alignment: Alignment.centerLeft,
           child: Text(
             '空',
-            style: TextStyle(
-              fontSize: 12,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
+            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
           ),
         ),
       );
@@ -1484,9 +1364,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     // 统一点击事件：文件夹触发展开/收起，笔记打开编辑，多选模式切换选中
     final VoidCallback? onItemTap = widget.isSelectionMode
         ? (isJournal ? null : widget.onToggleSelection)
-        : (isFolder
-            ? () => widget.onToggleFolder(widget.item.folder!)
-            : () => widget.onEditNote(widget.item.note!));
+        : (isFolder ? () => widget.onToggleFolder(widget.item.folder!) : () => widget.onEditNote(widget.item.note!));
 
     final Widget tileContent = AnimatedOpacity(
       opacity: _isDragging ? 0.35 : 1.0,
@@ -1529,15 +1407,9 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             Expanded(
               child: GestureDetector(
                 onTap: onItemTap,
-                onTapDown: onItemTap == null
-                    ? null
-                    : (_) => setState(() => _isPressed = true),
-                onTapUp: onItemTap == null
-                    ? null
-                    : (_) => setState(() => _isPressed = false),
-                onTapCancel: onItemTap == null
-                    ? null
-                    : () => setState(() => _isPressed = false),
+                onTapDown: onItemTap == null ? null : (_) => setState(() => _isPressed = true),
+                onTapUp: onItemTap == null ? null : (_) => setState(() => _isPressed = false),
+                onTapCancel: onItemTap == null ? null : () => setState(() => _isPressed = false),
                 onLongPress: () {
                   if (widget.isSelectionMode || isJournal) return;
                   HapticFeedback.lightImpact();
@@ -1557,11 +1429,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                       _buildLeadingIconBox(theme, isFolder, isJournal),
                       const SizedBox(width: 12),
                       if (!isFolder && widget.item.isPinned) ...[
-                        Icon(
-                          Icons.push_pin,
-                          size: 14,
-                          color: theme.colorScheme.primary,
-                        ),
+                        Icon(Icons.push_pin, size: 14, color: theme.colorScheme.primary),
                         const SizedBox(width: 4),
                       ],
                       Expanded(
@@ -1583,10 +1451,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             ),
 
             // 日记体系节点为系统管理结构，不提供拖动手柄与操作菜单
-            if (!widget.isSelectionMode && !isJournal) ...[
-              const SizedBox(width: 4),
-              _buildDragHandle(theme, isFolder),
-            ],
+            if (!widget.isSelectionMode && !isJournal) ...[const SizedBox(width: 4), _buildDragHandle(theme, isFolder)],
           ],
         ),
       ),
@@ -1608,10 +1473,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
               curve: AppCurves.standard,
               child: Container(
                 height: 3,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
+                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(1.5)),
               ),
             ),
           ),
@@ -1627,10 +1489,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
               curve: AppCurves.standard,
               child: Container(
                 height: 3,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
+                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(1.5)),
               ),
             ),
           ),
@@ -1657,11 +1516,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                   final position = _hoverPosition ?? 'after';
                   _clearHoverPosition();
                   HapticFeedback.lightImpact();
-                  widget.onDrop(
-                    draggedItem: details.data,
-                    targetItem: widget.item,
-                    dropPosition: position,
-                  );
+                  widget.onDrop(draggedItem: details.data, targetItem: widget.item, dropPosition: position);
                 },
                 builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
               );
@@ -1680,4 +1535,3 @@ bool _checkIsDescendant(String? parentId, String folderId, List<Folder> allFolde
   if (parentFolder == null) return false;
   return _checkIsDescendant(parentFolder.parentId, folderId, allFolders);
 }
-

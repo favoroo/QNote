@@ -22,12 +22,7 @@ void main() {
   }
 
   ChatMessage tool(String name, {DateTime? timestamp}) {
-    return ChatMessage(
-      role: 'tool',
-      content: '结果',
-      toolName: name,
-      timestamp: timestamp,
-    );
+    return ChatMessage(role: 'tool', content: '结果', toolName: name, timestamp: timestamp);
   }
 
   test('中间轮的思考不会随中转消息一起被丢弃', () {
@@ -43,13 +38,7 @@ void main() {
       assistant(content: '查完了', thought: '整理结果', thoughtSeconds: 3),
     ]);
 
-    expect(entries.map((e) => e.message.role), [
-      'user',
-      'thought',
-      'tool',
-      'thought',
-      'assistant',
-    ]);
+    expect(entries.map((e) => e.message.role), ['user', 'thought', 'tool', 'thought', 'assistant']);
     expect(entries[1].message.content, '先看目录');
     expect(entries[1].message.thoughtSeconds, 2);
     expect(entries[3].message.content, '整理结果');
@@ -57,9 +46,7 @@ void main() {
   });
 
   test('正文气泡不再重复携带 thought', () {
-    final entries = buildChatTimelineEntries([
-      assistant(content: '答案', thought: '推理'),
-    ]);
+    final entries = buildChatTimelineEntries([assistant(content: '答案', thought: '推理')]);
 
     expect(entries, hasLength(2));
     expect(entries[0].message.role, 'thought');
@@ -69,11 +56,7 @@ void main() {
   });
 
   test('连续工具结果聚合为 tool_group，单个工具保持原样', () {
-    final grouped = buildChatTimelineEntries([
-      tool('read_file'),
-      tool('read_file'),
-      tool('grep'),
-    ]);
+    final grouped = buildChatTimelineEntries([tool('read_file'), tool('read_file'), tool('grep')]);
     expect(grouped, hasLength(1));
     expect(grouped.first.message.role, 'tool_group');
     expect((grouped.first.message.uiDetails?['messages'] as List).length, 3);
@@ -84,11 +67,7 @@ void main() {
   });
 
   test('思考步骤会打断工具链，保持原始发生顺序', () {
-    final entries = buildChatTimelineEntries([
-      tool('read_file'),
-      assistant(thought: '再想想'),
-      tool('read_file'),
-    ]);
+    final entries = buildChatTimelineEntries([tool('read_file'), assistant(thought: '再想想'), tool('read_file')]);
 
     expect(entries.map((e) => e.message.role), ['tool', 'thought', 'tool']);
   });
@@ -101,11 +80,7 @@ void main() {
       tool('generate_image'),
     ]);
 
-    expect(
-      entries.every((e) => e.message.role == 'tool'),
-      isTrue,
-      reason: '交互卡片与大图卡片被折叠后会完全看不到',
-    );
+    expect(entries.every((e) => e.message.role == 'tool'), isTrue, reason: '交互卡片与大图卡片被折叠后会完全看不到');
   });
 
   test('纯中转消息（无正文、无思考）完全不展示', () {

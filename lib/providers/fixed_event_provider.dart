@@ -67,7 +67,6 @@ class FixedEventNotifier extends StateNotifier<List<FixedEventTemplate>> {
 }
 
 /// 固定事件模板管理 Provider
-final fixedEventNotifierProvider =
-    StateNotifierProvider<FixedEventNotifier, List<FixedEventTemplate>>((ref) {
+final fixedEventNotifierProvider = StateNotifierProvider<FixedEventNotifier, List<FixedEventTemplate>>((ref) {
   return FixedEventNotifier(ref);
 });

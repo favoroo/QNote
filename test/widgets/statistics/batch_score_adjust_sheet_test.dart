@@ -11,13 +11,7 @@ DailyScore _score({required int day}) => DailyScore(
   id: 'id-$day',
   date: DateTime(2026, 9, day),
   totalScore: 88 - day,
-  dimensionScores: const {
-    'sleep': 80,
-    'diet': 80,
-    'activity': 80,
-    'health': 80,
-    'screen': 80,
-  },
+  dimensionScores: const {'sleep': 80, 'diet': 80, 'activity': 80, 'health': 80, 'screen': 80},
   summary: '评语',
   suggestions: '建议',
   recordCount: 5,
@@ -54,8 +48,7 @@ class _Stub {
       throw Exception('单次最多调整 92 天，请缩小日期范围分批处理');
     }
     final outcomes = [
-      for (var i = 0; i < scoredDays; i++)
-        applyScoreAdjust(_score(day: i + 1), spec),
+      for (var i = 0; i < scoredDays; i++) applyScoreAdjust(_score(day: i + 1), spec),
     ].where((o) => o.changed).toList();
     return ScoreAdjustRangeResult(
       outcomes: outcomes,
@@ -121,10 +114,7 @@ void main() {
     expect(find.textContaining('单次最多调整 92 天'), findsOne);
     expect(find.text('批量调整评分'), findsOne, reason: '失败不应关闭抽屉');
     expect(stub.applies, isEmpty);
-    expect(
-      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
-      isNull,
-    );
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
   });
 
   testWidgets('点应用只触发一次落库调用并关闭抽屉', (tester) async {

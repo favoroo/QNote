@@ -51,9 +51,7 @@ class Note {
       folderId: map['folder_id'] as String?,
       tags: map['tags'] as String? ?? '',
       isPinned: (map['is_pinned'] as int? ?? 0) == 1,
-      images: map['images'] != null
-          ? List<String>.from(jsonDecode(map['images'] as String) as List)
-          : [],
+      images: map['images'] != null ? List<String>.from(jsonDecode(map['images'] as String) as List) : [],
       sortOrder: map['sort_order'] as int? ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),

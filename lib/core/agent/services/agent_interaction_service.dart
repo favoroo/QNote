@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart'
-    show BuildContext, Navigator;
+import 'package:flutter/material.dart' show BuildContext, Navigator;
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/widgets/ai/ask_user_dialog.dart';
@@ -48,10 +47,7 @@ class AgentInteractionService {
     Future.microtask(() async {
       final context = rootNavigatorKey.currentContext;
       if (context == null || !context.mounted) {
-        LoggerService.instance.logAI(
-          '无法获取有效的全局 NavigatorContext 弹出确认对话框',
-          level: LogLevel.warning,
-        );
+        LoggerService.instance.logAI('无法获取有效的全局 NavigatorContext 弹出确认对话框', level: LogLevel.warning);
         if (!completer.isCompleted) {
           completer.complete(null);
         }
@@ -69,11 +65,7 @@ class AgentInteractionService {
           completer.complete(result);
         }
       } catch (e, stack) {
-        LoggerService.instance.logAI(
-          '弹出用户交互对话框失败: $e',
-          level: LogLevel.error,
-          details: stack.toString(),
-        );
+        LoggerService.instance.logAI('弹出用户交互对话框失败: $e', level: LogLevel.error, details: stack.toString());
         if (!completer.isCompleted) {
           completer.complete(null);
         }
@@ -108,10 +100,7 @@ class AgentInteractionService {
     try {
       Navigator.of(dialogContext).pop();
     } catch (e) {
-      LoggerService.instance.logAI(
-        '关闭 ask_user 残留对话框失败: $e',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('关闭 ask_user 残留对话框失败: $e', level: LogLevel.warning);
     }
   }
 

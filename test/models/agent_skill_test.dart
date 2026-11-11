@@ -7,11 +7,7 @@ import 'package:qnote_flutter/models/agent_skill.dart';
 void main() {
   group('AgentSkill 用户技能模型', () {
     test('JSON 序列化往返', () {
-      final skill = AgentSkill(
-        name: 'invest-review',
-        description: '投资复盘技能',
-        content: '# 投资复盘技能',
-      );
+      final skill = AgentSkill(name: 'invest-review', description: '投资复盘技能', content: '# 投资复盘技能');
       final restored = AgentSkill.fromJson(skill.toJson());
       expect(restored.name, skill.name);
       expect(restored.description, skill.description);
@@ -19,11 +15,7 @@ void main() {
     });
 
     test('toMarkdown 合成 frontmatter 与内置技能格式一致', () {
-      final skill = AgentSkill(
-        name: 'my-skill',
-        description: '描述',
-        content: '# 正文',
-      );
+      final skill = AgentSkill(name: 'my-skill', description: '描述', content: '# 正文');
       final md = skill.toMarkdown();
       expect(md.startsWith('---\nname: my-skill\n'), isTrue);
       expect(md.contains('description: 描述'), isTrue);
@@ -47,12 +39,7 @@ void main() {
     });
 
     test('copyWith 保留未指定字段', () {
-      final skill = AgentSkill(
-        name: 'a',
-        description: 'd',
-        content: 'c',
-        updatedAt: DateTime(2026),
-      );
+      final skill = AgentSkill(name: 'a', description: 'd', content: 'c', updatedAt: DateTime(2026));
       final updated = skill.copyWith(description: 'new');
       expect(updated.name, 'a');
       expect(updated.description, 'new');

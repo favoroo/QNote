@@ -10,10 +10,7 @@ final journalServiceProvider = Provider<JournalService>((ref) {
 
 /// 按日期查询日记笔记，用于时间线悬浮按钮状态与编辑页初始化
 /// 值为 null 或内容为空都视为"当天未写日记"
-final journalByDateProvider = FutureProvider.family<Note?, DateTime>((
-  ref,
-  date,
-) async {
+final journalByDateProvider = FutureProvider.family<Note?, DateTime>((ref, date) async {
   final service = ref.read(journalServiceProvider);
   return service.getNoteForDate(date);
 });

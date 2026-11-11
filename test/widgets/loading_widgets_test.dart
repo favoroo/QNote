@@ -8,19 +8,12 @@ void main() {
     testWidgets('renders LoadingRing with default properties', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: LoadingRing(),
-            ),
-          ),
+          home: Scaffold(body: Center(child: LoadingRing())),
         ),
       );
 
       expect(find.byType(LoadingRing), findsOneWidget);
-      final rotationFinder = find.descendant(
-        of: find.byType(LoadingRing),
-        matching: find.byType(RotationTransition),
-      );
+      final rotationFinder = find.descendant(of: find.byType(LoadingRing), matching: find.byType(RotationTransition));
       expect(rotationFinder, findsOneWidget);
       expect(find.byType(CustomPaint), findsWidgets);
 
@@ -34,21 +27,12 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: Center(
-              child: LoadingRing(
-                size: 36,
-                strokeWidth: 2.5,
-                color: Colors.red,
-              ),
-            ),
+            body: Center(child: LoadingRing(size: 36, strokeWidth: 2.5, color: Colors.red)),
           ),
         ),
       );
 
-      final customPaintFinder = find.descendant(
-        of: find.byType(LoadingRing),
-        matching: find.byType(CustomPaint),
-      );
+      final customPaintFinder = find.descendant(of: find.byType(LoadingRing), matching: find.byType(CustomPaint));
       expect(customPaintFinder, findsOneWidget);
       final customPaint = tester.widget<CustomPaint>(customPaintFinder);
       expect(customPaint.size, const Size(36, 36));
@@ -59,11 +43,7 @@ void main() {
     testWidgets('renders MorphingInfinity with default properties', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: MorphingInfinity(),
-            ),
-          ),
+          home: Scaffold(body: Center(child: MorphingInfinity())),
         ),
       );
 
@@ -87,21 +67,12 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: Center(
-              child: MorphingInfinity(
-                size: 48,
-                strokeWidth: 2.0,
-                color: Colors.blue,
-              ),
-            ),
+            body: Center(child: MorphingInfinity(size: 48, strokeWidth: 2.0, color: Colors.blue)),
           ),
         ),
       );
 
-      final customPaintFinder = find.descendant(
-        of: find.byType(MorphingInfinity),
-        matching: find.byType(CustomPaint),
-      );
+      final customPaintFinder = find.descendant(of: find.byType(MorphingInfinity), matching: find.byType(CustomPaint));
       expect(customPaintFinder, findsOneWidget);
       final customPaint = tester.widget<CustomPaint>(customPaintFinder);
       expect(customPaint.size, const Size(48, 48));

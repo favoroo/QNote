@@ -41,11 +41,7 @@ class PersonalizationPage extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
                 boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
                 ],
               ),
               padding: const EdgeInsets.all(24),
@@ -60,7 +56,9 @@ class PersonalizationPage extends ConsumerWidget {
                         child: _ThemeModeButton(
                           title: '浅色',
                           icon: Icons.light_mode_outlined,
-                          isSelected: themeMode == ThemeMode.light || (themeMode == ThemeMode.system && theme.brightness == Brightness.light),
+                          isSelected:
+                              themeMode == ThemeMode.light ||
+                              (themeMode == ThemeMode.system && theme.brightness == Brightness.light),
                           onTap: () => ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light),
                         ),
                       ),
@@ -69,7 +67,9 @@ class PersonalizationPage extends ConsumerWidget {
                         child: _ThemeModeButton(
                           title: '深色',
                           icon: Icons.dark_mode_outlined,
-                          isSelected: themeMode == ThemeMode.dark || (themeMode == ThemeMode.system && theme.brightness == Brightness.dark),
+                          isSelected:
+                              themeMode == ThemeMode.dark ||
+                              (themeMode == ThemeMode.system && theme.brightness == Brightness.dark),
                           onTap: () => ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark),
                         ),
                       ),
@@ -106,20 +106,13 @@ class PersonalizationPage extends ConsumerWidget {
                             child: AnimatedContainer(
                               duration: AppDurations.fast,
                               curve: AppCurves.standard,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                              ),
+                              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                               // 选中时白色对勾缩放淡入，选中态更直观
                               child: AnimatedScale(
                                 scale: isSelected ? 1.0 : 0.0,
                                 duration: AppDurations.fast,
                                 curve: AppCurves.standard,
-                                child: const Icon(
-                                  Icons.check_rounded,
-                                  size: 20,
-                                  color: Colors.white,
-                                ),
+                                child: const Icon(Icons.check_rounded, size: 20, color: Colors.white),
                               ),
                             ),
                           ),
@@ -177,12 +170,7 @@ class _ThemeModeButton extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _ThemeModeButton({
-    required this.title,
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-  });
+  const _ThemeModeButton({required this.title, required this.icon, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -193,17 +181,15 @@ class _ThemeModeButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         height: 100,
         decoration: BoxDecoration(
-          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          color: isSelected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 32,
-              color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
-            ),
+            Icon(icon, size: 32, color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface),
             const SizedBox(height: 8),
             Text(
               title,

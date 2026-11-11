@@ -13,10 +13,7 @@ void main() {
   });
 
   test('老库（provider_id 主键）升级后按 id 取回账号，且新增列齐全', () async {
-    final db = await databaseFactory.openDatabase(
-      inMemoryDatabasePath,
-      options: OpenDatabaseOptions(version: 31),
-    );
+    final db = await databaseFactory.openDatabase(inMemoryDatabasePath, options: OpenDatabaseOptions(version: 31));
     addTearDown(db.close);
 
     // 重建 v30 的两张表
@@ -99,10 +96,7 @@ void main() {
   });
 
   test('已经是 v31 结构时重复执行不破坏数据（onOpen 兜底幂等）', () async {
-    final db = await databaseFactory.openDatabase(
-      inMemoryDatabasePath,
-      options: OpenDatabaseOptions(version: 31),
-    );
+    final db = await databaseFactory.openDatabase(inMemoryDatabasePath, options: OpenDatabaseOptions(version: 31));
     addTearDown(db.close);
 
     await db.execute('''

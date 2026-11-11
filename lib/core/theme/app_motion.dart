@@ -11,8 +11,7 @@ import 'app_durations.dart';
 ///    避免各处默认的线性淡入淡出手感不一致。
 abstract class AppMotion {
   /// 系统是否开启了「减弱动态效果」。
-  static bool reduce(BuildContext context) =>
-      MediaQuery.disableAnimationsOf(context);
+  static bool reduce(BuildContext context) => MediaQuery.disableAnimationsOf(context);
 
   /// 按系统动效偏好返回实际时长；减弱动效时返回 [Duration.zero]。
   static Duration duration(BuildContext context, Duration base) {

@@ -375,13 +375,9 @@ class DatabaseHelper {
     // 以及 ai_providers 的 auth_mode / account_routing / account_affinity 列
     try {
       final providerColumns = await db.rawQuery('PRAGMA table_info(ai_providers)');
-      final providerColNames =
-          providerColumns.map((c) => c['name'] as String).toSet();
-      if (providerColNames.isNotEmpty &&
-          !providerColNames.contains('auth_mode')) {
-        await db.execute(
-          "ALTER TABLE ai_providers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'api_key'",
-        );
+      final providerColNames = providerColumns.map((c) => c['name'] as String).toSet();
+      if (providerColNames.isNotEmpty && !providerColNames.contains('auth_mode')) {
+        await db.execute("ALTER TABLE ai_providers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'api_key'");
       }
     } catch (_) {}
     await ensureMultiAccountSchema(db);
@@ -394,9 +390,7 @@ class DatabaseHelper {
       final chatColumns = await db.rawQuery('PRAGMA table_info(chat_sessions)');
       final chatColNames = chatColumns.map((c) => c['name'] as String).toSet();
       if (chatColNames.isNotEmpty && !chatColNames.contains('is_pinned')) {
-        await db.execute(
-          'ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0',
-        );
+        await db.execute('ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0');
       }
     } catch (_) {}
 
@@ -821,7 +815,9 @@ class DatabaseHelper {
       } catch (_) {}
 
       try {
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_fixed_event_templates_sort ON fixed_event_templates(sort_order)');
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_fixed_event_templates_sort ON fixed_event_templates(sort_order)',
+        );
       } catch (_) {}
     }
 
@@ -849,11 +845,7 @@ class DatabaseHelper {
     if (oldVersion < 18) {
       // 为活动标签的 type 选项追加"情绪"
       try {
-        final rows = await db.query(
-          'shortcut_configs',
-          where: 'id = ?',
-          whereArgs: ['activity'],
-        );
+        final rows = await db.query('shortcut_configs', where: 'id = ?', whereArgs: ['activity']);
         if (rows.isNotEmpty) {
           final fieldsJson = rows.first['fields'] as String?;
           if (fieldsJson != null) {
@@ -895,10 +887,7 @@ class DatabaseHelper {
 
       // 2. 初始化待办默认分类（今日、长期）并迁移存量待办的 folder_id
       try {
-        final existingTodoFolders = await db.query(
-          'folders',
-          where: "type = 'todo'",
-        );
+        final existingTodoFolders = await db.query('folders', where: "type = 'todo'");
         final nowStr = DateTime.now().toIso8601String();
         String todayFolderId = 'todo_default_today';
         String longtermFolderId = 'todo_default_longterm';
@@ -926,9 +915,7 @@ class DatabaseHelper {
           });
         } else {
           todayFolderId = existingTodoFolders.first['id'] as String;
-          longtermFolderId = existingTodoFolders.length > 1
-              ? (existingTodoFolders[1]['id'] as String)
-              : todayFolderId;
+          longtermFolderId = existingTodoFolders.length > 1 ? (existingTodoFolders[1]['id'] as String) : todayFolderId;
         }
 
         // 存量数据平滑迁移：folder_id 为空的数据根据 is_long_term 绑定默认分类
@@ -1033,9 +1020,7 @@ class DatabaseHelper {
     if (oldVersion < 25) {
       // 历史抽屉「置顶」：列名与 notes.is_pinned 保持一致，避免全库出现第二种写法
       try {
-        await db.execute(
-          'ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0',
-        );
+        await db.execute('ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0');
       } catch (_) {}
     }
 
@@ -1079,9 +1064,7 @@ class DatabaseHelper {
         final columns = await db.rawQuery('PRAGMA table_info(ai_providers)');
         final names = columns.map((c) => c['name'] as String).toSet();
         if (names.isNotEmpty && !names.contains('auth_mode')) {
-          await db.execute(
-            "ALTER TABLE ai_providers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'api_key'",
-          );
+          await db.execute("ALTER TABLE ai_providers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'api_key'");
         }
       } catch (_) {}
     }
@@ -1100,9 +1083,7 @@ class DatabaseHelper {
         final columns = await db.rawQuery('PRAGMA table_info(ai_providers)');
         final names = columns.map((c) => c['name'] as String).toSet();
         if (names.isNotEmpty && !names.contains('enabled')) {
-          await db.execute(
-            'ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1',
-          );
+          await db.execute('ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
         }
       } catch (_) {}
     }
@@ -1138,19 +1119,13 @@ class DatabaseHelper {
       } else if (names.isNotEmpty) {
         // 表已是最新结构，只补可能缺的列（半升级/手改库场景）
         if (!names.contains('alias')) {
-          await db.execute(
-            "ALTER TABLE ai_accounts ADD COLUMN alias TEXT NOT NULL DEFAULT ''",
-          );
+          await db.execute("ALTER TABLE ai_accounts ADD COLUMN alias TEXT NOT NULL DEFAULT ''");
         }
         if (!names.contains('enabled')) {
-          await db.execute(
-            'ALTER TABLE ai_accounts ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1',
-          );
+          await db.execute('ALTER TABLE ai_accounts ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
         }
         if (!names.contains('sort_order')) {
-          await db.execute(
-            'ALTER TABLE ai_accounts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0',
-          );
+          await db.execute('ALTER TABLE ai_accounts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
         }
       }
     } catch (_) {}
@@ -1164,19 +1139,13 @@ class DatabaseHelper {
       final columns = await db.rawQuery('PRAGMA table_info(ai_providers)');
       final names = columns.map((c) => c['name'] as String).toSet();
       if (names.isNotEmpty && !names.contains('account_routing')) {
-        await db.execute(
-          "ALTER TABLE ai_providers ADD COLUMN account_routing TEXT NOT NULL DEFAULT 'rotate'",
-        );
+        await db.execute("ALTER TABLE ai_providers ADD COLUMN account_routing TEXT NOT NULL DEFAULT 'rotate'");
       }
       if (names.isNotEmpty && !names.contains('account_affinity')) {
-        await db.execute(
-          "ALTER TABLE ai_providers ADD COLUMN account_affinity TEXT NOT NULL DEFAULT 'session'",
-        );
+        await db.execute("ALTER TABLE ai_providers ADD COLUMN account_affinity TEXT NOT NULL DEFAULT 'session'");
       }
       if (names.isNotEmpty && !names.contains('enabled')) {
-        await db.execute(
-          'ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1',
-        );
+        await db.execute('ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
       }
     } catch (_) {}
   }

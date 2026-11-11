@@ -9,8 +9,8 @@ class AiProviderConfig {
   final bool supportsSse;
 
   // 新增字段
-  final String modelsEndpoint;       // 模型列表接口路径
-  final String authType;             // 'bearer' | 'query' | 'none'
+  final String modelsEndpoint; // 模型列表接口路径
+  final String authType; // 'bearer' | 'query' | 'none'
   final bool requiresApiKeyForFetch; // 获取模型列表是否需要 API Key
   final String? defaultReasoningEffort; // 默认推理强度（low/medium/high/none）
 
@@ -40,13 +40,7 @@ final aiProviders = <AiProviderConfig>[
     name: 'DeepSeek',
     provider: 'openai',
     defaultBaseUrl: 'https://api.deepseek.com',
-    models: [
-      'deepseek-v4-pro',
-      'deepseek-v4-flash',
-      'deepseek-v3.2',
-      'deepseek-chat',
-      'deepseek-reasoner',
-    ],
+    models: ['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-v3.2', 'deepseek-chat', 'deepseek-reasoner'],
     modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
@@ -54,11 +48,7 @@ final aiProviders = <AiProviderConfig>[
     name: 'OpenAI',
     provider: 'openai',
     defaultBaseUrl: 'https://api.openai.com/v1',
-    models: [
-      'gpt-5.4-pro',
-      'gpt-5.4-mini',
-      'gpt-5.4-thinking',
-    ],
+    models: ['gpt-5.4-pro', 'gpt-5.4-mini', 'gpt-5.4-thinking'],
     modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
@@ -66,11 +56,7 @@ final aiProviders = <AiProviderConfig>[
     name: 'Kimi (Moonshot)',
     provider: 'openai',
     defaultBaseUrl: 'https://api.moonshot.cn/v1',
-    models: [
-      'kimi-k2.6',
-      'kimi-k2.5',
-      'kimi-k2',
-    ],
+    models: ['kimi-k2.6', 'kimi-k2.5', 'kimi-k2'],
     modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
@@ -78,14 +64,7 @@ final aiProviders = <AiProviderConfig>[
     name: 'MiMo (小米)',
     provider: 'openai',
     defaultBaseUrl: 'https://api.xiaomimimo.com/v1',
-    models: [
-      'mimo-v2.5-pro',
-      'mimo-v2.5',
-      'mimo-v2.5-tts',
-      'mimo-v2-pro',
-      'mimo-v2-omni',
-      'mimo-v2-flash',
-    ],
+    models: ['mimo-v2.5-pro', 'mimo-v2.5', 'mimo-v2.5-tts', 'mimo-v2-pro', 'mimo-v2-omni', 'mimo-v2-flash'],
     modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
@@ -169,13 +148,7 @@ final aiProviders = <AiProviderConfig>[
     defaultBaseUrl: 'https://api.chatanywhere.tech/v1',
     urlRequired: true,
     placeholder: '请输入模型名称，或点击“获取模型列表”',
-    models: [
-      'gpt-3.5-turbo',
-      'gpt-4o-mini',
-      'gpt-4o',
-      'deepseek-chat',
-      'deepseek-coder',
-    ],
+    models: ['gpt-3.5-turbo', 'gpt-4o-mini', 'gpt-4o', 'deepseek-chat', 'deepseek-coder'],
     modelsEndpoint: '/models',
   ),
   const AiProviderConfig(
@@ -185,14 +158,7 @@ final aiProviders = <AiProviderConfig>[
     defaultBaseUrl: 'https://api.ant-ling.com/v1',
     urlRequired: true,
     placeholder: '请输入模型名称，或从下拉列表选择',
-    models: [
-      'Ling-2.6-flash',
-      'Ling-2.5-1T',
-      'Ring-2.6-1T',
-      'Ring-2.5-1T',
-      'Ming-Flash-Omni-2.0',
-      'Ming-lite-omni',
-    ],
+    models: ['Ling-2.6-flash', 'Ling-2.5-1T', 'Ring-2.6-1T', 'Ring-2.5-1T', 'Ming-Flash-Omni-2.0', 'Ming-lite-omni'],
     modelsEndpoint: '',
   ),
   const AiProviderConfig(
@@ -201,13 +167,7 @@ final aiProviders = <AiProviderConfig>[
     provider: 'openai',
     defaultBaseUrl: 'https://apihub.agnes-ai.com/v1',
     urlRequired: true,
-    models: [
-      'agnes-2.0-flash',
-      'agnes-1.5-flash',
-      'agnes-image-2.1-flash',
-      'agnes-image-2.0-flash',
-      'agnes-video-2.0',
-    ],
+    models: ['agnes-2.0-flash', 'agnes-1.5-flash', 'agnes-image-2.1-flash', 'agnes-image-2.0-flash', 'agnes-video-2.0'],
     modelsEndpoint: '/v1/models',
   ),
   const AiProviderConfig(
@@ -235,14 +195,8 @@ final aiProviders = <AiProviderConfig>[
     name: 'AutoClaw（智谱·国内）',
     provider: 'openai',
     // 对话基址固定走国内积分制通道；发信层再拼 chat/completions
-    defaultBaseUrl:
-        'https://autoglm-acceleration-api.zhipuai.cn/autoclaw-proxy/proxy/autoclaw',
-    models: [
-      'zai_auto',
-      'zai_auto-fast',
-      'zaicoding_glm-5.3',
-      'zai_glm-5.3-flash',
-    ],
+    defaultBaseUrl: 'https://autoglm-acceleration-api.zhipuai.cn/autoclaw-proxy/proxy/autoclaw',
+    models: ['zai_auto', 'zai_auto-fast', 'zaicoding_glm-5.3', 'zai_glm-5.3-flash'],
     modelsEndpoint: '',
     authType: 'bearer',
     requiresApiKeyForFetch: false,
@@ -276,10 +230,7 @@ final aiProviders = <AiProviderConfig>[
     name: 'SenseNova (商汤)',
     provider: 'openai',
     defaultBaseUrl: 'https://token.sensenova.cn/v1',
-    models: [
-      'sensenova-6.8-flash-lite',
-      'deepseek-v4-flash',
-    ],
+    models: ['sensenova-6.8-flash-lite', 'deepseek-v4-flash'],
     modelsEndpoint: '/v1/models',
     defaultReasoningEffort: 'none',
   ),
@@ -324,9 +275,7 @@ AiProviderConfig? getProviderById(String id) {
 ///
 /// 「添加模型服务」的厂商选择器据此把两类厂商分区展示：账号型要点登录，
 /// 密钥型要粘 Key，混在一张列表里容易让人以为登录型也要填密钥。
-List<AiProviderConfig> aiAccountProviders() =>
-    aiProviders.where((p) => p.authMode != 'api_key').toList();
+List<AiProviderConfig> aiAccountProviders() => aiProviders.where((p) => p.authMode != 'api_key').toList();
 
 /// 走 API Key 的厂商模板（含「自定义」）
-List<AiProviderConfig> aiApiKeyProviders() =>
-    aiProviders.where((p) => p.authMode == 'api_key').toList();
+List<AiProviderConfig> aiApiKeyProviders() => aiProviders.where((p) => p.authMode == 'api_key').toList();

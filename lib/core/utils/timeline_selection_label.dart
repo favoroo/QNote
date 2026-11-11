@@ -64,9 +64,11 @@ String _timeRangeText({
   }
   final endText = _timeText(endTime);
   final end = endDate ?? startDate;
-  final dayDiff = DateTime(end.year, end.month, end.day)
-      .difference(DateTime(startDate.year, startDate.month, startDate.day))
-      .inDays;
+  final dayDiff = DateTime(
+    end.year,
+    end.month,
+    end.day,
+  ).difference(DateTime(startDate.year, startDate.month, startDate.day)).inDays;
 
   if (dayDiff == 0) {
     return '$startText–$endText';

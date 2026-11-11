@@ -14,12 +14,7 @@ import 'package:qnote_flutter/widgets/unified_image.dart';
 /// 直接不占位（只保留文字说明）；不属于生图卡片的图片（如正文引用的已有笔记图）
 /// 仍渲染为可点击放大、可长按的 [ChatImageView]。
 class ChatBodyImage extends StatelessWidget {
-  const ChatBodyImage({
-    super.key,
-    required this.src,
-    required this.generatedImageKeys,
-    this.onSendToQ,
-  });
+  const ChatBodyImage({super.key, required this.src, required this.generatedImageKeys, this.onSendToQ});
 
   /// markdown 图片语法里的 src 原文（文件路径或 data URI）。
   final String src;
@@ -40,11 +35,7 @@ class ChatBodyImage extends StatelessWidget {
       // 等比收缩，配合 contain 不会留下留白
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 280),
-        child: ChatImageView(
-          imagePath: src,
-          fit: BoxFit.contain,
-          onSendToQ: onSendToQ,
-        ),
+        child: ChatImageView(imagePath: src, fit: BoxFit.contain, onSendToQ: onSendToQ),
       ),
     );
   }
@@ -99,22 +90,14 @@ class _ChatImageViewState extends State<ChatImageView> {
   /// ActionMenu 需要一个指向图片本身的 GlobalKey 来定位浮层位置
   final GlobalKey _anchorKey = GlobalKey(debugLabel: 'chatImage');
 
-  List<String> get _gallery =>
-      widget.galleryImages ?? <String>[widget.imagePath];
+  List<String> get _gallery => widget.galleryImages ?? <String>[widget.imagePath];
 
-  int get _galleryIndex => widget.galleryIndex.clamp(
-    0,
-    _gallery.isEmpty ? 0 : _gallery.length - 1,
-  );
+  int get _galleryIndex => widget.galleryIndex.clamp(0, _gallery.isEmpty ? 0 : _gallery.length - 1);
 
   void _openGallery() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FullScreenImageGallery(
-          images: _gallery,
-          initialIndex: _galleryIndex,
-          onSave: _save,
-        ),
+        builder: (_) => FullScreenImageGallery(images: _gallery, initialIndex: _galleryIndex, onSave: _save),
       ),
     );
   }
@@ -136,29 +119,12 @@ class _ChatImageViewState extends State<ChatImageView> {
   List<ActionMenuItem> _menuItems() {
     final path = widget.imagePath;
     return <ActionMenuItem>[
-      ActionMenuItem(
-        icon: Icons.zoom_out_map,
-        label: '查看大图',
-        onTap: _openGallery,
-      ),
+      ActionMenuItem(icon: Icons.zoom_out_map, label: '查看大图', onTap: _openGallery),
       if (widget.onSendToQ != null)
-        ActionMenuItem(
-          icon: Icons.forum_outlined,
-          label: '给小Q',
-          onTap: () => widget.onSendToQ!(path),
-        ),
-      ActionMenuItem(
-        icon: Icons.download_outlined,
-        label: '下载',
-        onTap: () => _save(path),
-      ),
+        ActionMenuItem(icon: Icons.forum_outlined, label: '给小Q', onTap: () => widget.onSendToQ!(path)),
+      ActionMenuItem(icon: Icons.download_outlined, label: '下载', onTap: () => _save(path)),
       // Web 端生图结果是超长的 base64 内联串，复制出来没有任何用处
-      if (!ImageSaver.isInlineData(path))
-        ActionMenuItem(
-          icon: Icons.link,
-          label: '复制路径',
-          onTap: () => _copyPath(path),
-        ),
+      if (!ImageSaver.isInlineData(path)) ActionMenuItem(icon: Icons.link, label: '复制路径', onTap: () => _copyPath(path)),
     ];
   }
 
@@ -171,12 +137,7 @@ class _ChatImageViewState extends State<ChatImageView> {
       onLongPress: widget.enableLongPressMenu ? _showLongPressMenu : null,
       child: ClipRRect(
         borderRadius: widget.borderRadius ?? BorderRadius.zero,
-        child: UnifiedImage(
-          imagePath: widget.imagePath,
-          width: widget.width,
-          height: widget.height,
-          fit: widget.fit,
-        ),
+        child: UnifiedImage(imagePath: widget.imagePath, width: widget.width, height: widget.height, fit: widget.fit),
       ),
     );
   }

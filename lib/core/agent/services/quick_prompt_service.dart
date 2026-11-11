@@ -13,10 +13,7 @@ class QuickPromptService {
   static const String storageKey = 'agent_quick_prompts';
 
   /// 默认提示词，仅首次初始化时写入
-  static const List<String> _defaultPrompts = [
-    '总结我今天的行为，给出评价',
-    '总结一下我本周的行为，看有什么改进的',
-  ];
+  static const List<String> _defaultPrompts = ['总结我今天的行为，给出评价', '总结一下我本周的行为，看有什么改进的'];
 
   /// 内存缓存（null 表示未加载），云同步导入后调用 [refresh] 失效
   List<String>? _cached;
@@ -28,19 +25,13 @@ class QuickPromptService {
     if (raw == null || raw.isEmpty) {
       // 首次初始化：写入默认值
       final defaults = List<String>.from(_defaultPrompts);
-      await ConfigRepository.instance.setAppConfig(
-        storageKey,
-        jsonEncode(defaults),
-      );
+      await ConfigRepository.instance.setAppConfig(storageKey, jsonEncode(defaults));
       return _cached = defaults;
     }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        final prompts = decoded
-            .map((e) => e.toString())
-            .where((e) => e.trim().isNotEmpty)
-            .toList();
+        final prompts = decoded.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
         return _cached = prompts;
       }
     } catch (_) {}
@@ -51,10 +42,7 @@ class QuickPromptService {
   /// 整体覆盖保存
   Future<void> setPrompts(List<String> prompts) async {
     _cached = List<String>.from(prompts);
-    await ConfigRepository.instance.setAppConfig(
-      storageKey,
-      jsonEncode(prompts),
-    );
+    await ConfigRepository.instance.setAppConfig(storageKey, jsonEncode(prompts));
   }
 
   /// 追加一条

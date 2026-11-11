@@ -82,9 +82,7 @@ Future<double> pumpView(WidgetTester tester, {DateTime? anchor}) async {
       overrides: [
         selectedDateProvider.overrideWith((ref) => selected),
         screenUsageServiceProvider.overrideWithValue(_FakeUsageService()),
-        screenUsageSnapshotServiceProvider.overrideWith(
-          (ref) => _FakeSnapshotService(ref),
-        ),
+        screenUsageSnapshotServiceProvider.overrideWith((ref) => _FakeSnapshotService(ref)),
         screenUsageEarliestDateProvider.overrideWith((ref) async => weekStart),
         screenUsageDayProvider.overrideWith((ref, date) async {
           return ScreenUsageDayView(
@@ -127,9 +125,7 @@ Future<double> pumpView(WidgetTester tester, {DateTime? anchor}) async {
           );
         }),
       ],
-      child: const MaterialApp(
-        home: Scaffold(body: ScreenUsageStatsView()),
-      ),
+      child: const MaterialApp(home: Scaffold(body: ScreenUsageStatsView())),
     ),
   );
   await tester.pumpAndSettle();
@@ -159,10 +155,7 @@ void main() {
   testWidgets('今日屏幕时长在周卡之前，打开先看当天', (tester) async {
     await pumpView(tester);
 
-    expect(
-      tester.getTopLeft(find.text('今日屏幕时长')).dy,
-      lessThan(tester.getTopLeft(find.text('本周屏幕时长')).dy),
-    );
+    expect(tester.getTopLeft(find.text('今日屏幕时长')).dy, lessThan(tester.getTopLeft(find.text('本周屏幕时长')).dy));
   });
 
   testWidgets('当日明细只列前 5 名，本周应用榜只列前 8 名', (tester) async {
@@ -172,11 +165,7 @@ void main() {
     expect(find.text('应用4'), findsOneWidget);
     expect(find.text('应用5'), findsNothing);
 
-    await tester.dragUntilVisible(
-      find.text('周榜7'),
-      find.byType(ListView),
-      const Offset(0, -200),
-    );
+    await tester.dragUntilVisible(find.text('周榜7'), find.byType(ListView), const Offset(0, -200));
     await tester.pumpAndSettle();
 
     expect(find.text('周榜7'), findsOneWidget);

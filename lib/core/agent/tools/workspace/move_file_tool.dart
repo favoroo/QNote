@@ -21,26 +21,21 @@ class MoveFileTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'from': {
-            'type': 'string',
-            'description': '源路径（如 "/todos/今日/拿快递.md"、"/notes/临时/会议纪要.md"）',
-          },
-          'to': {
-            'type': 'string',
-            'description': '目标路径（如 "/todos/工作/拿快递.md"、"/notes/会议/周会纪要.md"）；'
-                '待办只能移到待办、笔记只能移到笔记',
-          },
-        },
-        'required': ['from', 'to'],
-      };
+    'type': 'object',
+    'properties': {
+      'from': {'type': 'string', 'description': '源路径（如 "/todos/今日/拿快递.md"、"/notes/临时/会议纪要.md"）'},
+      'to': {
+        'type': 'string',
+        'description':
+            '目标路径（如 "/todos/工作/拿快递.md"、"/notes/会议/周会纪要.md"）；'
+            '待办只能移到待办、笔记只能移到笔记',
+      },
+    },
+    'required': ['from', 'to'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final from = (arguments['from'] as String? ?? '').trim();
     final to = (arguments['to'] as String? ?? '').trim();
     if (from.isEmpty || to.isEmpty) {

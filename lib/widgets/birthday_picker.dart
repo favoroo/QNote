@@ -5,12 +5,7 @@ class BirthdayPickerDialog extends StatefulWidget {
   final DateTime firstDate;
   final DateTime lastDate;
 
-  const BirthdayPickerDialog({
-    super.key,
-    required this.initialDate,
-    required this.firstDate,
-    required this.lastDate,
-  });
+  const BirthdayPickerDialog({super.key, required this.initialDate, required this.firstDate, required this.lastDate});
 
   @override
   State<BirthdayPickerDialog> createState() => _BirthdayPickerDialogState();
@@ -34,9 +29,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
     _selectedDay = widget.initialDate.day;
 
     final initialYearIndex = widget.lastDate.year - _selectedYear!;
-    _yearScrollController = ScrollController(
-      initialScrollOffset: initialYearIndex * 60.0,
-    );
+    _yearScrollController = ScrollController(initialScrollOffset: initialYearIndex * 60.0);
   }
 
   @override
@@ -65,10 +58,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
           children: [
             Text(
               title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colorScheme.primary,
-              ),
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -81,27 +71,16 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (_step > 0)
-                  TextButton(
-                    onPressed: () => setState(() => _step--),
-                    child: const Text('上一步'),
-                  ),
+                if (_step > 0) TextButton(onPressed: () => setState(() => _step--), child: const Text('上一步')),
                 const Spacer(),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    '取消',
-                    style: TextStyle(color: theme.disabledColor),
-                  ),
+                  child: Text('取消', style: TextStyle(color: theme.disabledColor)),
                 ),
                 if (_step == 2)
                   FilledButton(
                     onPressed: () {
-                      final date = DateTime(
-                        _selectedYear!,
-                        _selectedMonth!,
-                        _selectedDay!,
-                      );
+                      final date = DateTime(_selectedYear!, _selectedMonth!, _selectedDay!);
                       Navigator.pop(context, date);
                     },
                     child: const Text('完成'),
@@ -118,12 +97,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildSelectionChip(
-          theme,
-          '${_selectedYear ?? ""}年',
-          _step == 0,
-          onTap: () => setState(() => _step = 0),
-        ),
+        _buildSelectionChip(theme, '${_selectedYear ?? ""}年', _step == 0, onTap: () => setState(() => _step = 0)),
         const SizedBox(width: 8),
         _buildSelectionChip(
           theme,
@@ -158,13 +132,9 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
         decoration: BoxDecoration(
           color: isSelected
               ? theme.colorScheme.primaryContainer
-              : theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: enabled ? 0.3 : 0.1,
-                ),
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: enabled ? 0.3 : 0.1),
           borderRadius: BorderRadius.circular(8),
-          border: isSelected
-              ? Border.all(color: theme.colorScheme.primary)
-              : null,
+          border: isSelected ? Border.all(color: theme.colorScheme.primary) : null,
         ),
         child: Text(
           label,
@@ -172,9 +142,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             color: isSelected
                 ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: enabled ? 1.0 : 0.3,
-                  ),
+                : theme.colorScheme.onSurfaceVariant.withValues(alpha: enabled ? 1.0 : 0.3),
           ),
         ),
       ),
@@ -226,10 +194,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
 
   Widget _buildMonthPicker(ThemeData theme) {
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        childAspectRatio: 1.2,
-      ),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: 1.2),
       itemCount: 12,
       itemBuilder: (context, index) {
         final month = index + 1;
@@ -272,10 +237,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
   Widget _buildDayPicker(ThemeData theme) {
     final daysCount = _daysInMonth(_selectedYear!, _selectedMonth!);
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 7,
-        childAspectRatio: 1,
-      ),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, childAspectRatio: 1),
       itemCount: daysCount,
       itemBuilder: (context, index) {
         final day = index + 1;
@@ -290,19 +252,14 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
             child: Container(
               width: 32,
               height: 32,
-              decoration: BoxDecoration(
-                color: isSelected ? theme.colorScheme.primary : null,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: isSelected ? theme.colorScheme.primary : null, shape: BoxShape.circle),
               child: Center(
                 child: Text(
                   '$day',
                   style: TextStyle(
                     fontSize: 13,
                     color: isSelected ? theme.colorScheme.onPrimary : null,
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ),

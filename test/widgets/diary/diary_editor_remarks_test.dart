@@ -17,12 +17,7 @@ void main() {
           options: ['自制', '外卖', '堂食', '零食', '水果', '饮品', '补剂'],
           allowCustom: true,
         ),
-        ShortcutField(
-          id: 'rating',
-          label: '评价',
-          type: 'select',
-          options: ['健康', '一般', '不健康'],
-        ),
+        ShortcutField(id: 'rating', label: '评价', type: 'select', options: ['健康', '一般', '不健康']),
       ],
       sortOrder: 1,
       createdAt: DateTime(2026, 1, 1),
@@ -37,9 +32,7 @@ void main() {
 
       for (final entry in tagEntries) {
         try {
-          final config = shortcuts.firstWhere(
-            (s) => s.id == entry.id || s.name == entry.name,
-          );
+          final config = shortcuts.firstWhere((s) => s.id == entry.id || s.name == entry.name);
           if (config.hasPopup) {
             popupEntries.add(entry);
             popupConfigs.add(config);
@@ -56,9 +49,7 @@ void main() {
         final config = popupConfigs[pi];
 
         List<ShortcutField> fieldsToProcess = config.fields;
-        final Map<String, dynamic> entryFields = Map<String, dynamic>.from(
-          entry.fields,
-        );
+        final Map<String, dynamic> entryFields = Map<String, dynamic>.from(entry.fields);
         String categoryPrefix = '';
 
         if (config.categories != null && config.categories!.isNotEmpty) {
@@ -80,20 +71,14 @@ void main() {
             .where((s) => s != null && s.isNotEmpty)
             .join('，');
 
-        final fullDetails = categoryPrefix.isNotEmpty
-            ? '$categoryPrefix$details'
-            : details;
+        final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
         if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
       }
 
       return detailParts.join('；');
     }
 
-    bool isPurelyFieldSummary(
-      String content,
-      List<TagEntry> tagEntries,
-      List<ShortcutConfig> shortcuts,
-    ) {
+    bool isPurelyFieldSummary(String content, List<TagEntry> tagEntries, List<ShortcutConfig> shortcuts) {
       final trimmed = content.trim();
       if (trimmed.isEmpty) return true;
 
@@ -101,9 +86,7 @@ void main() {
       final knownValues = <String>{};
 
       for (final entry in tagEntries) {
-        final sc = shortcuts
-            .where((s) => s.id == entry.id || s.name == entry.name)
-            .firstOrNull;
+        final sc = shortcuts.where((s) => s.id == entry.id || s.name == entry.name).firstOrNull;
         if (sc != null) {
           for (final f in sc.fields) {
             knownLabels.add(f.label);
@@ -160,11 +143,7 @@ void main() {
       return true;
     }
 
-    String parseUserRemarks(
-      String content,
-      List<TagEntry> tagEntries,
-      List<ShortcutConfig> shortcuts,
-    ) {
+    String parseUserRemarks(String content, List<TagEntry> tagEntries, List<ShortcutConfig> shortcuts) {
       final trimmed = content.trim();
       if (trimmed.isEmpty) return '';
 
@@ -181,9 +160,7 @@ void main() {
       }
 
       final hasPopupFields = tagEntries.any((entry) {
-        final sc = shortcuts
-            .where((s) => s.id == entry.id || s.name == entry.name)
-            .firstOrNull;
+        final sc = shortcuts.where((s) => s.id == entry.id || s.name == entry.name).firstOrNull;
         return sc != null && sc.hasPopup;
       });
 
@@ -214,13 +191,10 @@ void main() {
 
     test('智能提取或小Q编辑的内容包含冒号与图：时，绝不能被误清空', () {
       final tagEntries = [
-        TagEntry(
-          id: 'diet',
-          name: '饮食',
-          fields: {'type': '自制', 'rating': '健康'},
-        ),
+        TagEntry(id: 'diet', name: '饮食', fields: {'type': '自制', 'rating': '健康'}),
       ];
-      const content = '清蒸鲈鱼、凉拌猪耳、肉沫酸豆角、青菜豆腐荷包蛋汤、米饭与芋圆啵啵甜品\n'
+      const content =
+          '清蒸鲈鱼、凉拌猪耳、肉沫酸豆角、青菜豆腐荷包蛋汤、米饭与芋圆啵啵甜品\n'
           '图：清蒸鲈鱼，凉拌猪耳，肉沫酸豆角，青菜豆腐荷包蛋汤，米饭与芋圆啵啵甜品';
 
       final remarks = parseUserRemarks(content, tagEntries, shortcuts);
@@ -229,11 +203,7 @@ void main() {
 
     test('纯由结构化字段组成的摘要字符串应返回空正文', () {
       final tagEntries = [
-        TagEntry(
-          id: 'diet',
-          name: '饮食',
-          fields: {'type': '自制', 'rating': '健康'},
-        ),
+        TagEntry(id: 'diet', name: '饮食', fields: {'type': '自制', 'rating': '健康'}),
       ];
       const content = '种类：自制，评价：健康';
 
@@ -243,11 +213,7 @@ void main() {
 
     test('带有「备注：」或「\\n备注：」前缀的应正确剥离并提取用户正文', () {
       final tagEntries = [
-        TagEntry(
-          id: 'diet',
-          name: '饮食',
-          fields: {'type': '自制', 'rating': '健康'},
-        ),
+        TagEntry(id: 'diet', name: '饮食', fields: {'type': '自制', 'rating': '健康'}),
       ];
       const content1 = '种类：自制，评价：健康\n备注：今天做的清蒸鲈鱼非常鲜美';
       expect(parseUserRemarks(content1, tagEntries, shortcuts), equals('今天做的清蒸鲈鱼非常鲜美'));

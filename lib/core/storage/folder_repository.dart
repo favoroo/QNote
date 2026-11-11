@@ -18,12 +18,7 @@ class FolderRepository {
 
   Future<List<Folder>> getByType(String type) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'folders',
-      where: 'type = ?',
-      whereArgs: [type],
-      orderBy: 'sort_order ASC, name ASC',
-    );
+    final maps = await db.query('folders', where: 'type = ?', whereArgs: [type], orderBy: 'sort_order ASC, name ASC');
     return maps.map((m) => Folder.fromMap(m)).toList();
   }
 
@@ -59,41 +54,22 @@ class FolderRepository {
   Future<Folder> insert(Folder folder) async {
     final db = await _dbHelper.database;
     await db.insert('folders', folder.toMap());
-    await _syncLog.logChange(
-      tableName: 'folders',
-      recordId: folder.id,
-      operation: 'insert',
-      data: folder.toMap(),
-    );
+    await _syncLog.logChange(tableName: 'folders', recordId: folder.id, operation: 'insert', data: folder.toMap());
     return folder;
   }
 
   Future<Folder> update(Folder folder) async {
     final db = await _dbHelper.database;
     final updated = folder.copyWith(updatedAt: DateTime.now());
-    await db.update(
-      'folders',
-      updated.toMap(),
-      where: 'id = ?',
-      whereArgs: [folder.id],
-    );
-    await _syncLog.logChange(
-      tableName: 'folders',
-      recordId: folder.id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('folders', updated.toMap(), where: 'id = ?', whereArgs: [folder.id]);
+    await _syncLog.logChange(tableName: 'folders', recordId: folder.id, operation: 'update', data: updated.toMap());
     return updated;
   }
 
   Future<void> delete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('folders', where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: 'folders',
-      recordId: id,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: 'folders', recordId: id, operation: 'delete');
   }
 
   Future<void> updateSortOrder(String id, int sortOrder) async {
@@ -102,22 +78,9 @@ class FolderRepository {
     if (existing == null) return;
 
     final nowStr = DateTime.now().toIso8601String();
-    await db.update(
-      'folders',
-      {'sort_order': sortOrder, 'updated_at': nowStr},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final updated = existing.copyWith(
-      sortOrder: sortOrder,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'folders',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('folders', {'sort_order': sortOrder, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+    final updated = existing.copyWith(sortOrder: sortOrder, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'folders', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   Future<void> batchUpdate(List<Folder> folders) async {
@@ -125,22 +88,21 @@ class FolderRepository {
     final db = await _dbHelper.database;
     final batch = db.batch();
     for (final folder in folders) {
-      batch.update(
-        'folders',
-        folder.toMap(),
-        where: 'id = ?',
-        whereArgs: [folder.id],
-      );
+      batch.update('folders', folder.toMap(), where: 'id = ?', whereArgs: [folder.id]);
     }
     await batch.commit(noResult: true);
 
-    final syncLogEntries = folders.map((folder) => SyncLogEntry(
-      tableName: 'folders',
-      recordId: folder.id,
-      operation: 'update',
-      data: folder.toMap(),
-      timestamp: DateTime.now(),
-    )).toList();
+    final syncLogEntries = folders
+        .map(
+          (folder) => SyncLogEntry(
+            tableName: 'folders',
+            recordId: folder.id,
+            operation: 'update',
+            data: folder.toMap(),
+            timestamp: DateTime.now(),
+          ),
+        )
+        .toList();
     await _syncLog.logChanges(syncLogEntries);
   }
 }

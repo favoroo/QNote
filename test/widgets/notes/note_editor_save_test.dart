@@ -60,11 +60,7 @@ void main() {
   late _RecordingNoteListNotifier notifier;
 
   /// 把编辑器推上导航栈，便于断言「是否真的退出了」
-  Future<void> openEditor(
-    WidgetTester tester, {
-    required Note note,
-    bool failSave = false,
-  }) async {
+  Future<void> openEditor(WidgetTester tester, {required Note note, bool failSave = false}) async {
     notifier = failSave ? _FailingNoteListNotifier(note) : _RecordingNoteListNotifier(note);
     await tester.pumpWidget(
       ProviderScope(
@@ -76,11 +72,7 @@ void main() {
           home: Builder(
             builder: (context) => ElevatedButton(
               onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => NoteEditorView(note: note),
-                  ),
-                );
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
               },
               child: const Text('open'),
             ),
@@ -101,10 +93,7 @@ void main() {
   }
 
   Future<void> editTitle(WidgetTester tester, String text) async {
-    final titleField = find.descendant(
-      of: find.byType(AppBar),
-      matching: find.byType(TextField),
-    );
+    final titleField = find.descendant(of: find.byType(AppBar), matching: find.byType(TextField));
     await tester.enterText(titleField, text);
     await tester.pump(const Duration(milliseconds: 300));
   }
@@ -118,7 +107,10 @@ void main() {
 
   group('NoteEditorView 保存链路', () {
     testWidgets('刚打开即「已保存」，空标题笔记返回也不会被判脏', (tester) async {
-      await openEditor(tester, note: _buildNote(title: '', content: '内容'));
+      await openEditor(
+        tester,
+        note: _buildNote(title: '', content: '内容'),
+      );
 
       expect(find.text('已保存'), findsOneWidget);
 

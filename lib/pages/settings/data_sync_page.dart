@@ -113,9 +113,7 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
                   onPressed: _saveSyncConfig,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
                   child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
@@ -124,11 +122,7 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
         ),
         body: Column(
           children: [
-            SettingsSegmentBar(
-              items: _tabItems,
-              selectedIndex: _currentIndex,
-              onChanged: _switchTo,
-            ),
+            SettingsSegmentBar(items: _tabItems, selectedIndex: _currentIndex, onChanged: _switchTo),
             Expanded(
               child: SettingsSegmentContent(
                 index: _currentIndex,
@@ -231,14 +225,8 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
         title: const Text('导入数据'),
         content: const Text('将覆盖当前本地数据。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('继续'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('继续')),
         ],
       ),
     );
@@ -300,14 +288,9 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('从云端恢复', style: TextStyle(color: Colors.red)),
-        content: const Text(
-          '将用云端备份覆盖本地数据，不可撤销。\n换机或重装后恢复时使用。',
-        ),
+        content: const Text('将用云端备份覆盖本地数据，不可撤销。\n换机或重装后恢复时使用。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -407,11 +390,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       if (mounted) setState(() => _chatUsage = usage);
     } catch (e) {
       // 估算失败不影响本页其它功能，保持为 null 即可
-      LoggerService.instance.logDatabase(
-        '统计对话存储占用失败',
-        details: e.toString(),
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logDatabase('统计对话存储占用失败', details: e.toString(), level: LogLevel.warning);
     }
   }
 
@@ -435,14 +414,8 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
         title: const Text('强制全量同步'),
         content: const Text('将用本地数据覆盖云端快照，耗时较长。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('确认同步'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('确认同步')),
         ],
       ),
     );
@@ -474,14 +447,8 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
         title: const Text('清理旧备份文件'),
         content: const Text('将清理云端按日期命名的旧格式备份，保留最新快照与增量数据。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('清理'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('清理')),
         ],
       ),
     );
@@ -495,12 +462,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
   }
 
   void _openLogViewer() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => const LogViewerPage(),
-      ),
-    );
+    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const LogViewerPage()));
   }
 
   Future<void> _handleClearData() async {
@@ -517,10 +479,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
         title: const Text('清除数据'),
         content: const Text('将删除全部本地数据，不可恢复。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -538,10 +497,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
         title: const Text('再次确认'),
         content: const Text('删除后无法恢复。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -561,16 +517,9 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       if (!mounted) return;
       // 不刷新 Provider 的话界面仍显示旧数据，用户会以为没清干净。
       _invalidateAllData(ref);
-      Toast.success(
-        context,
-        deletedImages > 0 ? '已清除（含 $deletedImages 张图片）' : '已清除',
-      );
+      Toast.success(context, deletedImages > 0 ? '已清除（含 $deletedImages 张图片）' : '已清除');
     } catch (e, stackTrace) {
-      LoggerService.instance.logDatabase(
-        '清空本地数据失败',
-        level: LogLevel.error,
-        details: '${e.toString()}\n$stackTrace',
-      );
+      LoggerService.instance.logDatabase('清空本地数据失败', level: LogLevel.error, details: '${e.toString()}\n$stackTrace');
       if (mounted) {
         Toast.error(context, '清除失败');
       }
@@ -586,10 +535,8 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     }
     final parts = <String>[
       '${usage.activeSessions} 个对话 · 消息 ${formatChatStorageBytes(usage.activeMessagesBytes)}',
-      if (usage.aiImageFiles > 0)
-        '生成图 ${usage.aiImageFiles} 张 ${formatChatStorageBytes(usage.aiImageBytes)}',
-      if (usage.databaseFileBytes != null)
-        '库文件 ${formatChatStorageBytes(usage.databaseFileBytes!)}',
+      if (usage.aiImageFiles > 0) '生成图 ${usage.aiImageFiles} 张 ${formatChatStorageBytes(usage.aiImageBytes)}',
+      if (usage.databaseFileBytes != null) '库文件 ${formatChatStorageBytes(usage.databaseFileBytes!)}',
     ];
     if (usage.tombstonedSessions > 0 || usage.orphanImageFiles > 0) {
       parts.add('待回收 ${formatChatStorageBytes(usage.reclaimableBytes)}');
@@ -615,14 +562,8 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
           '和 ${usage?.orphanImageFiles ?? 0} 张无引用生成图，当前可见的笔记与日记不受影响。',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('回收'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('回收')),
         ],
       ),
     );
@@ -630,8 +571,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
 
     setState(() => _isReclaiming = true);
     try {
-      final purged = await ConfigRepository.instance
-          .purgeTombstonedChatSessions();
+      final purged = await ConfigRepository.instance.purgeTombstonedChatSessions();
       final orphans = await ChatImageGc.instance.deleteUnreferencedAiImages();
       final bytes = purged.imageFreedBytes + orphans.freedBytes;
       ref.invalidate(chatSessionListProvider);
@@ -650,11 +590,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       }
     } catch (e) {
       if (mounted) Toast.error(context, '回收失败');
-      LoggerService.instance.logDatabase(
-        '对话存储回收失败',
-        details: e.toString(),
-        level: LogLevel.error,
-      );
+      LoggerService.instance.logDatabase('对话存储回收失败', details: e.toString(), level: LogLevel.error);
     } finally {
       if (mounted) setState(() => _isReclaiming = false);
     }
@@ -676,14 +612,8 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
         title: const Text('整理数据库'),
         content: const Text('将重写数据库文件以释放空间，需约 2 倍库文件的临时空间，期间请勿同步。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('整理'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('整理')),
         ],
       ),
     );
@@ -713,11 +643,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
         _SectionTitle(title: '同步维护', theme: theme),
         _ActionGroup(
           children: [
-            _ActionTile(
-              icon: Icons.cloud_upload_outlined,
-              title: '强制全量同步',
-              onTap: isSyncing ? null : _performFullSync,
-            ),
+            _ActionTile(icon: Icons.cloud_upload_outlined, title: '强制全量同步', onTap: isSyncing ? null : _performFullSync),
             _ActionTile(
               icon: Icons.cleaning_services_outlined,
               title: '清理旧备份文件',
@@ -841,9 +767,7 @@ class _ActionGroup extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: Column(
-        children: dividedChildren,
-      ),
+      child: Column(children: dividedChildren),
     );
   }
 }
@@ -893,11 +817,7 @@ class _ActionTile extends StatelessWidget {
                   color: effectiveColor.withValues(alpha: enabled ? 0.1 : 0.05),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  icon,
-                  color: effectiveColor.withValues(alpha: enabled ? 1.0 : 0.4),
-                  size: 20,
-                ),
+                child: Icon(icon, color: effectiveColor.withValues(alpha: enabled ? 1.0 : 0.4), size: 20),
               ),
               const SizedBox(width: 14),
               // 文本区域
@@ -919,10 +839,7 @@ class _ActionTile extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         subtitle!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                          height: 1.35,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.35),
                       ),
                     ],
                   ],
@@ -934,16 +851,14 @@ class _ActionTile extends StatelessWidget {
                 SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(effectiveColor),
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(effectiveColor)),
                 )
               else
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: (isDestructive ? effectiveColor : colorScheme.onSurfaceVariant)
-                      .withValues(alpha: enabled ? 0.4 : 0.2),
+                  color: (isDestructive ? effectiveColor : colorScheme.onSurfaceVariant).withValues(
+                    alpha: enabled ? 0.4 : 0.2,
+                  ),
                   size: 20,
                 ),
             ],

@@ -13,12 +13,7 @@ class ChatHistoryGroup {
   final ChatHistoryGroupKind kind;
   final List<ChatSession> sessions;
 
-  const ChatHistoryGroup({
-    required this.id,
-    required this.label,
-    required this.kind,
-    required this.sessions,
-  });
+  const ChatHistoryGroup({required this.id, required this.label, required this.kind, required this.sessions});
 
   int get count => sessions.length;
 
@@ -41,10 +36,7 @@ const int _within30MaxDayOffset = 29;
 /// - 空组**根本不出现**（而不是渲染一个空节头）。
 ///
 /// [now] 可注入以便单测固定时间口径，与 `stats_utils.formatDayLabel` 的 `today` 同惯例。
-List<ChatHistoryGroup> buildChatHistoryGroups(
-  List<ChatSession> sessions, {
-  DateTime? now,
-}) {
+List<ChatHistoryGroup> buildChatHistoryGroups(List<ChatSession> sessions, {DateTime? now}) {
   final base = now ?? DateTime.now();
   final pinned = <ChatSession>[];
   final recent7 = <ChatSession>[];
@@ -130,17 +122,12 @@ List<ChatHistoryGroup> buildChatHistoryGroups(
 ///
 /// [keyword] 为空时原样返回入参本身（连拷贝都不做），方便上层用 `identical()`
 /// 命中缓存短路。
-List<ChatSession> filterChatSessions({
-  required List<ChatSession> sessions,
-  required String keyword,
-}) {
+List<ChatSession> filterChatSessions({required List<ChatSession> sessions, required String keyword}) {
   final query = keyword.trim().toLowerCase();
   if (query.isEmpty) {
     return sessions;
   }
-  return sortChatSessionsForDisplay(
-    sessions.where((session) => _matchesQuery(session, query)).toList(),
-  );
+  return sortChatSessionsForDisplay(sessions.where((session) => _matchesQuery(session, query)).toList());
 }
 
 /// 展示顺序：置顶优先，其次 updatedAt 倒序。

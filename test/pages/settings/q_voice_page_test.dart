@@ -30,20 +30,12 @@ class _FakeTtsPlayer extends TtsPlayer {
   TtsPlaybackState build() => TtsPlaybackState.idle;
 
   @override
-  Future<void> speakMessage(
-    String messageId,
-    String text, {
-    String? voiceOverride,
-    double? rateOverride,
-  }) async {
+  Future<void> speakMessage(String messageId, String text, {String? voiceOverride, double? rateOverride}) async {
     previewKeys.add(messageId);
     rateOverrides.add(rateOverride);
     // 真实播放器会先合成再播放；这里直接置为播放中，让"同一条不重复触发"
     // 与"关闭弹窗停止试听"两条逻辑可被观测
-    state = TtsPlaybackState(
-      messageId: messageId,
-      status: TtsPlaybackStatus.playing,
-    );
+    state = TtsPlaybackState(messageId: messageId, status: TtsPlaybackStatus.playing);
   }
 
   @override
@@ -53,28 +45,20 @@ class _FakeTtsPlayer extends TtsPlayer {
   }
 }
 
-Finder _sheetTile(WidgetTester tester, String label) => find.descendant(
-  of: find.byType(BottomSheet),
-  matching: find.widgetWithText(ListTile, label),
-);
+Finder _sheetTile(WidgetTester tester, String label) =>
+    find.descendant(of: find.byType(BottomSheet), matching: find.widgetWithText(ListTile, label));
 
 /// 弹窗里的档位名本身（不含 '0.8 倍速' 那行副标题）
-Finder _sheetLabel(WidgetTester tester, String label) => find.descendant(
-  of: find.byType(BottomSheet),
-  matching: find.text(label),
-);
+Finder _sheetLabel(WidgetTester tester, String label) =>
+    find.descendant(of: find.byType(BottomSheet), matching: find.text(label));
 
 late _FakeTtsPlayer _player;
 
 Future<void> _pumpPage(WidgetTester tester) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
-        ttsPlaybackProvider.overrideWith(() => _player = _FakeTtsPlayer()),
-      ],
-      child: const MaterialApp(
-        home: Scaffold(body: QVoicePage(embedded: true)),
-      ),
+      overrides: [ttsPlaybackProvider.overrideWith(() => _player = _FakeTtsPlayer())],
+      child: const MaterialApp(home: Scaffold(body: QVoicePage(embedded: true))),
     ),
   );
   await tester.pump();
@@ -91,11 +75,7 @@ Future<void> _openRateSheet(WidgetTester tester) async {
 ///
 /// 落库要过真实 IO，固定等待在多文件并发跑时会偶发不够（试播还没被触发就断言），
 /// 因此按条件轮询；命中后再多等一小段，让迟到的额外触发也暴露出来。
-Future<void> _tapRate(
-  WidgetTester tester,
-  String label,
-  Future<bool> Function() settled,
-) => tester.runAsync(() async {
+Future<void> _tapRate(WidgetTester tester, String label, Future<bool> Function() settled) => tester.runAsync(() async {
   await tester.tap(_sheetTile(tester, label));
   for (var i = 0; i < 80; i++) {
     if (await settled()) {
@@ -146,30 +126,14 @@ void main() {
       await _tapRate(tester, '慢速', () async => _player.previewKeys.length == 1);
       await tester.pump();
 
-      expect(
-        find.text('选择语速'),
-        findsOneWidget,
-        reason: '选中后弹窗应保持打开，供连续试听对比',
-      );
+      expect(find.text('选择语速'), findsOneWidget, reason: '选中后弹窗应保持打开，供连续试听对比');
       expect(_player.previewKeys, ['preview_rate_0.8']);
       expect(_player.rateOverrides, [0.8]);
       expect((await QVoiceConfig.instance.get()).rate, 0.8);
 
       // 勾选移到慢速行
-      expect(
-        find.descendant(
-          of: _sheetTile(tester, '慢速'),
-          matching: find.byIcon(Icons.check_circle),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: _sheetTile(tester, '快速'),
-          matching: find.byIcon(Icons.check_circle),
-        ),
-        findsNothing,
-      );
+      expect(find.descendant(of: _sheetTile(tester, '慢速'), matching: find.byIcon(Icons.check_circle)), findsOneWidget);
+      expect(find.descendant(of: _sheetTile(tester, '快速'), matching: find.byIcon(Icons.check_circle)), findsNothing);
     });
 
     testWidgets('重复点击正在试播的档位改为停播，不另起一次播放', (tester) async {
@@ -191,8 +155,7 @@ void main() {
       await _pumpPage(tester);
       await _openRateSheet(tester);
 
-      double labelCenterX(String label) =>
-          tester.getCenter(_sheetLabel(tester, label)).dx;
+      double labelCenterX(String label) => tester.getCenter(_sheetLabel(tester, label)).dx;
       final panelCenterX = tester.getRect(find.byType(BottomSheet)).center.dx;
 
       // 三档横向中心一致，且落在面板正中。ListTile 在标题与行尾控件之间还留了一道
@@ -201,11 +164,7 @@ void main() {
       double? firstCenter;
       for (final label in ['慢速', '正常', '快速']) {
         final center = labelCenterX(label);
-        expect(
-          center,
-          closeTo(panelCenterX, 8),
-          reason: '$label 应居中，而不是被行首控件挤到左边',
-        );
+        expect(center, closeTo(panelCenterX, 8), reason: '$label 应居中，而不是被行首控件挤到左边');
         firstCenter ??= center;
         expect(center, closeTo(firstCenter, 0.5), reason: '$label 与其他档位不同心');
       }
@@ -225,11 +184,7 @@ void main() {
 
       await _tapRate(tester, '慢速', () async => _player.previewKeys.length == 1);
       await tester.pump();
-      await _tapRate(
-        tester,
-        '正常',
-        () async => _player.previewKeys.length == 2,
-      );
+      await _tapRate(tester, '正常', () async => _player.previewKeys.length == 2);
       await tester.pump();
 
       expect(_player.previewKeys, ['preview_rate_0.8', 'preview_rate_1.0']);

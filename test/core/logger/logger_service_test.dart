@@ -37,9 +37,7 @@ void main() {
         },
       );
 
-      SharedPreferences.setMockInitialValues({
-        'qnote_logs': jsonEncode(oldLogs),
-      });
+      SharedPreferences.setMockInitialValues({'qnote_logs': jsonEncode(oldLogs)});
 
       await logger.loadLogs();
 

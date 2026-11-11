@@ -6,12 +6,7 @@ class _TodoEditBottomSheet extends StatefulWidget {
   final Todo? todo;
   final String? folderId;
   final List<Folder> folders;
-  final void Function({
-    required String title,
-    String? reminderTime,
-    String repeatRule,
-    String? folderId,
-  }) onSaveAdd;
+  final void Function({required String title, String? reminderTime, String repeatRule, String? folderId}) onSaveAdd;
   final void Function({required Todo updatedTodo}) onSaveEdit;
   final void Function(Todo todo)? onDelete;
   final void Function(Todo todo)? onQuoteToQ;
@@ -108,12 +103,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
 
     if (widget.todo == null) {
       // 添加待办
-      widget.onSaveAdd(
-        title: text,
-        reminderTime: _reminderTime,
-        repeatRule: _repeatRule,
-        folderId: _selectedFolderId,
-      );
+      widget.onSaveAdd(title: text, reminderTime: _reminderTime, repeatRule: _repeatRule, folderId: _selectedFolderId);
     } else {
       // 编辑待办
       widget.onSaveEdit(
@@ -132,11 +122,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
   Future<void> _pickReminderTime() async {
     final reminder = _reminderTime;
     final initialDate = reminder != null ? ReminderUtils.parse(reminder) : null;
-    final result = await showTimePickerDialog(
-      context: context,
-      initialTime: initialDate,
-      title: '提醒时间',
-    );
+    final result = await showTimePickerDialog(context: context, initialTime: initialDate, title: '提醒时间');
     if (result != null) {
       setState(() {
         _reminderTime = ReminderUtils.format(result);
@@ -158,9 +144,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     final selected = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
@@ -177,11 +161,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                       const SizedBox(width: 8),
                       Text(
                         '重复周期',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                       ),
                     ],
                   ),
@@ -228,9 +208,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     final selected = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
@@ -247,11 +225,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                       const SizedBox(width: 8),
                       Text(
                         '选择分类',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                       ),
                     ],
                   ),
@@ -316,8 +290,8 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     final hasText = _textController.text.trim().isNotEmpty;
 
     // 当前选中的分类名称
-    final selectedFolder = widget.folders.where((f) => f.id == _selectedFolderId).firstOrNull ??
-        widget.folders.firstOrNull;
+    final selectedFolder =
+        widget.folders.where((f) => f.id == _selectedFolderId).firstOrNull ?? widget.folders.firstOrNull;
     final selectedFolderName = selectedFolder?.name ?? '';
 
     // 键盘避让外壳单独精确订阅 viewInsets，内容子树经 child 复用，
@@ -357,21 +331,17 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                     ),
                   ),
                   child: _isCompleted
-                      ? Icon(
-                          Icons.check,
-                          size: 15,
-                          color: isDark ? Colors.white70 : colorScheme.primary,
-                        )
+                      ? Icon(Icons.check, size: 15, color: isDark ? Colors.white70 : colorScheme.primary)
                       : null,
                 ),
               ),
               Expanded(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 52),
-                      child: TextField(
-                        controller: _textController,
-                        focusNode: _textFocusNode,
-                        maxLines: 5,
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _textFocusNode,
+                    maxLines: 5,
                     minLines: 1,
                     textInputAction: TextInputAction.send,
                     onSubmitted: _handleSubmitted,
@@ -422,7 +392,9 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           decoration: BoxDecoration(
                             color: _reminderTime != null
                                 ? colorScheme.primary.withValues(alpha: 0.15)
-                                : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
+                                : (isDark
+                                      ? Colors.white.withValues(alpha: 0.08)
+                                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -469,7 +441,9 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           decoration: BoxDecoration(
                             color: _repeatRule != 'none'
                                 ? colorScheme.primary.withValues(alpha: 0.15)
-                                : (isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
+                                : (isDark
+                                      ? Colors.white.withValues(alpha: 0.08)
+                                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -506,17 +480,26 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.folder_outlined, size: 15, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                Icon(
+                                  Icons.folder_outlined,
+                                  size: 15,
+                                  color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   selectedFolderName,
-                                  style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isDark ? Colors.white70 : colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),
@@ -527,10 +510,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                       if (widget.todo != null) ...[
                         const SizedBox(width: 6),
                         IconButton(
-                          icon: QIcon(
-                            size: 20,
-                            color: colorScheme.primary,
-                          ),
+                          icon: QIcon(size: 20, color: colorScheme.primary),
                           tooltip: '给小Q',
                           onPressed: () {
                             Navigator.pop(context);
@@ -573,8 +553,8 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                         color: hasText
                             ? colorScheme.primary
                             : (isDark
-                                ? Colors.white.withValues(alpha: 0.1)
-                                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8)),
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8)),
                       ),
                       child: Icon(
                         Icons.arrow_upward_rounded,
@@ -582,8 +562,8 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                         color: hasText
                             ? colorScheme.onPrimary
                             : (isDark
-                                ? Colors.white.withValues(alpha: 0.3)
-                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                                  ? Colors.white.withValues(alpha: 0.3)
+                                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
                       ),
                     ),
                   ),
@@ -619,19 +599,11 @@ class _TodoSheetInsetShell extends StatelessWidget {
           color: decorationColor,
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 4)),
           ],
         ),
         padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-        child: SafeArea(
-          top: false,
-          bottom: viewInsetsBottom == 0,
-          child: child,
-        ),
+        child: SafeArea(top: false, bottom: viewInsetsBottom == 0, child: child),
       ),
     );
   }

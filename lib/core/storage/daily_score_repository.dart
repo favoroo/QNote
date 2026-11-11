@@ -53,8 +53,7 @@ class DailyScoreRepository {
         latestByDate[key] = score;
       }
     }
-    return latestByDate.values.toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    return latestByDate.values.toList()..sort((a, b) => a.date.compareTo(b.date));
   }
 
   /// 按日期落一条评分：当天已有记录则沿用其 id 与 created_at 原地更新，
@@ -90,18 +89,9 @@ class DailyScoreRepository {
           await txn.insert('daily_scores', row.toMap());
         } else {
           final existing = DailyScore.fromMap(maps.first);
-          row = score.copyWith(
-            id: existing.id,
-            createdAt: existing.createdAt,
-            updatedAt: DateTime.now(),
-          );
+          row = score.copyWith(id: existing.id, createdAt: existing.createdAt, updatedAt: DateTime.now());
           operation = 'update';
-          await txn.update(
-            'daily_scores',
-            row.toMap(),
-            where: 'id = ?',
-            whereArgs: [row.id],
-          );
+          await txn.update('daily_scores', row.toMap(), where: 'id = ?', whereArgs: [row.id]);
         }
         saved.add(row);
         logs.add(
@@ -123,28 +113,15 @@ class DailyScoreRepository {
   Future<int> deleteByDate(DateTime date) async {
     final db = await _dbHelper.database;
     final dateStr = _dateKey(date);
-    final maps = await db.query(
-      'daily_scores',
-      where: 'date = ?',
-      whereArgs: [dateStr],
-      columns: ['id'],
-    );
+    final maps = await db.query('daily_scores', where: 'date = ?', whereArgs: [dateStr], columns: ['id']);
     if (maps.isEmpty) return 0;
     final ids = maps.map((m) => m['id'] as String).toList();
-    await db.delete(
-      'daily_scores',
-      where: 'id IN (${List.filled(ids.length, '?').join(',')})',
-      whereArgs: ids,
-    );
+    await db.delete('daily_scores', where: 'id IN (${List.filled(ids.length, '?').join(',')})', whereArgs: ids);
     await _syncLog.logChanges(
       ids
           .map(
-            (id) => SyncLogEntry(
-              tableName: 'daily_scores',
-              recordId: id,
-              operation: 'delete',
-              timestamp: DateTime.now(),
-            ),
+            (id) =>
+                SyncLogEntry(tableName: 'daily_scores', recordId: id, operation: 'delete', timestamp: DateTime.now()),
           )
           .toList(),
     );
@@ -154,40 +131,21 @@ class DailyScoreRepository {
   Future<DailyScore> insert(DailyScore score) async {
     final db = await _dbHelper.database;
     await db.insert('daily_scores', score.toMap());
-    await _syncLog.logChange(
-      tableName: 'daily_scores',
-      recordId: score.id,
-      operation: 'insert',
-      data: score.toMap(),
-    );
+    await _syncLog.logChange(tableName: 'daily_scores', recordId: score.id, operation: 'insert', data: score.toMap());
     return score;
   }
 
   Future<DailyScore> update(DailyScore score) async {
     final db = await _dbHelper.database;
     final updated = score.copyWith(updatedAt: DateTime.now());
-    await db.update(
-      'daily_scores',
-      updated.toMap(),
-      where: 'id = ?',
-      whereArgs: [score.id],
-    );
-    await _syncLog.logChange(
-      tableName: 'daily_scores',
-      recordId: score.id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('daily_scores', updated.toMap(), where: 'id = ?', whereArgs: [score.id]);
+    await _syncLog.logChange(tableName: 'daily_scores', recordId: score.id, operation: 'update', data: updated.toMap());
     return updated;
   }
 
   Future<void> delete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('daily_scores', where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: 'daily_scores',
-      recordId: id,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: 'daily_scores', recordId: id, operation: 'delete');
   }
 }

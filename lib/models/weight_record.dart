@@ -3,18 +3,10 @@ class WeightRecord {
   final double weight;
   final DateTime time;
 
-  WeightRecord({
-    required this.id,
-    required this.weight,
-    required this.time,
-  });
+  WeightRecord({required this.id, required this.weight, required this.time});
 
   Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'weight': weight,
-      'time': time.toIso8601String(),
-    };
+    return {'id': id, 'weight': weight, 'time': time.toIso8601String()};
   }
 
   factory WeightRecord.fromMap(Map<String, dynamic> map) {
@@ -25,15 +17,7 @@ class WeightRecord {
     );
   }
 
-  WeightRecord copyWith({
-    String? id,
-    double? weight,
-    DateTime? time,
-  }) {
-    return WeightRecord(
-      id: id ?? this.id,
-      weight: weight ?? this.weight,
-      time: time ?? this.time,
-    );
+  WeightRecord copyWith({String? id, double? weight, DateTime? time}) {
+    return WeightRecord(id: id ?? this.id, weight: weight ?? this.weight, time: time ?? this.time);
   }
 }

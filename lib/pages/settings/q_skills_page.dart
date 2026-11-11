@@ -58,23 +58,14 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
           children: [
             Text('加载失败：$e', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: () => ref.invalidate(agentSkillListProvider),
-              child: const Text('重试'),
-            ),
+            FilledButton.tonal(onPressed: () => ref.invalidate(agentSkillListProvider), child: const Text('重试')),
           ],
         ),
       ),
       data: (skills) {
-        final userSkills = skills
-            .where((s) => s['origin'] == AgentSkillOrigin.user)
-            .toList();
-        final activeSkills = userSkills
-            .where((s) => s['archived'] != 'true')
-            .toList();
-        final archivedSkills = userSkills
-            .where((s) => s['archived'] == 'true')
-            .toList();
+        final userSkills = skills.where((s) => s['origin'] == AgentSkillOrigin.user).toList();
+        final activeSkills = userSkills.where((s) => s['archived'] != 'true').toList();
+        final archivedSkills = userSkills.where((s) => s['archived'] == 'true').toList();
 
         return ListView(
           padding: const EdgeInsets.all(20),
@@ -85,9 +76,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
               title: '用户技能',
               count: activeSkills.length,
               emptyText: '暂无自定义技能，点右上角「+」新建',
-              children: [
-                for (final skill in activeSkills) _buildSkillRow(context, skill),
-              ],
+              children: [for (final skill in activeSkills) _buildSkillRow(context, skill)],
             ),
             if (archivedSkills.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -96,10 +85,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
                 icon: Icons.inventory_2_outlined,
                 title: '已归档',
                 count: archivedSkills.length,
-                children: [
-                  for (final skill in archivedSkills)
-                    _buildArchivedSkillRow(context, skill),
-                ],
+                children: [for (final skill in archivedSkills) _buildArchivedSkillRow(context, skill)],
               ),
             ],
             const SizedBox(height: 20),
@@ -116,13 +102,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
       appBar: AppBar(
         title: const Text('小Q技能'),
         centerTitle: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: '新建技能',
-            onPressed: openNewSkillEditor,
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.add), tooltip: '新建技能', onPressed: openNewSkillEditor)],
       ),
       body: body,
     );
@@ -144,13 +124,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,10 +134,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
               Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                child: Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -173,9 +144,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
                 ),
                 child: Text(
                   '共 $count 个',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ),
             ],
@@ -186,9 +155,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
                 emptyText,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
             )
           else
@@ -211,9 +178,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
       ),
       child: Text(
         '用过 ${stat.count} 次',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onSecondaryContainer,
-        ),
+        style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSecondaryContainer),
       ),
     );
   }
@@ -233,21 +198,13 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
       title: Row(
         children: [
           Expanded(
-            child: Text(
-              name,
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
+            child: Text(name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
           ),
-          if (usageBadge != null) ...[
-            const SizedBox(width: 6),
-            usageBadge,
-          ],
+          if (usageBadge != null) ...[const SizedBox(width: 6), usageBadge],
           if (updatedAt != null)
             Text(
               '更新于 ${DateFormat('MM-dd HH:mm').format(updatedAt)}',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
         ],
       ),
@@ -255,16 +212,10 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
         description,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),
       trailing: PopupMenuButton<String>(
-        icon: Icon(
-          Icons.more_vert_rounded,
-          size: 20,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        icon: Icon(Icons.more_vert_rounded, size: 20, color: theme.colorScheme.onSurfaceVariant),
         tooltip: '更多操作',
         padding: EdgeInsets.zero,
         onSelected: (action) {
@@ -277,20 +228,13 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
         itemBuilder: (context) => [
           const PopupMenuItem(
             value: 'archive',
-            child: Row(
-              children: [
-                Icon(Icons.inventory_2_outlined, size: 18),
-                SizedBox(width: 8),
-                Text('归档'),
-              ],
-            ),
+            child: Row(children: [Icon(Icons.inventory_2_outlined, size: 18), SizedBox(width: 8), Text('归档')]),
           ),
           PopupMenuItem(
             value: 'delete',
             child: Row(
               children: [
-                Icon(Icons.delete_outline_rounded, size: 18,
-                    color: Theme.of(context).colorScheme.error),
+                Icon(Icons.delete_outline_rounded, size: 18, color: Theme.of(context).colorScheme.error),
                 const SizedBox(width: 8),
                 Text('删除', style: TextStyle(color: Theme.of(context).colorScheme.error)),
               ],
@@ -322,30 +266,20 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
         '已归档，小Q不可见 · $description',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-        ),
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.restore_rounded,
-              size: 20,
-              color: theme.colorScheme.primary,
-            ),
+            icon: Icon(Icons.restore_rounded, size: 20, color: theme.colorScheme.primary),
             tooltip: '恢复',
             onPressed: () => _archiveSkill(name, false),
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: Icon(
-              Icons.delete_outline_rounded,
-              size: 20,
-              color: theme.colorScheme.error,
-            ),
+            icon: Icon(Icons.delete_outline_rounded, size: 20, color: theme.colorScheme.error),
             tooltip: '删除',
             onPressed: () => _confirmDeleteSkill(name),
           ),
@@ -368,11 +302,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
   }
 
   Future<void> _openEditor(BuildContext context, AgentSkill? skill) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => QSkillEditPage(skill: skill),
-      ),
-    );
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => QSkillEditPage(skill: skill)));
     // 返回后刷新一次，拾取编辑页可能的变更（事件总线通常已触发，这里兜底）
     if (mounted) {
       ref.invalidate(agentSkillListProvider);
@@ -387,10 +317,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
         title: const Text('删除技能'),
         content: Text('删除技能「$name」？小Q将无法再查阅。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(dialogContext).colorScheme.error,

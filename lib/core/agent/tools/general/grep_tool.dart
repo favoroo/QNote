@@ -34,30 +34,21 @@ class GrepTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'query': {
-            'type': 'string',
-            'description': '要搜索的关键词或正则表达式',
-          },
-          'scope': {
-            'type': 'string',
-            'enum': VirtualWorkspaceService.grepScopes,
-            'description': '检索范围，默认 all（全库）；查具体模块时可收窄以提升精度',
-          },
-          'max_results': {
-            'type': 'integer',
-            'description': '最多返回的匹配条数，默认 20',
-          },
-        },
-        'required': ['query'],
-      };
+    'type': 'object',
+    'properties': {
+      'query': {'type': 'string', 'description': '要搜索的关键词或正则表达式'},
+      'scope': {
+        'type': 'string',
+        'enum': VirtualWorkspaceService.grepScopes,
+        'description': '检索范围，默认 all（全库）；查具体模块时可收窄以提升精度',
+      },
+      'max_results': {'type': 'integer', 'description': '最多返回的匹配条数，默认 20'},
+    },
+    'required': ['query'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final query = (arguments['query'] as String? ?? '').trim();
     if (query.isEmpty) {
       return ToolResult.error('搜索关键词 query 不能为空');
@@ -65,8 +56,7 @@ class GrepTool extends AgentTool {
 
     // 未知 scope 静默归一为 all，避免模型传错枚举值就直接失败
     final rawScope = (arguments['scope'] as String? ?? 'all').trim();
-    final scope =
-        VirtualWorkspaceService.grepScopes.contains(rawScope) ? rawScope : 'all';
+    final scope = VirtualWorkspaceService.grepScopes.contains(rawScope) ? rawScope : 'all';
     final maxResults = _parseMaxResults(arguments['max_results']);
 
     List<Map<String, dynamic>> hits;
@@ -80,13 +70,7 @@ class GrepTool extends AgentTool {
       return ToolResult.success(
         '未找到与「$query」匹配的内容（检索范围：$scope）。'
         '可尝试更换关键词、收窄或放宽 scope 后重试；确认没有时请如实告知用户，不要编造内容。',
-        uiDetails: {
-          'type': 'grep_result',
-          'query': query,
-          'scope': scope,
-          'total': 0,
-          'hits': const [],
-        },
+        uiDetails: {'type': 'grep_result', 'query': query, 'scope': scope, 'total': 0, 'hits': const []},
       );
     }
 
@@ -121,13 +105,7 @@ class GrepTool extends AgentTool {
 
     return ToolResult.success(
       truncateOutput(buffer.toString(), maxLength: 6000),
-      uiDetails: {
-        'type': 'grep_result',
-        'query': query,
-        'scope': scope,
-        'total': hits.length,
-        'hits': hits,
-      },
+      uiDetails: {'type': 'grep_result', 'query': query, 'scope': scope, 'total': hits.length, 'hits': hits},
     );
   }
 

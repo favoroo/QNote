@@ -101,10 +101,7 @@ void main() {
     test('未闭合的行内代码被扣住，闭合后完整成段', () {
       final head = s(45);
       expect(chunker.feed('$head调用一下这个方法 `get'), [head]);
-      expect(
-        chunker.feed('User()` 就可以正常拿到用户资料啦。'),
-        ['调用一下这个方法 `getUser()` 就可以正常拿到用户资料啦。'],
-      );
+      expect(chunker.feed('User()` 就可以正常拿到用户资料啦。'), ['调用一下这个方法 `getUser()` 就可以正常拿到用户资料啦。']);
     });
   });
 
@@ -112,9 +109,7 @@ void main() {
     test('闭合围栏内的代码整段跳过，围栏外文字照常朗读', () {
       final head = s(45);
       final tail = s(45, unit: '结');
-      final out = chunker.feed(
-        '$head\n```dart\nvar x = 1;\nprint(x);\n```\n$tail\n',
-      );
+      final out = chunker.feed('$head\n```dart\nvar x = 1;\nprint(x);\n```\n$tail\n');
       final spoken = out.join();
       expect(spoken, contains(head));
       expect(spoken, contains(tail));
@@ -138,7 +133,8 @@ void main() {
 
   group('不变式', () {
     test('逐字符喂与整块喂念出来的字一个字都不少', () {
-      final source = '${'第一句内容很多所以要提前开口。' * 4}\n\n'
+      final source =
+          '${'第一句内容很多所以要提前开口。' * 4}\n\n'
           '第二项：\n- 甲\n- 乙\n\n最后一句也该念到了。';
       final streamed = <String>[];
       for (var i = 0; i < source.length; i++) {

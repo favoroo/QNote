@@ -54,11 +54,7 @@ class _AboutPageState extends State<AboutPage> {
         case UpdateCheckStatus.available:
           final updateInfo = result.updateInfo;
           if (updateInfo == null) break;
-          await showUpdateDialog(
-            context: context,
-            updateInfo: updateInfo,
-            currentVersion: AppVersion.version,
-          );
+          await showUpdateDialog(context: context, updateInfo: updateInfo, currentVersion: AppVersion.version);
           break;
         case UpdateCheckStatus.upToDate:
           Toast.success(context, '已是最新版本');
@@ -109,12 +105,7 @@ class _AboutPageState extends State<AboutPage> {
             '如本协议发生变更，我们将在应用内通知您。继续使用即表示您同意更新后的协议。',
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('确定'),
-          ),
-        ],
+        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('确定'))],
       ),
     );
   }
@@ -146,17 +137,10 @@ class _AboutPageState extends State<AboutPage> {
                   color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(32),
                   boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
                   ],
                 ),
-                child: SvgPicture.asset(
-                  'assets/images/app_icon.svg',
-                  fit: BoxFit.contain,
-                ),
+                child: SvgPicture.asset('assets/images/app_icon.svg', fit: BoxFit.contain),
               ),
             ),
             const SizedBox(height: 24),
@@ -170,10 +154,7 @@ class _AboutPageState extends State<AboutPage> {
             const SizedBox(height: 8),
             Text(
               '极简、纯净、强大的笔记应用',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.hintColor,
-                letterSpacing: 1.2,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor, letterSpacing: 1.2),
             ),
             const SizedBox(height: 32),
 
@@ -183,26 +164,36 @@ class _AboutPageState extends State<AboutPage> {
               child: Column(
                 children: [
                   ListTile(
-                    title: const Text('版本', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
+                    title: const Text(
+                      '版本',
+                      style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold),
+                    ),
                     trailing: GestureDetector(
                       onTap: _handleVersionTap,
-                      child: Text(AppVersion.version, style: TextStyle(color: theme.hintColor, fontSize: AppTypography.body)),
+                      child: Text(
+                        AppVersion.version,
+                        style: TextStyle(color: theme.hintColor, fontSize: AppTypography.body),
+                      ),
                     ),
                     onTap: _handleVersionTap,
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
-                    title: const Text('更新日志', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
+                    title: const Text(
+                      '更新日志',
+                      style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold),
+                    ),
                     trailing: Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
                     onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ChangelogPage()),
-                      );
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChangelogPage()));
                     },
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
-                    title: const Text('检查更新', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
+                    title: const Text(
+                      '检查更新',
+                      style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold),
+                    ),
                     trailing: _checkingUpdate
                         ? SizedBox(
                             width: 16,
@@ -214,14 +205,20 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   SwitchListTile(
-                    title: const Text('自动检查更新', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
+                    title: const Text(
+                      '自动检查更新',
+                      style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold),
+                    ),
                     value: _autoCheckUpdate,
                     onChanged: _toggleAutoCheck,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
-                    title: const Text('隐私协议', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
+                    title: const Text(
+                      '隐私协议',
+                      style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold),
+                    ),
                     trailing: Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
                     onTap: _showPrivacyPolicy,
                   ),
@@ -257,16 +254,9 @@ class _AboutPageState extends State<AboutPage> {
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: child,
     );
   }
 }
-

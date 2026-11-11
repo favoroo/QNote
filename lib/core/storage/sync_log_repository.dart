@@ -35,9 +35,7 @@ class SyncLogEntry {
       tableName: map['table_name'] as String,
       recordId: map['record_id'] as String,
       operation: map['operation'] as String,
-      data: map['data'] != null
-          ? jsonDecode(map['data'] as String) as Map<String, dynamic>
-          : null,
+      data: map['data'] != null ? jsonDecode(map['data'] as String) as Map<String, dynamic> : null,
       timestamp: DateTime.parse(map['timestamp'] as String),
     );
   }
@@ -76,10 +74,7 @@ class SyncLogRepository {
 
   Future<List<SyncLogEntry>> getAllChanges() async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'sync_log',
-      orderBy: 'timestamp ASC',
-    );
+    final maps = await db.query('sync_log', orderBy: 'timestamp ASC');
     return maps.map((m) => SyncLogEntry.fromMap(m)).toList();
   }
 
@@ -108,27 +103,24 @@ class SyncLogRepository {
 
   Future<void> clearChangesBefore(DateTime before) async {
     final db = await _dbHelper.database;
-    await db.delete(
-      'sync_log',
-      where: 'timestamp <= ?',
-      whereArgs: [before.toIso8601String()],
-    );
+    await db.delete('sync_log', where: 'timestamp <= ?', whereArgs: [before.toIso8601String()]);
   }
 
   Future<Map<String, dynamic>> buildDeltaJson() async {
     final changes = await getAllChanges();
     if (changes.isEmpty) {
-      return {'delta_version': 1, 'changes': {}, 'image_changes': {'added': [], 'deleted': []}};
+      return {
+        'delta_version': 1,
+        'changes': {},
+        'image_changes': {'added': [], 'deleted': []},
+      };
     }
 
     final delta = <String, dynamic>{
       'delta_version': 1,
       'delta_time': DateTime.now().toIso8601String(),
       'changes': <String, dynamic>{},
-      'image_changes': <String, dynamic>{
-        'added': <String>[],
-        'deleted': <String>[],
-      },
+      'image_changes': <String, dynamic>{'added': <String>[], 'deleted': <String>[]},
     };
 
     final grouped = <String, List<SyncLogEntry>>{};
@@ -142,10 +134,7 @@ class SyncLogRepository {
       final entries = grouped[tableName]!;
 
       if (tableName == 'user_profile') {
-        final latestUpsert = entries.lastWhere(
-          (e) => e.operation == 'upsert',
-          orElse: () => entries.last,
-        );
+        final latestUpsert = entries.lastWhere((e) => e.operation == 'upsert', orElse: () => entries.last);
         if (latestUpsert.data != null) {
           (delta['changes'] as Map)[tableName] = {
             'upserts': [latestUpsert.data],

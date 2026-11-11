@@ -36,9 +36,7 @@ class QPersonalityService {
     final config = await _loadConfig();
     final activeId = (config['activeId'] as String?)?.trim();
     return QPersonalitySnapshot(
-      selectedId: (activeId == null || activeId.isEmpty)
-          ? QPersonalities.defaultId
-          : activeId,
+      selectedId: (activeId == null || activeId.isEmpty) ? QPersonalities.defaultId : activeId,
       customPrompt: (config['customPrompt'] as String?) ?? '',
       effective: _resolve(config),
     );
@@ -73,9 +71,7 @@ class QPersonalityService {
     // 中文句末标点直接断句；英文句点要求后接空白或结尾，避免把 "e.g." 之类截断
     final match = RegExp(r'^.{2,}?(?:[。！？；]|\.(?:\s|$))').firstMatch(oneLine);
     final sentence = (match?.group(0) ?? oneLine).trim();
-    return sentence.length <= _digestMaxLength
-        ? sentence
-        : '${sentence.substring(0, _digestMaxLength)}…';
+    return sentence.length <= _digestMaxLength ? sentence : '${sentence.substring(0, _digestMaxLength)}…';
   }
 
   /// 读取当前激活个性 id（设置页选中态用）
@@ -127,10 +123,7 @@ class QPersonalityService {
   Future<Map<String, dynamic>> _loadConfig() async {
     final raw = await ConfigRepository.instance.getAppConfig(storageKey);
     if (raw == null || raw.isEmpty) {
-      return {
-        'activeId': QPersonalities.defaultId,
-        'customPrompt': '',
-      };
+      return {'activeId': QPersonalities.defaultId, 'customPrompt': ''};
     }
     try {
       final decoded = jsonDecode(raw);
@@ -138,17 +131,11 @@ class QPersonalityService {
         return decoded;
       }
     } catch (_) {}
-    return {
-      'activeId': QPersonalities.defaultId,
-      'customPrompt': '',
-    };
+    return {'activeId': QPersonalities.defaultId, 'customPrompt': ''};
   }
 
   Future<void> _saveConfig(Map<String, dynamic> config) async {
-    await ConfigRepository.instance.setAppConfig(
-      storageKey,
-      jsonEncode(config),
-    );
+    await ConfigRepository.instance.setAppConfig(storageKey, jsonEncode(config));
   }
 }
 
@@ -158,18 +145,12 @@ class QPersonalityService {
 /// （custom 但文本为空、或标识未知时会回退成经典管家）；两者不一致即发生了静默降级，
 /// 设置页据此给出可见提示。
 class QPersonalitySnapshot {
-  const QPersonalitySnapshot({
-    required this.selectedId,
-    required this.customPrompt,
-    required this.effective,
-  });
+  const QPersonalitySnapshot({required this.selectedId, required this.customPrompt, required this.effective});
 
   final String selectedId;
   final String customPrompt;
   final QPersonality effective;
 
   /// 是否发生了「选了自定义却因描述为空而回退」的降级
-  bool get degradedToFallback =>
-      selectedId == QPersonalities.customId &&
-      effective.id != QPersonalities.customId;
+  bool get degradedToFallback => selectedId == QPersonalities.customId && effective.id != QPersonalities.customId;
 }

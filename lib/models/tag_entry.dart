@@ -217,8 +217,8 @@ class TagEntry {
       name: map['name'] as String? ?? '',
       fields: map['fields'] != null
           ? (map['fields'] is String
-              ? jsonDecode(map['fields'] as String) as Map<String, dynamic>
-              : Map<String, dynamic>.from(map['fields'] as Map))
+                ? jsonDecode(map['fields'] as String) as Map<String, dynamic>
+                : Map<String, dynamic>.from(map['fields'] as Map))
           : {},
       time: map['time'] as String?,
       startHour: map['startHour'] as int?,

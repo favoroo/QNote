@@ -18,27 +18,22 @@ void main() {
   late AiService service;
 
   AiProvider autoClawProvider() => AiProvider(
-        id: 'pAutoClaw',
-        vendorId: 'autoclaw-cn',
-        name: 'AutoClaw（智谱·国内）',
-        providerType: 'openai',
-        baseUrl: AutoClawAuthService.chatBase,
-        authMode: AiProvider.authModeAutoClaw,
-        apiKeys: const [],
-        models: const [
-          AiProviderModel(id: 'zai_auto', name: 'GLM Auto'),
-        ],
-        createdAt: now,
-        updatedAt: now,
-      );
+    id: 'pAutoClaw',
+    vendorId: 'autoclaw-cn',
+    name: 'AutoClaw（智谱·国内）',
+    providerType: 'openai',
+    baseUrl: AutoClawAuthService.chatBase,
+    authMode: AiProvider.authModeAutoClaw,
+    apiKeys: const [],
+    models: const [AiProviderModel(id: 'zai_auto', name: 'GLM Auto')],
+    createdAt: now,
+    updatedAt: now,
+  );
 
-  List<ChatMessage> messages() => [
-        ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now()),
-      ];
+  List<ChatMessage> messages() => [ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now())];
 
   setUp(() {
-    AutoClawAuthService.accessTokenLoaderForTest =
-        (_) async => 'ac-token';
+    AutoClawAuthService.accessTokenLoaderForTest = (_) async => 'ac-token';
     adapter = _RecordingAdapter();
     service = AiService();
     service.httpClientAdapterForTest = adapter;
@@ -69,10 +64,7 @@ void main() {
     final body = adapter.bodies.single;
     expect(body.containsKey('max_tokens'), isFalse);
     final bodyMessages = body['messages'] as List;
-    expect(
-      (bodyMessages.first as Map)['content'],
-      startsWith(AutoClawAuthService.officialSystemPrompt),
-    );
+    expect((bodyMessages.first as Map)['content'], startsWith(AutoClawAuthService.officialSystemPrompt));
   });
 
   test('未登录时发信前报「请重新登录」，不会发出空凭证请求', () async {
@@ -80,10 +72,7 @@ void main() {
     final provider = autoClawProvider();
     service.updateConfig(AiConfig.fromProvider(provider, 'zai_auto'));
 
-    await expectLater(
-      service.chatResponse(messages()),
-      throwsA(isA<Exception>()),
-    );
+    await expectLater(service.chatResponse(messages()), throwsA(isA<Exception>()));
     expect(adapter.uris, isEmpty);
   });
 }

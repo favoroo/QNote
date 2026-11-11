@@ -23,11 +23,13 @@ Future<EdgeWsConnection> connectEdgeWsImpl(Uri uri, Duration timeout) async {
     if (!failed.isCompleted) failed.complete(false);
   }).toJS;
 
-  final openedOk = await Future.any([opened.future, failed.future])
-      .timeout(timeout, onTimeout: () {
-    ws.close();
-    throw const TtsException('handshake_failed', '语音服务连接超时');
-  });
+  final openedOk = await Future.any([opened.future, failed.future]).timeout(
+    timeout,
+    onTimeout: () {
+      ws.close();
+      throw const TtsException('handshake_failed', '语音服务连接超时');
+    },
+  );
   if (!openedOk) {
     throw const TtsException('handshake_failed', '语音服务连接被拒绝');
   }
@@ -47,9 +49,7 @@ class _WebEdgeWsConnection implements EdgeWsConnection {
     _ws.onmessage = ((web.MessageEvent e) {
       final data = e.data;
       if (data.isA<JSArrayBuffer>()) {
-        _controller.add(
-          EdgeWsBinaryFrame((data as JSArrayBuffer).toDart.asUint8List()),
-        );
+        _controller.add(EdgeWsBinaryFrame((data as JSArrayBuffer).toDart.asUint8List()));
       } else if (data.isA<JSString>()) {
         _controller.add(EdgeWsTextFrame((data as JSString).toDart));
       }
@@ -59,9 +59,7 @@ class _WebEdgeWsConnection implements EdgeWsConnection {
     }).toJS;
     _ws.onerror = ((web.Event _) {
       if (!_controller.isClosed) {
-        _controller.addError(
-          const TtsException('connection_error', '语音服务连接中断'),
-        );
+        _controller.addError(const TtsException('connection_error', '语音服务连接中断'));
       }
     }).toJS;
   }

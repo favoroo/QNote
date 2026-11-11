@@ -21,10 +21,7 @@ void main() {
     });
 
     test('值内转义引号不破坏提取并正确反转义', () {
-      final detail = AgentToolLabels.detailFromPartialArguments(
-        'write_file',
-        r'{"path": "/notes/\"quoted\".md"}',
-      );
+      final detail = AgentToolLabels.detailFromPartialArguments('write_file', r'{"path": "/notes/\"quoted\".md"}');
       expect(detail['path'], '/notes/"quoted".md');
     });
 
@@ -37,34 +34,22 @@ void main() {
     });
 
     test('grep：按候选键顺序取 pattern', () {
-      final detail = AgentToolLabels.detailFromPartialArguments(
-        'grep',
-        '{"pattern": "体重", "path": "/notes"}',
-      );
+      final detail = AgentToolLabels.detailFromPartialArguments('grep', '{"pattern": "体重", "path": "/notes"}');
       expect(detail['pattern'], '体重');
     });
 
     test('path 尚未流出时返回空 map', () {
-      final detail = AgentToolLabels.detailFromPartialArguments(
-        'write_file',
-        '{"content": "直接先写了内容',
-      );
+      final detail = AgentToolLabels.detailFromPartialArguments('write_file', '{"content": "直接先写了内容');
       expect(detail, isEmpty);
     });
 
     test('未知工具返回空 map', () {
-      final detail = AgentToolLabels.detailFromPartialArguments(
-        'unknown_tool',
-        '{"path": "/notes/a.md"}',
-      );
+      final detail = AgentToolLabels.detailFromPartialArguments('unknown_tool', '{"path": "/notes/a.md"}');
       expect(detail, isEmpty);
     });
 
     test('空参数返回空 map', () {
-      expect(
-        AgentToolLabels.detailFromPartialArguments('write_file', ''),
-        isEmpty,
-      );
+      expect(AgentToolLabels.detailFromPartialArguments('write_file', ''), isEmpty);
     });
   });
 
@@ -74,31 +59,24 @@ void main() {
         'write_file',
         '{"path": "/notes/个人网页/index.html", "content": "x',
       );
-      expect(
-        AgentToolLabels.progressLabel('write_file', detail),
-        '正在写入文件 · /notes/个人网页/index.html',
-      );
+      expect(AgentToolLabels.progressLabel('write_file', detail), '正在写入文件 · /notes/个人网页/index.html');
     });
 
     test('skill：多个可用技能时提取技能总数', () {
       expect(
-        AgentToolLabels.resultLabel('skill', {'skills': ['todo-manager', 'note-organizer']}),
+        AgentToolLabels.resultLabel('skill', {
+          'skills': ['todo-manager', 'note-organizer'],
+        }),
         '调用技能 · 2 个可用技能',
       );
     });
 
     test('skill：提取载入的具体技能名', () {
-      expect(
-        AgentToolLabels.resultLabel('skill', {'name': 'frontend-design'}),
-        '调用技能 · frontend-design',
-      );
+      expect(AgentToolLabels.resultLabel('skill', {'name': 'frontend-design'}), '调用技能 · frontend-design');
     });
 
     test('快照为空时回退纯工具文案', () {
-      expect(
-        AgentToolLabels.progressLabel('write_file', const {}),
-        '正在写入文件',
-      );
+      expect(AgentToolLabels.progressLabel('write_file', const {}), '正在写入文件');
     });
 
     test('超长路径按既有截断规则收敛', () {

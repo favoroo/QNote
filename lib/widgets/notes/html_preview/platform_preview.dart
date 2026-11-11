@@ -5,19 +5,10 @@ class PlatformPreview extends StatelessWidget {
   final String htmlContent;
   final String? noteId;
 
-  const PlatformPreview({
-    super.key,
-    required this.htmlContent,
-    this.noteId,
-  });
+  const PlatformPreview({super.key, required this.htmlContent, this.noteId});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        '当前平台不支持网页预览',
-        style: Theme.of(context).textTheme.bodyMedium,
-      ),
-    );
+    return Center(child: Text('当前平台不支持网页预览', style: Theme.of(context).textTheme.bodyMedium));
   }
 }

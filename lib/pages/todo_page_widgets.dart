@@ -54,14 +54,10 @@ class _TodoFolderTabBar extends StatelessWidget {
               curve: Curves.easeInOut,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(AppRadius.large),
                 border: Border.all(
-                  color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -72,9 +68,7 @@ class _TodoFolderTabBar extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                       fontSize: 13.5,
-                      color: isSelected
-                          ? colorScheme.onPrimary
-                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                      color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                     ),
                   ),
                   if (count > 0) ...[
@@ -167,35 +161,19 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: AppDurations.medium,
-    );
+    _animController = AnimationController(vsync: this, duration: AppDurations.medium);
 
-    _scaleAnimation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeIn,
-    );
+    _scaleAnimation = CurvedAnimation(parent: _animController, curve: Curves.easeOutBack, reverseCurve: Curves.easeIn);
 
-    _heightFactor = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeInOut,
-    );
+    _heightFactor = CurvedAnimation(parent: _animController, curve: Curves.easeInOut);
 
-    _opacityAnimation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeIn,
-      reverseCurve: Curves.easeOut,
-    );
+    _opacityAnimation = CurvedAnimation(parent: _animController, curve: Curves.easeIn, reverseCurve: Curves.easeOut);
 
-    _slideAnimController = AnimationController(
-      vsync: this,
-      duration: AppDurations.fast,
-    );
-    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _slideAnimController, curve: AppCurves.emphasized),
-    );
+    _slideAnimController = AnimationController(vsync: this, duration: AppDurations.fast);
+    _slideAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _slideAnimController, curve: AppCurves.emphasized));
 
     if (_entrancePlayed.length > 800) {
       _entrancePlayed.clear();
@@ -337,19 +315,11 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                     color: Color(0xFFE54B3C),
                                     shape: BoxShape.circle,
                                     boxShadow: [
-                                      BoxShadow(
-                                        color: Color(0x33E54B3C),
-                                        blurRadius: 8,
-                                        offset: Offset(0, 3),
-                                      ),
+                                      BoxShadow(color: Color(0x33E54B3C), blurRadius: 8, offset: Offset(0, 3)),
                                     ],
                                   ),
                                   alignment: Alignment.center,
-                                  child: const Icon(
-                                    Icons.delete_outline,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
+                                  child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
                                 ),
                               ),
                             ),
@@ -391,9 +361,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                           decoration: BoxDecoration(
                             color: isSelectionMode && isSelected
                                 ? colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08)
-                                : (isDark
-                                    ? colorScheme.surfaceContainer
-                                    : colorScheme.surfaceContainerLow),
+                                : (isDark ? colorScheme.surfaceContainer : colorScheme.surfaceContainerLow),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: isSelectionMode && isSelected
@@ -439,9 +407,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                           width: 2.0,
                                         ),
                                       ),
-                                      child: isSelected
-                                          ? const Icon(Icons.check, size: 15, color: Colors.white)
-                                          : null,
+                                      child: isSelected ? const Icon(Icons.check, size: 15, color: Colors.white) : null,
                                     ),
                                   )
                                 else
@@ -474,10 +440,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                               duration: AppMotion.duration(context, AppDurations.medium),
                                               curve: AppCurves.spring,
                                               builder: (context, value, child) {
-                                                return Transform.scale(
-                                                  scale: value,
-                                                  child: child,
-                                                );
+                                                return Transform.scale(scale: value, child: child);
                                               },
                                               child: Icon(
                                                 Icons.check,
@@ -529,7 +492,9 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                                 : colorScheme.onSurface,
                                           ),
                                         ),
-                                        if (todo.isRecurring || todo.reminderTime != null || todo.description.isNotEmpty) ...[
+                                        if (todo.isRecurring ||
+                                            todo.reminderTime != null ||
+                                            todo.description.isNotEmpty) ...[
                                           const SizedBox(height: 4),
                                           Row(
                                             children: [

@@ -14,8 +14,7 @@ final todoFolderRepositoryProvider = Provider<FolderRepository>((ref) {
 final selectedTodoFolderIdProvider = StateProvider<String?>((ref) => null);
 
 /// 待办分类列表管理
-final todoFolderListProvider =
-    AsyncNotifierProvider<TodoFolderListNotifier, List<Folder>>(() {
+final todoFolderListProvider = AsyncNotifierProvider<TodoFolderListNotifier, List<Folder>>(() {
   return TodoFolderListNotifier();
 });
 
@@ -118,14 +117,9 @@ class TodoFolderListNotifier extends AsyncNotifier<List<Folder>> {
     final target = currentFolders.where((f) => f.id == id).firstOrNull;
     if (target == null) return;
 
-    final updatedFolder = target.copyWith(
-      name: newName.trim(),
-      updatedAt: DateTime.now(),
-    );
+    final updatedFolder = target.copyWith(name: newName.trim(), updatedAt: DateTime.now());
     await repo.update(updatedFolder);
-    state = AsyncData(
-      currentFolders.map((f) => f.id == id ? updatedFolder : f).toList(),
-    );
+    state = AsyncData(currentFolders.map((f) => f.id == id ? updatedFolder : f).toList());
   }
 
   /// 删除待办分类（至少保留一个分类，同时软删除该分类下的所有待办）
@@ -153,8 +147,9 @@ class TodoFolderListNotifier extends AsyncNotifier<List<Folder>> {
     // 4. 若当前选中的正好是被删除分类，切到剩余第一个
     final currentSelectedId = ref.read(selectedTodoFolderIdProvider);
     if (currentSelectedId == id) {
-      ref.read(selectedTodoFolderIdProvider.notifier).state =
-          remainingFolders.isNotEmpty ? remainingFolders.first.id : null;
+      ref.read(selectedTodoFolderIdProvider.notifier).state = remainingFolders.isNotEmpty
+          ? remainingFolders.first.id
+          : null;
     }
 
     // 5. 刷新待办列表状态

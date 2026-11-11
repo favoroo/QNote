@@ -46,11 +46,7 @@ void main() {
     }
 
     test('选中 SenseNova 厂商模板时显式关闭水印', () {
-      final body = GenerateImageTool.buildGenerationRequestBody(
-        config(vendorId: 'sensenova'),
-        '一只猫',
-        '2048x2048',
-      );
+      final body = GenerateImageTool.buildGenerationRequestBody(config(vendorId: 'sensenova'), '一只猫', '2048x2048');
       expect(body['watermark'], isFalse);
       expect(body['model'], 'sensenova-u1.5-lite');
       expect(body['n'], 1);
@@ -67,11 +63,7 @@ void main() {
       expect(byHost.containsKey('size'), isFalse);
 
       final byModel = GenerateImageTool.buildGenerationRequestBody(
-        config(
-          vendorId: 'custom',
-          baseUrl: 'https://relay.example.com/v1',
-          modelName: 'SenseNova-U1.5-Lite',
-        ),
+        config(vendorId: 'custom', baseUrl: 'https://relay.example.com/v1', modelName: 'SenseNova-U1.5-Lite'),
         '猫',
         '',
       );
@@ -80,11 +72,7 @@ void main() {
 
     test('其他厂商保持最小参数集，不下发 watermark', () {
       final body = GenerateImageTool.buildGenerationRequestBody(
-        config(
-          vendorId: 'custom',
-          baseUrl: 'https://api.openai.com/v1',
-          modelName: 'gpt-image-1',
-        ),
+        config(vendorId: 'custom', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-image-1'),
         '猫',
         '1024x1024',
       );
@@ -127,7 +115,12 @@ void main() {
     test('data 缺失或结构异常时返回空列表', () {
       expect(GenerateImageTool.parseGenerationImages({}), isEmpty);
       expect(GenerateImageTool.parseGenerationImages({'data': 'bad'}), isEmpty);
-      expect(GenerateImageTool.parseGenerationImages({'data': [1, 'x']}), isEmpty);
+      expect(
+        GenerateImageTool.parseGenerationImages({
+          'data': [1, 'x'],
+        }),
+        isEmpty,
+      );
     });
   });
 
@@ -219,7 +212,8 @@ void main() {
         'choices': [
           {
             'message': {
-              'content': '看这张图：\n![Generated Image](data:image/jpeg;base64,/9j/4AAQSkZJRgAB)'
+              'content':
+                  '看这张图：\n![Generated Image](data:image/jpeg;base64,/9j/4AAQSkZJRgAB)'
                   '更长的载荷xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
             },
           },
@@ -258,7 +252,9 @@ void main() {
     test('整段 content 就是一张 data URI 图片时也能解析', () {
       final refs = GenerateImageTool.parseChatImages({
         'choices': [
-          {'message': {'content': 'data:image/png;base64,WFla'}},
+          {
+            'message': {'content': 'data:image/png;base64,WFla'},
+          },
         ],
       });
       expect(refs, ['data:image/png;base64,WFla']);
@@ -270,11 +266,18 @@ void main() {
           {
             'message': {
               'images': [
-                {'image_url': {'url': 'data:image/png;base64,AAA'}},
-                {'image_url': {'url': 'data:image/png;base64,AAA'}},
+                {
+                  'image_url': {'url': 'data:image/png;base64,AAA'},
+                },
+                {
+                  'image_url': {'url': 'data:image/png;base64,AAA'},
+                },
               ],
               'content': [
-                {'type': 'image_url', 'image_url': {'url': 'https://e.com/b.png'}},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'https://e.com/b.png'},
+                },
               ],
             },
           },
@@ -307,7 +310,9 @@ void main() {
           {
             'message': {
               'images': [
-                {'image_url': {'url': ''}},
+                {
+                  'image_url': {'url': ''},
+                },
               ],
             },
           },
@@ -350,9 +355,7 @@ void main() {
       final summary = GenerateImageTool.summarizeImageResponse({
         'choices': [
           {
-            'message': {
-              'content': '![img](data:image/png;base64,$huge)',
-            },
+            'message': {'content': '![img](data:image/png;base64,$huge)'},
           },
         ],
       });
@@ -370,10 +373,7 @@ void main() {
     });
 
     test('images/generations 错误包也能给出结构提示', () {
-      final summary = GenerateImageTool.summarizeImageResponse({
-        'message': 'quota exceeded',
-        'data': <Object>[],
-      });
+      final summary = GenerateImageTool.summarizeImageResponse({'message': 'quota exceeded', 'data': <Object>[]});
       expect(summary, contains('data=0'));
       expect(summary, contains('quota exceeded'));
     });
@@ -389,22 +389,12 @@ void main() {
 
   group('GenerateImageTool.classifyParseResult（失败分类）', () {
     test('无图片线索 => 上游空结果', () {
-      const outcome = ImageParseOutcome(
-        refs: [],
-        shapes: {},
-        sawImageLikeField: false,
-        summary: 'usage=none',
-      );
+      const outcome = ImageParseOutcome(refs: [], shapes: {}, sawImageLikeField: false, summary: 'usage=none');
       expect(GenerateImageTool.classifyParseResult(outcome), ImageFailureKind.upstreamEmpty);
     });
 
     test('有图片线索但取不出引用 => 格式未识别', () {
-      const outcome = ImageParseOutcome(
-        refs: [],
-        shapes: {},
-        sawImageLikeField: true,
-        summary: 'images=1',
-      );
+      const outcome = ImageParseOutcome(refs: [], shapes: {}, sawImageLikeField: true, summary: 'images=1');
       expect(GenerateImageTool.classifyParseResult(outcome), ImageFailureKind.unknownFormat);
     });
   });
@@ -417,9 +407,12 @@ void main() {
 
     test('上游空结果文案要说明与用户描述无关并建议重试', () {
       final text = GenerateImageTool.describeFailures([
-        ImageAttempt.failure(geminiConfig, ImageFailureKind.upstreamEmpty,
-            const Duration(seconds: 70),
-            detail: '网关接受请求但未产出图片'),
+        ImageAttempt.failure(
+          geminiConfig,
+          ImageFailureKind.upstreamEmpty,
+          const Duration(seconds: 70),
+          detail: '网关接受请求但未产出图片',
+        ),
       ]);
       expect(text, contains('gemini-3.1-flash-image'));
       expect(text, contains('上游返回空结果'));
@@ -429,10 +422,8 @@ void main() {
 
     test('主备双失败时两条后端与各自分类都要出现', () {
       final text = GenerateImageTool.describeFailures([
-        ImageAttempt.failure(geminiConfig, ImageFailureKind.upstreamEmpty,
-            const Duration(seconds: 70)),
-        ImageAttempt.failure(sensenovaConfig, ImageFailureKind.httpError,
-            const Duration(seconds: 3)),
+        ImageAttempt.failure(geminiConfig, ImageFailureKind.upstreamEmpty, const Duration(seconds: 70)),
+        ImageAttempt.failure(sensenovaConfig, ImageFailureKind.httpError, const Duration(seconds: 3)),
       ]);
       expect(text, contains('gemini-3.1-flash-image'));
       expect(text, contains('sensenova-u1.5-lite'));
@@ -441,8 +432,7 @@ void main() {
     });
 
     test('成功尝试的分类兜底为 unknown 且 succeeded 为真', () {
-      final attempt = ImageAttempt.success(
-          geminiConfig, ['/tmp/a.png'], const Duration(seconds: 9));
+      final attempt = ImageAttempt.success(geminiConfig, ['/tmp/a.png'], const Duration(seconds: 9));
       expect(attempt.succeeded, isTrue);
       expect(attempt.failureKind, ImageFailureKind.unknown);
       expect(attempt.saved, ['/tmp/a.png']);
@@ -451,8 +441,7 @@ void main() {
 
   group('GenerateImageTool.stripDataUriPrefix（保存前引用规范化）', () {
     test('data URI 剥掉前缀返回纯 base64', () {
-      final base64 =
-          GenerateImageTool.stripDataUriPrefix('data:image/jpeg;base64,/9j/4AAQSkZJRg');
+      final base64 = GenerateImageTool.stripDataUriPrefix('data:image/jpeg;base64,/9j/4AAQSkZJRg');
       expect(base64, '/9j/4AAQSkZJRg');
     });
 
@@ -507,4 +496,3 @@ const AiConfig sensenovaConfig = AiConfig(
   apiKey: 'sk-test-placeholder',
   baseUrl: 'https://images.example/v1',
 );
-

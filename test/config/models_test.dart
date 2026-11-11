@@ -33,10 +33,7 @@ void main() {
       expect(account.every((p) => p.authMode != 'api_key'), isTrue);
       expect(apiKey.every((p) => p.authMode == 'api_key'), isTrue);
       expect(apiKey.map((p) => p.id), isNot(contains('raccoon')));
-      expect(
-        {...account.map((p) => p.id), ...apiKey.map((p) => p.id)},
-        aiProviders.map((p) => p.id).toSet(),
-      );
+      expect({...account.map((p) => p.id), ...apiKey.map((p) => p.id)}, aiProviders.map((p) => p.id).toSet());
     });
   });
 }

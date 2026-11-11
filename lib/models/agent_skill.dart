@@ -29,13 +29,8 @@ class AgentSkill {
 
   final DateTime updatedAt;
 
-  AgentSkill({
-    required this.name,
-    this.description = '',
-    this.content = '',
-    this.archived = false,
-    DateTime? updatedAt,
-  }) : updatedAt = updatedAt ?? DateTime.now();
+  AgentSkill({required this.name, this.description = '', this.content = '', this.archived = false, DateTime? updatedAt})
+    : updatedAt = updatedAt ?? DateTime.now();
 
   /// 技能对应的 VFS 虚拟文件路径
   static String pathOf(String name) => '/skills/$name.md';
@@ -76,18 +71,11 @@ class AgentSkill {
     );
   }
 
-  factory AgentSkill.fromJson(String json) =>
-      AgentSkill.fromMap(jsonDecode(json) as Map<String, dynamic>);
+  factory AgentSkill.fromJson(String json) => AgentSkill.fromMap(jsonDecode(json) as Map<String, dynamic>);
 
   String toJson() => jsonEncode(toMap());
 
-  AgentSkill copyWith({
-    String? name,
-    String? description,
-    String? content,
-    bool? archived,
-    DateTime? updatedAt,
-  }) {
+  AgentSkill copyWith({String? name, String? description, String? content, bool? archived, DateTime? updatedAt}) {
     return AgentSkill(
       name: name ?? this.name,
       description: description ?? this.description,

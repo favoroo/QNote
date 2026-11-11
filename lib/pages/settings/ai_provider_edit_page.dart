@@ -89,8 +89,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   final Set<String> _checkingIn = {};
 
   /// 订阅账号型厂商走统一接口，具体实现按厂商模板分发
-  AccountAuthService get _accountService =>
-      AccountAuthRegistry.forVendor(_vendorId);
+  AccountAuthService get _accountService => AccountAuthRegistry.forVendor(_vendorId);
 
   bool get _usesAccount => _authMode != AiProvider.authModeApiKey;
 
@@ -124,26 +123,20 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   void initState() {
     super.initState();
     final existing = widget.provider;
-    _vendorId =
-        existing?.vendorId ?? widget.initialVendorId ?? aiProviders.first.id;
+    _vendorId = existing?.vendorId ?? widget.initialVendorId ?? aiProviders.first.id;
     final spec = getProviderById(_vendorId);
     _providerType = existing?.providerType ?? spec?.provider ?? 'openai';
-    _authMode =
-        existing?.authMode ?? spec?.authMode ?? AiProvider.authModeApiKey;
+    _authMode = existing?.authMode ?? spec?.authMode ?? AiProvider.authModeApiKey;
     // 新建时先生成 id：登录态按 providerId 落库，不能等保存时才生成
     _providerId = existing?.id ?? const Uuid().v4();
     _nameCtl = TextEditingController(text: existing?.name ?? spec?.name ?? '');
-    _baseUrlCtl = TextEditingController(
-      text: existing?.baseUrl ?? spec?.defaultBaseUrl ?? '',
-    );
+    _baseUrlCtl = TextEditingController(text: existing?.baseUrl ?? spec?.defaultBaseUrl ?? '');
     _keys = List<String>.from(existing?.apiKeys ?? const <String>[]);
     _models = List<AiProviderModel>.from(existing?.models ?? const []);
     _catalog = List<AiProviderModel>.from(existing?.modelCatalog ?? const []);
     _catalogUpdatedAt = existing?.catalogUpdatedAt;
-    _accountRouting =
-        existing?.accountRouting ?? AiProvider.defaultAccountRouting;
-    _accountAffinity =
-        existing?.accountAffinity ?? AiProvider.defaultAccountAffinity;
+    _accountRouting = existing?.accountRouting ?? AiProvider.defaultAccountRouting;
+    _accountAffinity = existing?.accountAffinity ?? AiProvider.defaultAccountAffinity;
     if (_usesAccount) {
       _loadAccounts();
     }
@@ -152,10 +145,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   Future<void> _loadAccounts() async {
     _accountLoading = true;
     try {
-      final accounts = await _accountService.accountsFor(
-        _providerId,
-        forceReload: true,
-      );
+      final accounts = await _accountService.accountsFor(_providerId, forceReload: true);
       if (!mounted) return;
       // 退出登录/换账号后，旧账号的额度与错误不该继续挂在界面上
       final ids = accounts.map((account) => account.id).toSet();
@@ -177,8 +167,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   void _autoFetchQuotas() {
     for (final account in _accounts) {
       if (!account.enabled || account.isExpired) continue;
-      if (_quotas.containsKey(account.id) ||
-          _quotaErrors.containsKey(account.id)) {
+      if (_quotas.containsKey(account.id) || _quotaErrors.containsKey(account.id)) {
         continue;
       }
       if (_quotaLoading.contains(account.id)) continue;
@@ -217,9 +206,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
   /// 刷新全部可用账号的积分
   Future<void> _refreshAllQuotas() async {
-    final targets = _accounts
-        .where((account) => account.enabled && !account.isExpired)
-        .toList();
+    final targets = _accounts.where((account) => account.enabled && !account.isExpired).toList();
     await Future.wait(targets.map(_fetchQuota));
   }
 
@@ -249,10 +236,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   }
 
   String _quotaErrorMessage(Object error) {
-    final text = error
-        .toString()
-        .replaceFirst('FormatException: ', '')
-        .replaceFirst('Exception: ', '');
+    final text = error.toString().replaceFirst('FormatException: ', '').replaceFirst('Exception: ', '');
     return text.length > 80 ? '${text.substring(0, 80)}…' : text;
   }
 
@@ -273,11 +257,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       Navigator.of(context).pop();
       return;
     }
-    final canLeave = await promptUnsavedChanges(
-      context,
-      content: '还有未保存的改动，离开将丢失。',
-      onSave: _save,
-    );
+    final canLeave = await promptUnsavedChanges(context, content: '还有未保存的改动，离开将丢失。', onSave: _save);
     if (canLeave && mounted) Navigator.of(context).pop();
   }
 
@@ -304,12 +284,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       // Base URL 去调账号型厂商的 token
       if (nextAuthMode != AiProvider.authModeApiKey ||
           _baseUrlCtl.text.trim().isEmpty ||
-          _baseUrlCtl.text.trim() ==
-              (previousSpec?.defaultBaseUrl ?? '').trim()) {
+          _baseUrlCtl.text.trim() == (previousSpec?.defaultBaseUrl ?? '').trim()) {
         _baseUrlCtl.text = nextSpec?.defaultBaseUrl ?? '';
       }
-      if (_nameCtl.text.trim().isEmpty ||
-          _nameCtl.text.trim() == (previousSpec?.name ?? '').trim()) {
+      if (_nameCtl.text.trim().isEmpty || _nameCtl.text.trim() == (previousSpec?.name ?? '').trim()) {
         _nameCtl.text = nextSpec?.name ?? '';
       }
       if (!_usesAccount || previousSpec?.authMode != nextAuthMode) {
@@ -338,11 +316,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       useSafeArea: true,
       // 短信型厂商（AutoClaw / Loomy）共用同一个弹层，小浣熊走浏览器回环
       builder: (_) => service.supportsSmsLogin
-          ? SmsLoginSheet(
-              providerId: _providerId,
-              service: service,
-              accountId: accountId,
-            )
+          ? SmsLoginSheet(providerId: _providerId, service: service, accountId: accountId)
           : RaccoonLoginSheet(providerId: _providerId, accountId: accountId),
     );
     if (account == null || !mounted) return;
@@ -364,20 +338,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('退出「${account.label}」'),
-        content: Text(
-          _accounts.length <= 1
-              ? '唯一账号，退出后无法调用，需重新登录。模型与绑定会保留。'
-              : '退出后不再参与轮换，其他账号不受影响。模型与绑定会保留。',
-        ),
+        content: Text(_accounts.length <= 1 ? '唯一账号，退出后无法调用，需重新登录。模型与绑定会保留。' : '退出后不再参与轮换，其他账号不受影响。模型与绑定会保留。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('退出登录'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('退出登录')),
         ],
       ),
     );
@@ -400,20 +364,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           autofocus: true,
           decoration: InputDecoration(
             hintText: '如：工作号 / 小号',
-            helperText:
-                '留空显示手机号（${account.phone.isEmpty ? account.label : account.phone}）',
+            helperText: '留空显示手机号（${account.phone.isEmpty ? account.label : account.phone}）',
             border: const OutlineInputBorder(),
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child: const Text('保存'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('保存')),
         ],
       ),
     );
@@ -438,10 +395,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     ordered.insert(target, moved);
     // 先本地重排让界面立刻响应，再落库（失败时 _loadAccounts 会拉回真实顺序）
     setState(() => _accounts = ordered);
-    await _accountService.reorderAccounts(
-      _providerId,
-      ordered.map((a) => a.id).toList(),
-    );
+    await _accountService.reorderAccounts(_providerId, ordered.map((a) => a.id).toList());
     await _loadAccounts();
   }
 
@@ -458,16 +412,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           autofocus: true,
           maxLines: 6,
           minLines: 3,
-          decoration: const InputDecoration(
-            hintText: '每行一个，可粘贴多行\nsk-xxxx\nsk-yyyy',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: '每行一个，可粘贴多行\nsk-xxxx\nsk-yyyy', border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('取消')),
           FilledButton(
             onPressed: () {
               final keys = controller.text
@@ -529,22 +477,15 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           apiKey: key,
           baseUrl: _baseUrlCtl.text.trim(),
           vendorId: _vendorId,
-          reasoningEffort: _models
-              .where((m) => m.id == modelName)
-              .firstOrNull
-              ?.reasoningEffort,
+          reasoningEffort: _models.where((m) => m.id == modelName).firstOrNull?.reasoningEffort,
         );
         final service = AiService();
         // pinApiKey：锁定这一把测试，不参与池轮换
         service.updateConfig(config, pinApiKey: true);
-        await service.chat([
-          ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
-        ]);
+        await service.chat([ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now())]);
         sw.stop();
         if (mounted) {
-          setState(
-            () => _keyTestResults[key] = '正常 · ${_formatLatency(sw.elapsed)}',
-          );
+          setState(() => _keyTestResults[key] = '正常 · ${_formatLatency(sw.elapsed)}');
         }
       } catch (e) {
         if (mounted) {
@@ -587,9 +528,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _scanMessageIsError = false;
     });
 
-    final endpoint = (spec?.modelsEndpoint.isNotEmpty ?? false)
-        ? spec!.modelsEndpoint
-        : '/v1/models';
+    final endpoint = (spec?.modelsEndpoint.isNotEmpty ?? false) ? spec!.modelsEndpoint : '/v1/models';
     final candidates = keys.isEmpty ? [null] : keys;
     Object? lastError;
     List<String>? fetched;
@@ -633,13 +572,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       // 这样用户不用停用再启用一遍才能看到「生图」徽标。已停用的模型设置
       // 留在目录里，扫描时也要认，否则停用期间扫一次就把配置冲掉了
       final existing =
-          _models.where((m) => m.id == trimmed).firstOrNull ??
-          _catalog.where((m) => m.id == trimmed).firstOrNull;
+          _models.where((m) => m.id == trimmed).firstOrNull ?? _catalog.where((m) => m.id == trimmed).firstOrNull;
       final fresh = AiProviderModel.of(
         trimmed,
-        supportsImageGeneration: looksLikeImageGenerationModel(trimmed)
-            ? true
-            : null,
+        supportsImageGeneration: looksLikeImageGenerationModel(trimmed) ? true : null,
       );
       merged.add(existing == null ? fresh : existing.withMetadataFrom(fresh));
     }
@@ -677,9 +613,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       _scanMessageIsError = false;
     });
     try {
-      final models = await _accountService.fetchModelsForProvider(
-        _providerId,
-      );
+      final models = await _accountService.fetchModelsForProvider(_providerId);
       if (!mounted) return;
       final merged = <AiProviderModel>[];
       final seen = <String>{};
@@ -688,8 +622,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         // 名称与思考档位是用户本地设置，保留；倍率/上下文这类厂商元数据
         // 每次扫描都跟着目录刷新。已停用的模型设置也在 catalog 里，一并认。
         final existing =
-            _models.where((m) => m.id == model.id).firstOrNull ??
-            _catalog.where((m) => m.id == model.id).firstOrNull;
+            _models.where((m) => m.id == model.id).firstOrNull ?? _catalog.where((m) => m.id == model.id).firstOrNull;
         merged.add(existing == null ? model : existing.withMetadataFrom(model));
       }
       for (final model in _catalog) {
@@ -704,9 +637,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         // 已启用模型也刷新元数据：模型选择器直接读这份列表，只更新目录的话
         // 用户在选择器里仍然看不到新倍率/限免状态
         for (var i = 0; i < _models.length; i++) {
-          final fresh = models
-              .where((m) => m.id == _models[i].id)
-              .firstOrNull;
+          final fresh = models.where((m) => m.id == _models[i].id).firstOrNull;
           if (fresh != null) _models[i] = _models[i].withMetadataFrom(fresh);
         }
         _scanning = false;
@@ -762,10 +693,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       children.add(
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(4),
-          ),
+          decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
           child: Text(
             label,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -773,8 +701,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               color: isFree
                   ? Colors.green.shade700
                   : isImageGen
-                      ? Colors.purple.shade400
-                      : (isOriginalRate ? colorScheme.onSurfaceVariant : null),
+                  ? Colors.purple.shade400
+                  : (isOriginalRate ? colorScheme.onSurfaceVariant : null),
               decoration: isOriginalRate ? TextDecoration.lineThrough : null,
             ),
           ),
@@ -783,25 +711,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     }
     final note = model.rateNote;
     if (note != null && note.isNotEmpty) {
-      children.add(
-        Text(
-          note,
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 11,
-            color: Colors.orange.shade700,
-          ),
-        ),
-      );
+      children.add(Text(note, style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: Colors.orange.shade700)));
     }
     if (children.isEmpty) return null;
     return Padding(
       padding: const EdgeInsets.only(top: 2),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 2,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: children,
-      ),
+      child: Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: children),
     );
   }
 
@@ -812,10 +727,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   }
 
   /// 档位来源徽标：自定义 / 通用兜底 / 自动识别
-  String? _levelsBadge(
-    ModelReasoningCapability? capability,
-    List<ReasoningEffort>? customLevels,
-  ) {
+  String? _levelsBadge(ModelReasoningCapability? capability, List<ReasoningEffort>? customLevels) {
     if (capability == null) return null;
     if (customLevels != null) return '自定义';
     return capability.isGeneric ? '通用' : '自动识别';
@@ -845,17 +757,14 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     );
     final current = _models.where((m) => m.id == model.id).firstOrNull;
     final currentEffort = current?.reasoningEffort;
-    final resetCurrent =
-        currentEffort != null && !capability.supports(currentEffort);
+    final resetCurrent = currentEffort != null && !capability.supports(currentEffort);
 
     setState(() {
       void apply(List<AiProviderModel> models) {
         final index = models.indexWhere((m) => m.id == model.id);
         if (index == -1) return;
         final item = models[index];
-        final keepCurrent =
-            item.reasoningEffort == null ||
-            capability.supports(item.reasoningEffort!);
+        final keepCurrent = item.reasoningEffort == null || capability.supports(item.reasoningEffort!);
         models[index] = item.copyWith(
           reasoningEfforts: levels,
           reasoningEffort: keepCurrent ? item.reasoningEffort : null,
@@ -898,20 +807,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '模型 ID，如 gpt-4o-mini',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: '模型 ID，如 gpt-4o-mini', border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child: const Text('添加'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('添加')),
         ],
       ),
     );
@@ -984,14 +884,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       );
       final service = AiService();
       service.updateConfig(config, pinApiKey: !usesAccount);
-      await service.chat([
-        ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now()),
-      ]);
+      await service.chat([ChatMessage(role: 'user', content: 'Hi', timestamp: DateTime.now())]);
       sw.stop();
       if (mounted) {
-        setState(
-          () => _modelLatency[model.id] = _ModelLatency.success(sw.elapsed),
-        );
+        setState(() => _modelLatency[model.id] = _ModelLatency.success(sw.elapsed));
       }
     } catch (e) {
       if (mounted) {
@@ -1113,14 +1009,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                     '${existing.models.length} 个模型，角色绑定会清空。',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -1131,9 +1022,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
     try {
       // deleteProvider 内部会一并清掉该厂商下的全部账号登录态
-      await ref
-          .read(aiProviderListProvider.notifier)
-          .deleteProvider(existing.id);
+      await ref.read(aiProviderListProvider.notifier).deleteProvider(existing.id);
       await AiRoleService.instance.pruneStaleRoleBindings();
       ref.invalidate(aiRolesProvider);
       ApiKeyPool.instance.reset(existing.id);
@@ -1157,9 +1046,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       return '浏览器限制：Web 端无法调用外部 API（CORS），请用真机测试';
     }
     if (msg.contains('401') || msg.contains('403')) {
-      return _usesAccount
-          ? '登录已失效，请重新登录'
-          : '认证失败，请检查 API Key';
+      return _usesAccount ? '登录已失效，请重新登录' : '认证失败，请检查 API Key';
     }
     if (msg.contains('timeout') || msg.contains('超时')) return '请求超时';
     if (msg.contains('SocketException') || msg.contains('NetworkException')) {
@@ -1183,19 +1070,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           title: Text(_isEditing ? '编辑模型服务' : '添加模型服务'),
           actions: [
             if (_isEditing)
-              IconButton(
-                tooltip: '删除',
-                icon: const Icon(Icons.delete_outline_rounded),
-                onPressed: _delete,
-              ),
+              IconButton(tooltip: '删除', icon: const Icon(Icons.delete_outline_rounded), onPressed: _delete),
             TextButton(
               onPressed: _saving ? null : _saveAndPop,
               child: _saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('保存'),
             ),
           ],
@@ -1226,19 +1105,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -1249,9 +1118,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       padding: const EdgeInsets.all(16),
       child: child,
@@ -1279,29 +1146,15 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                       color: colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(9),
                     ),
-                    child: Icon(
-                      Icons.hub_outlined,
-                      size: 18,
-                      color: colorScheme.primary,
-                    ),
+                    child: Icon(Icons.hub_outlined, size: 18, color: colorScheme.primary),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _vendorLabel,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          '更换厂商模板',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
+                        Text(_vendorLabel, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                        Text('更换厂商模板', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
                       ],
                     ),
                   ),
@@ -1316,10 +1169,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           TextField(
             controller: _nameCtl,
             onChanged: (_) => _markDirty(),
-            decoration: const InputDecoration(
-              isDense: true,
-              hintText: '如：公司中转 / 我的 OpenAI',
-            ),
+            decoration: const InputDecoration(isDense: true, hintText: '如：公司中转 / 我的 OpenAI'),
           ),
           const SizedBox(height: 14),
           Row(
@@ -1342,9 +1192,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             decoration: InputDecoration(
               isDense: true,
               hintText: 'https://api.example.com/v1',
-              helperText: _usesAccount
-                  ? '账号登录使用官方接口'
-                  : null,
+              helperText: _usesAccount ? '账号登录使用官方接口' : null,
             ),
           ),
           if (_vendorId == 'custom') ...[
@@ -1387,24 +1235,16 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         decoration: BoxDecoration(
           color: selected
               ? theme.colorScheme.primaryContainer.withValues(alpha: 0.2)
-              : theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.3,
-                ),
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.4)
-                : Colors.transparent,
-          ),
+          border: Border.all(color: selected ? theme.colorScheme.primary.withValues(alpha: 0.4) : Colors.transparent),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 10,
             fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant,
+            color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ),
@@ -1419,13 +1259,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
         theme,
         child: const Padding(
           padding: EdgeInsets.symmetric(vertical: 18),
-          child: Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
+          child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
         ),
       );
     }
@@ -1439,22 +1273,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           if (_accounts.isNotEmpty) ...[
             Row(
               children: [
-                Text(
-                  _accountKindLabel,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(_accountKindLabel, style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: _quotaLoading.isEmpty ? _refreshAllQuotas : null,
                   icon: _quotaLoading.isEmpty
                       ? const Icon(Icons.refresh_rounded, size: 16)
-                      : const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                      : const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
                   label: Text(_quotaLoading.isEmpty ? '刷新额度' : '查询中'),
                   style: TextButton.styleFrom(
                     visualDensity: VisualDensity.compact,
@@ -1470,40 +1295,27 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text(
                 '还没有登录账号。登录后可扫描模型、使用账号额度对话。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             )
           else
-            ..._accounts.asMap().entries.map(
-              (entry) => _accountRow(theme, entry.key, entry.value),
-            ),
+            ..._accounts.asMap().entries.map((entry) => _accountRow(theme, entry.key, entry.value)),
           const SizedBox(height: 6),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: () => _openLoginSheet(),
               icon: const Icon(Icons.add_rounded, size: 18),
-              label: Text(
-                _accounts.isEmpty ? _accountLoginLabel : '添加另一个账号',
-              ),
+              label: Text(_accounts.isEmpty ? _accountLoginLabel : '添加另一个账号'),
             ),
           ),
           if (multi) ...[
             const Divider(height: 26),
-            Text(
-              '多账号轮换',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text('多账号轮换', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(
               '共 ${_accounts.length} 个账号，按下方策略分配请求',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 10),
             Text('选号策略', style: theme.textTheme.labelSmall),
@@ -1516,8 +1328,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                     (routing) => ChoiceChip(
                       label: Text(routing.label),
                       selected: _accountRouting == routing.id,
-                      onSelected: (_) =>
-                          setState(() => _accountRouting = routing.id),
+                      onSelected: (_) => setState(() => _accountRouting = routing.id),
                     ),
                   )
                   .toList(),
@@ -1525,9 +1336,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             const SizedBox(height: 4),
             Text(
               AccountRouting.fromId(_accountRouting).description,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
             Text('会话亲和', style: theme.textTheme.labelSmall),
@@ -1540,8 +1349,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                     (affinity) => ChoiceChip(
                       label: Text(affinity.label),
                       selected: _accountAffinity == affinity.id,
-                      onSelected: (_) =>
-                          setState(() => _accountAffinity = affinity.id),
+                      onSelected: (_) => setState(() => _accountAffinity = affinity.id),
                     ),
                   )
                   .toList(),
@@ -1549,9 +1357,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             const SizedBox(height: 4),
             Text(
               AccountAffinity.fromId(_accountAffinity).description,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
           ],
         ],
@@ -1579,23 +1385,16 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-        ),
+        decoration: BoxDecoration(color: colorScheme.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(
-                  account.enabled
-                      ? Icons.verified_user_outlined
-                      : Icons.person_off_outlined,
+                  account.enabled ? Icons.verified_user_outlined : Icons.person_off_outlined,
                   size: 20,
-                  color: account.enabled
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
+                  color: account.enabled ? colorScheme.primary : colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1609,36 +1408,24 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                               account.label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                             ),
                           ),
                           if (_accounts.length >= 2) ...[
                             const SizedBox(width: 6),
                             Text(
                               '#${index + 1}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
+                              style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant),
                             ),
                           ],
                         ],
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        statusText,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: statusColor,
-                        ),
-                      ),
+                      Text(statusText, style: theme.textTheme.bodySmall?.copyWith(color: statusColor)),
                     ],
                   ),
                 ),
-                Switch(
-                  value: account.enabled,
-                  onChanged: (value) => _toggleAccountEnabled(account, value),
-                ),
+                Switch(value: account.enabled, onChanged: (value) => _toggleAccountEnabled(account, value)),
                 PopupMenuButton<String>(
                   tooltip: '更多',
                   icon: const Icon(Icons.more_vert_rounded, size: 20),
@@ -1664,10 +1451,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                   itemBuilder: (ctx) => [
                     const PopupMenuItem(value: 'rename', child: Text('修改备注')),
                     const PopupMenuItem(value: 'relogin', child: Text('重新登录')),
-                    if (index > 0)
-                      const PopupMenuItem(value: 'up', child: Text('上移')),
-                    if (index < _accounts.length - 1)
-                      const PopupMenuItem(value: 'down', child: Text('下移')),
+                    if (index > 0) const PopupMenuItem(value: 'up', child: Text('上移')),
+                    if (index < _accounts.length - 1) const PopupMenuItem(value: 'down', child: Text('下移')),
                     const PopupMenuItem(value: 'logout', child: Text('退出登录')),
                   ],
                 ),
@@ -1678,15 +1463,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                 padding: const EdgeInsets.only(left: 30, top: 2),
                 child: Text(
                   '有效期至 ${_formatAccountTime(account.expiresAt!)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.only(left: 30, top: 2),
-              child: _quotaLine(theme, account),
-            ),
+            Padding(padding: const EdgeInsets.only(left: 30, top: 2), child: _quotaLine(theme, account)),
           ],
         ),
       ),
@@ -1720,21 +1500,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
     return Row(
       children: [
-        Icon(
-          Icons.toll_outlined,
-          size: 14,
-          color: error != null
-              ? colorScheme.error
-              : colorScheme.onSurfaceVariant,
-        ),
+        Icon(Icons.toll_outlined, size: 14, color: error != null ? colorScheme.error : colorScheme.onSurfaceVariant),
         const SizedBox(width: 4),
         Expanded(
           child: Text(
             text,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: error != null
-                  ? colorScheme.error
-                  : colorScheme.onSurfaceVariant,
+              color: error != null ? colorScheme.error : colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -1750,26 +1522,16 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                 visualDensity: VisualDensity.compact,
               ),
               icon: checkingIn
-                  ? const SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.event_available_outlined, size: 14),
-              label: Text(
-                checkingIn ? '签到中' : '签到',
-                style: theme.textTheme.labelSmall,
-              ),
+              label: Text(checkingIn ? '签到中' : '签到', style: theme.textTheme.labelSmall),
             ),
           ),
         SizedBox(
           width: 32,
           height: 32,
           child: loading
-              ? const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+              ? const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2))
               : IconButton(
                   padding: EdgeInsets.zero,
                   iconSize: 16,
@@ -1823,9 +1585,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 '还没有密钥，添加后即可扫描模型。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             )
           else
@@ -1837,10 +1597,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(10),
@@ -1850,27 +1607,15 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                     children: [
                       Row(
                         children: [
-                          Icon(
-                            Icons.key_rounded,
-                            size: 16,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                          Icon(Icons.key_rounded, size: 16, color: colorScheme.onSurfaceVariant),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              revealed ? key : ApiKeyPool.maskKey(key),
-                              style: theme.textTheme.bodySmall,
-                            ),
+                            child: Text(revealed ? key : ApiKeyPool.maskKey(key), style: theme.textTheme.bodySmall),
                           ),
                           IconButton(
                             tooltip: revealed ? '隐藏' : '显示',
                             visualDensity: VisualDensity.compact,
-                            icon: Icon(
-                              revealed
-                                  ? Icons.visibility_off_rounded
-                                  : Icons.visibility_rounded,
-                              size: 18,
-                            ),
+                            icon: Icon(revealed ? Icons.visibility_off_rounded : Icons.visibility_rounded, size: 18),
                             onPressed: () {
                               setState(() {
                                 if (revealed) {
@@ -1884,11 +1629,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                           IconButton(
                             tooltip: '删除',
                             visualDensity: VisualDensity.compact,
-                            icon: Icon(
-                              Icons.delete_outline_rounded,
-                              size: 18,
-                              color: colorScheme.error,
-                            ),
+                            icon: Icon(Icons.delete_outline_rounded, size: 18, color: colorScheme.error),
                             onPressed: () => _removeKey(index),
                           ),
                         ],
@@ -1901,17 +1642,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                               SizedBox(
                                 width: 10,
                                 height: 10,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.6,
-                                  color: colorScheme.primary,
-                                ),
+                                child: CircularProgressIndicator(strokeWidth: 1.6, color: colorScheme.primary),
                               ),
                               const SizedBox(width: 6),
                               Text(
                                 '测试中…',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
+                                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -1922,9 +1658,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                           child: Text(
                             result,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: result.startsWith('正常')
-                                  ? Colors.green.shade700
-                                  : colorScheme.error,
+                              color: result.startsWith('正常') ? Colors.green.shade700 : colorScheme.error,
                             ),
                           ),
                         ),
@@ -1952,10 +1686,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           const SizedBox(height: 4),
           Text(
             '多把密钥自动轮换；限流或额度用尽时冷却，结束后自动回池。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
           ),
         ],
       ),
@@ -1985,11 +1716,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               FilledButton.tonalIcon(
                 onPressed: _scanning ? null : _scanModels,
                 icon: _scanning
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.radar_rounded, size: 18),
                 label: Text(_scanning ? '扫描中…' : '扫描模型'),
               ),
@@ -2002,10 +1729,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               const Spacer(),
               Text(
                 '已启用 ${_models.length}',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: theme.textTheme.labelMedium?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -2015,22 +1739,15 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               child: Text(
                 _scanMessage!,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: _scanMessageIsError
-                      ? colorScheme.error
-                      : Colors.green.shade700,
+                  color: _scanMessageIsError ? colorScheme.error : Colors.green.shade700,
                 ),
               ),
             ),
           if (_catalog.isEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              _usesAccount
-                  ? '还没有模型列表，登录后点「扫描模型」获取，也可手动添加。'
-                  : '还没有模型列表，填好地址与密钥后点「扫描模型」获取。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
+              _usesAccount ? '还没有模型列表，登录后点「扫描模型」获取，也可手动添加。' : '还没有模型列表，填好地址与密钥后点「扫描模型」获取。',
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
             ),
           ] else ...[
             const SizedBox(height: 12),
@@ -2051,35 +1768,20 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                 else
                   const Spacer(),
                 const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () => _setAllModels(true),
-                  child: const Text('全部启用'),
-                ),
-                TextButton(
-                  onPressed: _models.isEmpty
-                      ? null
-                      : () => _setAllModels(false),
-                  child: const Text('全部停用'),
-                ),
+                TextButton(onPressed: () => _setAllModels(true), child: const Text('全部启用')),
+                TextButton(onPressed: _models.isEmpty ? null : () => _setAllModels(false), child: const Text('全部停用')),
               ],
             ),
             const SizedBox(height: 4),
             if (models.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  '没有匹配的模型',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                child: Text('没有匹配的模型', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
               )
             else
               ...models.map((model) {
                 final enabled = enabledIds.contains(model.id);
-                final enabledModel = _models
-                    .where((m) => m.id == model.id)
-                    .firstOrNull;
+                final enabledModel = _models.where((m) => m.id == model.id).firstOrNull;
                 final latency = _modelLatency[model.id];
                 final testing = _testingModels.contains(model.id);
                 // 已启用的模型都展示思考档位配置：能力表未收录时用通用兜底，
@@ -2098,12 +1800,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                 final levelBadge = _levelsBadge(capability, customLevels);
                 final latencyLabel = latency == null
                     ? null
-                    : (latency.failed
-                          ? '失败'
-                          : _formatLatency(latency.duration!));
-                final latencyColor = latency == null
-                    ? null
-                    : _latencyColor(theme, latency);
+                    : (latency.failed ? '失败' : _formatLatency(latency.duration!));
+                final latencyColor = latency == null ? null : _latencyColor(theme, latency);
                 return SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: enabled,
@@ -2116,41 +1814,26 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                         TextSpan(
                           children: [
                             if (model.name != model.id)
-                              TextSpan(
-                                text: latencyLabel == null
-                                    ? model.id
-                                    : '${model.id} · ',
-                              ),
+                              TextSpan(text: latencyLabel == null ? model.id : '${model.id} · '),
                             if (latencyLabel != null)
                               TextSpan(
                                 text: latencyLabel,
-                                style: TextStyle(
-                                  color: latencyColor,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: TextStyle(color: latencyColor, fontWeight: FontWeight.w600),
                               ),
                           ],
                         ),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
                       ?metaRow,
                       if (levelLabels != null)
                         InkWell(
-                          onTap: enabledModel == null
-                              ? null
-                              : () => _editModelEffortLevels(enabledModel),
+                          onTap: enabledModel == null ? null : () => _editModelEffortLevels(enabledModel),
                           borderRadius: BorderRadius.circular(4),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             child: Row(
                               children: [
-                                Icon(
-                                  Icons.tune_rounded,
-                                  size: 12,
-                                  color: colorScheme.primary,
-                                ),
+                                Icon(Icons.tune_rounded, size: 12, color: colorScheme.primary),
                                 const SizedBox(width: 3),
                                 Flexible(
                                   child: Text(
@@ -2166,16 +1849,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                                 const SizedBox(width: 4),
                                 Text(
                                   levelBadge ?? '',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    fontSize: 10,
-                                    color: colorScheme.outline,
-                                  ),
+                                  style: theme.textTheme.labelSmall?.copyWith(fontSize: 10, color: colorScheme.outline),
                                 ),
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 14,
-                                  color: colorScheme.outline,
-                                ),
+                                Icon(Icons.chevron_right_rounded, size: 14, color: colorScheme.outline),
                               ],
                             ),
                           ),
@@ -2186,11 +1862,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                     tooltip: '测试',
                     visualDensity: VisualDensity.compact,
                     icon: testing
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.bolt_rounded, size: 18),
                     onPressed: testing ? null : () => _testModel(model),
                   ),

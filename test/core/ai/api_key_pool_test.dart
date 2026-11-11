@@ -43,10 +43,7 @@ void main() {
       pool.markLimited('p1', 'k1');
       expect(pool.acquireNext('p1', keys), 'k2');
       expect(pool.hasAvailable('p1', keys), isTrue);
-      expect(
-        pool.cooldownRemaining('p1', 'k1'),
-        greaterThan(Duration.zero),
-      );
+      expect(pool.cooldownRemaining('p1', 'k1'), greaterThan(Duration.zero));
     });
 
     test('整池冷却后可读出最早解锁时刻', () {
@@ -63,10 +60,7 @@ void main() {
     test('冷却时长有上限，防止把 Key 关到天荒地老', () {
       pool.markLimited('p1', 'k1', cooldown: const Duration(hours: 3));
       final remaining = pool.cooldownRemaining('p1', 'k1');
-      expect(
-        remaining.inSeconds,
-        lessThanOrEqualTo(ApiKeyPool.maxCooldown.inSeconds),
-      );
+      expect(remaining.inSeconds, lessThanOrEqualTo(ApiKeyPool.maxCooldown.inSeconds));
     });
 
     test('syncKeys 会清掉已删除 Key 的冷却记录', () {

@@ -36,9 +36,7 @@ class _ThoughtTailScrollViewState extends State<ThoughtTailScrollView> {
   /// 是否自动跟随滚动到底部；用户拖离底部后暂停
   bool _follow = true;
 
-  bool get _isNearBottom =>
-      !_controller.hasClients ||
-      _controller.position.maxScrollExtent - _controller.offset < 24;
+  bool get _isNearBottom => !_controller.hasClients || _controller.position.maxScrollExtent - _controller.offset < 24;
 
   @override
   void dispose() {
@@ -63,9 +61,7 @@ class _ThoughtTailScrollViewState extends State<ThoughtTailScrollView> {
       shaderCallback: (rect) => LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: showTopFade
-            ? const [Colors.transparent, Colors.white]
-            : const [Colors.white, Colors.white],
+        colors: showTopFade ? const [Colors.transparent, Colors.white] : const [Colors.white, Colors.white],
         stops: showTopFade ? const [0.0, 0.16] : null,
       ).createShader(rect),
       blendMode: BlendMode.dstIn,
@@ -84,10 +80,7 @@ class _ThoughtTailScrollViewState extends State<ThoughtTailScrollView> {
           child: SingleChildScrollView(
             controller: _controller,
             padding: widget.padding,
-            child: Text(
-              widget.text,
-              style: widget.textStyle,
-            ),
+            child: Text(widget.text, style: widget.textStyle),
           ),
         ),
       ),

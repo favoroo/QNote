@@ -23,22 +23,14 @@ void main() {
     return ChatSession(
       id: id,
       title: '测试对话 $id',
-      messages: messages ??
-          [
-            ChatMessage(role: 'user', content: '你好'),
-            ChatMessage(role: 'assistant', content: '在的'),
-          ],
+      messages: messages ?? [ChatMessage(role: 'user', content: '你好'), ChatMessage(role: 'assistant', content: '在的')],
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
   }
 
   Future<List<Map<String, Object?>>> tombstonesOf(String id) {
-    return db.query(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id = ?",
-      whereArgs: [id],
-    );
+    return db.query('sync_log', where: "table_name = 'chat_sessions' AND record_id = ?", whereArgs: [id]);
   }
 
   setUpAll(() async {
@@ -49,27 +41,15 @@ void main() {
   });
 
   setUp(() async {
-    await db.delete(
-      'chat_sessions',
-      where: 'id LIKE ?',
-      whereArgs: ['cdt_%'],
-    );
-    await db.delete(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id LIKE ?",
-      whereArgs: ['cdt_%'],
-    );
+    await db.delete('chat_sessions', where: 'id LIKE ?', whereArgs: ['cdt_%']);
+    await db.delete('sync_log', where: "table_name = 'chat_sessions' AND record_id LIKE ?", whereArgs: ['cdt_%']);
   });
 
   test('删除后行被物理移除，sync_log 只留一条 data 为空的 delete 墓碑', () async {
     final id = testId('single');
     await repo.insertChatSession(buildSession(id));
     // 清掉插入产生的日志，单独观察删除写了什么
-    await db.delete(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id = ?",
-      whereArgs: [id],
-    );
+    await db.delete('sync_log', where: "table_name = 'chat_sessions' AND record_id = ?", whereArgs: [id]);
 
     final report = await repo.hardDeleteChatSession(id);
 
@@ -78,7 +58,8 @@ void main() {
     expect(
       report.freedBytes,
       greaterThan(0),
-      reason: 'freedBytes 里的消息体积取自 LENGTH(CAST(messages AS BLOB)) 别名，'
+      reason:
+          'freedBytes 里的消息体积取自 LENGTH(CAST(messages AS BLOB)) 别名，'
           '该表达式若没生效会静默为 0，占用统计就永远是空的',
     );
     expect(await repo.getChatSession(id), isNull);
@@ -91,11 +72,7 @@ void main() {
     final logs = await tombstonesOf(id);
     expect(logs.length, 1);
     expect(logs.first['operation'], 'delete');
-    expect(
-      logs.first['data'],
-      isNull,
-      reason: '墓碑绝不能携带整行内容，否则删除反而让 sync_log 膨胀',
-    );
+    expect(logs.first['data'], isNull, reason: '墓碑绝不能携带整行内容，否则删除反而让 sync_log 膨胀');
   });
 
   test('幂等：删除不存在的会话不报错，但仍写墓碑保证删除事件能继续转发', () async {
@@ -114,11 +91,7 @@ void main() {
     for (final id in ids) {
       await repo.insertChatSession(buildSession(id));
     }
-    await db.delete(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id LIKE ?",
-      whereArgs: ['cdt_%'],
-    );
+    await db.delete('sync_log', where: "table_name = 'chat_sessions' AND record_id LIKE ?", whereArgs: ['cdt_%']);
 
     final report = await repo.hardDeleteChatSessions(ids);
 
@@ -135,11 +108,7 @@ void main() {
     expect((await repo.hardDeleteChatSessions([])).deletedSessions, 0);
     expect((await repo.hardDeleteChatSessions(['  '])).deletedSessions, 0);
     expect(
-      await db.query(
-        'sync_log',
-        where: "table_name = 'chat_sessions' AND record_id LIKE ?",
-        whereArgs: ['cdt_%'],
-      ),
+      await db.query('sync_log', where: "table_name = 'chat_sessions' AND record_id LIKE ?", whereArgs: ['cdt_%']),
       isEmpty,
     );
   });
@@ -159,11 +128,7 @@ void main() {
         .toList();
 
     expect(deletes, contains(id));
-    expect(
-      upserts,
-      isEmpty,
-      reason: '一旦以 upsert 外发，对端就会把这条已删对话整条写回来',
-    );
+    expect(upserts, isEmpty, reason: '一旦以 upsert 外发，对端就会把这条已删对话整条写回来');
   });
 
   test('回收旧版软删除墓碑：is_deleted=1 的行可被清掉并转为 delete', () async {
@@ -205,12 +170,7 @@ void main() {
       'created_at': now,
       'updated_at': now,
     });
-    await db.insert('todos', {
-      'id': todoId,
-      'title': '小Q建的待办',
-      'created_at': now,
-      'updated_at': now,
-    });
+    await db.insert('todos', {'id': todoId, 'title': '小Q建的待办', 'created_at': now, 'updated_at': now});
 
     final sessionId = testId('cascade');
     await repo.insertChatSession(
@@ -238,14 +198,8 @@ void main() {
       hasLength(1),
       reason: '删除对话绝不能级联删掉小Q写出的笔记',
     );
-    expect(
-      await db.query('diary_records', where: 'id = ?', whereArgs: [diaryId]),
-      hasLength(1),
-    );
-    expect(
-      await db.query('todos', where: 'id = ?', whereArgs: [todoId]),
-      hasLength(1),
-    );
+    expect(await db.query('diary_records', where: 'id = ?', whereArgs: [diaryId]), hasLength(1));
+    expect(await db.query('todos', where: 'id = ?', whereArgs: [todoId]), hasLength(1));
 
     await db.delete('notes', where: 'id = ?', whereArgs: [noteId]);
     await db.delete('diary_records', where: 'id = ?', whereArgs: [diaryId]);
@@ -258,11 +212,7 @@ void main() {
 
     var usage = await repo.estimateChatStorageUsage();
     expect(usage.activeSessions, greaterThanOrEqualTo(1));
-    expect(
-      usage.activeMessagesBytes,
-      greaterThan(0),
-      reason: 'LENGTH 必须按 BLOB 取字节，按字符计会把中文低估 2~3 倍',
-    );
+    expect(usage.activeMessagesBytes, greaterThan(0), reason: 'LENGTH 必须按 BLOB 取字节，按字符计会把中文低估 2~3 倍');
 
     final tombstoneId = testId('estimateTomb');
     final map = buildSession(tombstoneId).toMap();

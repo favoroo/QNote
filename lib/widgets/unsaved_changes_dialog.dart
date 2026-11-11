@@ -30,20 +30,10 @@ Future<bool> promptUnsavedChanges(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop('discard'),
-          child: Text(
-            '放弃更改',
-            style: TextStyle(color: colorScheme.error),
-          ),
+          child: Text('放弃更改', style: TextStyle(color: colorScheme.error)),
         ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop('cancel'),
-          child: const Text('取消'),
-        ),
-        if (onSave != null)
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop('save'),
-            child: const Text('保存'),
-          ),
+        TextButton(onPressed: () => Navigator.of(ctx).pop('cancel'), child: const Text('取消')),
+        if (onSave != null) FilledButton(onPressed: () => Navigator.of(ctx).pop('save'), child: const Text('保存')),
       ],
     ),
   );

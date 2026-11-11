@@ -32,25 +32,16 @@ class _ScaffoldWithNavBarState extends State<ScaffoldWithNavBar> {
     return Scaffold(
       key: rootScaffoldKey,
       drawer: const SideDrawer(),
-      body: _NavBranchTransition(
-        currentIndex: widget.navigationShell.currentIndex,
-        child: widget.navigationShell,
-      ),
+      body: _NavBranchTransition(currentIndex: widget.navigationShell.currentIndex, child: widget.navigationShell),
       bottomNavigationBar: BottomNavBar(
         currentIndex: widget.navigationShell.currentIndex,
         onTap: (index) {
-          widget.navigationShell.goBranch(
-            index,
-            initialLocation: index == widget.navigationShell.currentIndex,
-          );
+          widget.navigationShell.goBranch(index, initialLocation: index == widget.navigationShell.currentIndex);
         },
         onMenuTap: () => rootScaffoldKey.currentState?.openDrawer(),
         onQTap: () {
           // 单击中央按钮：面板打开时收起，否则进入 /ai 全页面
-          widget.navigationShell.goBranch(
-            4,
-            initialLocation: widget.navigationShell.currentIndex == 4,
-          );
+          widget.navigationShell.goBranch(4, initialLocation: widget.navigationShell.currentIndex == 4);
         },
       ),
     );
@@ -65,17 +56,13 @@ class _NavBranchTransition extends StatefulWidget {
   final int currentIndex;
   final Widget child;
 
-  const _NavBranchTransition({
-    required this.currentIndex,
-    required this.child,
-  });
+  const _NavBranchTransition({required this.currentIndex, required this.child});
 
   @override
   State<_NavBranchTransition> createState() => _NavBranchTransitionState();
 }
 
-class _NavBranchTransitionState extends State<_NavBranchTransition>
-    with SingleTickerProviderStateMixin {
+class _NavBranchTransitionState extends State<_NavBranchTransition> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -85,19 +72,14 @@ class _NavBranchTransitionState extends State<_NavBranchTransition>
   void initState() {
     super.initState();
     _lastIndex = widget.currentIndex;
-    _controller = AnimationController(
-      vsync: this,
-      duration: AppDurations.page,
-    );
+    _controller = AnimationController(vsync: this, duration: AppDurations.page);
     // 从 0.86 起步而不是全透明：IndexedStack 已在同一帧换掉旧分支，
     // 若从 0 开始会先露出 Scaffold 底色，形成一次可见的「闪白」。
-    _fadeAnimation = Tween<double>(begin: 0.86, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: AppCurves.emphasized),
-    );
-    _slideAnimation = Tween<Offset>(
-      begin: Offset.zero,
-      end: Offset.zero,
-    ).animate(_controller);
+    _fadeAnimation = Tween<double>(
+      begin: 0.86,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: AppCurves.emphasized));
+    _slideAnimation = Tween<Offset>(begin: Offset.zero, end: Offset.zero).animate(_controller);
     // 首次展示直接到达最终态
     _controller.value = 1.0;
   }
@@ -118,10 +100,7 @@ class _NavBranchTransitionState extends State<_NavBranchTransition>
       _slideAnimation = Tween<Offset>(
         begin: Offset(direction, 0),
         end: Offset.zero,
-      ).animate(CurvedAnimation(
-        parent: _controller,
-        curve: AppCurves.emphasized,
-      ));
+      ).animate(CurvedAnimation(parent: _controller, curve: AppCurves.emphasized));
 
       _controller.forward(from: 0.0);
     }
@@ -139,10 +118,7 @@ class _NavBranchTransitionState extends State<_NavBranchTransition>
     return RepaintBoundary(
       child: FadeTransition(
         opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: widget.child,
-        ),
+        child: SlideTransition(position: _slideAnimation, child: widget.child),
       ),
     );
   }
@@ -168,12 +144,7 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _BottomNavContent(
-      currentIndex: currentIndex,
-      onTap: onTap,
-      onMenuTap: onMenuTap,
-      onQTap: onQTap,
-    );
+    return _BottomNavContent(currentIndex: currentIndex, onTap: onTap, onMenuTap: onMenuTap, onQTap: onQTap);
   }
 }
 
@@ -191,18 +162,10 @@ class _BottomNavContent extends ConsumerWidget {
   final VoidCallback? onMenuTap;
   final VoidCallback onQTap;
 
-  const _BottomNavContent({
-    required this.currentIndex,
-    required this.onTap,
-    this.onMenuTap,
-    required this.onQTap,
-  });
+  const _BottomNavContent({required this.currentIndex, required this.onTap, this.onMenuTap, required this.onQTap});
 
   /// 长按唤起悬浮快捷面板：有编辑器选区时带引用打开，并按按钮位置设定弹出锚点
-  static void _handleQuickQTrigger(
-    WidgetRef ref, {
-    required Alignment anchorAlignment,
-  }) {
+  static void _handleQuickQTrigger(WidgetRef ref, {required Alignment anchorAlignment}) {
     final notifier = ref.read(floatingQProvider.notifier);
     final fqState = ref.read(floatingQProvider);
 
@@ -245,51 +208,29 @@ class _BottomNavContent extends ConsumerWidget {
         height: _navBarContentHeight,
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(
-              color: theme.colorScheme.outlineVariant,
-              width: 0.5,
-            ),
-          ),
+          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5)),
         ),
         child: Row(
           children: [
             // 日记
-            Expanded(
-              child: _buildNavItem(context, ref, theme, items, 0),
-            ),
+            Expanded(child: _buildNavItem(context, ref, theme, items, 0)),
             // 笔记
-            Expanded(
-              child: _buildNavItem(context, ref, theme, items, 1),
-            ),
+            Expanded(child: _buildNavItem(context, ref, theme, items, 1)),
             // 中央小Q：与其他导航栏图标风格完全统一
             Expanded(
-              child: _QNavButton(
-                currentIndex: currentIndex,
-                onTap: onQTap,
-              ),
+              child: _QNavButton(currentIndex: currentIndex, onTap: onQTap),
             ),
             // 待办
-            Expanded(
-              child: _buildNavItem(context, ref, theme, items, 2),
-            ),
+            Expanded(child: _buildNavItem(context, ref, theme, items, 2)),
             // 统计
-            Expanded(
-              child: _buildNavItem(context, ref, theme, items, 3),
-            ),
+            Expanded(child: _buildNavItem(context, ref, theme, items, 3)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeData theme,
-    List<NavigationItem> items,
-    int index,
-  ) {
+  Widget _buildNavItem(BuildContext context, WidgetRef ref, ThemeData theme, List<NavigationItem> items, int index) {
     final item = items[index];
     final isSelected = index == currentIndex;
 
@@ -302,8 +243,7 @@ class _BottomNavContent extends ConsumerWidget {
         // 待办按钮（index == 2）连点 5 次触发日志控制台（间隔小于 800ms 视为连击）
         if (index == 2) {
           final now = DateTime.now();
-          if (_lastTodoTapTime != null &&
-              now.difference(_lastTodoTapTime!) > const Duration(milliseconds: 800)) {
+          if (_lastTodoTapTime != null && now.difference(_lastTodoTapTime!) > const Duration(milliseconds: 800)) {
             _todoTapCount = 0;
           }
           _lastTodoTapTime = now;
@@ -327,9 +267,8 @@ class _BottomNavContent extends ConsumerWidget {
       onDoubleTap: index == 0
           ? () {
               if (!isSelected) onTap(0);
-              ProviderScope.containerOf(context, listen: false)
-                  .read(diaryScrollTriggerProvider.notifier)
-                  .state = DateTime.now().millisecondsSinceEpoch;
+              ProviderScope.containerOf(context, listen: false).read(diaryScrollTriggerProvider.notifier).state =
+                  DateTime.now().millisecondsSinceEpoch;
             }
           : null,
       child: Center(
@@ -342,9 +281,7 @@ class _BottomNavContent extends ConsumerWidget {
             isSelected ? item.activeIcon : item.icon,
             key: ValueKey(isSelected),
             size: 24,
-            color: isSelected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant,
+            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ),
@@ -363,17 +300,13 @@ class _QNavButton extends ConsumerStatefulWidget {
   final int currentIndex;
   final VoidCallback onTap;
 
-  const _QNavButton({
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _QNavButton({required this.currentIndex, required this.onTap});
 
   @override
   ConsumerState<_QNavButton> createState() => _QNavButtonState();
 }
 
-class _QNavButtonState extends ConsumerState<_QNavButton>
-    with SingleTickerProviderStateMixin {
+class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProviderStateMixin {
   late final AnimationController _blinkController;
   late final Animation<double> _eyeOpennessAnimation;
   Timer? _blinkTimer;
@@ -383,29 +316,19 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
   @override
   void initState() {
     super.initState();
-    _blinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
+    _blinkController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
 
     // 0.0 -> 0.45: 快速闭眼 (1.0 -> 0.0)
     // 0.45 -> 0.55: 极短闭合维持
     // 0.55 -> 1.0: 弹润回睁 (0.0 -> 1.0)
     _eyeOpennessAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.0).chain(
-          CurveTween(curve: Curves.easeInQuad),
-        ),
+        tween: Tween<double>(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInQuad)),
         weight: 45,
       ),
+      TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 10),
       TweenSequenceItem(
-        tween: ConstantTween<double>(0.0),
-        weight: 10,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: 1.0).chain(
-          CurveTween(curve: Curves.easeOutBack),
-        ),
+        tween: Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 45,
       ),
     ]).animate(_blinkController);
@@ -529,10 +452,7 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
       },
       onLongPress: () {
         HapticFeedback.selectionClick();
-        _BottomNavContent._handleQuickQTrigger(
-          ref,
-          anchorAlignment: const Alignment(0.0, 1.0),
-        );
+        _BottomNavContent._handleQuickQTrigger(ref, anchorAlignment: const Alignment(0.0, 1.0));
       },
       child: Center(
         // 工作态无限符号 / 面板关闭叉 / 小Q头像三种形态差异较大，
@@ -545,8 +465,8 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
               isWorking
                   ? 'q_working'
                   : panelOpen
-                      ? 'q_close'
-                      : 'q_idle_$isActive',
+                  ? 'q_close'
+                  : 'q_idle_$isActive',
             ),
             child: _buildIcon(theme, isWorking, isActive, panelOpen),
           ),
@@ -555,39 +475,24 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
     );
   }
 
-  Widget _buildIcon(
-    ThemeData theme,
-    bool isWorking,
-    bool isActive,
-    bool panelOpen,
-  ) {
+  Widget _buildIcon(ThemeData theme, bool isWorking, bool isActive, bool panelOpen) {
     final primary = theme.colorScheme.primary;
     final inactiveColor = theme.colorScheme.onSurfaceVariant;
     final isDark = theme.brightness == Brightness.dark;
 
     // 工作态：简约无限循环动画
     if (isWorking) {
-      return MorphingInfinity(
-        size: 22,
-        strokeWidth: 1.8,
-        color: primary,
-      );
+      return MorphingInfinity(size: 22, strokeWidth: 1.8, color: primary);
     }
 
     // 悬浮面板打开态：显示关闭图标
     if (panelOpen) {
-      return Icon(
-        Icons.close_rounded,
-        size: 24,
-        color: primary,
-      );
+      return Icon(Icons.close_rounded, size: 24, color: primary);
     }
 
     // 未选中走细线稿轮廓（线条重量与其余 Material 图标一致），选中走实心填充
     final color = isActive ? primary : inactiveColor;
-    final screenColor = isActive
-        ? (isDark ? theme.colorScheme.surface : Colors.white)
-        : theme.colorScheme.surface;
+    final screenColor = isActive ? (isDark ? theme.colorScheme.surface : Colors.white) : theme.colorScheme.surface;
     final eyeColor = isActive ? primary : inactiveColor;
 
     return AnimatedBuilder(
@@ -606,4 +511,3 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
     );
   }
 }
-

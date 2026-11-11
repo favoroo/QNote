@@ -140,20 +140,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       builder: (ctx) => _VendorPickerSheet(),
     );
     if (vendorId == null || !mounted) return;
-    await context.push(
-      '/settings/ai-config/provider',
-      extra: AiProviderEditArgs(initialVendorId: vendorId),
-    );
+    await context.push('/settings/ai-config/provider', extra: AiProviderEditArgs(initialVendorId: vendorId));
     if (mounted) {
       await _loadRoles();
     }
   }
 
   Future<void> _editProvider(AiProvider provider) async {
-    await context.push(
-      '/settings/ai-config/provider',
-      extra: AiProviderEditArgs(provider: provider),
-    );
+    await context.push('/settings/ai-config/provider', extra: AiProviderEditArgs(provider: provider));
     if (mounted) await _loadRoles();
   }
 
@@ -166,17 +160,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           provider.usesAccountAuth
               ? '将删除「${provider.name}」及登录态和 ${provider.models.length} 个模型，角色绑定会清空。'
               : '将删除「${provider.name}」及 ${provider.apiKeys.length} 把密钥和 '
-                  '${provider.models.length} 个模型，角色绑定会清空。',
+                    '${provider.models.length} 个模型，角色绑定会清空。',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('删除'),
           ),
@@ -205,16 +194,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   /// 停用/启用整个厂商条目（可逆，不动密钥、模型与角色绑定）
   Future<void> _setProviderEnabled(AiProvider provider, bool enabled) async {
     try {
-      await ref
-          .read(aiProviderListProvider.notifier)
-          .setProviderEnabled(provider.id, enabled);
+      await ref.read(aiProviderListProvider.notifier).setProviderEnabled(provider.id, enabled);
       // 该厂商不再参与选路，角色行的生效模型会跟着回落，重新算一次展示名
       await _loadRoles();
       if (mounted) {
-        Toast.success(
-          context,
-          enabled ? '已启用「${provider.name}」' : '已停用「${provider.name}」',
-        );
+        Toast.success(context, enabled ? '已启用「${provider.name}」' : '已停用「${provider.name}」');
       }
     } catch (e) {
       if (mounted) Toast.error(context, '${enabled ? '启用' : '停用'}失败：$e');
@@ -255,20 +239,16 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   String _roleLabel(String roleKey) => switch (roleKey) {
-        'assistant' => '小Q 对话模型',
-        'timelineOptimization' => '时间线提取模型',
-        _ => '生图模型',
-      };
+    'assistant' => '小Q 对话模型',
+    'timelineOptimization' => '时间线提取模型',
+    _ => '生图模型',
+  };
 
   /// 绑定仍指向存在的模型/组，但所属厂商被手动停用时的提示文案
   ///
   /// 与「未配置」区分开：绑定没丢，重新启用厂商即恢复，不提示会让用户以为
   /// 自己配的模型凭空消失了。
-  String? _disabledBindingHint(
-    AiModelRef? ref,
-    List<AiProvider> providers,
-    List<AiRouteGroup> groups,
-  ) {
+  String? _disabledBindingHint(AiModelRef? ref, List<AiProvider> providers, List<AiRouteGroup> groups) {
     if (ref == null) return null;
     // 真失效（厂商/模型已删）由陈旧绑定清理负责，这里不管
     if (!isBindingResolvable(ref, providers, groups)) return null;
@@ -280,11 +260,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   /// 角色当前生效的展示名：绑定（模型或路由组）→ 默认/首个可用厂商的首个模型 → 未配置
-  String _roleDisplayName(
-    String roleKey,
-    List<AiProvider> providers,
-    List<AiRouteGroup> groups,
-  ) {
+  String _roleDisplayName(String roleKey, List<AiProvider> providers, List<AiRouteGroup> groups) {
     final bound = switch (roleKey) {
       'assistant' => _roles.assistant,
       'timelineOptimization' => _roles.timelineOptimization,
@@ -298,8 +274,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     if (roleKey == 'imageGeneration') {
       return hint == null ? '未配置（生图不可用）' : '$hint，生图不可用';
     }
-    final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
-        providers.where((p) => p.isUsable).firstOrNull;
+    final provider =
+        providers.where((p) => p.isDefault && p.isUsable).firstOrNull ?? providers.where((p) => p.isUsable).firstOrNull;
     final model = provider?.firstModel;
     if (model == null) return hint ?? '未配置';
     return hint == null ? '跟随默认 · ${model.name}' : '$hint，暂用 ${model.name}';
@@ -363,10 +339,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           : null,
       body: providersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => AppErrorState(
-          error: e,
-          onRetry: () => ref.invalidate(aiProviderListProvider),
-        ),
+        error: (e, st) => AppErrorState(error: e, onRetry: () => ref.invalidate(aiProviderListProvider)),
         data: (providers) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
           children: [
@@ -378,8 +351,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             _buildRoleSection(
               theme,
               providers,
-              ref.watch(aiRouteGroupListProvider).valueOrNull ??
-                  const <AiRouteGroup>[],
+              ref.watch(aiRouteGroupListProvider).valueOrNull ?? const <AiRouteGroup>[],
             ),
             const SizedBox(height: 4),
             _buildToolSwitchCard(theme),
@@ -391,10 +363,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
   Widget _buildProvidersSection(ThemeData theme, List<AiProvider> providers) {
     if (providers.isEmpty) {
-      return const NoModelGuideCard(
-        scene: '',
-        padding: EdgeInsets.symmetric(vertical: 16),
-      );
+      return const NoModelGuideCard(scene: '', padding: EdgeInsets.symmetric(vertical: 16));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,9 +388,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
+              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
             child: Row(
@@ -430,16 +397,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: disabled
-                        ? colorScheme.surfaceContainerHighest
-                        : colorScheme.primary.withValues(alpha: 0.1),
+                    color: disabled ? colorScheme.surfaceContainerHighest : colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    Icons.hub_rounded,
-                    color: disabled ? colorScheme.outline : colorScheme.primary,
-                    size: 20,
-                  ),
+                  child: Icon(Icons.hub_rounded, color: disabled ? colorScheme.outline : colorScheme.primary, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -455,16 +416,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: disabled
-                                    ? colorScheme.onSurfaceVariant
-                                    : null,
+                                color: disabled ? colorScheme.onSurfaceVariant : null,
                               ),
                             ),
                           ),
-                          if (disabled) ...[
-                            const SizedBox(width: 6),
-                            _badge(theme, '已停用', colorScheme.outline),
-                          ],
+                          if (disabled) ...[const SizedBox(width: 6), _badge(theme, '已停用', colorScheme.outline)],
                           if (provider.isDefault) ...[
                             const SizedBox(width: 6),
                             _badge(theme, '默认', colorScheme.primary),
@@ -476,9 +432,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         provider.baseUrl,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -486,9 +440,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                             ? '账号登录 · ${AccountRouting.fromId(provider.accountRouting).label} · '
                                   '${provider.models.length} 个模型'
                             : '${provider.apiKeys.length} 把密钥 · ${provider.models.length} 个模型',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -508,20 +460,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   itemBuilder: (ctx) => [
                     // 停用的厂商不参与选路，设为默认没有意义
                     if (provider.enabled && !provider.isDefault)
-                      const PopupMenuItem(
-                        value: 'default',
-                        child: Text('设为默认'),
-                      ),
-                    PopupMenuItem(
-                      value: 'toggle',
-                      child: Text(disabled ? '启用' : '停用'),
-                    ),
+                      const PopupMenuItem(value: 'default', child: Text('设为默认')),
+                    PopupMenuItem(value: 'toggle', child: Text(disabled ? '启用' : '停用')),
                     PopupMenuItem(
                       value: 'delete',
-                      child: Text(
-                        '删除',
-                        style: TextStyle(color: Theme.of(ctx).colorScheme.error),
-                      ),
+                      child: Text('删除', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                     ),
                   ],
                 ),
@@ -543,11 +486,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(
-          theme,
-          '模型路由组',
-          '多个模型轮流调用，分散限流',
-        ),
+        _sectionTitle(theme, '模型路由组', '多个模型轮流调用，分散限流'),
         Align(
           alignment: Alignment.centerLeft,
           child: Padding(
@@ -566,17 +505,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             decoration: BoxDecoration(
               color: theme.cardColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
+              border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
             ),
             child: Text(
-              canCreate
-                  ? '还没有路由组，勾选多个模型建立，再到「模型分配」绑定角色。'
-                  : '先添加并启用至少一个模型，才能建立路由组。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              canCreate ? '还没有路由组，勾选多个模型建立，再到「模型分配」绑定角色。' : '先添加并启用至少一个模型，才能建立路由组。',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           )
         else
@@ -586,18 +519,11 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Future<void> _editRouteGroup(AiRouteGroup? group) async {
-    await context.push(
-      '/settings/ai-config/route-group',
-      extra: AiRouteGroupEditArgs(group: group),
-    );
+    await context.push('/settings/ai-config/route-group', extra: AiRouteGroupEditArgs(group: group));
     if (mounted) await _loadRoles();
   }
 
-  Widget _routeGroupCard(
-    ThemeData theme,
-    List<AiProvider> providers,
-    AiRouteGroup group,
-  ) {
+  Widget _routeGroupCard(ThemeData theme, List<AiProvider> providers, AiRouteGroup group) {
     final colorScheme = theme.colorScheme;
     final liveMembers = group.enabledMembers
         .map((m) => aiModelDisplayName(m.ref, providers, fallback: m.modelName))
@@ -619,9 +545,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
+              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Column(
@@ -629,20 +553,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.alt_route_rounded,
-                      size: 20,
-                      color: colorScheme.primary,
-                    ),
+                    Icon(Icons.alt_route_rounded, size: 20, color: colorScheme.primary),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         group.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                       ),
                     ),
                     _badge(theme, group.strategy.label, colorScheme.primary),
@@ -651,33 +569,19 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 const SizedBox(height: 6),
                 Text(
                   routeGroupSummary(group, providers),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                 ),
                 if (liveCount == 0) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    '成员均已停用，绑定角色会回落默认模型',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.error,
-                    ),
-                  ),
+                  Text('成员均已停用，绑定角色会回落默认模型', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error)),
                 ] else ...[
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      ...preview.map(
-                        (name) => _badge(
-                          theme,
-                          name,
-                          colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (remaining > 0)
-                        _badge(theme, '+$remaining', colorScheme.outline),
+                      ...preview.map((name) => _badge(theme, name, colorScheme.onSurfaceVariant)),
+                      if (remaining > 0) _badge(theme, '+$remaining', colorScheme.outline),
                     ],
                   ),
                 ],
@@ -692,25 +596,15 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Widget _badge(ThemeData theme, String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
       child: Text(
         text,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+        style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }
 
-  Widget _buildRoleSection(
-    ThemeData theme,
-    List<AiProvider> providers,
-    List<AiRouteGroup> groups,
-  ) {
+  Widget _buildRoleSection(ThemeData theme, List<AiProvider> providers, List<AiRouteGroup> groups) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -719,9 +613,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           decoration: BoxDecoration(
             color: theme.cardColor,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
           ),
           child: Column(
             children: [
@@ -746,12 +638,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _roleTile(
-    ThemeData theme,
-    String roleKey,
-    List<AiProvider> providers,
-    List<AiRouteGroup> groups,
-  ) {
+  Widget _roleTile(ThemeData theme, String roleKey, List<AiProvider> providers, List<AiRouteGroup> groups) {
     final colorScheme = theme.colorScheme;
     final display = _roleDisplayName(roleKey, providers, groups);
     final configured = !display.startsWith('未配置');
@@ -769,8 +656,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               isAssistant
                   ? Icons.chat_bubble_outline_rounded
                   : roleKey == 'timelineOptimization'
-                      ? Icons.auto_awesome_motion_rounded
-                      : Icons.image_outlined,
+                  ? Icons.auto_awesome_motion_rounded
+                  : Icons.image_outlined,
               size: 20,
               color: isAssistant ? colorScheme.primary : Colors.purple.shade400,
             ),
@@ -779,21 +666,14 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _roleLabel(roleKey),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text(_roleLabel(roleKey), style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 1),
                   Text(
                     display,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: configured
-                          ? colorScheme.onSurfaceVariant
-                          : colorScheme.error,
+                      color: configured ? colorScheme.onSurfaceVariant : colorScheme.error,
                     ),
                   ),
                 ],
@@ -813,15 +693,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 tooltip: '识图检测',
                 visualDensity: VisualDensity.compact,
                 icon: _testingImageRecognition
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.photo_camera_front_outlined, size: 18),
-                onPressed: _testingImageRecognition
-                    ? null
-                    : () => _testModelImageRecognition(roleKey),
+                onPressed: _testingImageRecognition ? null : () => _testModelImageRecognition(roleKey),
               ),
             ],
             Icon(Icons.chevron_right_rounded, color: colorScheme.outline),
@@ -832,12 +706,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Widget _buildToolSwitchCard(ThemeData theme) {
-    const toolMeta = {
-      'fetch_url': '网页阅读',
-      'web_search': '网页搜索',
-      'generate_image': '图片生成',
-      'describe_image': '图片识别',
-    };
+    const toolMeta = {'fetch_url': '网页阅读', 'web_search': '网页搜索', 'generate_image': '图片生成', 'describe_image': '图片识别'};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -847,9 +716,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           decoration: BoxDecoration(
             color: theme.cardColor,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
           ),
           child: Column(
             children: [
@@ -857,11 +724,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                   ),
                 )
               else
@@ -887,19 +750,9 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -930,17 +783,9 @@ class _VendorPickerSheet extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    '选择厂商',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('选择厂商', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop()),
               ],
             ),
           ),
@@ -950,24 +795,12 @@ class _VendorPickerSheet extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 16),
               children: [
                 if (accountVendors.isNotEmpty) ...[
-                  _vendorSectionHeader(
-                    theme,
-                    title: '账号登录',
-                    subtitle: '登录账号即可使用，Token 由账号额度提供',
-                  ),
-                  ...accountVendors.map(
-                    (spec) => _vendorTile(context, theme, spec),
-                  ),
+                  _vendorSectionHeader(theme, title: '账号登录', subtitle: '登录账号即可使用，Token 由账号额度提供'),
+                  ...accountVendors.map((spec) => _vendorTile(context, theme, spec)),
                 ],
                 if (apiKeyVendors.isNotEmpty) ...[
-                  _vendorSectionHeader(
-                    theme,
-                    title: 'API Key',
-                    subtitle: '填写地址与密钥，多把自动轮询',
-                  ),
-                  ...apiKeyVendors.map(
-                    (spec) => _vendorTile(context, theme, spec),
-                  ),
+                  _vendorSectionHeader(theme, title: 'API Key', subtitle: '填写地址与密钥，多把自动轮询'),
+                  ...apiKeyVendors.map((spec) => _vendorTile(context, theme, spec)),
                 ],
               ],
             ),
@@ -977,48 +810,28 @@ class _VendorPickerSheet extends StatelessWidget {
     );
   }
 
-  Widget _vendorSectionHeader(
-    ThemeData theme, {
-    required String title,
-    required String subtitle,
-  }) {
+  Widget _vendorSectionHeader(ThemeData theme, {required String title, required String subtitle}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
   }
 
-  Widget _vendorTile(
-    BuildContext context,
-    ThemeData theme,
-    AiProviderConfig spec,
-  ) {
+  Widget _vendorTile(BuildContext context, ThemeData theme, AiProviderConfig spec) {
     return ListTile(
       title: Text(spec.name),
       subtitle: Text(
         spec.defaultBaseUrl.isEmpty ? '需要自己填写地址' : spec.defaultBaseUrl,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),
       onTap: () => Navigator.of(context).pop(spec.id),
     );

@@ -14,20 +14,14 @@ void main() {
       final memory = DrawerNavMemory()..recordClosed(entryId: 'ai-config', now: closedAt);
 
       expect(memory.resumableEntryId(now: closedAt), 'ai-config');
-      expect(
-        memory.resumableEntryId(now: closedAt.add(const Duration(seconds: 59))),
-        'ai-config',
-      );
+      expect(memory.resumableEntryId(now: closedAt.add(const Duration(seconds: 59))), 'ai-config');
     });
 
     test('超过时间窗口就不再恢复', () {
       final closedAt = DateTime(2026, 11, 8, 10, 0);
       final memory = DrawerNavMemory()..recordClosed(entryId: 'ai-config', now: closedAt);
 
-      expect(
-        memory.resumableEntryId(now: closedAt.add(const Duration(minutes: 1, seconds: 1))),
-        isNull,
-      );
+      expect(memory.resumableEntryId(now: closedAt.add(const Duration(minutes: 1, seconds: 1))), isNull);
     });
 
     test('窗口边界（正好 1 分钟）仍然恢复', () {
@@ -53,10 +47,7 @@ void main() {
       expect(memory.resumableEntryId(now: secondClose), isNull);
       memory.recordClosed(entryId: null, now: secondClose);
 
-      expect(
-        memory.resumableEntryId(now: secondClose.add(const Duration(seconds: 5))),
-        isNull,
-      );
+      expect(memory.resumableEntryId(now: secondClose.add(const Duration(seconds: 5))), isNull);
     });
 
     test('记住的入口与关闭时间一起被替换，不会残留旧时间戳', () {

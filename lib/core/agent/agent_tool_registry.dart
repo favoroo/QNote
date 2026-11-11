@@ -36,9 +36,7 @@ class AgentToolRegistry {
   ///
   /// [disabledTools] 为用户禁用的可选工具名集合（见 [AgentToolConfig]），
   /// 仅对 [optionalToolNames] 生效；核心工具忽略该参数始终注册
-  static ToolDispatcher createDefaultDispatcher({
-    Set<String> disabledTools = const {},
-  }) {
+  static ToolDispatcher createDefaultDispatcher({Set<String> disabledTools = const {}}) {
     final dispatcher = ToolDispatcher();
 
     // 核心工具忽略禁用名单（防御性兜底：仅裁剪合法的可选工具）

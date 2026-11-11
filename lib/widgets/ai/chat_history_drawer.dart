@@ -36,12 +36,7 @@ class ChatHistoryDrawer extends ConsumerStatefulWidget {
   /// 的 `today` 参数同一惯例。
   final DateTime? now;
 
-  const ChatHistoryDrawer({
-    super.key,
-    required this.sessionsAsync,
-    this.activeId,
-    this.now,
-  });
+  const ChatHistoryDrawer({super.key, required this.sessionsAsync, this.activeId, this.now});
 
   @override
   ConsumerState<ChatHistoryDrawer> createState() => _ChatHistoryDrawerState();
@@ -86,8 +81,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
 
   // ---------------------------------------------------------------- 分组折叠
 
-  bool _isExpanded(ChatHistoryGroup group) =>
-      _groupExpandedOverride[group.id] ?? group.isDefaultExpanded;
+  bool _isExpanded(ChatHistoryGroup group) => _groupExpandedOverride[group.id] ?? group.isDefaultExpanded;
 
   /// 折叠/展开**只改状态，绝不动滚动位置**：节头的 `minExtent == maxExtent`，
   /// 被点的节头自身位置恒定，加一次 jumpTo 反而会把视口弹到别处
@@ -111,9 +105,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   void _toggleCheck(String id) {
     setState(() {
       if (_selectedSessionIds.contains(id)) {
-        _selectedSessionIds = _selectedSessionIds
-            .where((selected) => selected != id)
-            .toList();
+        _selectedSessionIds = _selectedSessionIds.where((selected) => selected != id).toList();
       } else {
         _selectedSessionIds = [..._selectedSessionIds, id];
       }
@@ -131,10 +123,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   void _selectAll(List<ChatSession> visible) {
     setState(() {
       // 判定与作用域都按「当前可见集」：搜索态下按全表长度判定会既选不全也取消不掉
-      _selectedSessionIds =
-          _selectedSessionIds.length == visible.length
-          ? []
-          : visible.map((s) => s.id).toList();
+      _selectedSessionIds = _selectedSessionIds.length == visible.length ? [] : visible.map((s) => s.id).toList();
     });
   }
 
@@ -149,9 +138,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   Future<void> _createSession() async {
     FocusManager.instance.primaryFocus?.unfocus();
     final previous = ref.read(currentChatProvider);
-    final session = await ref
-        .read(chatSessionListProvider.notifier)
-        .createSession();
+    final session = await ref.read(chatSessionListProvider.notifier).createSession();
     ref.read(currentChatProvider.notifier).setSession(session);
     if (!mounted) return;
     // 本来就停在空白新对话上时，界面点了不会有任何变化，用 Toast 明确回应
@@ -162,9 +149,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   }
 
   Future<void> _togglePin(ChatSession session) async {
-    await ref
-        .read(chatSessionListProvider.notifier)
-        .setPinned(session.id, !session.isPinned);
+    await ref.read(chatSessionListProvider.notifier).setPinned(session.id, !session.isPinned);
   }
 
   /// 重命名：只弹输入框，落库交给 Notifier（它会回填 currentChat 的副本）。
@@ -183,14 +168,8 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
           onSubmitted: (value) => Navigator.pop(ctx, value),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('确定'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('确定')),
         ],
       ),
     );
@@ -198,9 +177,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
     if (title == null || !mounted) {
       return;
     }
-    await ref
-        .read(chatSessionListProvider.notifier)
-        .renameSession(session.id, title);
+    await ref.read(chatSessionListProvider.notifier).renameSession(session.id, title);
   }
 
   // ---------------------------------------------------------------- 删除通路
@@ -222,11 +199,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
     }
 
     final detail = StringBuffer();
-    detail.writeln(
-      targets.length == 1
-          ? '永久删除「${targets.first.title}」'
-          : '永久删除 ${targets.length} 个对话',
-    );
+    detail.writeln(targets.length == 1 ? '永久删除「${targets.first.title}」' : '永久删除 ${targets.length} 个对话');
     detail.write('（共 $messageCount 条消息');
     if (imageCount > 0) {
       detail.write(' · $imageCount 张图片');
@@ -240,21 +213,11 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除对话'),
-        content: SingleChildScrollView(
-          child: Text(
-            detail.toString(),
-            style: Theme.of(ctx).textTheme.bodyMedium,
-          ),
-        ),
+        content: SingleChildScrollView(child: Text(detail.toString(), style: Theme.of(ctx).textTheme.bodyMedium)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('永久删除'),
           ),
@@ -271,9 +234,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   /// 四条入口共用，避免各处漏掉其中一步。
   Future<void> _performDelete(List<ChatSession> targets) async {
     final ids = targets.map((s) => s.id).toList();
-    final report = await ref
-        .read(chatSessionListProvider.notifier)
-        .deleteSessions(ids);
+    final report = await ref.read(chatSessionListProvider.notifier).deleteSessions(ids);
     final currentId = ref.read(currentChatProvider)?.id;
     if (currentId != null && ids.contains(currentId)) {
       ref.read(currentChatProvider.notifier).setSession(null);
@@ -286,13 +247,8 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
 
   /// 删除结果文案：只有真的删掉了磁盘上的图片文件才报「释放约」，
   /// 因为消息记录虽然从库里删了，SQLite 文件要等「整理数据库」才会收缩。
-  String _deleteToastText(
-    List<ChatSession> targets,
-    ChatSessionDeleteReport report,
-  ) {
-    final head = targets.length == 1
-        ? '已删除「${targets.first.title}」'
-        : '已删除 ${targets.length} 个对话';
+  String _deleteToastText(List<ChatSession> targets, ChatSessionDeleteReport report) {
+    final head = targets.length == 1 ? '已删除「${targets.first.title}」' : '已删除 ${targets.length} 个对话';
     if (report.deletedImageFiles > 0) {
       return '$head · 回收 ${report.deletedImageFiles} 张图片 · '
           '释放约 ${formatChatStorageBytes(report.imageFreedBytes)}';
@@ -304,11 +260,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   ///
   /// [failMessage] 与 [logAction] 分开传，让「清空全部」和「删除已选」两种场景
   /// 在 Toast 上说法不同、在日志里也各自可查，不必从文案反推来源。
-  Future<void> _deleteBatch(
-    List<ChatSession> targets, {
-    required String failMessage,
-    required String logAction,
-  }) async {
+  Future<void> _deleteBatch(List<ChatSession> targets, {required String failMessage, required String logAction}) async {
     if (!await _confirmDeleteSessions(targets)) {
       return;
     }
@@ -318,11 +270,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
       if (mounted) {
         Toast.error(context, failMessage);
       }
-      LoggerService.instance.logAI(
-        logAction,
-        details: 'count=${targets.length}, $error',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI(logAction, details: 'count=${targets.length}, $error', level: LogLevel.warning);
       return;
     }
     if (!mounted) {
@@ -356,22 +304,15 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
 
   Widget _buildContent(List<ChatSession> sessions, ThemeData theme) {
     final searching = _isSearching;
-    final visible = searching
-        ? filterChatSessions(sessions: sessions, keyword: _searchController.text)
-        : sessions;
+    final visible = searching ? filterChatSessions(sessions: sessions, keyword: _searchController.text) : sessions;
     // 勾选集按「当前可见」收敛：搜索态下改关键词后，看不见的勾选既不该计数也不该被删掉
     final visibleIds = visible.map((s) => s.id).toSet();
-    final selected = _selectedSessionIds
-        .where(visibleIds.contains)
-        .toList();
+    final selected = _selectedSessionIds.where(visibleIds.contains).toList();
 
     return Column(
       children: [
         _buildTopBar(theme),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-          child: _buildSearchField(theme),
-        ),
+        Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 8), child: _buildSearchField(theme)),
         // 只要进了批量态就给这条操作栏：早期版本额外要求「已勾选」，
         // 结果进批量后不先勾一条就找不到「全选」，等于把全选锁在了它自己的下游
         if (_isBatchMode && visible.isNotEmpty)
@@ -382,22 +323,14 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => _selectAll(visible),
-                    child: Text(
-                      selected.length == visible.length ? '取消全选' : '全选',
-                    ),
+                    child: Text(selected.length == visible.length ? '取消全选' : '全选'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.error,
-                    ),
-                    onPressed: () => _deleteBatch(
-                      sessions,
-                      failMessage: '清空失败',
-                      logAction: '清空对话历史失败',
-                    ),
+                    style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                    onPressed: () => _deleteBatch(sessions, failMessage: '清空失败', logAction: '清空对话历史失败'),
                     child: const Text('清空全部'),
                   ),
                 ),
@@ -418,27 +351,17 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(color: theme.colorScheme.outlineVariant),
-              ),
+              border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
             ),
             child: SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: Text('删除 (${selected.length})'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: theme.colorScheme.error,
-                ),
+                style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error),
                 onPressed: () {
-                  final targets = visible
-                      .where((s) => selected.contains(s.id))
-                      .toList();
-                  _deleteBatch(
-                    targets,
-                    failMessage: '删除失败',
-                    logAction: '批量删除对话失败',
-                  );
+                  final targets = visible.where((s) => selected.contains(s.id)).toList();
+                  _deleteBatch(targets, failMessage: '删除失败', logAction: '批量删除对话失败');
                 },
               ),
             ),
@@ -453,12 +376,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            '对话历史',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text('对话历史', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -468,10 +386,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
                 tooltip: '新建对话',
                 onPressed: _createSession,
               ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: () => Navigator.pop(context),
-              ),
+              IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => Navigator.pop(context)),
             ],
           ),
         ],
@@ -487,35 +402,23 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
       style: theme.textTheme.bodyMedium,
       decoration: InputDecoration(
         hintText: '搜索标题或内容',
-        hintStyle: theme.textTheme.bodyMedium?.copyWith(
-          color: scheme.onSurfaceVariant,
-        ),
+        hintStyle: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
         prefixIcon: Icon(Icons.search, size: 18, color: scheme.onSurfaceVariant),
         suffixIcon: _searchController.text.isEmpty
             ? null
-            : IconButton(
-                icon: const Icon(Icons.clear, size: 18),
-                tooltip: '清空',
-                onPressed: _searchController.clear,
-              ),
+            : IconButton(icon: const Icon(Icons.clear, size: 18), tooltip: '清空', onPressed: _searchController.clear),
         // 圆角收一档：抽屉只有 300 出头宽，用 16 会把填充区撑成胶囊
         filled: true,
         fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
         contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.medium),
-          borderSide: BorderSide.none,
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.medium), borderSide: BorderSide.none),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.medium),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.medium),
-          borderSide: BorderSide(
-            color: scheme.primary.withValues(alpha: 0.5),
-            width: 1.5,
-          ),
+          borderSide: BorderSide(color: scheme.primary.withValues(alpha: 0.5), width: 1.5),
         ),
       ),
     );
@@ -530,16 +433,8 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   }) {
     if (visible.isEmpty) {
       return searching
-          ? const EmptyStateWidget(
-              icon: Icons.search_off,
-              message: '没有匹配的对话',
-              description: '换个关键词试试',
-            )
-          : const EmptyStateWidget(
-              icon: Icons.chat_bubble_outline,
-              message: '暂无对话',
-              description: '点上方图标新建对话',
-            );
+          ? const EmptyStateWidget(icon: Icons.search_off, message: '没有匹配的对话', description: '换个关键词试试')
+          : const EmptyStateWidget(icon: Icons.chat_bubble_outline, message: '暂无对话', description: '点上方图标新建对话');
     }
 
     Widget row(ChatSession session) => _buildTile(
@@ -568,10 +463,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
           ),
           SliverList(
             key: const ValueKey('rows-search'),
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) => row(visible[i]),
-              childCount: visible.length,
-            ),
+            delegate: SliverChildBuilderDelegate((ctx, i) => row(visible[i]), childCount: visible.length),
           ),
         ],
       );
@@ -600,21 +492,14 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
           if (_isExpanded(group))
             SliverList(
               key: ValueKey('rows-${group.id}'),
-              delegate: SliverChildBuilderDelegate(
-                (ctx, i) => row(group.sessions[i]),
-                childCount: group.count,
-              ),
+              delegate: SliverChildBuilderDelegate((ctx, i) => row(group.sessions[i]), childCount: group.count),
             ),
         ],
       ],
     );
   }
 
-  Widget _buildTile(
-    ChatSession session, {
-    required bool isChecked,
-    required String query,
-  }) {
+  Widget _buildTile(ChatSession session, {required bool isChecked, required String query}) {
     return ChatSessionTile(
       // 稳定 key：置顶/取消置顶会把这一行从一个组挪到另一个组，
       // 靠位置匹配会让 State（含菜单锚点 GlobalKey）串到别的会话上。
@@ -675,11 +560,7 @@ class _ChatGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => extent;
 
   @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     // 高度必须锁成 tight：SliverPinnedPersistentHeader 的几何是
@@ -705,29 +586,20 @@ class _ChatGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                         label,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: highlight
-                              ? scheme.primary
-                              : scheme.onSurfaceVariant,
+                          color: highlight ? scheme.primary : scheme.onSurfaceVariant,
                         ),
                       ),
                       if (!expanded && count > 0) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 1,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                           decoration: BoxDecoration(
-                            color: scheme.onSurfaceVariant.withValues(
-                              alpha: 0.12,
-                            ),
+                            color: scheme.onSurfaceVariant.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             '$count',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
+                            style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
                           ),
                         ),
                       ],
@@ -745,11 +617,7 @@ class _ChatGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
             IconButton(
-              icon: Icon(
-                Icons.grid_view,
-                size: 18,
-                color: isBatchMode ? scheme.primary : scheme.onSurfaceVariant,
-              ),
+              icon: Icon(Icons.grid_view, size: 18, color: isBatchMode ? scheme.primary : scheme.onSurfaceVariant),
               tooltip: isBatchMode ? '退出批量选择' : '批量选择',
               visualDensity: VisualDensity.compact,
               onPressed: onToggleBatch,

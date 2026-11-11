@@ -15,13 +15,7 @@ void main() {
   });
 
   testWidgets('QSettingsPage renders tabs and switches between them', (tester) async {
-    await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(
-          home: QSettingsPage(),
-        ),
-      ),
-    );
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: QSettingsPage())));
     await tester.pump();
 
     // 等待异步加载完成

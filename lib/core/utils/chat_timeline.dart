@@ -48,12 +48,7 @@ List<ChatTimelineEntry> buildChatTimelineEntries(List<ChatMessage> messages) {
     if (thought.isNotEmpty) {
       expanded.add(
         ChatTimelineEntry(
-          ChatMessage(
-            role: 'thought',
-            content: thought,
-            thoughtSeconds: msg.thoughtSeconds,
-            timestamp: msg.timestamp,
-          ),
+          ChatMessage(role: 'thought', content: thought, thoughtSeconds: msg.thoughtSeconds, timestamp: msg.timestamp),
         ),
       );
     }
@@ -61,9 +56,7 @@ List<ChatTimelineEntry> buildChatTimelineEntries(List<ChatMessage> messages) {
       continue;
     }
     // 思考已经单独入列，气泡本体不再重复渲染
-    expanded.add(
-      ChatTimelineEntry(thought.isEmpty ? msg : msg.copyWith(thought: ''), i),
-    );
+    expanded.add(ChatTimelineEntry(thought.isEmpty ? msg : msg.copyWith(thought: ''), i));
   }
 
   final entries = <ChatTimelineEntry>[];

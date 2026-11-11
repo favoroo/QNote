@@ -17,8 +17,8 @@ import 'edge_ws.dart';
 class EdgeTtsClient {
   EdgeTtsClient._();
 
-  static const String _wssUrl =
-      'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
+  static const String _wssUrl = 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
+
   /// 帧间空闲超时。分段朗读后单段只有一两百字，45 秒只会把失败感知拖得更久，
   /// 让用户在前一段播完前都等不到降级/报错，故收短到 15 秒。
   static const Duration _synthesisTimeout = Duration(seconds: 15);
@@ -65,9 +65,7 @@ class EdgeTtsClient {
       // 帧间空闲超时：服务端只发了 turn.start 就挂住时，不能把按钮永久留在"生成中"
       await for (final frame in connection.frames.timeout(
         _synthesisTimeout,
-        onTimeout: (sink) => sink.addError(
-          const TtsException('synthesis_timeout', '语音合成超时中断'),
-        ),
+        onTimeout: (sink) => sink.addError(const TtsException('synthesis_timeout', '语音合成超时中断')),
       )) {
         switch (frame) {
           case EdgeWsTextFrame(:final text):
@@ -80,10 +78,7 @@ class EdgeTtsClient {
             final headerLength = (bytes[0] << 8) | bytes[1];
             // 头长超出帧体（帧被截断或畸形）时跳过，避免 sublist 越界抛错
             if (headerLength > bytes.length - 2) continue;
-            final header = utf8.decode(
-              bytes.sublist(2, 2 + headerLength),
-              allowMalformed: true,
-            );
+            final header = utf8.decode(bytes.sublist(2, 2 + headerLength), allowMalformed: true);
             if (_isAudioFrameHeader(header)) {
               audio.add(bytes.sublist(2 + headerLength));
             }
@@ -108,15 +103,10 @@ class EdgeTtsClient {
   ///
   /// 必须整行等于 `Path:audio`：`Path:audio.metadata` 的负载是 JSON，
   /// 用包含匹配会把元数据拼进 mp3 流。
-  static bool _isAudioFrameHeader(String header) =>
-      header.split('\r\n').any((line) => line == 'Path:audio');
+  static bool _isAudioFrameHeader(String header) => header.split('\r\n').any((line) => line == 'Path:audio');
 
   /// 构造 SSML 请求体。[rate] 倍率换算为 Azure prosody 的百分比偏移。
-  static String buildSsml({
-    required String text,
-    required String voice,
-    required double rate,
-  }) {
+  static String buildSsml({required String text, required String voice, required double rate}) {
     final percent = _ratePercent(rate);
     final escaped = text
         .replaceAll('&', '&amp;')
@@ -138,15 +128,11 @@ class EdgeTtsClient {
   }
 
   /// 协议帧时间戳（毫秒精度 UTC，如 2026-09-19T04:23:04.123Z）
-  static String _protocolTimestamp(DateTime utcNow) =>
-      '${utcNow.toIso8601String().substring(0, 23)}Z';
+  static String _protocolTimestamp(DateTime utcNow) => '${utcNow.toIso8601String().substring(0, 23)}Z';
 
   static String _randomHex(int bytesLength) {
     final random = Random.secure();
-    return List.generate(
-      bytesLength,
-      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
-    ).join();
+    return List.generate(bytesLength, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
   }
 
   /// 握手用的 Edge 风格 UA（版本号与 Sec-MS-GEC 令牌声明保持一致）

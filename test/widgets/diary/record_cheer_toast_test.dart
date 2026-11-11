@@ -10,21 +10,14 @@ import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
 ///
 /// 别用「子树里有没有 CustomPaint」来判：Material/Scaffold 树里本来就挂着
 /// painter 为 null 的 CustomPaint，计数会被无关节点污染成 1~2 个。
-bool _flowAnimating(WidgetTester tester) =>
-    tester
-        .widget<AnimatedGradientBorder>(
-          find.descendant(
-            of: find.byType(RecordCheerToast),
-            matching: find.byType(AnimatedGradientBorder),
-          ),
-        )
-        .isAnimating;
-
-double _opacity(WidgetTester tester) => tester
-    .widget<Opacity>(
-      find.descendant(of: find.byType(RecordCheerToast), matching: find.byType(Opacity)),
+bool _flowAnimating(WidgetTester tester) => tester
+    .widget<AnimatedGradientBorder>(
+      find.descendant(of: find.byType(RecordCheerToast), matching: find.byType(AnimatedGradientBorder)),
     )
-    .opacity;
+    .isAnimating;
+
+double _opacity(WidgetTester tester) =>
+    tester.widget<Opacity>(find.descendant(of: find.byType(RecordCheerToast), matching: find.byType(Opacity))).opacity;
 
 class _ToastHost extends StatefulWidget {
   const _ToastHost({required this.event, this.onDismissed});
@@ -52,35 +45,18 @@ class _ToastHostState extends State<_ToastHost> {
     return MaterialApp(
       home: Scaffold(
         body: Center(
-          child: RecordCheerToast(
-            event: _event,
-            leaving: _leaving,
-            onDismissed: widget.onDismissed,
-          ),
+          child: RecordCheerToast(event: _event, leaving: _leaving, onDismissed: widget.onDismissed),
         ),
       ),
     );
   }
 }
 
-CheerEvent _event({
-  CheerLevel level = CheerLevel.full,
-  int id = 1,
-  String? sub = '共3条，太棒了',
-}) {
-  return CheerEvent(
-    id: id,
-    title: level == CheerLevel.full ? '今日完整！' : '今日第$id条',
-    sub: sub,
-    level: level,
-  );
+CheerEvent _event({CheerLevel level = CheerLevel.full, int id = 1, String? sub = '共3条，太棒了'}) {
+  return CheerEvent(id: id, title: level == CheerLevel.full ? '今日完整！' : '今日第$id条', sub: sub, level: level);
 }
 
-Future<_ToastHostState> _pump(
-  WidgetTester tester,
-  _ToastHost host, {
-  Size screen = const Size(600, 900),
-}) async {
+Future<_ToastHostState> _pump(WidgetTester tester, _ToastHost host, {Size screen = const Size(600, 900)}) async {
   tester.view.physicalSize = screen;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -109,10 +85,7 @@ void main() {
     });
 
     testWidgets('普通记录不放流光，保持极轻', (tester) async {
-      await _pump(
-        tester,
-        _ToastHost(event: _event(level: CheerLevel.plain, sub: null)),
-      );
+      await _pump(tester, _ToastHost(event: _event(level: CheerLevel.plain, sub: null)));
 
       expect(_flowAnimating(tester), isFalse);
     });
@@ -121,10 +94,7 @@ void main() {
   group('RecordCheerToast 退场', () {
     testWidgets('leaving 置真后播完退场并回调一次', (tester) async {
       var dismissed = 0;
-      final host = await _pump(
-        tester,
-        _ToastHost(event: _event(), onDismissed: () => dismissed++),
-      );
+      final host = await _pump(tester, _ToastHost(event: _event(), onDismissed: () => dismissed++));
 
       host.leave();
       // 换方向后的第一帧只重新计时、不推进进度，所以要两帧以后才看得出动。
@@ -148,11 +118,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: Center(
-              child: RecordCheerToast(
-                event: _event(),
-                leaving: true,
-                onDismissed: () => dismissed++,
-              ),
+              child: RecordCheerToast(event: _event(), leaving: true, onDismissed: () => dismissed++),
             ),
           ),
         ),
@@ -164,10 +130,7 @@ void main() {
 
     testWidgets('连记多条换事件重播入场，不误触发退场', (tester) async {
       var dismissed = 0;
-      final host = await _pump(
-        tester,
-        _ToastHost(event: _event(id: 1), onDismissed: () => dismissed++),
-      );
+      final host = await _pump(tester, _ToastHost(event: _event(id: 1), onDismissed: () => dismissed++));
 
       host.replace(_event(id: 2));
       await tester.pump(const Duration(milliseconds: 60));
@@ -186,9 +149,7 @@ void main() {
     testWidgets('超长文案单行省略，不撑破胶囊', (tester) async {
       await _pump(
         tester,
-        _ToastHost(
-          event: _event(sub: '这条副标题文案故意拉得很长很长用来验证省略号'),
-        ),
+        _ToastHost(event: _event(sub: '这条副标题文案故意拉得很长很长用来验证省略号')),
         screen: const Size(320, 640),
       );
 
@@ -197,11 +158,7 @@ void main() {
     });
 
     testWidgets('320pt 窄屏不溢出', (tester) async {
-      await _pump(
-        tester,
-        _ToastHost(event: _event()),
-        screen: const Size(320, 640),
-      );
+      await _pump(tester, _ToastHost(event: _event()), screen: const Size(320, 640));
 
       expect(tester.takeException(), isNull);
     });

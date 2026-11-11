@@ -52,9 +52,7 @@ void main() {
 
     test('图片文件不存在返回错误', () async {
       final tool = ViewImageTool();
-      final result = await tool.execute({
-        'path': '${tempDir.path}/not_exist.jpg',
-      });
+      final result = await tool.execute({'path': '${tempDir.path}/not_exist.jpg'});
       expect(result.isError, isTrue);
       expect(result.modelOutput, contains('不存在'));
     });

@@ -5,13 +5,7 @@ void main() {
   group('DiaryRecord getDisplayTime tests', () {
     test('Should return normal time when startTime and endTime are null', () {
       final now = DateTime.now();
-      final record = DiaryRecord(
-        id: '1',
-        title: 'Test',
-        time: now,
-        createdAt: now,
-        updatedAt: now,
-      );
+      final record = DiaryRecord(id: '1', title: 'Test', time: now, createdAt: now, updatedAt: now);
       expect(record.getDisplayTime(), now);
     });
 
@@ -34,7 +28,7 @@ void main() {
     test('Should return endTime when event spans across days and belongs to the second day', () {
       final now = DateTime.now();
       final start = DateTime(2026, 6, 2, 22, 0); // 2 hours in day 1
-      final end = DateTime(2026, 6, 3, 8, 0);   // 8 hours in day 2
+      final end = DateTime(2026, 6, 3, 8, 0); // 8 hours in day 2
       final record = DiaryRecord(
         id: '3',
         title: 'Sleep Event (Belongs to Day 2)',
@@ -50,7 +44,7 @@ void main() {
     test('Should return 23:30 of the first day when event spans across days and belongs to the first day', () {
       final now = DateTime.now();
       final start = DateTime(2026, 6, 2, 20, 0); // 4 hours in day 1
-      final end = DateTime(2026, 6, 3, 1, 0);   // 1 hour in day 2
+      final end = DateTime(2026, 6, 3, 1, 0); // 1 hour in day 2
       final record = DiaryRecord(
         id: '4',
         title: 'Late Night Event (Belongs to Day 1)',
@@ -67,13 +61,7 @@ void main() {
   group('DiaryRecord toMap/fromMap roundtrip', () {
     test('should survive roundtrip with default values', () {
       final now = DateTime(2026, 6, 14, 10, 30);
-      final record = DiaryRecord(
-        id: 'test-1',
-        title: '测试日记',
-        time: now,
-        createdAt: now,
-        updatedAt: now,
-      );
+      final record = DiaryRecord(id: 'test-1', title: '测试日记', time: now, createdAt: now, updatedAt: now);
 
       final map = record.toMap();
       final restored = DiaryRecord.fromMap(map);
@@ -134,13 +122,7 @@ void main() {
   group('DiaryRecord copyWith', () {
     test('should return new instance with changed fields', () {
       final now = DateTime(2026, 6, 14);
-      final record = DiaryRecord(
-        id: '1',
-        title: '原标题',
-        time: now,
-        createdAt: now,
-        updatedAt: now,
-      );
+      final record = DiaryRecord(id: '1', title: '原标题', time: now, createdAt: now, updatedAt: now);
 
       final copied = record.copyWith(title: '新标题', mood: 5);
       expect(copied.title, '新标题');
@@ -151,13 +133,7 @@ void main() {
 
     test('should not mutate original', () {
       final now = DateTime(2026, 6, 14);
-      final record = DiaryRecord(
-        id: '1',
-        title: '原标题',
-        time: now,
-        createdAt: now,
-        updatedAt: now,
-      );
+      final record = DiaryRecord(id: '1', title: '原标题', time: now, createdAt: now, updatedAt: now);
 
       record.copyWith(title: '新标题');
       expect(record.title, '原标题');
@@ -167,13 +143,7 @@ void main() {
   group('DiaryRecord getEffectiveDate', () {
     test('should return time date when no startTime/endTime', () {
       final now = DateTime(2026, 6, 14, 15, 30);
-      final record = DiaryRecord(
-        id: '1',
-        title: 'Test',
-        time: now,
-        createdAt: now,
-        updatedAt: now,
-      );
+      final record = DiaryRecord(id: '1', title: 'Test', time: now, createdAt: now, updatedAt: now);
       expect(record.getEffectiveDate(), DateTime(2026, 6, 14));
     });
 
@@ -196,7 +166,7 @@ void main() {
         title: 'Test',
         time: DateTime(2026, 6, 14),
         startTime: DateTime(2026, 6, 14, 22, 0), // 2h in day 1
-        endTime: DateTime(2026, 6, 15, 8, 0),   // 8h in day 2
+        endTime: DateTime(2026, 6, 15, 8, 0), // 8h in day 2
         createdAt: DateTime(2026, 6, 14),
         updatedAt: DateTime(2026, 6, 14),
       );

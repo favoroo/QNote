@@ -9,34 +9,31 @@ class _SkipDidPopObserver extends NavigatorObserver {
   final FloatingQModalRouteObserver _inner;
 
   @override
-  void didPush(Route route, Route? previousRoute) =>
-      _inner.didPush(route, previousRoute);
+  void didPush(Route route, Route? previousRoute) => _inner.didPush(route, previousRoute);
 
   @override
-  void didRemove(Route route, Route? previousRoute) =>
-      _inner.didRemove(route, previousRoute);
+  void didRemove(Route route, Route? previousRoute) => _inner.didRemove(route, previousRoute);
 
   @override
-  void didReplace({Route? newRoute, Route? oldRoute}) =>
-      _inner.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+  void didReplace({Route? newRoute, Route? oldRoute}) => _inner.didReplace(newRoute: newRoute, oldRoute: oldRoute);
 
   // didPop 故意不转发
 }
 
 Widget _host(List<NavigatorObserver> observers) => MaterialApp(
-      navigatorObservers: observers,
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: TextButton(
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const AlertDialog(title: Text('dialog')),
-            ),
-            child: const Text('open'),
-          ),
+  navigatorObservers: observers,
+  home: Builder(
+    builder: (context) => Scaffold(
+      body: TextButton(
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (_) => const AlertDialog(title: Text('dialog')),
         ),
+        child: const Text('open'),
       ),
-    );
+    ),
+  ),
+);
 
 void main() {
   setUp(() {
@@ -60,15 +57,17 @@ void main() {
   testWidgets('多层弹窗叠加计数，全部关闭后归零', (tester) async {
     final observer = FloatingQModalRouteObserver();
     late final BuildContext hostContext;
-    await tester.pumpWidget(MaterialApp(
-      navigatorObservers: [observer],
-      home: Builder(
-        builder: (context) {
-          hostContext = context;
-          return const Scaffold(body: SizedBox());
-        },
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [observer],
+        home: Builder(
+          builder: (context) {
+            hostContext = context;
+            return const Scaffold(body: SizedBox());
+          },
+        ),
       ),
-    ));
+    );
 
     showDialog<void>(
       context: hostContext,

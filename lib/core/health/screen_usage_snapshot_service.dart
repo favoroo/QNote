@@ -5,11 +5,9 @@ import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/screen_usage_daily_repository.dart';
 
-final screenUsageSnapshotServiceProvider = Provider<ScreenUsageSnapshotService>(
-  (ref) {
-    return ScreenUsageSnapshotService(ref);
-  },
-);
+final screenUsageSnapshotServiceProvider = Provider<ScreenUsageSnapshotService>((ref) {
+  return ScreenUsageSnapshotService(ref);
+});
 
 /// 每日屏幕时长快照采集器
 ///
@@ -69,16 +67,11 @@ class ScreenUsageSnapshotService {
         return false;
       }
 
-      await _ref
-          .read(screenUsageDailyRepositoryProvider)
-          .upsertSnapshots(usable);
+      await _ref.read(screenUsageDailyRepositoryProvider).upsertSnapshots(usable);
       await _recordSnapshotTime();
       return true;
     } catch (e, stack) {
-      LoggerService.instance.error(
-        'ScreenUsageSnapshotService.ensureSnapshot failed: $e',
-        stackTrace: stack,
-      );
+      LoggerService.instance.error('ScreenUsageSnapshotService.ensureSnapshot failed: $e', stackTrace: stack);
       return false;
     } finally {
       _running = false;
@@ -91,9 +84,7 @@ class ScreenUsageSnapshotService {
     if (last == null) {
       return false;
     }
-    final elapsed = DateTime.now().difference(
-      DateTime.fromMillisecondsSinceEpoch(last),
-    );
+    final elapsed = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(last));
     return elapsed < throttle;
   }
 

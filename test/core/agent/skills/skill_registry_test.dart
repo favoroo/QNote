@@ -43,10 +43,40 @@ void main() {
       expect(doc.contains('fetch_url'), isTrue, reason: '应指引用 fetch_url 拉取章节正文');
       // 34 章索引齐全（用章号前缀校验，避免标题被改名导致漏断言）
       for (final ch in [
-        '01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
-        '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
-        '21', '22', '23', '24', '25', '26', '27', '28', '29', '30',
-        '31', '32', '33', '34',
+        '01',
+        '02',
+        '03',
+        '04',
+        '05',
+        '06',
+        '07',
+        '08',
+        '09',
+        '10',
+        '11',
+        '12',
+        '13',
+        '14',
+        '15',
+        '16',
+        '17',
+        '18',
+        '19',
+        '20',
+        '21',
+        '22',
+        '23',
+        '24',
+        '25',
+        '26',
+        '27',
+        '28',
+        '29',
+        '30',
+        '31',
+        '32',
+        '33',
+        '34',
       ]) {
         expect(doc.contains('**$ch '), isTrue, reason: '第 $ch 章索引行应存在');
       }
@@ -64,12 +94,7 @@ void main() {
     });
 
     test('life-decision-guide 支持别名与虚拟路径解析', () {
-      for (final key in [
-        'life',
-        'live-better',
-        'how-to-live',
-        '/skills/life-decision-guide.md',
-      ]) {
+      for (final key in ['life', 'live-better', 'how-to-live', '/skills/life-decision-guide.md']) {
         expect(
           registry.getSkillContent(key),
           registry.getSkillContent('life-decision-guide'),
@@ -85,11 +110,7 @@ void main() {
       final doc = registry.getSkillContent('note-manager')!;
       expect(doc.contains('grep(query'), isTrue, reason: '应保留 grep 调用示例');
       expect(doc.contains('scope: "notes"'), isTrue, reason: '示例应使用 scope 参数');
-      expect(
-        doc.contains('path: "/notes")'),
-        isFalse,
-        reason: 'grep 工具没有 path 参数，旧错误写法不应存在',
-      );
+      expect(doc.contains('path: "/notes")'), isFalse, reason: 'grep 工具没有 path 参数，旧错误写法不应存在');
     });
 
     test('note-manager 覆盖多文件类型与图片插入规范', () {
@@ -117,11 +138,7 @@ void main() {
       expect(doc.contains('score_index.json'), isTrue, reason: '应给出跨长区间的精简评分索引端点');
       expect(doc.contains('dryRun'), isTrue, reason: '批量调整须先预览再落库');
       expect(doc.contains('禁止逐天'), isTrue, reason: '不得用逐天 write_file 代替批量端点');
-      expect(
-        doc.contains('未出现的键保持库里的原值'),
-        isTrue,
-        reason: '必须写明部分更新语义，否则只改一个维度会把其余四维覆盖掉',
-      );
+      expect(doc.contains('未出现的键保持库里的原值'), isTrue, reason: '必须写明部分更新语义，否则只改一个维度会把其余四维覆盖掉');
     });
 
     test('folder-manager 说明系统默认分类', () {
@@ -152,21 +169,9 @@ void main() {
 
     test('frontend-design 覆盖交付、移动端与反模式关键规范', () {
       final doc = registry.getSkillContent('frontend-design')!;
-      expect(
-        doc.contains('width=device-width, initial-scale=1.0'),
-        isTrue,
-        reason: '应强调 viewport 必备',
-      );
-      expect(
-        doc.contains('/notes/<标题>.html'),
-        isTrue,
-        reason: '应说明单文件 HTML 写入路径',
-      );
-      expect(
-        doc.contains('系统浏览器'),
-        isTrue,
-        reason: '应说明外链点击会被系统浏览器接管',
-      );
+      expect(doc.contains('width=device-width, initial-scale=1.0'), isTrue, reason: '应强调 viewport 必备');
+      expect(doc.contains('/notes/<标题>.html'), isTrue, reason: '应说明单文件 HTML 写入路径');
+      expect(doc.contains('系统浏览器'), isTrue, reason: '应说明外链点击会被系统浏览器接管');
       expect(doc.contains('44'), isTrue, reason: '应含触控目标尺寸规范');
       expect(doc.contains('16px'), isTrue, reason: '应含输入框字号规范');
       expect(doc.contains('safe-area'), isTrue, reason: '应含刘海屏安全区适配');
@@ -198,16 +203,10 @@ void main() {
 
     test('保存后进入清单与内容查询，来源标记为 user', () async {
       await registry.saveUserSkill(
-        AgentSkill(
-          name: 'invest-review',
-          description: '投资复盘技能：持仓记录、盈亏归因与月度复盘',
-          content: '# 投资复盘技能\n\n## 1. 复盘流程',
-        ),
+        AgentSkill(name: 'invest-review', description: '投资复盘技能：持仓记录、盈亏归因与月度复盘', content: '# 投资复盘技能\n\n## 1. 复盘流程'),
       );
 
-      final inList = registry.listSkills().firstWhere(
-            (s) => s['name'] == 'invest-review',
-          );
+      final inList = registry.listSkills().firstWhere((s) => s['name'] == 'invest-review');
       expect(inList['origin'], AgentSkillOrigin.user);
       expect(inList['path'], '/skills/invest-review.md');
 
@@ -222,13 +221,7 @@ void main() {
     });
 
     test('持久化到 app_configs 并可重载恢复', () async {
-      await registry.saveUserSkill(
-        AgentSkill(
-          name: 'reading-notes',
-          description: '读书笔记技能',
-          content: '# 读书笔记',
-        ),
-      );
+      await registry.saveUserSkill(AgentSkill(name: 'reading-notes', description: '读书笔记技能', content: '# 读书笔记'));
       final stored = await ConfigRepository.instance.getUserSkills();
       expect(stored.any((s) => s.name == 'reading-notes'), isTrue);
 
@@ -240,37 +233,14 @@ void main() {
 
     test('内置名与别名占用、非法名均被拒绝', () async {
       // 内置主名
-      expect(
-        () => registry.saveUserSkill(
-          AgentSkill(name: 'todo-manager', content: 'x'),
-        ),
-        throwsException,
-      );
+      expect(() => registry.saveUserSkill(AgentSkill(name: 'todo-manager', content: 'x')), throwsException);
       // 内置别名（模糊匹配名同样保留）
-      expect(
-        () => registry.saveUserSkill(
-          AgentSkill(name: 'stats', content: 'x'),
-        ),
-        throwsException,
-      );
+      expect(() => registry.saveUserSkill(AgentSkill(name: 'stats', content: 'x')), throwsException);
       // 非法名（含空白 / 路径分隔符）
-      expect(
-        () => registry.saveUserSkill(
-          AgentSkill(name: 'my skill', content: 'x'),
-        ),
-        throwsException,
-      );
-      expect(
-        () => registry.saveUserSkill(
-          AgentSkill(name: 'a/b', content: 'x'),
-        ),
-        throwsException,
-      );
+      expect(() => registry.saveUserSkill(AgentSkill(name: 'my skill', content: 'x')), throwsException);
+      expect(() => registry.saveUserSkill(AgentSkill(name: 'a/b', content: 'x')), throwsException);
       // 删除内置技能直接拒绝
-      expect(
-        () => registry.deleteUserSkill('note-manager'),
-        throwsException,
-      );
+      expect(() => registry.deleteUserSkill('note-manager'), throwsException);
     });
   });
 
@@ -297,15 +267,9 @@ void main() {
       expect(readBack, contains('晨间例行流程'));
 
       // 二次写入为更新
-      final res2 = await vfs.writeFile(
-        '/skills/morning-routine.md',
-        '---\ndescription: 更新后的描述\n---\n\n# 晨间例行流程 v2',
-      );
+      final res2 = await vfs.writeFile('/skills/morning-routine.md', '---\ndescription: 更新后的描述\n---\n\n# 晨间例行流程 v2');
       expect(res2['status'], 'updated');
-      expect(
-        registry.getUserSkill('morning-routine')!.description,
-        '更新后的描述',
-      );
+      expect(registry.getUserSkill('morning-routine')!.description, '更新后的描述');
 
       // 目录列举自动包含用户技能
       expect(await vfs.listDir('/skills'), contains('morning-routine.md'));
@@ -315,10 +279,7 @@ void main() {
     });
 
     test('无 frontmatter 写入时从正文提取描述，纯标题正文取标题文本', () async {
-      await vfs.writeFile(
-        '/skills/no-meta-skill.md',
-        '# 无元数据技能\n\n这是第一个普通段落，作为描述回退来源。',
-      );
+      await vfs.writeFile('/skills/no-meta-skill.md', '# 无元数据技能\n\n这是第一个普通段落，作为描述回退来源。');
       final skill = registry.getUserSkill('no-meta-skill')!;
       expect(skill.description, contains('这是第一个普通段落'));
       await vfs.deleteFile('/skills/no-meta-skill.md');
@@ -331,14 +292,8 @@ void main() {
     });
 
     test('内置技能写入与删除均被拒绝，内容不受影响', () async {
-      expect(
-        () => vfs.writeFile('/skills/todo-manager.md', '# 覆盖内置技能'),
-        throwsException,
-      );
-      expect(
-        () => vfs.deleteFile('/skills/todo-manager.md'),
-        throwsException,
-      );
+      expect(() => vfs.writeFile('/skills/todo-manager.md', '# 覆盖内置技能'), throwsException);
+      expect(() => vfs.deleteFile('/skills/todo-manager.md'), throwsException);
       expect(registry.getSkillContent('todo-manager'), isNotNull);
     });
   });
@@ -366,29 +321,18 @@ void main() {
     });
 
     test('归档后对索引、内容查询与目录列举不可见，恢复后回归', () async {
-      await registry.saveUserSkill(
-        AgentSkill(
-          name: 'archived-demo',
-          description: '用于归档验证的技能',
-          content: '# 归档演示',
-        ),
-      );
+      await registry.saveUserSkill(AgentSkill(name: 'archived-demo', description: '用于归档验证的技能', content: '# 归档演示'));
       expect(registry.getSkillContent('archived-demo'), isNotNull);
 
       await registry.archiveUserSkill('archived-demo', true);
       expect(registry.getUserSkill('archived-demo')!.archived, isTrue);
       // 默认清单与内容查询均不可见
-      expect(
-        registry.listSkills().any((s) => s['name'] == 'archived-demo'),
-        isFalse,
-      );
+      expect(registry.listSkills().any((s) => s['name'] == 'archived-demo'), isFalse);
       expect(registry.getSkillContent('archived-demo'), isNull);
       expect(registry.resolveSkillName('archived-demo'), isNull);
       // 管理页视角（includeArchived）可见且带标记
       final fullList = registry.listSkills(includeArchived: true);
-      final archivedEntry = fullList.firstWhere(
-        (s) => s['name'] == 'archived-demo',
-      );
+      final archivedEntry = fullList.firstWhere((s) => s['name'] == 'archived-demo');
       expect(archivedEntry['archived'], 'true');
       // VFS 目录列举同步隐藏
       expect(await vfs.listDir('/skills'), isNot(contains('archived-demo.md')));
@@ -396,10 +340,7 @@ void main() {
       // 恢复后回归默认可见
       await registry.archiveUserSkill('archived-demo', false);
       expect(registry.getSkillContent('archived-demo'), isNotNull);
-      expect(
-        registry.listSkills().any((s) => s['name'] == 'archived-demo'),
-        isTrue,
-      );
+      expect(registry.listSkills().any((s) => s['name'] == 'archived-demo'), isTrue);
     });
 
     test('使用统计：累加次数、更新时间并持久化', () async {
@@ -411,9 +352,7 @@ void main() {
       expect(stats['todo-manager']!.lastUsedAt, isNotNull);
 
       // 用户技能同样可统计
-      await registry.saveUserSkill(
-        AgentSkill(name: 'archived-demo', description: 'x', content: '# x'),
-      );
+      await registry.saveUserSkill(AgentSkill(name: 'archived-demo', description: 'x', content: '# x'));
       await SkillUsageTracker.instance.record('archived-demo');
       final stats2 = await SkillUsageTracker.instance.getStats();
       expect(stats2['archived-demo']!.count, 1);

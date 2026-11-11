@@ -13,10 +13,7 @@ void main() {
     });
 
     test('模型名里的分隔符保留在模型名一侧', () {
-      expect(
-        AiModelRef.tryParse('p1::vendor::model'),
-        const AiModelRef(providerId: 'p1', modelName: 'vendor::model'),
-      );
+      expect(AiModelRef.tryParse('p1::vendor::model'), const AiModelRef(providerId: 'p1', modelName: 'vendor::model'));
     });
 
     test('旧版裸配置 id（无分隔符）解析为 null，按未绑定处理', () {
@@ -66,20 +63,17 @@ void main() {
       AiProvider build({
         String baseUrl = 'https://x/v1',
         List<String> keys = const ['sk'],
-        List<AiProviderModel> models = const [
-          AiProviderModel(id: 'm', name: 'm'),
-        ],
-      }) =>
-          AiProvider(
-            id: 'p',
-            name: 'p',
-            providerType: 'openai',
-            baseUrl: baseUrl,
-            apiKeys: keys,
-            models: models,
-            createdAt: DateTime(2026),
-            updatedAt: DateTime(2026),
-          );
+        List<AiProviderModel> models = const [AiProviderModel(id: 'm', name: 'm')],
+      }) => AiProvider(
+        id: 'p',
+        name: 'p',
+        providerType: 'openai',
+        baseUrl: baseUrl,
+        apiKeys: keys,
+        models: models,
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      );
 
       expect(build().isUsable, isTrue);
       expect(build(baseUrl: '').isUsable, isFalse);
@@ -89,16 +83,16 @@ void main() {
 
     test('厂商级停用：默认启用、落库往返、缺列按启用处理', () {
       AiProvider build({bool enabled = true}) => AiProvider(
-            id: 'p',
-            name: 'p',
-            providerType: 'openai',
-            baseUrl: 'https://x/v1',
-            apiKeys: const ['sk'],
-            models: const [AiProviderModel(id: 'm', name: 'm')],
-            enabled: enabled,
-            createdAt: DateTime(2026),
-            updatedAt: DateTime(2026),
-          );
+        id: 'p',
+        name: 'p',
+        providerType: 'openai',
+        baseUrl: 'https://x/v1',
+        apiKeys: const ['sk'],
+        models: const [AiProviderModel(id: 'm', name: 'm')],
+        enabled: enabled,
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      );
 
       expect(build().enabled, isTrue);
       expect(build().toMap()['enabled'], 1);
@@ -251,11 +245,7 @@ void main() {
     });
 
     test('旧 JSON 没有元数据字段时按未知处理，不是 0 / false', () {
-      final restored = AiProviderModel.fromMap({
-        'id': 'm',
-        'name': 'm',
-        'reasoning_effort': 'high',
-      });
+      final restored = AiProviderModel.fromMap({'id': 'm', 'name': 'm', 'reasoning_effort': 'high'});
 
       expect(restored.rate, isNull);
       expect(restored.rateWas, isNull);
@@ -302,11 +292,7 @@ void main() {
     });
 
     test('copyWith 保留元数据，只改思考档位', () {
-      final model = AiProviderModel.of(
-        'm',
-        rate: 0.25,
-        contextWindow: 1000000,
-      );
+      final model = AiProviderModel.of('m', rate: 0.25, contextWindow: 1000000);
 
       final updated = model.copyWith(reasoningEffort: ReasoningEffort.low);
 
@@ -320,25 +306,13 @@ void main() {
     test('toMap / fromMap 往返，并按由弱到强排序', () {
       final model = AiProviderModel.of(
         'gpt-5.4-mini',
-        reasoningEfforts: [
-          ReasoningEffort.max,
-          ReasoningEffort.minimal,
-          ReasoningEffort.low,
-        ],
+        reasoningEfforts: [ReasoningEffort.max, ReasoningEffort.minimal, ReasoningEffort.low],
       );
 
       final restored = AiProviderModel.fromMap(model.toMap());
 
-      expect(restored.reasoningEfforts, [
-        ReasoningEffort.minimal,
-        ReasoningEffort.low,
-        ReasoningEffort.max,
-      ]);
-      expect(restored.toMap()['reasoning_efforts'], [
-        'minimal',
-        'low',
-        'max',
-      ]);
+      expect(restored.reasoningEfforts, [ReasoningEffort.minimal, ReasoningEffort.low, ReasoningEffort.max]);
+      expect(restored.toMap()['reasoning_efforts'], ['minimal', 'low', 'max']);
     });
 
     test('未设置自定义档位时不写字段，旧数据按自动识别处理', () {
@@ -365,45 +339,24 @@ void main() {
       // 未传自定义档位时保留原集合
       final updated = model.copyWith(reasoningEffort: ReasoningEffort.low);
       expect(updated.reasoningEffort, ReasoningEffort.low);
-      expect(updated.reasoningEfforts, [
-        ReasoningEffort.low,
-        ReasoningEffort.high,
-      ]);
+      expect(updated.reasoningEfforts, [ReasoningEffort.low, ReasoningEffort.high]);
     });
 
     test('withMetadataFrom 保留自定义档位', () {
-      final local = AiProviderModel.of(
-        'm',
-        reasoningEfforts: [ReasoningEffort.xhigh],
-      );
+      final local = AiProviderModel.of('m', reasoningEfforts: [ReasoningEffort.xhigh]);
 
-      final merged = local.withMetadataFrom(
-        AiProviderModel.of('m', rate: 0.5),
-      );
+      final merged = local.withMetadataFrom(AiProviderModel.of('m', rate: 0.5));
 
       expect(merged.reasoningEfforts, [ReasoningEffort.xhigh]);
       expect(merged.rate, 0.5);
     });
 
     test('相等性包含档位集合内容，顺序归一后视为相等', () {
-      final a = AiProviderModel.of(
-        'm',
-        reasoningEfforts: [ReasoningEffort.low, ReasoningEffort.high],
-      );
-      final b = AiProviderModel.of(
-        'm',
-        reasoningEfforts: [ReasoningEffort.high, ReasoningEffort.low],
-      );
+      final a = AiProviderModel.of('m', reasoningEfforts: [ReasoningEffort.low, ReasoningEffort.high]);
+      final b = AiProviderModel.of('m', reasoningEfforts: [ReasoningEffort.high, ReasoningEffort.low]);
 
       expect(a, b);
-      expect(
-        a ==
-            AiProviderModel.of(
-              'm',
-              reasoningEfforts: [ReasoningEffort.high],
-            ),
-        isFalse,
-      );
+      expect(a == AiProviderModel.of('m', reasoningEfforts: [ReasoningEffort.high]), isFalse);
     });
   });
 }

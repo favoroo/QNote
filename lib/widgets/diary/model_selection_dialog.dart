@@ -16,10 +16,7 @@ export 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart'
 /// `AiRoles.timelineOptimization` 绑定并刷新 [aiRolesProvider]。
 /// 可选项同时包含具体模型与模型路由组（组内模型轮换可分散提取调用限流）。
 /// 返回选中的展示名；取消或未变更返回 null；无可用模型时弹添加引导。
-Future<String?> showTimelineModelSelector(
-  BuildContext context,
-  WidgetRef ref,
-) async {
+Future<String?> showTimelineModelSelector(BuildContext context, WidgetRef ref) async {
   final providers = await ref.read(aiProviderListProvider.future);
   final groups = await ref.read(aiRouteGroupListProvider.future);
   if (!context.mounted) return null;
@@ -32,9 +29,7 @@ Future<String?> showTimelineModelSelector(
   final roles = await ref.read(aiRolesProvider.future);
   if (!context.mounted) return null;
   final current = roles?.timelineOptimization;
-  final effective = isBindingUsable(current, providers, groups)
-      ? current
-      : defaultModelRef(providers);
+  final effective = isBindingUsable(current, providers, groups) ? current : defaultModelRef(providers);
   final result = await showModelPickerSheet(
     context,
     providers: providers,
@@ -63,7 +58,7 @@ Future<String> timelineModelDisplayName(WidgetRef ref) async {
 }
 
 String _defaultDisplayName(List<AiProvider> providers) {
-  final provider = providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
-      providers.where((p) => p.isUsable).firstOrNull;
+  final provider =
+      providers.where((p) => p.isDefault && p.isUsable).firstOrNull ?? providers.where((p) => p.isUsable).firstOrNull;
   return provider?.firstModel?.name ?? '未配置模型';
 }

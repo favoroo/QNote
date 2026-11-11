@@ -98,9 +98,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final latest = latestThoughtLine(widget.thought);
-    final durationText = widget.isStreaming
-        ? ''
-        : thinkingDurationLabel(widget.durationSeconds);
+    final durationText = widget.isStreaming ? '' : thinkingDurationLabel(widget.durationSeconds);
 
     return AnimatedSize(
       duration: AppDurations.medium,
@@ -120,16 +118,10 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                 button: true,
                 label: _expanded ? '收起思考' : '展开思考',
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 5,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
                   child: Row(
                     children: [
-                      _ThinkingGlyph(
-                        isStreaming: widget.isStreaming,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      _ThinkingGlyph(isStreaming: widget.isStreaming, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 7),
                       Text(
                         widget.label,
@@ -142,13 +134,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                       if (widget.isStreaming)
                         _StreamingThoughtClock(startedAt: widget.startedAt)
                       else if (durationText.isNotEmpty)
-                        Text(
-                          ' · $durationText',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.outline,
-                          ),
-                        ),
+                        Text(' · $durationText', style: TextStyle(fontSize: 12, color: colorScheme.outline)),
                       const SizedBox(width: 8),
                       Expanded(
                         child: _expanded
@@ -157,8 +143,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                                 text: latest,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant
-                                      .withValues(alpha: 0.75),
+                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
                                 ),
                               ),
                       ),
@@ -166,11 +151,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                         turns: _expanded ? 0.5 : 0,
                         duration: AppMotion.duration(context, AppDurations.normal),
                         curve: AppCurves.emphasized,
-                        child: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 16,
-                          color: colorScheme.outline,
-                        ),
+                        child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: colorScheme.outline),
                       ),
                     ],
                   ),
@@ -185,23 +166,15 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.35,
-                  ),
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-                  ),
+                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.35)),
                 ),
                 child: ThoughtTailScrollView(
                   text: widget.thought,
                   maxHeight: 320,
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                  textStyle: TextStyle(
-                    fontSize: 12,
-                    height: 1.6,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  textStyle: TextStyle(fontSize: 12, height: 1.6, color: colorScheme.onSurfaceVariant),
                 ),
               ),
             ),
@@ -222,8 +195,7 @@ class _ThinkingGlyph extends StatefulWidget {
   State<_ThinkingGlyph> createState() => _ThinkingGlyphState();
 }
 
-class _ThinkingGlyphState extends State<_ThinkingGlyph>
-    with SingleTickerProviderStateMixin {
+class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
@@ -266,10 +238,7 @@ class _ThinkingGlyphState extends State<_ThinkingGlyph>
       return icon;
     }
     return FadeTransition(
-      opacity: Tween(
-        begin: 0.5,
-        end: 1.0,
-      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      opacity: Tween(begin: 0.5, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
       child: icon,
     );
   }
@@ -323,19 +292,11 @@ class _StreamingThoughtClockState extends State<_StreamingThoughtClock> {
     if (startedAt == null) {
       return const SizedBox.shrink();
     }
-    final label = thinkingDurationLabel(
-      DateTime.now().difference(startedAt).inSeconds,
-    );
+    final label = thinkingDurationLabel(DateTime.now().difference(startedAt).inSeconds);
     if (label.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Text(
-      ' · $label',
-      style: TextStyle(
-        fontSize: 12,
-        color: Theme.of(context).colorScheme.outline,
-      ),
-    );
+    return Text(' · $label', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline));
   }
 }
 
@@ -356,9 +317,7 @@ class _LatestThoughtLineState extends State<_LatestThoughtLine> {
   /// 是否自动跟随到最右（最新）；用户向左拖离后暂停
   bool _follow = true;
 
-  bool get _isNearTail =>
-      !_controller.hasClients ||
-      _controller.position.maxScrollExtent - _controller.offset < 2;
+  bool get _isNearTail => !_controller.hasClients || _controller.position.maxScrollExtent - _controller.offset < 2;
 
   @override
   void initState() {
@@ -406,21 +365,14 @@ class _LatestThoughtLineState extends State<_LatestThoughtLine> {
         shaderCallback: (rect) => LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: showLeftFade
-              ? const [Colors.transparent, Colors.white]
-              : const [Colors.white, Colors.white],
+          colors: showLeftFade ? const [Colors.transparent, Colors.white] : const [Colors.white, Colors.white],
           stops: showLeftFade ? const [0.0, 0.18] : null,
         ).createShader(rect),
         blendMode: BlendMode.dstIn,
         child: SingleChildScrollView(
           controller: _controller,
           scrollDirection: Axis.horizontal,
-          child: Text(
-            widget.text,
-            maxLines: 1,
-            softWrap: false,
-            style: widget.style,
-          ),
+          child: Text(widget.text, maxLines: 1, softWrap: false, style: widget.style),
         ),
       ),
     );

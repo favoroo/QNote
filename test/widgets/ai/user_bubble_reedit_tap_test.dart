@@ -18,64 +18,57 @@ Widget _harness(UserBubbleReeditTap tap) => MaterialApp(
   ),
 );
 
-UserBubbleReeditTap _tapWidget({
-  bool enabled = true,
-  bool active = false,
-  required VoidCallback onTap,
-}) => UserBubbleReeditTap(
-  enabled: enabled,
-  active: active,
-  onTap: onTap,
-  // 气泡定宽右对齐，复刻真实行布局：用户气泡 maxWidth 恒小于屏宽，行左必留空档，
-  // 「点空档算不算命中」这条用例才有地方下指
-  child: const Align(
-    alignment: Alignment.centerRight,
-    child: SizedBox(
-      key: _bubbleKey,
-      width: 160,
-      height: 40,
-      child: ColoredBox(
-        color: Color(0xFF0000AA),
-        child: Center(child: Text('帮我记一条待办')),
+UserBubbleReeditTap _tapWidget({bool enabled = true, bool active = false, required VoidCallback onTap}) =>
+    UserBubbleReeditTap(
+      enabled: enabled,
+      active: active,
+      onTap: onTap,
+      // 气泡定宽右对齐，复刻真实行布局：用户气泡 maxWidth 恒小于屏宽，行左必留空档，
+      // 「点空档算不算命中」这条用例才有地方下指
+      child: const Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          key: _bubbleKey,
+          width: 160,
+          height: 40,
+          child: ColoredBox(
+            color: Color(0xFF0000AA),
+            child: Center(child: Text('帮我记一条待办')),
+          ),
+        ),
       ),
-    ),
-  ),
-);
+    );
 
 /// 取承载层自己的背景（未按下时 color 为 null）
 Color? _highlightColor(WidgetTester tester) =>
-    (tester.widget<AnimatedContainer>(find.byType(AnimatedContainer)).decoration
-            as BoxDecoration?)
-        ?.color;
+    (tester.widget<AnimatedContainer>(find.byType(AnimatedContainer)).decoration as BoxDecoration?)?.color;
 
 void main() {
   var hapticCount = 0;
 
   setUp(() {
     hapticCount = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'HapticFeedback.vibrate') hapticCount++;
-          return null;
-        });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') hapticCount++;
+        return null;
+      },
+    );
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    );
   });
 
   testWidgets('不再挂编辑图标：点击已不具破坏性，常驻图标会误导成撤回按钮', (tester) async {
     await tester.pumpWidget(_harness(_tapWidget(onTap: () {})));
 
     expect(find.byIcon(Icons.edit_note_rounded), findsNothing);
-    expect(
-      find.descendant(
-        of: find.byType(UserBubbleReeditTap),
-        matching: find.byType(Tooltip),
-      ),
-      findsNothing,
-    );
+    expect(find.descendant(of: find.byType(UserBubbleReeditTap), matching: find.byType(Tooltip)), findsNothing);
   });
 
   testWidgets('编辑态常驻淡底色，非编辑态未按下无背景', (tester) async {
@@ -101,9 +94,7 @@ void main() {
 
   testWidgets('禁用态仍上抛（由页面 Toast 说明原因）但不震动', (tester) async {
     var taps = 0;
-    await tester.pumpWidget(
-      _harness(_tapWidget(enabled: false, onTap: () => taps++)),
-    );
+    await tester.pumpWidget(_harness(_tapWidget(enabled: false, onTap: () => taps++)));
 
     await tester.tap(find.byKey(_bubbleKey));
     await tester.pumpAndSettle();
@@ -116,9 +107,7 @@ void main() {
     await tester.pumpWidget(_harness(_tapWidget(onTap: () {})));
     expect(_highlightColor(tester), isNull);
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(_bubbleKey)),
-    );
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(_bubbleKey)));
     // 列表里有拖拽识别器竞争，onTapDown 要等 kPressTimeout 才落定（与 InkWell 一致）
     await tester.pump(kPressTimeout + const Duration(milliseconds: 20));
     final pressed = _highlightColor(tester);
@@ -134,9 +123,7 @@ void main() {
   testWidgets('禁用态按下不给高亮反馈', (tester) async {
     await tester.pumpWidget(_harness(_tapWidget(enabled: false, onTap: () {})));
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(_bubbleKey)),
-    );
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(_bubbleKey)));
     await tester.pump(kPressTimeout + const Duration(milliseconds: 20));
     expect(_highlightColor(tester), isNull);
 
@@ -148,9 +135,7 @@ void main() {
     var taps = 0;
     await tester.pumpWidget(_harness(_tapWidget(onTap: () => taps++)));
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(_bubbleKey)),
-    );
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(_bubbleKey)));
     await tester.pump(kPressTimeout + const Duration(milliseconds: 20));
     expect(_highlightColor(tester), isNotNull); // 起手时先给了高亮
 

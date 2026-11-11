@@ -185,8 +185,7 @@ class AiAccount {
       alias: alias ?? this.alias,
       accessToken: accessToken ?? this.accessToken,
       refreshToken: refreshToken ?? this.refreshToken,
-      expiresAt:
-          identical(expiresAt, _unset) ? this.expiresAt : expiresAt as DateTime?,
+      expiresAt: identical(expiresAt, _unset) ? this.expiresAt : expiresAt as DateTime?,
       uid: uid ?? this.uid,
       displayName: displayName ?? this.displayName,
       phone: phone ?? this.phone,

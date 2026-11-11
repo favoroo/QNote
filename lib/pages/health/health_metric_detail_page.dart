@@ -15,13 +15,7 @@ enum HealthMetricKind { sleep, heartRate, vitals, sport }
 /// 传的是**已加载好的数据**而不是日期：主看板已经把 `HealthDailyMetrics` 读进内存，
 /// 详情页再走一遍 Provider/DB 只会多出加载态与竞态，也让页面难以用 fixture 直接测。
 class HealthDetailArgs {
-  const HealthDetailArgs({
-    required this.kind,
-    required this.title,
-    this.dateLabel,
-    this.metrics,
-    this.sport,
-  });
+  const HealthDetailArgs({required this.kind, required this.title, this.dateLabel, this.metrics, this.sport});
 
   final HealthMetricKind kind;
   final String title;

@@ -14,14 +14,9 @@ class AiTokenUsage {
   /// 总计 token；服务端未上报时由输入 + 输出兜底
   final int totalTokens;
 
-  const AiTokenUsage({
-    required this.promptTokens,
-    required this.completionTokens,
-    required this.totalTokens,
-  });
+  const AiTokenUsage({required this.promptTokens, required this.completionTokens, required this.totalTokens});
 
-  bool get isEmpty =>
-      promptTokens == 0 && completionTokens == 0 && totalTokens == 0;
+  bool get isEmpty => promptTokens == 0 && completionTokens == 0 && totalTokens == 0;
 
   /// 从响应体（含流式最后一帧）解析 usage；服务端未上报时返回 null
   ///
@@ -39,14 +34,8 @@ class AiTokenUsage {
       return int.tryParse(raw?.toString() ?? '');
     }
 
-    final prompt =
-        read('prompt_tokens') ??
-        read('input_tokens') ??
-        read('promptTokenCount');
-    final completion =
-        read('completion_tokens') ??
-        read('output_tokens') ??
-        read('candidatesTokenCount');
+    final prompt = read('prompt_tokens') ?? read('input_tokens') ?? read('promptTokenCount');
+    final completion = read('completion_tokens') ?? read('output_tokens') ?? read('candidatesTokenCount');
     final reportedTotal = read('total_tokens') ?? read('totalTokenCount');
 
     final promptTokens = prompt ?? 0;
@@ -54,16 +43,10 @@ class AiTokenUsage {
     final derivedTotal = promptTokens + completionTokens;
     // 部分服务商（如 Gemini）的 total 会额外包含思考 token，比输入 + 输出大；
     // 少数中转则把 total 写成 0，此时用输入 + 输出兜底，避免总计被抹平。
-    final totalTokens = reportedTotal != null && reportedTotal >= derivedTotal
-        ? reportedTotal
-        : derivedTotal;
+    final totalTokens = reportedTotal != null && reportedTotal >= derivedTotal ? reportedTotal : derivedTotal;
     if (totalTokens == 0) return null;
 
-    return AiTokenUsage(
-      promptTokens: promptTokens,
-      completionTokens: completionTokens,
-      totalTokens: totalTokens,
-    );
+    return AiTokenUsage(promptTokens: promptTokens, completionTokens: completionTokens, totalTokens: totalTokens);
   }
 
   @override
@@ -162,8 +145,7 @@ class AiTokenUsageBreakdown {
   bool get isProviderTotal => modelName.isEmpty;
 
   /// 平均每次请求消耗的 token
-  int get averagePerRequest =>
-      requestCount <= 0 ? 0 : totalTokens ~/ requestCount;
+  int get averagePerRequest => requestCount <= 0 ? 0 : totalTokens ~/ requestCount;
 
   @override
   String toString() =>
@@ -193,18 +175,13 @@ class AiTokenUsageDetail {
 
   /// 空明细（读库失败或该范围没有记录时展示空态）
   factory AiTokenUsageDetail.empty(AiTokenUsagePeriod period) {
-    return AiTokenUsageDetail(
-      period: period,
-      summary: AiTokenUsageSummary.empty,
-    );
+    return AiTokenUsageDetail(period: period, summary: AiTokenUsageSummary.empty);
   }
 
   bool get hasData => summary.hasData;
 
   /// 平均每次请求消耗的 token
-  int get averagePerRequest => summary.requestCount <= 0
-      ? 0
-      : summary.totalTokens ~/ summary.requestCount;
+  int get averagePerRequest => summary.requestCount <= 0 ? 0 : summary.totalTokens ~/ summary.requestCount;
 
   @override
   String toString() =>

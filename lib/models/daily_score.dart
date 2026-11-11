@@ -2,14 +2,14 @@ import 'dart:convert';
 
 class DailyScore {
   final String id;
-  final DateTime date;                    // 评分日期
-  final int totalScore;                   // 总分 (0-100)
+  final DateTime date; // 评分日期
+  final int totalScore; // 总分 (0-100)
   final Map<String, int> dimensionScores; // 各维度分数
-  final String summary;                   // AI 生成的总结
-  final String suggestions;               // AI 生成的建议
-  final int recordCount;                  // 当天记录数量
-  final DateTime createdAt;               // 评分时间
-  final DateTime updatedAt;               // 更新时间
+  final String summary; // AI 生成的总结
+  final String suggestions; // AI 生成的建议
+  final int recordCount; // 当天记录数量
+  final DateTime createdAt; // 评分时间
+  final DateTime updatedAt; // 更新时间
 
   DailyScore({
     required this.id,

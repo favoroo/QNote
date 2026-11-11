@@ -17,13 +17,7 @@ class StatsCard extends StatelessWidget {
   /// 图标颜色。
   final Color iconColor;
 
-  const StatsCard({
-    super.key,
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.iconColor,
-  });
+  const StatsCard({super.key, required this.title, required this.value, required this.icon, required this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -61,11 +55,7 @@ class StatsCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppPalette.textPrimary(isDark),
-            ),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppPalette.textPrimary(isDark)),
             overflow: TextOverflow.ellipsis,
           ),
         ],

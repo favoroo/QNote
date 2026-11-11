@@ -38,33 +38,20 @@ class UserProfileNotifier extends StateNotifier<UserProfile?> {
   }
 
   Future<void> addWeightRecord(double weight, {DateTime? time}) async {
-    final profile = state ?? UserProfile(
-      id: '',
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-    final record = WeightRecord(
-      id: const Uuid().v4(),
-      weight: weight,
-      time: time ?? DateTime.now(),
-    );
-    final updated = profile.copyWith(
-      weightHistory: [...profile.weightHistory, record],
-    );
+    final profile = state ?? UserProfile(id: '', createdAt: DateTime.now(), updatedAt: DateTime.now());
+    final record = WeightRecord(id: const Uuid().v4(), weight: weight, time: time ?? DateTime.now());
+    final updated = profile.copyWith(weightHistory: [...profile.weightHistory, record]);
     await save(updated);
   }
 
   Future<void> deleteWeightRecord(String recordId) async {
     final profile = state;
     if (profile == null) return;
-    final updated = profile.copyWith(
-      weightHistory: profile.weightHistory.where((r) => r.id != recordId).toList(),
-    );
+    final updated = profile.copyWith(weightHistory: profile.weightHistory.where((r) => r.id != recordId).toList());
     await save(updated);
   }
 }
 
-final userProfileNotifierProvider =
-    StateNotifierProvider<UserProfileNotifier, UserProfile?>((ref) {
+final userProfileNotifierProvider = StateNotifierProvider<UserProfileNotifier, UserProfile?>((ref) {
   return UserProfileNotifier(ref);
 });

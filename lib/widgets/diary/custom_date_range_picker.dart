@@ -15,12 +15,10 @@ class CustomDateRangePickerDialog extends StatefulWidget {
   });
 
   @override
-  State<CustomDateRangePickerDialog> createState() =>
-      _CustomDateRangePickerDialogState();
+  State<CustomDateRangePickerDialog> createState() => _CustomDateRangePickerDialogState();
 }
 
-class _CustomDateRangePickerDialogState
-    extends State<CustomDateRangePickerDialog> {
+class _CustomDateRangePickerDialogState extends State<CustomDateRangePickerDialog> {
   late DateTime _focusedMonth;
   DateTime? _startDate;
   DateTime? _endDate;
@@ -46,8 +44,7 @@ class _CustomDateRangePickerDialogState
         prevYear -= 1;
       }
       final newMonth = DateTime(prevYear, prevMonth);
-      if (newMonth.isAfter(widget.firstDate) ||
-          newMonth.isAtSameMomentAs(widget.firstDate)) {
+      if (newMonth.isAfter(widget.firstDate) || newMonth.isAtSameMomentAs(widget.firstDate)) {
         _focusedMonth = newMonth;
       }
     });
@@ -62,8 +59,7 @@ class _CustomDateRangePickerDialogState
         nextYear += 1;
       }
       final newMonth = DateTime(nextYear, nextMonth);
-      if (newMonth.isBefore(widget.lastDate) ||
-          newMonth.isAtSameMomentAs(widget.lastDate)) {
+      if (newMonth.isBefore(widget.lastDate) || newMonth.isAtSameMomentAs(widget.lastDate)) {
         _focusedMonth = newMonth;
       }
     });
@@ -239,10 +235,7 @@ class _CustomDateRangePickerDialogState
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left, size: 24),
-                  onPressed: _prevMonth,
-                ),
+                IconButton(icon: const Icon(Icons.chevron_left, size: 24), onPressed: _prevMonth),
                 Text(
                   monthName,
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -250,10 +243,7 @@ class _CustomDateRangePickerDialogState
                     color: colorScheme.onSurface,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right, size: 24),
-                  onPressed: _nextMonth,
-                ),
+                IconButton(icon: const Icon(Icons.chevron_right, size: 24), onPressed: _nextMonth),
               ],
             ),
             const SizedBox(height: 12),
@@ -296,12 +286,8 @@ class _CustomDateRangePickerDialogState
                           decoration: BoxDecoration(
                             color: (isStart || isEnd)
                                 ? colorScheme.primary
-                                : (inRange
-                                    ? colorScheme.primary.withValues(alpha: 0.1)
-                                    : null),
-                            shape: (isStart || isEnd)
-                                ? BoxShape.circle
-                                : BoxShape.rectangle,
+                                : (inRange ? colorScheme.primary.withValues(alpha: 0.1) : null),
+                            shape: (isStart || isEnd) ? BoxShape.circle : BoxShape.rectangle,
                             borderRadius: (isStart || isEnd) ? null : BorderRadius.circular(4),
                           ),
                           child: Center(
@@ -312,8 +298,8 @@ class _CustomDateRangePickerDialogState
                                 color: (isStart || isEnd)
                                     ? Colors.white
                                     : isCurrentMonth
-                                        ? colorScheme.onSurface
-                                        : colorScheme.onSurface.withValues(alpha: 0.3),
+                                    ? colorScheme.onSurface
+                                    : colorScheme.onSurface.withValues(alpha: 0.3),
                               ),
                             ),
                           ),
@@ -332,10 +318,7 @@ class _CustomDateRangePickerDialogState
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    '取消',
-                    style: TextStyle(color: colorScheme.primary),
-                  ),
+                  child: Text('取消', style: TextStyle(color: colorScheme.primary)),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
@@ -346,10 +329,7 @@ class _CustomDateRangePickerDialogState
                   onPressed: _startDate == null
                       ? null
                       : () {
-                          final range = DateTimeRange(
-                            start: _startDate!,
-                            end: _endDate ?? _startDate!,
-                          );
+                          final range = DateTimeRange(start: _startDate!, end: _endDate ?? _startDate!);
                           Navigator.pop(context, range);
                         },
                   child: const Text('确定'),

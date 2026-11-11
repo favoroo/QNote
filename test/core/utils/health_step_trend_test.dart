@@ -2,9 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/core/utils/health_step_trend.dart';
 
 Map<DateTime, int> _steps(Map<int, int> dayToSteps, {int month = 3, int year = 2026}) {
-  return {
-    for (final entry in dayToSteps.entries) DateTime(year, month, entry.key): entry.value,
-  };
+  return {for (final entry in dayToSteps.entries) DateTime(year, month, entry.key): entry.value};
 }
 
 void main() {
@@ -80,18 +78,12 @@ void main() {
 
   group('stepAxisLabelInterval', () {
     test('宽度足够时每个桶都给标签', () {
-      expect(
-        stepAxisLabelInterval(bucketCount: 9, plotWidth: 300, minLabelWidth: 30),
-        1,
-      );
+      expect(stepAxisLabelInterval(bucketCount: 9, plotWidth: 300, minLabelWidth: 30), 1);
     });
 
     test('宽度不足时按可容纳的标签数抽稀', () {
       // 300px 只放得下 10 个标签，32 个桶则每 4 个出一个
-      expect(
-        stepAxisLabelInterval(bucketCount: 32, plotWidth: 300, minLabelWidth: 30),
-        4,
-      );
+      expect(stepAxisLabelInterval(bucketCount: 32, plotWidth: 300, minLabelWidth: 30), 4);
     });
 
     test('单桶或异常宽度不抽稀', () {

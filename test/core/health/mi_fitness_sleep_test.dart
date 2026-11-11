@@ -28,20 +28,17 @@ Map<String, dynamic> _sleepItem({
   if (light != null) value['sleep_light_duration'] = light;
   if (rem != null) value['sleep_rem_duration'] = rem;
   if (awake != null) value['sleep_awake_duration'] = awake;
-  return {
-    'time': _sec(bedtime ?? wake ?? DateTime(2026, 9, 19)),
-    'value': json.encode(value),
-  };
+  return {'time': _sec(bedtime ?? wake ?? DateTime(2026, 9, 19)), 'value': json.encode(value)};
 }
 
 /// 构造一个睡眠分期采样
 ///
 /// 小米云端 state 枚举实测为：2=深睡、3=浅睡、4=快速眼动、5=清醒（1 从不出现）。
 Map<String, dynamic> _stage(int state, DateTime start, DateTime end) => {
-      'state': state,
-      'start_time': _sec(start),
-      'end_time': _sec(end),
-    };
+  'state': state,
+  'start_time': _sec(start),
+  'end_time': _sec(end),
+};
 
 void main() {
   group('MiFitnessApiClient parseSleepSummary', () {
@@ -67,20 +64,8 @@ void main() {
       _stage(2, napBedtime, napWake), // 20 分深睡
     ];
 
-    final nightItem = _sleepItem(
-      bedtime: nightBedtime,
-      wake: nightWake,
-      duration: 409,
-      score: 85,
-      items: nightStages,
-    );
-    final napItem = _sleepItem(
-      bedtime: napBedtime,
-      wake: napWake,
-      duration: 20,
-      score: 60,
-      items: napStages,
-    );
+    final nightItem = _sleepItem(bedtime: nightBedtime, wake: nightWake, duration: 409, score: 85, items: nightStages);
+    final napItem = _sleepItem(bedtime: napBedtime, wake: napWake, duration: 20, score: 60, items: napStages);
 
     test('跨夜段与午睡段累加，起止与评分取主睡眠段（回归用例）', () {
       // 接口按时间升序返回，午睡排在最后 —— 旧实现会让午睡覆盖跨夜段
@@ -131,16 +116,9 @@ void main() {
     });
 
     test('缺醒来时间时用「入睡 + 时长」推导并正确归属', () {
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [
-          _sleepItem(
-            bedtime: DateTime(2026, 9, 19, 1, 0),
-            duration: 120,
-            score: 70,
-          ),
-        ],
-        testDate,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([
+        _sleepItem(bedtime: DateTime(2026, 9, 19, 1, 0), duration: 120, score: 70),
+      ], testDate);
 
       expect(res.durationMinutes, 120);
       expect(res.mainStartTime, DateTime(2026, 9, 19, 1, 0).toIso8601String());
@@ -149,13 +127,10 @@ void main() {
 
     test('无法确定醒来时间的段不计入（睡眠尚未结算）', () {
       // 旧实现里 wakeDt == null 会绕过醒来日过滤，被当成目标日数据
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [
-          _sleepItem(duration: 300, score: 80),
-          _sleepItem(bedtime: DateTime(2026, 9, 19, 2, 0)),
-        ],
-        testDate,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([
+        _sleepItem(duration: 300, score: 80),
+        _sleepItem(bedtime: DateTime(2026, 9, 19, 2, 0)),
+      ], testDate);
 
       expect(res.durationMinutes, 0);
       expect(res.mainStartTime, isNull);
@@ -164,10 +139,7 @@ void main() {
     });
 
     test('手环与手机重复上报同一段时去重，不双计', () {
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [nightItem, nightItem, napItem],
-        testDate,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([nightItem, nightItem, napItem], testDate);
 
       expect(res.durationMinutes, 429);
       expect(res.deepMinutes, 198);
@@ -176,17 +148,9 @@ void main() {
     });
 
     test('duration 缺失时退回该段分期之和', () {
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [
-          _sleepItem(
-            bedtime: nightBedtime,
-            wake: nightWake,
-            score: 85,
-            items: nightStages,
-          ),
-        ],
-        testDate,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([
+        _sleepItem(bedtime: nightBedtime, wake: nightWake, score: 85, items: nightStages),
+      ], testDate);
 
       expect(res.durationMinutes, 412); // 分期之和，与深睡/浅睡/REM/清醒口径一致
     });
@@ -211,13 +175,10 @@ void main() {
       final lateBedtime = DateTime(2026, 9, 19, 13, 0);
       final lateWake = DateTime(2026, 9, 19, 14, 40);
 
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [
-          _sleepItem(bedtime: earlyBedtime, wake: earlyWake, duration: 100, score: 55),
-          _sleepItem(bedtime: lateBedtime, wake: lateWake, duration: 100, score: 99),
-        ],
-        testDate,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([
+        _sleepItem(bedtime: earlyBedtime, wake: earlyWake, duration: 100, score: 55),
+        _sleepItem(bedtime: lateBedtime, wake: lateWake, duration: 100, score: 99),
+      ], testDate);
 
       expect(res.durationMinutes, 200);
       expect(res.mainStartTime, earlyBedtime.toIso8601String());
@@ -226,13 +187,10 @@ void main() {
     });
 
     test('脏数据不炸：value 非法 JSON 时跳过该条', () {
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [
-          {'time': _sec(DateTime(2026, 9, 19, 10, 0)), 'value': 'not-json'},
-          nightItem,
-        ],
-        testDate,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([
+        {'time': _sec(DateTime(2026, 9, 19, 10, 0)), 'value': 'not-json'},
+        nightItem,
+      ], testDate);
 
       expect(res.durationMinutes, 409);
     });
@@ -279,17 +237,12 @@ void main() {
     const realRem = 103;
     const realAwake = 26;
 
-    Map<String, dynamic> realNightItem({
-      bool withAggregates = true,
-      int? overrideDeep,
-    }) {
+    Map<String, dynamic> realNightItem({bool withAggregates = true, int? overrideDeep}) {
       final value = <String, dynamic>{
         'bedtime': 1790266200,
         'wake_up_time': 1790292420,
         'duration': 411,
-        'items': realStages
-            .map((s) => {'state': s[0], 'start_time': s[1], 'end_time': s[2]})
-            .toList(),
+        'items': realStages.map((s) => {'state': s[0], 'start_time': s[1], 'end_time': s[2]}).toList(),
       };
       if (withAggregates) {
         value['sleep_deep_duration'] = overrideDeep ?? realDeep;
@@ -313,10 +266,7 @@ void main() {
     });
 
     test('缺聚合字段时按 items 反推，结果与云端权威值一致', () {
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [realNightItem(withAggregates: false)],
-        nightOf,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([realNightItem(withAggregates: false)], nightOf);
 
       expect(res.deepMinutes, realDeep);
       expect(res.lightMinutes, realLight);
@@ -325,10 +275,7 @@ void main() {
     });
 
     test('聚合字段与 items 冲突时以聚合字段为准', () {
-      final res = MiFitnessApiClient.parseSleepSummary(
-        [realNightItem(overrideDeep: 200)],
-        nightOf,
-      );
+      final res = MiFitnessApiClient.parseSleepSummary([realNightItem(overrideDeep: 200)], nightOf);
 
       expect(res.deepMinutes, 200);
       expect(res.lightMinutes, realLight);

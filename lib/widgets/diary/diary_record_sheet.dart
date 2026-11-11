@@ -63,11 +63,7 @@ const double _kTimelineCardRadius = 16;
 
 /// 打开面板时记录按钮的位置与状态，作为容器变形的起点。
 class RecordFabAnchor {
-  const RecordFabAnchor({
-    required this.rect,
-    this.selection,
-    this.hasDraft = false,
-  });
+  const RecordFabAnchor({required this.rect, this.selection, this.hasDraft = false});
 
   /// 按钮在屏幕上的全局 Rect；选中时间时是胶囊宽度。
   final Rect rect;
@@ -81,11 +77,7 @@ class RecordFabAnchor {
 
 /// 发送后「面板变成新卡片」的落位目标。
 class RecordCardMorphTarget {
-  const RecordCardMorphTarget({
-    required this.initialRect,
-    required this.readRect,
-    required this.onLanded,
-  });
+  const RecordCardMorphTarget({required this.initialRect, required this.readRect, required this.onLanded});
 
   /// 首次量到的目标 Rect；列表/键盘继续变化时由 [readRect] 给实时值。
   final Rect initialRect;
@@ -196,8 +188,7 @@ class DiaryRecordSheet extends ConsumerStatefulWidget {
   ConsumerState<DiaryRecordSheet> createState() => _DiaryRecordSheetState();
 }
 
-class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
-    with TickerProviderStateMixin {
+class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with TickerProviderStateMixin {
   /// 保存成功后在发送键上短暂显示 ✓，让「已记下」这件事有个落地感。
   bool _savedOk = false;
 
@@ -245,11 +236,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
   final Map<String, TextEditingController> _formControllers = {};
 
-  TextEditingController _getFormController(
-    String fieldId,
-    String initialValue, {
-    String? tagId,
-  }) {
+  TextEditingController _getFormController(String fieldId, String initialValue, {String? tagId}) {
     final key = tagId != null ? '${tagId}_$fieldId' : fieldId;
     if (!_formControllers.containsKey(key)) {
       _formControllers[key] = TextEditingController(text: initialValue);
@@ -276,19 +263,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     // 打开时先对齐一次，否则头部显示的是草稿里那份旧时间，和左下角胶囊对不上。
     final selection = ref.read(diaryInputTimeProvider);
     if (selection != null) {
-      restored = _draftWithSelection(
-        restored,
-        selection,
-        selectedDate: ref.read(selectedDateProvider),
-      );
+      restored = _draftWithSelection(restored, selection, selectedDate: ref.read(selectedDateProvider));
     }
     _draft = restored;
     _textController.text = _draft.inputText;
     _textController.addListener(_onTextChanged);
-    _undoController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 5),
-    );
+    _undoController = AnimationController(vsync: this, duration: const Duration(seconds: 5));
     _undoController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() {
@@ -298,10 +278,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         _preExtractText = null;
       }
     });
-    _entryController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    );
+    _entryController = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
     // 等一帧再播：面板刚 insert 时还没有尺寸，立刻 forward 会让错峰动画
     // 跑在首帧布局之前，看起来像是内容「闪」出来的。容器变形时再晚一拍，
     // 等按钮先长出一块空间，内容再亮。
@@ -407,26 +384,18 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       final active = _draft;
       var nextTagEntries = tagEntries ?? List<TagEntry>.from(active.tagEntries);
       var nextStartTime = startTime ?? active.startTime;
-      final nextStartOffset = clearStartOffset
-          ? null
-          : (startOffset ?? active.startOffset);
+      final nextStartOffset = clearStartOffset ? null : (startOffset ?? active.startOffset);
 
-      TimeOfDay? nextEndTime =
-          endTime ?? (clearEndTime ? null : active.endTime);
-      int? nextEndOffset =
-          endOffset ?? (clearEndOffset ? null : active.endOffset);
+      TimeOfDay? nextEndTime = endTime ?? (clearEndTime ? null : active.endTime);
+      int? nextEndOffset = endOffset ?? (clearEndOffset ? null : active.endOffset);
       var nextClearEndTime = clearEndTime;
       var nextClearEndOffset = clearEndOffset;
 
-      final sleepEntry = nextTagEntries
-          .where((e) => e.id == 'sleep')
-          .firstOrNull;
+      final sleepEntry = nextTagEntries.where((e) => e.id == 'sleep').firstOrNull;
       if (sleepEntry != null) {
         final sleepFields = Map<String, dynamic>.from(sleepEntry.fields);
 
-        if (tagEntries != null &&
-            sleepFields.containsKey('fallAsleepTime') &&
-            sleepFields['fallAsleepTime'] != null) {
+        if (tagEntries != null && sleepFields.containsKey('fallAsleepTime') && sleepFields['fallAsleepTime'] != null) {
           final timeStr = sleepFields['fallAsleepTime'] as String;
           final parts = timeStr.split(':');
           if (parts.length >= 2) {
@@ -441,12 +410,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         if (tagEntries != null) {
           final durationVal = sleepFields['duration'];
           if (durationVal != null) {
-            final double? durationHours = double.tryParse(
-              durationVal.toString(),
-            );
+            final double? durationHours = double.tryParse(durationVal.toString());
             if (durationHours != null) {
-              final startMinutes =
-                  nextStartTime.hour * 60 + nextStartTime.minute;
+              final startMinutes = nextStartTime.hour * 60 + nextStartTime.minute;
               final durationMinutes = (durationHours * 60).toInt();
               final totalMinutes = startMinutes + durationMinutes;
 
@@ -483,11 +449,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             }
             final durationHours = diffMin / 60.0;
             final existingDuration = sleepFields['duration'];
-            final existingHours = existingDuration != null
-                ? double.tryParse(existingDuration.toString())
-                : null;
-            if (existingHours == null ||
-                (existingHours - durationHours).abs() > 0.001) {
+            final existingHours = existingDuration != null ? double.tryParse(existingDuration.toString()) : null;
+            if (existingHours == null || (existingHours - durationHours).abs() > 0.001) {
               sleepFields['duration'] = durationHours.toStringAsFixed(1);
             }
           }
@@ -539,11 +502,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         clearEndOffset: nextClearEndOffset,
       );
 
-      if (_activeFormTagId != null &&
-          !_draft.tagEntries.any((e) => e.id == _activeFormTagId)) {
-        _activeFormTagId = _draft.tagEntries.isNotEmpty
-            ? _draft.tagEntries.first.id
-            : null;
+      if (_activeFormTagId != null && !_draft.tagEntries.any((e) => e.id == _activeFormTagId)) {
+        _activeFormTagId = _draft.tagEntries.isNotEmpty ? _draft.tagEntries.first.id : null;
       }
     });
 
@@ -554,16 +514,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final activeDraft = _draft;
     final newTime = activeDraft.startTime;
     final currentTime = ref.read(currentInputTimeProvider);
-    if (currentTime.hour != newTime.hour ||
-        currentTime.minute != newTime.minute) {
+    if (currentTime.hour != newTime.hour || currentTime.minute != newTime.minute) {
       ref.read(currentInputTimeProvider.notifier).state = newTime;
     }
 
     final selectedDate = ref.read(selectedDateProvider);
     final targetDate = _calculateStartDateTime(activeDraft, selectedDate);
-    final targetEndDate = activeDraft.endTime != null
-        ? _calculateEndDateTime(activeDraft, selectedDate)
-        : null;
+    final targetEndDate = activeDraft.endTime != null ? _calculateEndDateTime(activeDraft, selectedDate) : null;
     final currentTimeline = ref.read(diaryInputTimeProvider);
 
     if (currentTimeline != null) {
@@ -574,8 +531,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               (currentTimeline.endTime != null &&
                   activeDraft.endTime != null &&
                   currentTimeline.endTime!.hour == activeDraft.endTime!.hour &&
-                  currentTimeline.endTime!.minute ==
-                      activeDraft.endTime!.minute));
+                  currentTimeline.endTime!.minute == activeDraft.endTime!.minute));
 
       final bool dateMatches =
           currentTimeline.date.year == targetDate.year &&
@@ -590,9 +546,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
       if (!timeMatches || !dateMatches) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          ref
-              .read(diaryInputTimeProvider.notifier)
-              .state = TimelineTimeSelectEvent(
+          ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
             activeDraft.startTime,
             endTime: activeDraft.endTime,
             date: targetDate,
@@ -639,9 +593,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     if (existingIndex >= 0) {
       currentEntries.removeAt(existingIndex);
       if (_activeFormTagId == config.id) {
-        _activeFormTagId = currentEntries.isNotEmpty
-            ? currentEntries.first.id
-            : null;
+        _activeFormTagId = currentEntries.isNotEmpty ? currentEntries.first.id : null;
       }
       _updateActiveDraft(tagEntries: currentEntries);
       return;
@@ -660,11 +612,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
         double? durationHours;
         if (timelineSelect.endTime != null) {
-          final startMin =
-              timelineSelect.time.hour * 60 + timelineSelect.time.minute;
-          final endMin =
-              timelineSelect.endTime!.hour * 60 +
-              timelineSelect.endTime!.minute;
+          final startMin = timelineSelect.time.hour * 60 + timelineSelect.time.minute;
+          final endMin = timelineSelect.endTime!.hour * 60 + timelineSelect.endTime!.minute;
           var diffMin = endMin - startMin;
           if (diffMin < 0) {
             diffMin += 1440;
@@ -673,15 +622,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         }
 
         final selectedDate = ref.read(selectedDateProvider);
-        final startLocalDate = DateTime(
-          timelineSelect.date.year,
-          timelineSelect.date.month,
-          timelineSelect.date.day,
-        );
+        final startLocalDate = DateTime(timelineSelect.date.year, timelineSelect.date.month, timelineSelect.date.day);
         final startOffset = startLocalDate
-            .difference(
-              DateTime(selectedDate.year, selectedDate.month, selectedDate.day),
-            )
+            .difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day))
             .inDays;
 
         final initialFields = <String, dynamic>{'fallAsleepTime': startTimeStr};
@@ -689,9 +632,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           initialFields['duration'] = durationHours.toStringAsFixed(1);
         }
 
-        currentEntries.last = currentEntries.last.copyWith(
-          fields: initialFields,
-        );
+        currentEntries.last = currentEntries.last.copyWith(fields: initialFields);
         _updateActiveDraft(
           tagEntries: currentEntries,
           startTime: timelineSelect.time,
@@ -707,16 +648,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         if (sleepRecords.isNotEmpty) {
           final lastSleep = sleepRecords.first;
           if (lastSleep.startTime != null) {
-            final lastStartTime = TimeOfDay(
-              hour: lastSleep.startTime!.hour,
-              minute: lastSleep.startTime!.minute,
-            );
+            final lastStartTime = TimeOfDay(hour: lastSleep.startTime!.hour, minute: lastSleep.startTime!.minute);
 
-            final logicalDate = DateTime(
-              lastSleep.time.year,
-              lastSleep.time.month,
-              lastSleep.time.day,
-            );
+            final logicalDate = DateTime(lastSleep.time.year, lastSleep.time.month, lastSleep.time.day);
             final startLocalDate = DateTime(
               lastSleep.startTime!.year,
               lastSleep.startTime!.month,
@@ -727,14 +661,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             final lastFallAsleepTime =
                 '${lastStartTime.hour.toString().padLeft(2, '0')}:${lastStartTime.minute.toString().padLeft(2, '0')}';
 
-            currentEntries.last = currentEntries.last.copyWith(
-              fields: {'fallAsleepTime': lastFallAsleepTime},
-            );
-            _updateActiveDraft(
-              tagEntries: currentEntries,
-              startTime: lastStartTime,
-              startOffset: offset,
-            );
+            currentEntries.last = currentEntries.last.copyWith(fields: {'fallAsleepTime': lastFallAsleepTime});
+            _updateActiveDraft(tagEntries: currentEntries, startTime: lastStartTime, startOffset: offset);
 
             final selectedDate = ref.read(selectedDateProvider);
             final targetDate = DateTime(
@@ -742,15 +670,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               selectedDate.month,
               selectedDate.day,
             ).add(Duration(days: offset));
-            ref.read(diaryInputTimeProvider.notifier).state =
-                TimelineTimeSelectEvent(lastStartTime, date: targetDate);
+            ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(lastStartTime, date: targetDate);
             return;
           }
         }
 
-        currentEntries.last = currentEntries.last.copyWith(
-          fields: {'fallAsleepTime': '22:00'},
-        );
+        currentEntries.last = currentEntries.last.copyWith(fields: {'fallAsleepTime': '22:00'});
         _updateActiveDraft(
           tagEntries: currentEntries,
           startTime: const TimeOfDay(hour: 22, minute: 0),
@@ -763,18 +688,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           selectedDate.month,
           selectedDate.day,
         ).add(const Duration(days: -1));
-        ref
-            .read(diaryInputTimeProvider.notifier)
-            .state = TimelineTimeSelectEvent(
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
           const TimeOfDay(hour: 22, minute: 0),
           date: targetDate,
         );
         return;
       } catch (e) {
         LoggerService.instance.logAI('加载上次睡眠记录失败: $e');
-        currentEntries.last = currentEntries.last.copyWith(
-          fields: {'fallAsleepTime': '22:00'},
-        );
+        currentEntries.last = currentEntries.last.copyWith(fields: {'fallAsleepTime': '22:00'});
         _updateActiveDraft(
           tagEntries: currentEntries,
           startTime: const TimeOfDay(hour: 22, minute: 0),
@@ -787,9 +708,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           selectedDate2.month,
           selectedDate2.day,
         ).add(const Duration(days: -1));
-        ref
-            .read(diaryInputTimeProvider.notifier)
-            .state = TimelineTimeSelectEvent(
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
           const TimeOfDay(hour: 22, minute: 0),
           date: targetDate2,
         );
@@ -859,7 +778,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     _applyFixedEventsSelection(allTemplates, currentEntries);
 
     // 显示提示
-    Toast.success(context, '已填充：${template.name} (${template.formattedTimeRange})', duration: const Duration(seconds: 1));
+    Toast.success(
+      context,
+      '已填充：${template.name} (${template.formattedTimeRange})',
+      duration: const Duration(seconds: 1),
+    );
   }
 
   /// 根据当前选中的固定事件集合，统一刷新草稿的时间与备注
@@ -868,11 +791,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   void _applyFixedEventsSelection(List<FixedEventTemplate> allTemplates, List<TagEntry> tagEntries) {
     if (_selectedFixedEventIds.isEmpty) {
       _textController.text = '';
-      _updateActiveDraft(
-        inputText: '',
-        tagEntries: tagEntries,
-        clearEndTime: true,
-      );
+      _updateActiveDraft(inputText: '', tagEntries: tagEntries, clearEndTime: true);
       ref.read(diaryInputTimeProvider.notifier).state = null;
       return;
     }
@@ -894,9 +813,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final mergedText = mergeFixedEventContents(selectedTemplates);
 
     _textController.text = mergedText;
-    _textController.selection = TextSelection.fromPosition(
-      TextPosition(offset: mergedText.length),
-    );
+    _textController.selection = TextSelection.fromPosition(TextPosition(offset: mergedText.length));
 
     _updateActiveDraft(
       startTime: startTime,
@@ -924,9 +841,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final effectiveTagId = tagId ?? _activeFormTagId;
     if (effectiveTagId == null) return;
 
-    final entry = _activeDraft.tagEntries
-        .where((e) => e.id == effectiveTagId)
-        .firstOrNull;
+    final entry = _activeDraft.tagEntries.where((e) => e.id == effectiveTagId).firstOrNull;
     if (entry == null) return;
 
     final newFields = Map<String, dynamic>.from(entry.fields);
@@ -952,8 +867,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
           if (_activeDraft.endTime != null) {
             final startMin = h * 60 + m;
-            final endMin =
-                _activeDraft.endTime!.hour * 60 + _activeDraft.endTime!.minute;
+            final endMin = _activeDraft.endTime!.hour * 60 + _activeDraft.endTime!.minute;
             var diffMin = endMin - startMin;
             if (diffMin < 0) diffMin += 1440;
             newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
@@ -963,10 +877,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             }).toList();
           }
 
-          _updateActiveDraft(
-            tagEntries: newTagEntries,
-            startTime: newStartTime,
-          );
+          _updateActiveDraft(tagEntries: newTagEntries, startTime: newStartTime);
           return;
         }
       }
@@ -1037,53 +948,48 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     if (_activeDraft.selectedPhotos.length >= 3) return;
     try {
       final remaining = 3 - _activeDraft.selectedPhotos.length;
-      final images = await GalleryHelper.pickMultiImages(
-        context,
-        maxAssets: remaining,
-      );
+      final images = await GalleryHelper.pickMultiImages(context, maxAssets: remaining);
       if (images.isEmpty) return;
       final paths = <String>[];
       for (final xFile in images) {
         final tempPath = xFile.path;
         paths.add(tempPath);
-        
+
         // 启动异步压缩保存任务
-        final Future<String> compressFuture =
-            ref.read(imageRepositoryProvider).saveImage(
-          File(tempPath),
-          subfolder: 'diary',
-        );
+        final Future<String> compressFuture = ref
+            .read(imageRepositoryProvider)
+            .saveImage(File(tempPath), subfolder: 'diary');
         _compressingTasks[tempPath] = compressFuture;
-        
-        compressFuture.then((savedPath) {
-          if (!mounted) return;
-          setState(() {
-            _compressingTasks.remove(tempPath);
-            final photos = List<String>.from(_draft.selectedPhotos);
-            final index = photos.indexOf(tempPath);
-            if (index != -1) {
-              photos[index] = savedPath;
-              _updateActiveDraft(selectedPhotos: photos);
-            } else {
-              ref.read(imageRepositoryProvider).deleteImage(savedPath);
-            }
-          });
-        }).catchError((e) {
-          if (!mounted) return;
-          setState(() {
-            _compressingTasks.remove(tempPath);
-            final photos = List<String>.from(_draft.selectedPhotos);
-            photos.remove(tempPath);
-            _updateActiveDraft(selectedPhotos: photos);
-          });
-          debugPrint('Error compressing image: $e');
-        });
+
+        compressFuture
+            .then((savedPath) {
+              if (!mounted) return;
+              setState(() {
+                _compressingTasks.remove(tempPath);
+                final photos = List<String>.from(_draft.selectedPhotos);
+                final index = photos.indexOf(tempPath);
+                if (index != -1) {
+                  photos[index] = savedPath;
+                  _updateActiveDraft(selectedPhotos: photos);
+                } else {
+                  ref.read(imageRepositoryProvider).deleteImage(savedPath);
+                }
+              });
+            })
+            .catchError((e) {
+              if (!mounted) return;
+              setState(() {
+                _compressingTasks.remove(tempPath);
+                final photos = List<String>.from(_draft.selectedPhotos);
+                photos.remove(tempPath);
+                _updateActiveDraft(selectedPhotos: photos);
+              });
+              debugPrint('Error compressing image: $e');
+            });
       }
-      
+
       // 立即秒显本地临时路径
-      _updateActiveDraft(
-        selectedPhotos: [..._activeDraft.selectedPhotos, ...paths],
-      );
+      _updateActiveDraft(selectedPhotos: [..._activeDraft.selectedPhotos, ...paths]);
     } catch (_) {}
   }
 
@@ -1098,45 +1004,43 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         imageQuality: 80,
       );
       if (xFile == null) return;
-      
+
       final tempPath = xFile.path;
-      
+
       // 立即秒显本地临时路径
-      _updateActiveDraft(
-        selectedPhotos: [..._activeDraft.selectedPhotos, tempPath],
-      );
-      
+      _updateActiveDraft(selectedPhotos: [..._activeDraft.selectedPhotos, tempPath]);
+
       // 启动异步压缩保存任务
-      final Future<String> compressFuture =
-          ref.read(imageRepositoryProvider).saveImage(
-        File(tempPath),
-        subfolder: 'diary',
-      );
+      final Future<String> compressFuture = ref
+          .read(imageRepositoryProvider)
+          .saveImage(File(tempPath), subfolder: 'diary');
       _compressingTasks[tempPath] = compressFuture;
-      
-      compressFuture.then((savedPath) {
-        if (!mounted) return;
-        setState(() {
-          _compressingTasks.remove(tempPath);
-          final photos = List<String>.from(_draft.selectedPhotos);
-          final index = photos.indexOf(tempPath);
-          if (index != -1) {
-            photos[index] = savedPath;
-            _updateActiveDraft(selectedPhotos: photos);
-          } else {
-            ref.read(imageRepositoryProvider).deleteImage(savedPath);
-          }
-        });
-      }).catchError((e) {
-        if (!mounted) return;
-        setState(() {
-          _compressingTasks.remove(tempPath);
-          final photos = List<String>.from(_draft.selectedPhotos);
-          photos.remove(tempPath);
-          _updateActiveDraft(selectedPhotos: photos);
-        });
-        debugPrint('Error compressing image: $e');
-      });
+
+      compressFuture
+          .then((savedPath) {
+            if (!mounted) return;
+            setState(() {
+              _compressingTasks.remove(tempPath);
+              final photos = List<String>.from(_draft.selectedPhotos);
+              final index = photos.indexOf(tempPath);
+              if (index != -1) {
+                photos[index] = savedPath;
+                _updateActiveDraft(selectedPhotos: photos);
+              } else {
+                ref.read(imageRepositoryProvider).deleteImage(savedPath);
+              }
+            });
+          })
+          .catchError((e) {
+            if (!mounted) return;
+            setState(() {
+              _compressingTasks.remove(tempPath);
+              final photos = List<String>.from(_draft.selectedPhotos);
+              photos.remove(tempPath);
+              _updateActiveDraft(selectedPhotos: photos);
+            });
+            debugPrint('Error compressing image: $e');
+          });
     } catch (_) {}
   }
 
@@ -1149,19 +1053,16 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   Future<void> _pickStartTime() async {
     final result = await showTimePickerDialog(
       context: context,
-      initialTime: _calculateStartDateTime(
-        _activeDraft,
-        ref.read(selectedDateProvider),
-      ),
+      initialTime: _calculateStartDateTime(_activeDraft, ref.read(selectedDateProvider)),
       title: '开始时间',
     );
     if (result != null) {
       final selectedDate = ref.read(selectedDateProvider);
-      final offset = DateTime(result.year, result.month, result.day)
-          .difference(
-            DateTime(selectedDate.year, selectedDate.month, selectedDate.day),
-          )
-          .inDays;
+      final offset = DateTime(
+        result.year,
+        result.month,
+        result.day,
+      ).difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
       final newTime = TimeOfDay(hour: result.hour, minute: result.minute);
       _updateActiveDraft(startTime: newTime, startOffset: offset);
 
@@ -1169,9 +1070,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         newTime,
         endTime: _activeDraft.endTime,
         date: DateTime(result.year, result.month, result.day),
-        endDate: _activeDraft.endTime != null
-            ? _calculateEndDateTime(_activeDraft, selectedDate)
-            : null,
+        endDate: _activeDraft.endTime != null ? _calculateEndDateTime(_activeDraft, selectedDate) : null,
       );
     }
   }
@@ -1179,23 +1078,16 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   Future<void> _pickEndTime() async {
     final initialDate = _activeDraft.endTime != null
         ? _calculateEndDateTime(_activeDraft, ref.read(selectedDateProvider))!
-        : _calculateStartDateTime(
-            _activeDraft,
-            ref.read(selectedDateProvider),
-          ).add(const Duration(hours: 1));
+        : _calculateStartDateTime(_activeDraft, ref.read(selectedDateProvider)).add(const Duration(hours: 1));
 
-    final result = await showTimePickerDialog(
-      context: context,
-      initialTime: initialDate,
-      title: '结束时间',
-    );
+    final result = await showTimePickerDialog(context: context, initialTime: initialDate, title: '结束时间');
     if (result != null) {
       final selectedDate = ref.read(selectedDateProvider);
-      final offset = DateTime(result.year, result.month, result.day)
-          .difference(
-            DateTime(selectedDate.year, selectedDate.month, selectedDate.day),
-          )
-          .inDays;
+      final offset = DateTime(
+        result.year,
+        result.month,
+        result.day,
+      ).difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
       final newEndTime = TimeOfDay(hour: result.hour, minute: result.minute);
       _updateActiveDraft(endTime: newEndTime, endOffset: offset);
 
@@ -1229,11 +1121,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final draft = _activeDraft;
 
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
-    final extractImages =
-        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
     final isExtractButtonEnabled =
-        draft.inputText.trim().isNotEmpty ||
-        (extractImages && draft.selectedPhotos.isNotEmpty);
+        draft.inputText.trim().isNotEmpty || (extractImages && draft.selectedPhotos.isNotEmpty);
     if (!isExtractButtonEnabled) return;
 
     if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
@@ -1252,12 +1142,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
     try {
       final aiService = ref.read(aiServiceProvider);
-      final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole(
-        'timelineOptimization',
-      );
-      final roleSettings = await AiRoleService.instance.getSettingsForRole(
-        'timelineOptimization',
-      );
+      final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
+      final roleSettings = await AiRoleService.instance.getSettingsForRole('timelineOptimization');
       // 要发图而绑定模型看不了图时，内置识图兜底已下线：明确让用户换模型，
       // 而不是把图片塞给一个看不见画面的模型（它会照常 200 并编造内容）。
       // 能力未知时先自动实测一次：新加的视觉模型不该被默认拦下
@@ -1268,19 +1154,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             _isExtracting = false;
             _extractPhase = _ExtractPhase.idle;
           });
-          await showVisionUnsupportedDialog(
-            context,
-            modelName: roleConfig.modelName,
-            scene: '快捷记录的图片提取',
-          );
+          await showVisionUnsupportedDialog(context, modelName: roleConfig.modelName, scene: '快捷记录的图片提取');
         }
         return;
       }
-      aiService.updateConfig(
-        roleConfig,
-        temperature: roleSettings.temperature,
-        maxTokens: roleSettings.maxTokens,
-      );
+      aiService.updateConfig(roleConfig, temperature: roleSettings.temperature, maxTokens: roleSettings.maxTokens);
 
       final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
       final schemaStr = formatCompressedSchema(shortcuts);
@@ -1325,13 +1203,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       setState(() => _extractPhase = _ExtractPhase.waiting);
 
       List<Map<String, dynamic>> results;
-      final bool shouldSendImage =
-          extractImages && draft.selectedPhotos.isNotEmpty;
+      final bool shouldSendImage = extractImages && draft.selectedPhotos.isNotEmpty;
       String? base64;
       if (shouldSendImage) {
-        base64 = await ref
-            .read(imageRepositoryProvider)
-            .getBase64Image(draft.selectedPhotos.first);
+        base64 = await ref.read(imageRepositoryProvider).getBase64Image(draft.selectedPhotos.first);
       }
 
       results = await aiService.extractUnified(
@@ -1377,10 +1252,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           if (timeMap['end'] != null) {
             final parts = (timeMap['end'] as String).split(':');
             if (parts.length >= 2) {
-              parsedEndTime = TimeOfDay(
-                hour: int.tryParse(parts[0]) ?? 0,
-                minute: int.tryParse(parts[1]) ?? 0,
-              );
+              parsedEndTime = TimeOfDay(hour: int.tryParse(parts[0]) ?? 0, minute: int.tryParse(parts[1]) ?? 0);
             }
           }
           parsedStartOffset = timeMap['startOffset'] as int?;
@@ -1404,19 +1276,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             if (timeMap['start'] != null) {
               final parts = (timeMap['start'] as String).split(':');
               if (parts.length >= 2) {
-                itemTime = TimeOfDay(
-                  hour: int.tryParse(parts[0]) ?? 0,
-                  minute: int.tryParse(parts[1]) ?? 0,
-                );
+                itemTime = TimeOfDay(hour: int.tryParse(parts[0]) ?? 0, minute: int.tryParse(parts[1]) ?? 0);
               }
             }
             if (timeMap['end'] != null) {
               final parts = (timeMap['end'] as String).split(':');
               if (parts.length >= 2) {
-                itemEndTime = TimeOfDay(
-                  hour: int.tryParse(parts[0]) ?? 0,
-                  minute: int.tryParse(parts[1]) ?? 0,
-                );
+                itemEndTime = TimeOfDay(hour: int.tryParse(parts[0]) ?? 0, minute: int.tryParse(parts[1]) ?? 0);
               }
             }
             if (timeMap['startOffset'] != null) {
@@ -1462,8 +1328,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                 itemEndOffset = -1 + daysOffset;
               }
             } else {
-              if (result['time']['start'] == null &&
-                  result['time']['end'] != null) {
+              if (result['time']['start'] == null && result['time']['end'] != null) {
                 final endMin = itemEndTime!.hour * 60 + itemEndTime.minute;
                 final durationMinutes = (durationHours * 60).toInt();
                 var startMin = endMin - durationMinutes;
@@ -1472,13 +1337,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                   startMin += 1440;
                   daysOffset -= 1;
                 }
-                itemTime = TimeOfDay(
-                  hour: startMin ~/ 60,
-                  minute: startMin % 60,
-                );
+                itemTime = TimeOfDay(hour: startMin ~/ 60, minute: startMin % 60);
                 itemStartOffset = (itemEndOffset ?? 0) + daysOffset;
-              } else if (result['time']['start'] != null &&
-                  result['time']['end'] == null) {
+              } else if (result['time']['start'] != null && result['time']['end'] == null) {
                 final startMin = itemTime!.hour * 60 + itemTime.minute;
                 final durationMinutes = (durationHours * 60).toInt();
                 final totalMinutes = startMin + durationMinutes;
@@ -1487,8 +1348,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                 final daysOffset = totalMinutes ~/ 1440;
                 itemEndTime = TimeOfDay(hour: endHour, minute: endMinute);
                 itemEndOffset = (itemStartOffset ?? 0) + daysOffset;
-              } else if (result['time']['start'] == null &&
-                  result['time']['end'] == null) {
+              } else if (result['time']['start'] == null && result['time']['end'] == null) {
                 final selectEvent = ref.read(diaryInputTimeProvider);
                 if (selectEvent != null) {
                   itemTime = draft.startTime;
@@ -1537,19 +1397,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             final timeMap = Map<String, dynamic>.from(result['time'] as Map);
             final parts = <String>[];
             if (timeMap['start'] != null) {
-              final prefix =
-                  timeMap['startOffset'] != null &&
-                      (timeMap['startOffset'] as int) < 0
-                  ? '-'
-                  : '';
+              final prefix = timeMap['startOffset'] != null && (timeMap['startOffset'] as int) < 0 ? '-' : '';
               parts.add('$prefix${timeMap['start']}');
             }
             if (timeMap['end'] != null) {
-              final prefix =
-                  timeMap['endOffset'] != null &&
-                      (timeMap['endOffset'] as int) < 0
-                  ? '-'
-                  : '';
+              final prefix = timeMap['endOffset'] != null && (timeMap['endOffset'] as int) < 0 ? '-' : '';
               parts.add('$prefix${timeMap['end']}');
             }
             timeStr = parts.isNotEmpty ? parts.join('~') : null;
@@ -1582,8 +1434,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         }
 
         if (combinedNotes.isNotEmpty && draft.inputText.isNotEmpty) {
-          if (combinedNotes.startsWith('图：') ||
-              combinedNotes.startsWith('图:')) {
+          if (combinedNotes.startsWith('图：') || combinedNotes.startsWith('图:')) {
             combinedNotes = '${draft.inputText}\n$combinedNotes';
           } else if (!draft.inputText.contains(combinedNotes)) {
             combinedNotes = '${draft.inputText}\n$combinedNotes';
@@ -1612,21 +1463,15 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           _canUndo = true;
           _preExtractDraft = savedDraft;
           _preExtractText = savedText;
-          _activeFormTagId = mergedDraft.tagEntries.isNotEmpty
-              ? mergedDraft.tagEntries.first.id
-              : null;
+          _activeFormTagId = mergedDraft.tagEntries.isNotEmpty ? mergedDraft.tagEntries.first.id : null;
         });
 
         _undoController.forward(from: 0);
 
         final selectedDate = ref.read(selectedDateProvider);
         final targetDate = _calculateStartDateTime(mergedDraft, selectedDate);
-        final targetEndDate = mergedDraft.endTime != null
-            ? _calculateEndDateTime(mergedDraft, selectedDate)
-            : null;
-        ref
-            .read(diaryInputTimeProvider.notifier)
-            .state = TimelineTimeSelectEvent(
+        final targetEndDate = mergedDraft.endTime != null ? _calculateEndDateTime(mergedDraft, selectedDate) : null;
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
           mergedDraft.startTime,
           endTime: mergedDraft.endTime,
           date: targetDate,
@@ -1672,16 +1517,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         } else if (e.response?.statusCode == 429) {
           errorMessage = 'AI服务调用频次超限，请重试';
         }
-      } else if (e is ArgumentError &&
-          e.message.toString().contains('apiKey')) {
+      } else if (e is ArgumentError && e.message.toString().contains('apiKey')) {
         errorMessage = 'AI配置不完整，请完善密钥和地址';
       }
 
-      LoggerService.instance.logAI(
-        '时间线提取失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logAI('时间线提取失败: $e', level: LogLevel.error, details: stackTrace.toString());
 
       if (mounted) {
         Toast.error(context, errorMessage);
@@ -1718,15 +1558,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       _canUndo = false;
       _preExtractDraft = null;
       _preExtractText = null;
-      _activeFormTagId = _draft.tagEntries.isNotEmpty
-          ? _draft.tagEntries.first.id
-          : null;
+      _activeFormTagId = _draft.tagEntries.isNotEmpty ? _draft.tagEntries.first.id : null;
     });
 
     final targetDate = _calculateStartDateTime(restoredDraft, selectedDate);
-    final targetEndDate = restoredDraft.endTime != null
-        ? _calculateEndDateTime(restoredDraft, selectedDate)
-        : null;
+    final targetEndDate = restoredDraft.endTime != null ? _calculateEndDateTime(restoredDraft, selectedDate) : null;
     ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
       restoredDraft.startTime,
       endTime: restoredDraft.endTime,
@@ -1739,14 +1575,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     FocusScope.of(context).unfocus();
     final displayName = await showTimelineModelSelector(context, ref);
     if (displayName != null && mounted) {
-      Toast.success(
-        context,
-        '已切换：$displayName',
-        duration: const Duration(seconds: 1),
-      );
+      Toast.success(context, '已切换：$displayName', duration: const Duration(seconds: 1));
     }
   }
-
 
   void _removeModelMenuOverlay() {
     _modelMenuOverlay?.remove();
@@ -1774,11 +1605,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             padding: EdgeInsets.all(20.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('正在处理图片...'),
-              ],
+              children: [CircularProgressIndicator(), SizedBox(height: 16), Text('正在处理图片...')],
             ),
           ),
         ),
@@ -1857,12 +1684,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         }
       }
 
-      final defaultMergedText = templatesToAdd
-          .map((t) => t.effectiveContent)
-          .where((c) => c.isNotEmpty)
-          .join('\n');
-      final isUserCustomizedText = draft.inputText.isNotEmpty &&
-          draft.inputText.trim() != defaultMergedText.trim();
+      final defaultMergedText = templatesToAdd.map((t) => t.effectiveContent).where((c) => c.isNotEmpty).join('\n');
+      final isUserCustomizedText = draft.inputText.isNotEmpty && draft.inputText.trim() != defaultMergedText.trim();
 
       // 一个固定事件模板会按时间段展开成多条记录，逐条收集 id 才能让它们都播插入动画
       final insertedIds = <String>[];
@@ -1880,26 +1703,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           final sh = int.tryParse(partsStart[0]) ?? 8;
           final sm = partsStart.length > 1 ? int.tryParse(partsStart[1]) ?? 0 : 0;
 
-          final startDt = DateTime(
-            selectedDate.year,
-            selectedDate.month,
-            selectedDate.day,
-            sh,
-            sm,
-          );
+          final startDt = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, sh, sm);
 
           DateTime? endDt;
           if (!template.isTimePoint && period.endTime.isNotEmpty) {
             final partsEnd = period.endTime.split(':');
             final eh = int.tryParse(partsEnd[0]) ?? 12;
             final em = partsEnd.length > 1 ? int.tryParse(partsEnd[1]) ?? 0 : 0;
-            endDt = DateTime(
-              selectedDate.year,
-              selectedDate.month,
-              selectedDate.day,
-              eh,
-              em,
-            );
+            endDt = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, eh, em);
             if (endDt.isBefore(startDt)) {
               endDt = endDt.add(const Duration(days: 1));
             }
@@ -1933,7 +1744,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               endM = endDt.minute;
               endOff = endDt.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
             }
-            final startOff = startDt.difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day)).inDays;
+            final startOff = startDt
+                .difference(DateTime(selectedDate.year, selectedDate.month, selectedDate.day))
+                .inDays;
 
             final updated = e.copyWith(
               fields: fields,
@@ -1953,9 +1766,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           final popupConfigs = <ShortcutConfig>[];
           for (final entry in syncedTagEntries) {
             try {
-              final config = shortcuts.firstWhere(
-                (s) => s.id == entry.id || s.name == entry.name,
-              );
+              final config = shortcuts.firstWhere((s) => s.id == entry.id || s.name == entry.name);
               if (config.hasPopup) {
                 popupEntries.add(entry);
                 popupConfigs.add(config);
@@ -1995,24 +1806,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             final allDetails = detailParts.join('；');
 
             // 备注：若用户手动编辑了输入框文字则以输入为准，否则使用模板备注（若未填则默认使用标题名称）
-            final baseText = isUserCustomizedText
-                ? draft.inputText
-                : template.effectiveContent;
+            final baseText = isUserCustomizedText ? draft.inputText : template.effectiveContent;
             recordContent = '$allDetails${baseText.isNotEmpty ? '\n备注：$baseText' : ''}';
           } else {
-            recordContent = isUserCustomizedText
-                ? draft.inputText
-                : template.effectiveContent;
+            recordContent = isUserCustomizedText ? draft.inputText : template.effectiveContent;
           }
 
           final recordTags = template.tags.isNotEmpty
-              ? template.tags
-                  .map((tid) => shortcuts
-                      .where((s) => s.id == tid)
-                      .firstOrNull
-                      ?.name ??
-                      tid)
-                  .toList()
+              ? template.tags.map((tid) => shortcuts.where((s) => s.id == tid).firstOrNull?.name ?? tid).toList()
               : <String>[];
 
           Map<String, dynamic> recordBodyState = {};
@@ -2067,9 +1868,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     }
 
     final selectEvent = ref.read(diaryInputTimeProvider);
-    final TimeOfDay eventTime = selectEvent == null
-        ? TimeOfDay.now()
-        : draft.startTime;
+    final TimeOfDay eventTime = selectEvent == null ? TimeOfDay.now() : draft.startTime;
 
     var startDateTime = DateTime(
       selectedDate.year,
@@ -2084,17 +1883,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
     var endDateTime = _calculateEndDateTime(draft, selectedDate);
 
-    final sleepEntry = draft.tagEntries
-        .where((e) => e.id == 'sleep')
-        .firstOrNull;
+    final sleepEntry = draft.tagEntries.where((e) => e.id == 'sleep').firstOrNull;
     if (sleepEntry != null) {
       final durationVal = sleepEntry.fields['duration'];
       if (durationVal != null) {
         final double? durationHours = double.tryParse(durationVal.toString());
         if (durationHours != null) {
-          endDateTime = startDateTime.add(
-            Duration(minutes: (durationHours * 60).toInt()),
-          );
+          endDateTime = startDateTime.add(Duration(minutes: (durationHours * 60).toInt()));
         }
       }
     }
@@ -2118,7 +1913,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           endMinute = draft.endTime!.minute;
           endOffset = draft.endOffset ?? 0;
         }
-        
+
         final updatedSleep = sleepEntryItem.copyWith(
           startHour: draft.startTime.hour,
           startMinute: draft.startTime.minute,
@@ -2142,7 +1937,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           endMinute = draft.endTime!.minute;
           endOffset = draft.endOffset ?? 0;
         }
-        
+
         final updatedSingle = singleEntry.copyWith(
           startHour: draft.startTime.hour,
           startMinute: draft.startTime.minute,
@@ -2161,9 +1956,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
     for (final entry in tagEntries) {
       try {
-        final config = shortcuts.firstWhere(
-          (s) => s.id == entry.id || s.name == entry.name,
-        );
+        final config = shortcuts.firstWhere((s) => s.id == entry.id || s.name == entry.name);
         if (config.hasPopup) {
           popupEntries.add(entry);
           popupConfigs.add(config);
@@ -2179,9 +1972,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         final config = popupConfigs[pi];
 
         List<ShortcutField> fieldsToProcess = config.fields;
-        final Map<String, dynamic> entryFields = Map<String, dynamic>.from(
-          entry.fields,
-        );
+        final Map<String, dynamic> entryFields = Map<String, dynamic>.from(entry.fields);
         String categoryPrefix = '';
 
         if (config.categories != null && config.categories!.isNotEmpty) {
@@ -2203,9 +1994,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             .where((s) => s != null)
             .join('，');
 
-        final fullDetails = categoryPrefix.isNotEmpty
-            ? '$categoryPrefix$details'
-            : details;
+        final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
         if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
 
         if (config.id == 'health') {
@@ -2230,8 +2019,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       }
 
       final allDetails = detailParts.join('；');
-      content =
-          '$allDetails${draft.inputText.isNotEmpty ? '\n备注：${draft.inputText}' : ''}';
+      content = '$allDetails${draft.inputText.isNotEmpty ? '\n备注：${draft.inputText}' : ''}';
     } else {
       content = draft.inputText;
     }
@@ -2277,9 +2065,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
     // 页面趁 ✓ 还在播的时候把时间线滚到新记录并量好卡片 Rect；
     // 拿得到目标就让面板本身飞过去，拿不到就退回原来的插入动画。
-    final morphFuture = widget.onSaved == null
-        ? null
-        : widget.onSaved!(<String>[saved.id]);
+    final morphFuture = widget.onSaved == null ? null : widget.onSaved!(<String>[saved.id]);
     _beginSavedFeedback();
 
     RecordCardMorphTarget? morph;
@@ -2364,20 +2150,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   }
 
   DateTime _calculateStartDateTime(DiaryComposeDraft draft, DateTime selectedDate) {
-    return resolveDiaryDateTime(
-      selectedDate: selectedDate,
-      time: draft.startTime,
-      dayOffset: draft.startOffset,
-    );
+    return resolveDiaryDateTime(selectedDate: selectedDate, time: draft.startTime, dayOffset: draft.startOffset);
   }
 
   DateTime? _calculateEndDateTime(DiaryComposeDraft draft, DateTime selectedDate) {
     if (draft.endTime == null) return null;
-    return resolveDiaryDateTime(
-      selectedDate: selectedDate,
-      time: draft.endTime!,
-      dayOffset: draft.endOffset,
-    );
+    return resolveDiaryDateTime(selectedDate: selectedDate, time: draft.endTime!, dayOffset: draft.endOffset);
   }
 
   /// 时间胶囊上的时间文案。
@@ -2395,9 +2173,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
     ref.listen<DateTime>(selectedDateProvider, (previous, next) {
       if (previous != null &&
-          (previous.year != next.year ||
-              previous.month != next.month ||
-              previous.day != next.day)) {
+          (previous.year != next.year || previous.month != next.month || previous.day != next.day)) {
         if (_selectedFixedEventIds.isNotEmpty) {
           final allRecords = ref.read(diaryListProvider).valueOrNull ?? [];
           final allTemplates = ref.read(fixedEventListProvider).valueOrNull ?? [];
@@ -2412,26 +2188,16 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             setState(() {
               _selectedFixedEventIds.removeWhere((id) => toRemove.contains(id));
             });
-            _applyFixedEventsSelection(
-              allTemplates,
-              List<TagEntry>.from(_activeDraft.tagEntries),
-            );
+            _applyFixedEventsSelection(allTemplates, List<TagEntry>.from(_activeDraft.tagEntries));
           }
         }
       }
     });
-    ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (
-      previous,
-      next,
-    ) {
+    ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (previous, next) {
       if (next != null) {
         // 与面板打开时的对齐走同一个换算，避免「开着面板调时间」和
         // 「关着面板选好再打开」两条路径给出不同的跨天偏移。
-        final aligned = _draftWithSelection(
-          _draft,
-          next,
-          selectedDate: ref.read(selectedDateProvider),
-        );
+        final aligned = _draftWithSelection(_draft, next, selectedDate: ref.read(selectedDateProvider));
         _updateActiveDraft(
           startTime: aligned.startTime,
           endTime: aligned.endTime,
@@ -2454,21 +2220,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final theme = Theme.of(context);
     final shortcuts = ref.watch(shortcutListProvider);
 
-    return _SheetSurface(
-      surfaceKey: widget.surfaceKey,
-      child: _buildSheetContent(theme, shortcuts, selectedDate),
-    );
+    return _SheetSurface(surfaceKey: widget.surfaceKey, child: _buildSheetContent(theme, shortcuts, selectedDate));
   }
 
   /// 卡片内容：头部（时间 + 关闭）→ 标签 → 固定事件/字段 → 附件与 AI → 正文与发送。
   ///
   /// 只有中间那段跟着内容滚：时间、关闭、输入和发送始终钉在卡片里。
   /// 键盘把卡片压矮时先让字段表单让位，发送键不会被挤出屏幕。
-  Widget _buildSheetContent(
-    ThemeData theme,
-    AsyncValue<List<ShortcutConfig>> shortcuts,
-    DateTime selectedDate,
-  ) {
+  Widget _buildSheetContent(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts, DateTime selectedDate) {
     final fixedEvents = ref.watch(fixedEventListProvider);
     final allRecords = ref.watch(diaryListProvider).valueOrNull ?? [];
 
@@ -2476,16 +2235,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Reveal(
-          controller: _entryController,
-          begin: 0,
-          child: _buildHeader(theme, selectedDate),
-        ),
-        _Reveal(
-          controller: _entryController,
-          begin: 0.08,
-          child: _buildShortcutRow(theme, shortcuts),
-        ),
+        _Reveal(controller: _entryController, begin: 0, child: _buildHeader(theme, selectedDate)),
+        _Reveal(controller: _entryController, begin: 0.08, child: _buildShortcutRow(theme, shortcuts)),
         Flexible(
           child: _Reveal(
             controller: _entryController,
@@ -2503,24 +2254,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             ),
           ),
         ),
-        _Reveal(
-          controller: _entryController,
-          begin: 0.24,
-          child: _buildMediaRow(theme),
-        ),
+        _Reveal(controller: _entryController, begin: 0.24, child: _buildMediaRow(theme)),
         if (_activeDraft.selectedPhotos.isNotEmpty)
-          _Reveal(
-            controller: _entryController,
-            begin: 0.24,
-            child: _buildPhotoPreview(theme),
-          ),
+          _Reveal(controller: _entryController, begin: 0.24, child: _buildPhotoPreview(theme)),
         _Reveal(
           controller: _entryController,
           begin: 0.32,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: _buildInputAndActions(theme),
-          ),
+          child: Padding(padding: const EdgeInsets.only(bottom: 2), child: _buildInputAndActions(theme)),
         ),
       ],
     );
@@ -2558,11 +2298,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.close_rounded,
-            size: 18,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          child: Icon(Icons.close_rounded, size: 18, color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
     );
@@ -2597,15 +2333,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             if (e.id == 'sleep' || e.name == '睡眠') {
               updatedFields.remove('fallAsleepTime');
               updatedFields.remove('duration');
-              _updateActiveDraft(
-                clearEndTime: true,
-              );
+              _updateActiveDraft(clearEndTime: true);
             }
-            return e.copyWith(
-              clearStartTime: true,
-              clearEndTime: true,
-              fields: updatedFields,
-            );
+            return e.copyWith(clearStartTime: true, clearEndTime: true, fields: updatedFields);
           }
 
           final startHour = result['startHour'] as int?;
@@ -2620,7 +2350,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             if (startHour != null && startMinute != null) {
               updatedFields['fallAsleepTime'] =
                   '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
-              
+
               final startDt = TimeOfDay(hour: startHour, minute: startMinute);
 
               if (endHour != null && endMinute != null) {
@@ -2633,21 +2363,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                 }
                 final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
                 updatedFields['duration'] = newDuration.toStringAsFixed(1);
-                
-                _updateActiveDraft(
-                  startTime: startDt,
-                  endTime: endDt,
-                  startOffset: startOffset,
-                  endOffset: endOffset,
-                );
+
+                _updateActiveDraft(startTime: startDt, endTime: endDt, startOffset: startOffset, endOffset: endOffset);
               } else {
                 updatedFields.remove('duration');
-                _updateActiveDraft(
-                  startTime: startDt,
-                  clearEndTime: true,
-                  startOffset: startOffset,
-                  endOffset: 0,
-                );
+                _updateActiveDraft(startTime: startDt, clearEndTime: true, startOffset: startOffset, endOffset: 0);
               }
             }
           }
@@ -2703,15 +2423,15 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                               color: isSelected
                                   ? theme.colorScheme.primary
                                   : isAddedToday
-                                      ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
-                                      : Colors.transparent,
+                                  ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: isSelected
                                     ? Colors.transparent
                                     : isAddedToday
-                                        ? theme.colorScheme.outlineVariant.withValues(alpha: 0.3)
-                                        : theme.colorScheme.outlineVariant,
+                                    ? theme.colorScheme.outlineVariant.withValues(alpha: 0.3)
+                                    : theme.colorScheme.outlineVariant,
                                 width: 1,
                               ),
                             ),
@@ -2722,14 +2442,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                                   isSelected
                                       ? Icons.check_circle
                                       : isAddedToday
-                                          ? Icons.check_circle_outlined
-                                          : Icons.schedule,
+                                      ? Icons.check_circle_outlined
+                                      : Icons.schedule,
                                   size: 12,
                                   color: isSelected
                                       ? theme.colorScheme.onPrimary
                                       : isAddedToday
-                                          ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                                          : theme.colorScheme.onSurface,
+                                      ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                                      : theme.colorScheme.onSurface,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
@@ -2739,8 +2459,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                                     color: isSelected
                                         ? theme.colorScheme.onPrimary
                                         : isAddedToday
-                                            ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                                            : theme.colorScheme.onSurface,
+                                        ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                                        : theme.colorScheme.onSurface,
                                   ),
                                 ),
                                 if (isAddedToday) ...[
@@ -2777,9 +2497,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final visibleEntries = <MapEntry<TagEntry, ShortcutConfig?>>[];
 
     for (final entry in _activeDraft.tagEntries) {
-      final config = shortcuts.where(
-        (s) => s.id == entry.id || s.name == entry.name,
-      ).firstOrNull;
+      final config = shortcuts.where((s) => s.id == entry.id || s.name == entry.name).firstOrNull;
       visibleEntries.add(MapEntry(entry, config));
     }
 
@@ -2804,11 +2522,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     );
   }
 
-  Widget _buildTagFormSection(
-    ThemeData theme,
-    ShortcutConfig? config,
-    TagEntry entry,
-  ) {
+  Widget _buildTagFormSection(ThemeData theme, ShortcutConfig? config, TagEntry entry) {
     final colorScheme = theme.colorScheme;
     final hasFields = config != null && config.hasPopup;
     List<ShortcutField> fieldsToProcess = config?.fields ?? [];
@@ -2829,9 +2543,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2865,11 +2577,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.access_time,
-                          size: 11,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        Icon(Icons.access_time, size: 11, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Text(
                           entry.hasTime ? entry.displayTime! : '添加时间',
@@ -2880,11 +2588,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                         ),
                         if (entry.hasTime) ...[
                           const SizedBox(width: 2),
-                          Icon(
-                            Icons.edit,
-                            size: 10,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                          Icon(Icons.edit, size: 10, color: colorScheme.onSurfaceVariant),
                         ],
                       ],
                     ),
@@ -2903,11 +2607,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                   },
                   child: Padding(
                     padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ),
               ],
@@ -2916,9 +2616,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               const SizedBox(height: 8),
               if (config.categories != null && config.categories!.isNotEmpty)
                 _buildCategorySelector(theme, config, entry.id),
-              ...fieldsToProcess.map(
-                (field) => _buildFieldWidget(theme, field, entry.id),
-              ),
+              ...fieldsToProcess.map((field) => _buildFieldWidget(theme, field, entry.id)),
             ],
           ],
         ),
@@ -2926,11 +2624,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     );
   }
 
-  Widget _buildCategorySelector(
-    ThemeData theme,
-    ShortcutConfig config,
-    String tagId,
-  ) {
+  Widget _buildCategorySelector(ThemeData theme, ShortcutConfig config, String tagId) {
     final formValues = _activeDraft.getFormValuesFor(tagId);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -2942,13 +2636,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         ),
         child: Row(
           children: config.categories!.map((category) {
-            final isSelected =
-                (formValues['_category'] ?? config.categories!.first.id) ==
-                category.id;
+            final isSelected = (formValues['_category'] ?? config.categories!.first.id) == category.id;
             return Expanded(
               child: GestureDetector(
-                onTap: () =>
-                    _updateFormValue('_category', category.id, tagId: tagId),
+                onTap: () => _updateFormValue('_category', category.id, tagId: tagId),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(vertical: 6),
@@ -2956,24 +2647,15 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                     color: isSelected ? theme.colorScheme.surface : null,
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 4,
-                            ),
-                          ]
+                        ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]
                         : null,
                   ),
                   child: Text(
                     category.name,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isSelected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -3031,9 +2713,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   Widget _buildSelectChips(ThemeData theme, ShortcutField field, String tagId) {
     final formValues = _activeDraft.getFormValuesFor(tagId);
     final currentValue = formValues[field.id];
-    final isCustomValue = currentValue != null &&
-        currentValue is String &&
-        !field.options.contains(currentValue);
+    final isCustomValue = currentValue != null && currentValue is String && !field.options.contains(currentValue);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3044,26 +2724,19 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             ...field.options.map((opt) {
               final isSelected = currentValue == opt;
               return GestureDetector(
-                onTap: () => _updateFormValue(
-                    field.id, isSelected ? null : opt,
-                    tagId: tagId),
+                onTap: () => _updateFormValue(field.id, isSelected ? null : opt, tagId: tagId),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.surfaceContainerHighest,
+                    color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     opt,
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: isSelected
-                          ? theme.colorScheme.onPrimary
-                          : theme.colorScheme.onSurface,
+                      color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -3071,15 +2744,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             }),
             if (isCustomValue)
               GestureDetector(
-                onTap: () =>
-                    _updateFormValue(field.id, null, tagId: tagId),
+                onTap: () => _updateFormValue(field.id, null, tagId: tagId),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.tertiary,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: theme.colorScheme.tertiary, borderRadius: BorderRadius.circular(20)),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -3091,11 +2759,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Icon(
-                        Icons.close,
-                        size: 14,
-                        color: theme.colorScheme.onTertiary,
-                      ),
+                      Icon(Icons.close, size: 14, color: theme.colorScheme.onTertiary),
                     ],
                   ),
                 ),
@@ -3110,18 +2774,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               style: theme.textTheme.bodySmall,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.3),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 hintText: '自定义...',
-                hintStyle: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 isDense: true,
               ),
               onSubmitted: (val) {
@@ -3136,15 +2793,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     );
   }
 
-  Widget _buildMultiSelectChips(
-    ThemeData theme,
-    ShortcutField field,
-    String tagId,
-  ) {
+  Widget _buildMultiSelectChips(ThemeData theme, ShortcutField field, String tagId) {
     final formValues = _activeDraft.getFormValuesFor(tagId);
     final currentList = (formValues[field.id] as List?)?.cast<String>() ?? [];
-    final customValues =
-        currentList.where((v) => !field.options.contains(v)).toList();
+    final customValues = currentList.where((v) => !field.options.contains(v)).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3162,29 +2814,20 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                   } else {
                     newList.add(opt);
                   }
-                  _updateFormValue(
-                    field.id,
-                    newList.isEmpty ? null : newList,
-                    tagId: tagId,
-                  );
+                  _updateFormValue(field.id, newList.isEmpty ? null : newList, tagId: tagId);
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.surfaceContainerHighest,
+                    color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     opt,
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w500,
-                      color: isSelected
-                          ? theme.colorScheme.onPrimary
-                          : theme.colorScheme.onSurface,
+                      color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -3195,19 +2838,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                 onTap: () {
                   final newList = List<String>.from(currentList);
                   newList.remove(val);
-                  _updateFormValue(
-                    field.id,
-                    newList.isEmpty ? null : newList,
-                    tagId: tagId,
-                  );
+                  _updateFormValue(field.id, newList.isEmpty ? null : newList, tagId: tagId);
                 },
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.tertiary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: theme.colorScheme.tertiary, borderRadius: BorderRadius.circular(8)),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -3219,11 +2854,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Icon(
-                        Icons.close,
-                        size: 14,
-                        color: theme.colorScheme.onTertiary,
-                      ),
+                      Icon(Icons.close, size: 14, color: theme.colorScheme.onTertiary),
                     ],
                   ),
                 ),
@@ -3239,18 +2870,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               style: theme.textTheme.bodySmall,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.3),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 hintText: '自定义（回车添加）...',
-                hintStyle: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 isDense: true,
               ),
               onSubmitted: (val) {
@@ -3262,11 +2886,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                       newList.add(trimmed);
                     }
                   }
-                  _updateFormValue(
-                    field.id,
-                    newList.isEmpty ? null : newList,
-                    tagId: tagId,
-                  );
+                  _updateFormValue(field.id, newList.isEmpty ? null : newList, tagId: tagId);
                 }
               },
             ),
@@ -3289,18 +2909,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest,
           hintText: '请输入${field.label}...',
-          hintStyle: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+          hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           isDense: true,
         ),
-        onChanged: (val) =>
-            _updateFormValue(field.id, val.isEmpty ? null : val, tagId: tagId),
+        onChanged: (val) => _updateFormValue(field.id, val.isEmpty ? null : val, tagId: tagId),
       ),
     );
   }
@@ -3319,18 +2933,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest,
           hintText: '请输入${field.label}...',
-          hintStyle: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+          hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           isDense: true,
         ),
-        onChanged: (val) =>
-            _updateFormValue(field.id, val.isEmpty ? null : val, tagId: tagId),
+        onChanged: (val) => _updateFormValue(field.id, val.isEmpty ? null : val, tagId: tagId),
       ),
     );
   }
@@ -3350,11 +2958,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             minute = int.tryParse(parts[1]) ?? 0;
           }
         }
-        final result = await showTimeScrollPicker(
-          context: context,
-          initialHour: hour,
-          initialMinute: minute,
-        );
+        final result = await showTimeScrollPicker(context: context, initialHour: hour, initialMinute: minute);
         if (result != null) {
           _updateFormValue(
             field.id,
@@ -3377,9 +2981,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             Text(
               currentValue ?? '选择${field.label}',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: currentValue != null
-                    ? theme.colorScheme.onSurface
-                    : theme.colorScheme.onSurfaceVariant,
+                color: currentValue != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -3408,12 +3010,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     return timeButton;
   }
 
-  Widget _buildDayTab(
-    ThemeData theme,
-    String label,
-    int value,
-    bool isSelected,
-  ) {
+  Widget _buildDayTab(ThemeData theme, String label, int value, bool isSelected) {
     return GestureDetector(
       onTap: () {
         _updateActiveDraft(startOffset: value);
@@ -3424,14 +3021,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         decoration: BoxDecoration(
           color: isSelected
               ? theme.colorScheme.primary.withValues(alpha: 0.15)
-              : theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.5,
-                ),
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                : Colors.transparent,
+            color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.3) : Colors.transparent,
             width: 1,
           ),
         ),
@@ -3439,20 +3032,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           label,
           style: theme.textTheme.labelSmall?.copyWith(
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant,
+            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildWaterAmountField(
-    ThemeData theme,
-    ShortcutField field,
-    String tagId,
-  ) {
+  Widget _buildWaterAmountField(ThemeData theme, ShortcutField field, String tagId) {
     final formValues = _activeDraft.getFormValuesFor(tagId);
     final currentValue = (formValues[field.id] as int?) ?? 0;
     return Column(
@@ -3469,24 +3056,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             ),
             const Spacer(),
             IconButton(
-              onPressed: currentValue > 0
-                  ? () => _updateFormValue(
-                      field.id,
-                      currentValue - 100,
-                      tagId: tagId,
-                    )
-                  : null,
+              onPressed: currentValue > 0 ? () => _updateFormValue(field.id, currentValue - 100, tagId: tagId) : null,
               icon: const Icon(Icons.remove_circle_outline, size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
             IconButton(
               onPressed: currentValue < 2000
-                  ? () => _updateFormValue(
-                      field.id,
-                      currentValue + 100,
-                      tagId: tagId,
-                    )
+                  ? () => _updateFormValue(field.id, currentValue + 100, tagId: tagId)
                   : null,
               icon: const Icon(Icons.add_circle_outline, size: 20),
               padding: EdgeInsets.zero,
@@ -3499,17 +3076,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           min: 0,
           max: 2000,
           divisions: 20,
-          onChanged: (val) =>
-              _updateFormValue(field.id, val.toInt(), tagId: tagId),
+          onChanged: (val) => _updateFormValue(field.id, val.toInt(), tagId: tagId),
         ),
       ],
     );
   }
 
-  Widget _buildShortcutRow(
-    ThemeData theme,
-    AsyncValue<List<ShortcutConfig>> shortcuts,
-  ) {
+  Widget _buildShortcutRow(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
       child: Row(
@@ -3521,9 +3094,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               child: Row(
                 children: shortcuts.when(
                   data: (list) => list.where((s) => s.isVisible).map<Widget>((config) {
-                    final isSelected = _activeDraft.tagEntries.any(
-                      (e) => e.id == config.id,
-                    );
+                    final isSelected = _activeDraft.tagEntries.any((e) => e.id == config.id);
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: GestureDetector(
@@ -3532,9 +3103,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                           duration: const Duration(milliseconds: 200),
                           height: 32,
                           constraints: const BoxConstraints(minWidth: 32),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isSelected ? 12 : 0,
-                          ),
+                          padding: EdgeInsets.symmetric(horizontal: isSelected ? 12 : 0),
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: isSelected
@@ -3557,9 +3126,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                                 Icon(
                                   _getShortcutIcon(config.name),
                                   size: 16,
-                                  color: isSelected
-                                      ? theme.colorScheme.onPrimary
-                                      : theme.colorScheme.onSurfaceVariant,
+                                  color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
                                 ),
                                 if (isSelected) const SizedBox(width: 4),
                                 if (isSelected)
@@ -3582,11 +3149,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                       width: 60,
                       height: 32,
                       child: Center(
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                        child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
                     ),
                   ],
@@ -3633,11 +3196,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           _buildTimePill(
             theme,
             onTap: _pickStartTime,
-            label: _formatTime(
-              selectedDate,
-              _activeDraft.startTime,
-              offset: _activeDraft.startOffset,
-            ),
+            label: _formatTime(selectedDate, _activeDraft.startTime, offset: _activeDraft.startOffset),
           ),
           if (_activeDraft.endTime != null) ...[
             Padding(
@@ -3654,11 +3213,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               theme,
               onTap: _pickEndTime,
               onClear: _clearEndTime,
-              label: _formatTime(
-                selectedDate,
-                _activeDraft.endTime!,
-                offset: _activeDraft.endOffset,
-              ),
+              label: _formatTime(selectedDate, _activeDraft.endTime!, offset: _activeDraft.endOffset),
             ),
           ] else ...[
             const SizedBox(width: 8),
@@ -3670,22 +3225,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   }
 
   /// 时间药丸。传 [onClear] 时右侧多一个 ×，用来取消结束时间。
-  Widget _buildTimePill(
-    ThemeData theme, {
-    required VoidCallback onTap,
-    required String label,
-    VoidCallback? onClear,
-  }) {
+  Widget _buildTimePill(ThemeData theme, {required VoidCallback onTap, required String label, VoidCallback? onClear}) {
     final scheme = theme.colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 38,
         padding: EdgeInsets.only(left: 12, right: onClear == null ? 12 : 2),
-        decoration: BoxDecoration(
-          color: scheme.primaryContainer,
-          borderRadius: BorderRadius.circular(19),
-        ),
+        decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(19)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -3708,11 +3255,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 15,
-                    color: scheme.primary,
-                  ),
+                  child: Icon(Icons.close_rounded, size: 15, color: scheme.primary),
                 ),
               ),
           ],
@@ -3770,11 +3313,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             badge: _activeDraft.selectedPhotos.length,
           ),
           const SizedBox(width: 8),
-          _buildMediaButton(
-            theme,
-            icon: Icons.camera_alt_outlined,
-            onTap: canAddPhoto ? _pickImageFromCamera : null,
-          ),
+          _buildMediaButton(theme, icon: Icons.camera_alt_outlined, onTap: canAddPhoto ? _pickImageFromCamera : null),
           const Spacer(),
           _buildAiExtractButton(theme),
         ],
@@ -3782,12 +3321,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     );
   }
 
-  Widget _buildMediaButton(
-    ThemeData theme, {
-    required IconData icon,
-    VoidCallback? onTap,
-    int badge = 0,
-  }) {
+  Widget _buildMediaButton(ThemeData theme, {required IconData icon, VoidCallback? onTap, int badge = 0}) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedOpacity(
@@ -3796,10 +3330,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
         child: Container(
           width: 38,
           height: 38,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, shape: BoxShape.circle),
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -3810,17 +3341,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                   right: 3,
                   child: Container(
                     padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
                     child: Text(
                       '$badge',
-                      style: TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onPrimary,
-                      ),
+                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
                     ),
                   ),
                 ),
@@ -3839,11 +3363,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final scheme = theme.colorScheme;
     final draft = _activeDraft;
     final aiTempsAsync = ref.watch(aiTemperaturesProvider);
-    final extractImages =
-        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
     final isExtractButtonEnabled =
-        draft.inputText.trim().isNotEmpty ||
-        (extractImages && draft.selectedPhotos.isNotEmpty);
+        draft.inputText.trim().isNotEmpty || (extractImages && draft.selectedPhotos.isNotEmpty);
 
     // 撤销态和提取态都算「可点」：撤销自然能点，提取中再点一次是停止。
     final enabled = _canUndo || _isExtracting || isExtractButtonEnabled;
@@ -3865,9 +3387,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _canUndo
-                  ? scheme.error.withValues(alpha: 0.12)
-                  : scheme.primaryContainer,
+              color: _canUndo ? scheme.error.withValues(alpha: 0.12) : scheme.primaryContainer,
               shape: BoxShape.circle,
             ),
             child: _canUndo
@@ -3880,21 +3400,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                         alignment: Alignment.center,
                         children: [
                           CustomPaint(
-                            painter: _UndoCountdownPainter(
-                              progress: _undoController.value,
-                              color: scheme.error,
-                            ),
+                            painter: _UndoCountdownPainter(progress: _undoController.value, color: scheme.error),
                             size: const Size(22, 22),
                           ),
                           child!,
                         ],
                       ),
                     ),
-                    child: Icon(
-                      Icons.undo_rounded,
-                      size: 14,
-                      color: scheme.error,
-                    ),
+                    child: Icon(Icons.undo_rounded, size: 14, color: scheme.error),
                   )
                 : _isExtracting
                 ? SizedBox(
@@ -3902,16 +3415,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: _extractPhase == _ExtractPhase.sending
-                          ? scheme.primary
-                          : scheme.tertiary,
+                      color: _extractPhase == _ExtractPhase.sending ? scheme.primary : scheme.tertiary,
                     ),
                   )
-                : Icon(
-                    Icons.auto_awesome,
-                    size: 20,
-                    color: scheme.primary,
-                  ),
+                : Icon(Icons.auto_awesome, size: 20, color: scheme.primary),
           ),
         ),
       ),
@@ -3920,8 +3427,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
   Widget _buildPhotoPreview(ThemeData theme) {
     final aiTempsAsync = ref.watch(aiTemperaturesProvider);
-    final extractImages =
-        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final extractImages = aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
     final isImageExtracting = _isExtracting && extractImages;
 
     return Padding(
@@ -3938,8 +3444,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             return Stack(
               children: [
                 GestureDetector(
-                  onTap: () =>
-                      _showFullImage(path),
+                  onTap: () => _showFullImage(path),
                   child: AnimatedGradientBorder(
                     isAnimating: isImageExtracting,
                     borderRadius: 12,
@@ -3948,12 +3453,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                       borderRadius: BorderRadius.circular(12),
                       child: Stack(
                         children: [
-                          UnifiedImage(
-                            imagePath: path,
-                            width: 56,
-                            height: 56,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                          UnifiedImage(imagePath: path, width: 56, height: 56, borderRadius: BorderRadius.circular(12)),
                           if (isCompressing)
                             Container(
                               width: 56,
@@ -3986,14 +3486,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                       height: 24,
                       decoration: const BoxDecoration(
                         color: Colors.black54,
-                        borderRadius: BorderRadius.only(
-                          topRight: Radius.circular(12),
-                          bottomLeft: Radius.circular(8),
-                        ),
+                        borderRadius: BorderRadius.only(topRight: Radius.circular(12), bottomLeft: Radius.circular(8)),
                       ),
-                      child: const Center(
-                        child: Icon(Icons.close, size: 14, color: Colors.white),
-                      ),
+                      child: const Center(child: Icon(Icons.close, size: 14, color: Colors.white)),
                     ),
                   ),
                 ),
@@ -4056,9 +3551,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 140),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.5,
-                  ),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: Stack(
@@ -4076,50 +3569,39 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                             ? '记录${draft.tagEntries.map((e) => e.name).join('、')}...'
                             : '记录此刻...',
                         hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.6,
-                          ),
+                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
                         errorBorder: InputBorder.none,
                         disabledBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.only(
-                          left: 16,
-                          top: 12,
-                          bottom: 12,
-                          right: 42,
-                        ),
+                        contentPadding: const EdgeInsets.only(left: 16, top: 12, bottom: 12, right: 42),
                       ),
                       onSubmitted: (_) {
                         if (!_isSaveDisabled) _handleSend();
                       },
                     ),
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: ValueListenableBuilder<TextEditingValue>(
-                            valueListenable: _textController,
-                            builder: (context, value, _) {
-                          final hasText = value.text.isNotEmpty;
-                          final hasTags = draft.tagEntries.isNotEmpty;
-                          final hasPhotos = draft.selectedPhotos.isNotEmpty;
-                          final hasTimeline =
-                              timeSelect != null || draft.endTime != null;
-                          if (!hasText &&
-                              !hasTags &&
-                              !hasPhotos &&
-                              !hasTimeline) {
-                            return const SizedBox.shrink();
-                          }
-                          return MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: _clearCurrentDraft,
-                              behavior: HitTestBehavior.opaque,
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _textController,
+                          builder: (context, value, _) {
+                            final hasText = value.text.isNotEmpty;
+                            final hasTags = draft.tagEntries.isNotEmpty;
+                            final hasPhotos = draft.selectedPhotos.isNotEmpty;
+                            final hasTimeline = timeSelect != null || draft.endTime != null;
+                            if (!hasText && !hasTags && !hasPhotos && !hasTimeline) {
+                              return const SizedBox.shrink();
+                            }
+                            return MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: _clearCurrentDraft,
+                                behavior: HitTestBehavior.opaque,
                                 child: Padding(
                                   padding: const EdgeInsets.all(10),
                                   child: Container(
@@ -4130,28 +3612,20 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.red.withValues(
-                                            alpha: 0.25,
-                                          ),
+                                          color: Colors.red.withValues(alpha: 0.25),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         ),
                                       ],
                                     ),
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.close,
-                                        size: 16,
-                                        color: Colors.white,
-                                      ),
-                                    ),
+                                    child: const Center(child: Icon(Icons.close, size: 16, color: Colors.white)),
                                   ),
                                 ),
-                            ),
-                          );
-                        },
-                      ),
+                              ),
+                            );
+                          },
                         ),
+                      ),
                     ),
                   ],
                 ),
@@ -4182,12 +3656,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
           shape: const CircleBorder(),
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
-          disabledBackgroundColor: scheme.surfaceContainerHighest.withValues(
-            alpha: 0.7,
-          ),
-          disabledForegroundColor: scheme.onSurfaceVariant.withValues(
-            alpha: 0.45,
-          ),
+          disabledBackgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+          disabledForegroundColor: scheme.onSurfaceVariant.withValues(alpha: 0.45),
         ),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 180),
@@ -4197,26 +3667,15 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             child: FadeTransition(opacity: animation, child: child),
           ),
           child: _savedOk
-              ? const Icon(
-                  Icons.check_rounded,
-                  key: ValueKey('saved'),
-                  size: 22,
-                )
+              ? const Icon(Icons.check_rounded, key: ValueKey('saved'), size: 22)
               : _isSending
               ? SizedBox(
                   key: const ValueKey('sending'),
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: scheme.onSurfaceVariant),
                 )
-              : const Icon(
-                  Icons.arrow_upward_rounded,
-                  key: ValueKey('send'),
-                  size: 22,
-                ),
+              : const Icon(Icons.arrow_upward_rounded, key: ValueKey('send'), size: 22),
         ),
       ),
     );

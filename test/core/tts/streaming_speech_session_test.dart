@@ -93,12 +93,15 @@ void main() {
         ..onContentDelta('，很高兴见到你。')
         ..onFinish('msg_assistant_final');
 
-      expect(sink.events, containsAllInOrder([
-        startsWith('begin(stream#0'),
-        startsWith('enqueue('),
-        'retag(stream#0->msg_assistant_final)',
-        'finish',
-      ]));
+      expect(
+        sink.events,
+        containsAllInOrder([
+          startsWith('begin(stream#0'),
+          startsWith('enqueue('),
+          'retag(stream#0->msg_assistant_final)',
+          'finish',
+        ]),
+      );
     });
 
     test('长回复在流式期间就逐段开口，不等收尾', () async {

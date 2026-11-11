@@ -71,11 +71,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
   final Map<String, TextEditingController> _formControllers = {};
 
-  TextEditingController _getFormController(
-    String fieldId,
-    String initialValue, {
-    String? tagId,
-  }) {
+  TextEditingController _getFormController(String fieldId, String initialValue, {String? tagId}) {
     final key = tagId != null ? '${tagId}_$fieldId' : fieldId;
     if (!_formControllers.containsKey(key)) {
       _formControllers[key] = TextEditingController(text: initialValue);
@@ -110,13 +106,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 final h = int.tryParse(parts[0]) ?? 0;
                 final m = int.tryParse(parts[1]) ?? 0;
                 final currentStart = _startTime ?? _time;
-                final newStart = DateTime(
-                  currentStart.year,
-                  currentStart.month,
-                  currentStart.day,
-                  h,
-                  m,
-                );
+                final newStart = DateTime(currentStart.year, currentStart.month, currentStart.day, h, m);
                 _startTime = newStart;
 
                 if (_endTime != null) {
@@ -153,13 +143,15 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               final double? durationHours = double.tryParse(value.toString());
               if (durationHours != null) {
                 final currentStart = _startTime ?? _time;
-                final newEnd = currentStart.add(
-                  Duration(minutes: (durationHours * 60).toInt()),
-                );
+                final newEnd = currentStart.add(Duration(minutes: (durationHours * 60).toInt()));
                 _endTime = newEnd;
 
                 final baseDate = DateTime(_time.year, _time.month, _time.day);
-                final startOffset = DateTime(currentStart.year, currentStart.month, currentStart.day).difference(baseDate).inDays;
+                final startOffset = DateTime(
+                  currentStart.year,
+                  currentStart.month,
+                  currentStart.day,
+                ).difference(baseDate).inDays;
                 final endOffset = DateTime(newEnd.year, newEnd.month, newEnd.day).difference(baseDate).inDays;
 
                 entry = entry.copyWith(
@@ -181,13 +173,15 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               final double? durationHours = double.tryParse(value.toString());
               if (durationHours != null) {
                 final currentStart = _startTime ?? _time;
-                final newEnd = currentStart.add(
-                  Duration(minutes: (durationHours * 60).toInt()),
-                );
+                final newEnd = currentStart.add(Duration(minutes: (durationHours * 60).toInt()));
                 _endTime = newEnd;
 
                 final baseDate = DateTime(_time.year, _time.month, _time.day);
-                final startOffset = DateTime(currentStart.year, currentStart.month, currentStart.day).difference(baseDate).inDays;
+                final startOffset = DateTime(
+                  currentStart.year,
+                  currentStart.month,
+                  currentStart.day,
+                ).difference(baseDate).inDays;
                 final endOffset = DateTime(newEnd.year, newEnd.month, newEnd.day).difference(baseDate).inDays;
 
                 entry = entry.copyWith(
@@ -231,9 +225,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     _newlyUploadedPaths = [];
     _removedPaths = [];
     _tagEntries = List.from(r.tagEntries);
-    _contentController = TextEditingController(
-      text: _parseUserRemarks(r.content, _tagEntries),
-    );
+    _contentController = TextEditingController(text: _parseUserRemarks(r.content, _tagEntries));
     // 正文输入不触发本页重建，脏态文案靠它自己补一次 setState
     _contentController.addListener(_onContentChanged);
 
@@ -250,7 +242,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     QTargetBridge.instance.register(
       _qContext.signature,
       QTargetHooks(
-        fingerprint: () => '${_contentController.text}\u0000'
+        fingerprint: () =>
+            '${_contentController.text}\u0000'
             '${_formControllers.values.map((c) => c.text).join('\u0000')}',
         reload: _reloadFromRecord,
         // 框选状态下点悬浮球时捕获正文选中文本引用给小Q
@@ -316,9 +309,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.labelSmall?.copyWith(
-            color: _isDirty
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+            color: _isDirty ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
           ),
         ),
       ),
@@ -374,9 +365,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     final text = _contentController.text;
     if (!sel.isValid) return null;
 
-    final title = widget.record.title.trim().isNotEmpty
-        ? widget.record.title.trim()
-        : '一条流水记录';
+    final title = widget.record.title.trim().isNotEmpty ? widget.record.title.trim() : '一条流水记录';
 
     // 1. 选区非空：引用选中的文本
     if (!sel.isCollapsed) {
@@ -420,9 +409,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   void dispose() {
     // 注销悬浮小Q上下文与重载钩子
     QTargetBridge.instance.unregister(_qContext.signature);
-    _qContainer
-        ?.read(floatingQProvider.notifier)
-        .popOverlayContext(_qContext);
+    _qContainer?.read(floatingQProvider.notifier).popOverlayContext(_qContext);
     _contentController.removeListener(_onContentChanged);
     _contentController.dispose();
     _contentFocusNode.dispose();
@@ -455,10 +442,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             final newFields = Map<String, dynamic>.from(entry.fields);
             newFields['fallAsleepTime'] =
                 '${result.hour.toString().padLeft(2, '0')}:${result.minute.toString().padLeft(2, '0')}';
-            
+
             final baseDate = DateTime(_time.year, _time.month, _time.day);
             final startOffset = DateTime(result.year, result.month, result.day).difference(baseDate).inDays;
-            
+
             int? endHour;
             int? endMinute;
             int? endOffset;
@@ -466,12 +453,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             if (_endTime != null) {
               final diffMin = _endTime!.difference(result).inMinutes;
               newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
-              
+
               endHour = _endTime!.hour;
               endMinute = _endTime!.minute;
               endOffset = DateTime(_endTime!.year, _endTime!.month, _endTime!.day).difference(baseDate).inDays;
             }
-            
+
             return entry.copyWith(
               fields: newFields,
               startHour: result.hour,
@@ -529,11 +516,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             final start = _startTime ?? _time;
             final diffMin = result.difference(start).inMinutes;
             newFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
-            
+
             final baseDate = DateTime(_time.year, _time.month, _time.day);
             final startOffset = DateTime(start.year, start.month, start.day).difference(baseDate).inDays;
             final endOffset = DateTime(result.year, result.month, result.day).difference(baseDate).inDays;
-            
+
             return entry.copyWith(
               fields: newFields,
               startHour: start.hour,
@@ -594,11 +581,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               if (e.id == 'activity' || e.name == '活动') {
                 updatedFields.remove('duration');
               }
-              return e.copyWith(
-                clearStartTime: true,
-                clearEndTime: true,
-                fields: updatedFields,
-              );
+              return e.copyWith(clearStartTime: true, clearEndTime: true, fields: updatedFields);
             }
             return e;
           }).toList();
@@ -621,30 +604,18 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               if (startHour != null && startMinute != null) {
                 updatedFields['fallAsleepTime'] =
                     '${startHour.toString().padLeft(2, '0')}:${startMinute.toString().padLeft(2, '0')}';
-                
+
                 final baseDate = DateTime(_time.year, _time.month, _time.day);
                 final startDate = baseDate.add(Duration(days: startOffset ?? 0));
-                final startDt = DateTime(
-                  startDate.year,
-                  startDate.month,
-                  startDate.day,
-                  startHour,
-                  startMinute,
-                );
+                final startDt = DateTime(startDate.year, startDate.month, startDate.day, startHour, startMinute);
 
                 if (endHour != null && endMinute != null) {
                   final endDate = baseDate.add(Duration(days: endOffset ?? 0));
-                  final endDt = DateTime(
-                    endDate.year,
-                    endDate.month,
-                    endDate.day,
-                    endHour,
-                    endMinute,
-                  );
+                  final endDt = DateTime(endDate.year, endDate.month, endDate.day, endHour, endMinute);
                   final diffMin = endDt.difference(startDt).inMinutes;
                   final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
                   updatedFields['duration'] = newDuration.toStringAsFixed(1);
-                  
+
                   _startTime = startDt;
                   _endTime = endDt;
                 } else {
@@ -660,22 +631,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               if (startHour != null && startMinute != null) {
                 final baseDate = DateTime(_time.year, _time.month, _time.day);
                 final startDate = baseDate.add(Duration(days: startOffset ?? 0));
-                final startDt = DateTime(
-                  startDate.year,
-                  startDate.month,
-                  startDate.day,
-                  startHour,
-                  startMinute,
-                );
+                final startDt = DateTime(startDate.year, startDate.month, startDate.day, startHour, startMinute);
                 if (endHour != null && endMinute != null) {
                   final endDate = baseDate.add(Duration(days: endOffset ?? 0));
-                  final endDt = DateTime(
-                    endDate.year,
-                    endDate.month,
-                    endDate.day,
-                    endHour,
-                    endMinute,
-                  );
+                  final endDt = DateTime(endDate.year, endDate.month, endDate.day, endHour, endMinute);
                   final diffMin = endDt.difference(startDt).inMinutes;
                   final newDuration = (diffMin / 60.0 * 10).round() / 10.0;
                   updatedFields['duration'] = newDuration.toStringAsFixed(1);
@@ -708,13 +667,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
   Future<void> _pickTags() async {
     final shortcuts = ref.read(shortcutListProvider);
-    final availableTags =
-        shortcuts.valueOrNull?.where((s) => s.isVisible).map((s) => s.name).toList() ?? [];
-    final result = await showTagPickerDialog(
-      context: context,
-      availableTags: availableTags,
-      selectedTags: _tags,
-    );
+    final availableTags = shortcuts.valueOrNull?.where((s) => s.isVisible).map((s) => s.name).toList() ?? [];
+    final result = await showTagPickerDialog(context: context, availableTags: availableTags, selectedTags: _tags);
     if (result != null) {
       setState(() {
         _tags = result;
@@ -730,9 +684,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           if (currentEntriesMap.containsKey(name)) {
             newEntries.add(currentEntriesMap[name]!);
           } else {
-            final sc = shortcuts.valueOrNull
-                ?.where((s) => s.name == name)
-                .firstOrNull;
+            final sc = shortcuts.valueOrNull?.where((s) => s.name == name).firstOrNull;
             final entryId = sc?.id ?? name;
             final initialFields = <String, dynamic>{};
             if (sc?.id == 'sleep') {
@@ -744,9 +696,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 initialFields['duration'] = (diffMin / 60.0).toStringAsFixed(1);
               }
             }
-            newEntries.add(
-              TagEntry(id: entryId, name: name, fields: initialFields),
-            );
+            newEntries.add(TagEntry(id: entryId, name: name, fields: initialFields));
           }
         }
         _tagEntries = newEntries;
@@ -759,9 +709,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       final name = config.name;
       if (_tags.contains(name)) {
         _tags.remove(name);
-        _tagEntries = _tagEntries
-            .where((e) => e.id != config.id && e.name != name)
-            .toList();
+        _tagEntries = _tagEntries.where((e) => e.id != config.id && e.name != name).toList();
       } else {
         _tags.add(name);
 
@@ -776,9 +724,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           }
         }
 
-        _tagEntries.add(
-          TagEntry(id: config.id, name: name, fields: initialFields),
-        );
+        _tagEntries.add(TagEntry(id: config.id, name: name, fields: initialFields));
       }
 
       if (_tags.isNotEmpty) {
@@ -794,12 +740,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     final XFile? xFile;
     if (source == ImageSource.camera) {
       final picker = ImagePicker();
-      xFile = await picker.pickImage(
-        source: source,
-        maxWidth: 1200,
-        maxHeight: 1200,
-        imageQuality: 80,
-      );
+      xFile = await picker.pickImage(source: source, maxWidth: 1200, maxHeight: 1200, imageQuality: 80);
     } else {
       xFile = await GalleryHelper.pickSingleImage(context);
     }
@@ -814,18 +755,15 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
     final imageRepo = ref.read(imageRepositoryProvider);
     // 启动异步任务
-    final Future<String> compressFuture = imageRepo.saveImage(
-      File(tempPath),
-      subfolder: 'diary',
-    );
-    
+    final Future<String> compressFuture = imageRepo.saveImage(File(tempPath), subfolder: 'diary');
+
     _compressingTasks[tempPath] = compressFuture;
-    
+
     try {
       final savedPath = await compressFuture;
-      
+
       if (!mounted) return;
-      
+
       setState(() {
         _compressingTasks.remove(tempPath);
         // 如果用户在压缩期间没有删除该图片，就把临时路径替换为压缩保存后的永久路径
@@ -879,11 +817,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             padding: EdgeInsets.all(20.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('正在处理图片...'),
-              ],
+              children: [CircularProgressIndicator(), SizedBox(height: 16), Text('正在处理图片...')],
             ),
           ),
         ),
@@ -944,7 +878,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         final start = _startTime ?? _time;
         final baseDate = DateTime(_time.year, _time.month, _time.day);
         final startOffset = DateTime(start.year, start.month, start.day).difference(baseDate).inDays;
-        
+
         int? endHour;
         int? endMinute;
         int? endOffset;
@@ -953,7 +887,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           endMinute = _endTime!.minute;
           endOffset = DateTime(_endTime!.year, _endTime!.month, _endTime!.day).difference(baseDate).inDays;
         }
-        
+
         final updatedSleep = sleepEntry.copyWith(
           startHour: start.hour,
           startMinute: start.minute,
@@ -963,7 +897,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           endOffset: endOffset,
           clearEndTime: _endTime == null,
         );
-        
+
         _tagEntries[sleepIndex] = updatedSleep.copyWith(time: updatedSleep.formattedTime);
       }
     }
@@ -974,9 +908,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     Map<String, dynamic>? bodyState;
     for (final entry in _tagEntries) {
       try {
-        final config = shortcuts.firstWhere(
-          (s) => s.id == entry.id || s.name == entry.name,
-        );
+        final config = shortcuts.firstWhere((s) => s.id == entry.id || s.name == entry.name);
         if (config.hasPopup) {
           if (config.id == 'health') {
             final symptomVal = entry.fields['symptom'];
@@ -1013,7 +945,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       content = _contentController.text;
     } else {
       // 检查原记录是否以「allDetails\n备注：」或纯摘要形式组织
-      final originalHadPopupDetails = widget.record.content.contains('\n备注：') ||
+      final originalHadPopupDetails =
+          widget.record.content.contains('\n备注：') ||
           widget.record.content.contains('\n备注:') ||
           widget.record.content.startsWith('备注：') ||
           widget.record.content.startsWith('备注:') ||
@@ -1067,15 +1000,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         title: const Text('确认删除'),
         content: const Text('删除后可在回收站恢复'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('删除'),
           ),
         ],
@@ -1161,11 +1089,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     } on VisionUnsupportedException catch (e) {
       if (mounted) {
         setState(() => _isExtracting = false);
-        await showVisionUnsupportedDialog(
-          context,
-          modelName: e.modelName,
-          scene: 'AI 提取',
-        );
+        await showVisionUnsupportedDialog(context, modelName: e.modelName, scene: 'AI 提取');
       }
       return;
     }
@@ -1179,10 +1103,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
       if (extracted.tagEntries.isNotEmpty) {
         final newContent = _photos.isNotEmpty
-            ? mergeDiaryNotesWithContent(
-                extracted.notes,
-                _contentController.text,
-              )
+            ? mergeDiaryNotesWithContent(extracted.notes, _contentController.text)
             : _contentController.text;
         setState(() {
           _tagEntries = extracted.tagEntries;
@@ -1192,17 +1113,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         });
       } else if (foundShortcut != null) {
         final newContent = _photos.isNotEmpty
-            ? mergeDiaryNotesWithContent(
-                extracted.notes,
-                _contentController.text,
-              )
+            ? mergeDiaryNotesWithContent(extracted.notes, _contentController.text)
             : _contentController.text;
         setState(() {
           if (!_tags.contains(foundShortcut.name)) {
-            _tags = [
-              foundShortcut.name,
-              ..._tags.where((t) => t != _displayTag),
-            ];
+            _tags = [foundShortcut.name, ..._tags.where((t) => t != _displayTag)];
           }
           _displayTag = foundShortcut.name;
           _contentController.text = newContent;
@@ -1217,9 +1132,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             final hour = int.tryParse(parts[0]) ?? _time.hour;
             final minute = int.tryParse(parts[1]) ?? _time.minute;
             final startOffset = extracted.time['startOffset'] as int? ?? 0;
-            final dt = baseDate.add(
-              Duration(days: startOffset, hours: hour, minutes: minute),
-            );
+            final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
             setState(() {
               _time = dt;
               _startTime = dt;
@@ -1233,9 +1146,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             final minute = int.tryParse(parts[1]) ?? 0;
             final endOffset = extracted.time['endOffset'] as int? ?? 0;
             setState(() {
-              _endTime = baseDate.add(
-                Duration(days: endOffset, hours: hour, minutes: minute),
-              );
+              _endTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
             });
           }
         } else {
@@ -1255,14 +1166,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   Future<void> _showModelMenu() async {
     final displayName = await showTimelineModelSelector(context, ref);
     if (displayName != null && mounted) {
-      Toast.success(
-        context,
-        '已切换：$displayName',
-        duration: const Duration(seconds: 1),
-      );
+      Toast.success(context, '已切换：$displayName', duration: const Duration(seconds: 1));
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -1276,17 +1182,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       },
       child: Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _handleBack,
-          ),
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack),
           title: const Text('编辑记录'),
           centerTitle: true,
           // 未保存状态常驻可见，配合底部保存按钮的灰态给出一致预期
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(20),
-            child: _buildSaveStatusLine(theme),
-          ),
+          bottom: PreferredSize(preferredSize: const Size.fromHeight(20), child: _buildSaveStatusLine(theme)),
           actions: [
             IconButton(
               icon: Icon(Icons.delete_outline, color: colorScheme.error),
@@ -1343,9 +1243,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 decoration: BoxDecoration(
                   color: colorScheme.primaryContainer.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: colorScheme.primary.withValues(alpha: 0.15),
-                  ),
+                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1356,10 +1254,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     Flexible(
                       child: Text(
                         formatDiaryEditorDateTime(_startTime ?? _time),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 12),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1377,27 +1272,18 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: colorScheme.primary.withValues(alpha: 0.15),
-                    ),
+                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.15)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 16,
-                        color: colorScheme.primary,
-                      ),
+                      Icon(Icons.access_time, size: 16, color: colorScheme.primary),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
                           formatDiaryEditorDateTime(_endTime!),
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 12),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -1412,9 +1298,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   height: 44,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.3,
-                    ),
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
                       color: colorScheme.outlineVariant.withValues(alpha: 0.2),
@@ -1425,18 +1309,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.add,
-                        size: 16,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      Icon(Icons.add, size: 16, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Text(
                         '结束时间',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontSize: 12,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12, color: colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -1490,18 +1367,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 ),
                 labelPadding: isSelected ? null : EdgeInsets.zero,
                 padding: isSelected ? null : const EdgeInsets.all(8),
-                avatar: Icon(
-                  icon,
-                  size: 14,
-                  color: isSelected
-                      ? Colors.white
-                      : colorScheme.onSurfaceVariant,
-                ),
+                avatar: Icon(icon, size: 14, color: isSelected ? Colors.white : colorScheme.onSurfaceVariant),
                 selected: isSelected,
                 selectedColor: color,
-                backgroundColor: colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.3,
-                ),
+                backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 labelStyle: TextStyle(
                   color: isSelected ? Colors.white : colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
@@ -1512,9 +1381,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                   side: BorderSide(
-                    color: isSelected
-                        ? Colors.transparent
-                        : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                    color: isSelected ? Colors.transparent : colorScheme.outlineVariant.withValues(alpha: 0.4),
                   ),
                 ),
                 onSelected: (_) => _toggleShortcut(config),
@@ -1523,28 +1390,14 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             ...customTags.map((tagName) {
               return Chip(
                 label: Text(tagName),
-                avatar: Icon(
-                  Icons.label,
-                  size: 14,
-                  color: colorScheme.onPrimary,
-                ),
+                avatar: Icon(Icons.label, size: 14, color: colorScheme.onPrimary),
                 backgroundColor: colorScheme.primary,
-                labelStyle: TextStyle(
-                  color: colorScheme.onPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                deleteIcon: Icon(
-                  Icons.close,
-                  size: 14,
-                  color: colorScheme.onPrimary,
-                ),
+                labelStyle: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold, fontSize: 12),
+                deleteIcon: Icon(Icons.close, size: 14, color: colorScheme.onPrimary),
                 onDeleted: () {
                   setState(() {
                     _tags.remove(tagName);
-                    _tagEntries = _tagEntries
-                        .where((e) => e.name != tagName)
-                        .toList();
+                    _tagEntries = _tagEntries.where((e) => e.name != tagName).toList();
                     if (_tags.isNotEmpty) {
                       _displayTag = _tags.first;
                     } else {
@@ -1561,9 +1414,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               labelStyle: const TextStyle(fontSize: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                ),
+                side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
               ),
             ),
           ],
@@ -1574,15 +1425,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             final color = tagColors[entry.name] ?? colorScheme.primary;
             final icon = tagIcons[entry.name] ?? Icons.label;
 
-            final sc = shortcuts
-                .where((s) => s.id == entry.id || s.name == entry.name)
-                .firstOrNull;
+            final sc = shortcuts.where((s) => s.id == entry.id || s.name == entry.name).firstOrNull;
             final hasFields = sc != null && sc.hasPopup;
 
             List<ShortcutField> fieldsToProcess = sc?.fields ?? [];
-            if (sc != null &&
-                sc.categories != null &&
-                sc.categories!.isNotEmpty) {
+            if (sc != null && sc.categories != null && sc.categories!.isNotEmpty) {
               final currentCategory = sc.categories!.firstWhere(
                 (c) => c.id == entry.fields['_category'],
                 orElse: () => sc.categories!.first,
@@ -1597,15 +1444,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                  ),
+                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
                   boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
                 ),
                 child: Column(
@@ -1614,10 +1455,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: color.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(AppRadius.large),
@@ -1629,10 +1467,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                               const SizedBox(width: 6),
                               Text(
                                 entry.name,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: color,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
@@ -1649,11 +1484,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.access_time,
-                                  size: 11,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
+                                Icon(Icons.access_time, size: 11, color: colorScheme.onSurfaceVariant),
                                 const SizedBox(width: 4),
                                 Text(
                                   entry.hasTime ? entry.displayTime! : '添加时间',
@@ -1664,11 +1495,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                                 ),
                                 if (entry.hasTime) ...[
                                   const SizedBox(width: 2),
-                                  Icon(
-                                    Icons.edit,
-                                    size: 10,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
+                                  Icon(Icons.edit, size: 10, color: colorScheme.onSurfaceVariant),
                                 ],
                               ],
                             ),
@@ -1678,13 +1505,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                         GestureDetector(
                           onTap: () {
                             setState(() {
-                              _tagEntries = _tagEntries
-                                  .where((e) => e.id != entry.id)
-                                  .toList();
+                              _tagEntries = _tagEntries.where((e) => e.id != entry.id).toList();
                               _tags = _tagEntries.map((e) => e.name).toList();
-                              _displayTag = _tagEntries.isNotEmpty
-                                  ? _tagEntries.first.name
-                                  : '记录';
+                              _displayTag = _tagEntries.isNotEmpty ? _tagEntries.first.name : '记录';
                             });
                           },
                           child: Container(
@@ -1693,11 +1516,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                               color: colorScheme.error.withValues(alpha: 0.08),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(
-                              Icons.close,
-                              size: 14,
-                              color: colorScheme.error,
-                            ),
+                            child: Icon(Icons.close, size: 14, color: colorScheme.error),
                           ),
                         ),
                       ],
@@ -1706,34 +1525,29 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     if (hasFields) ...[
                       if (sc.categories != null && sc.categories!.isNotEmpty)
                         _buildCategorySelector(theme, sc, entry.id),
-                      ...fieldsToProcess.map(
-                        (field) => _buildFieldWidget(theme, field, entry.id),
-                      ),
+                      ...fieldsToProcess.map((field) => _buildFieldWidget(theme, field, entry.id)),
                     ] else if (entry.fields.isNotEmpty) ...[
                       Wrap(
                         spacing: 8,
                         runSpacing: 4,
-                        children: entry.fields.entries
-                            .where((f) => !f.key.startsWith('_'))
-                            .map((f) {
-                              final label = formatDiaryExtraFieldLabel(f.key);
-                              final val = formatDiaryExtraFieldValue(f.key, f.value);
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  '$label: $val',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              );
-                            })
-                            .toList(),
+                        children: entry.fields.entries.where((f) => !f.key.startsWith('_')).map((f) {
+                          final label = formatDiaryExtraFieldLabel(f.key);
+                          final val = formatDiaryExtraFieldValue(f.key, f.value);
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '$label: $val',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ],
                   ],
@@ -1746,15 +1560,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     );
   }
 
-  Widget _buildCategorySelector(
-    ThemeData theme,
-    ShortcutConfig config,
-    String tagId,
-  ) {
+  Widget _buildCategorySelector(ThemeData theme, ShortcutConfig config, String tagId) {
     final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
-    final formValues = entry != null
-        ? Map<String, dynamic>.from(entry.fields)
-        : {};
+    final formValues = entry != null ? Map<String, dynamic>.from(entry.fields) : {};
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
@@ -1765,9 +1573,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         ),
         child: Row(
           children: config.categories!.map((category) {
-            final isSelected =
-                (formValues['_category'] ?? config.categories!.first.id) ==
-                category.id;
+            final isSelected = (formValues['_category'] ?? config.categories!.first.id) == category.id;
             return Expanded(
               child: GestureDetector(
                 onTap: () => _updateFormValue(tagId, '_category', category.id),
@@ -1778,24 +1584,15 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     color: isSelected ? theme.colorScheme.surface : null,
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 4,
-                            ),
-                          ]
+                        ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]
                         : null,
                   ),
                   child: Text(
                     category.name,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isSelected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -1852,13 +1649,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
   Widget _buildSelectChips(ThemeData theme, ShortcutField field, String tagId) {
     final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
-    final formValues = entry != null
-        ? Map<String, dynamic>.from(entry.fields)
-        : {};
+    final formValues = entry != null ? Map<String, dynamic>.from(entry.fields) : {};
     final currentValue = formValues[field.id];
-    final isCustomValue = currentValue != null &&
-        currentValue is String &&
-        !field.options.contains(currentValue);
+    final isCustomValue = currentValue != null && currentValue is String && !field.options.contains(currentValue);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1869,25 +1662,19 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             ...field.options.map((opt) {
               final isSelected = currentValue == opt;
               return GestureDetector(
-                onTap: () =>
-                    _updateFormValue(tagId, field.id, isSelected ? null : opt),
+                onTap: () => _updateFormValue(tagId, field.id, isSelected ? null : opt),
                 child: AnimatedContainer(
                   duration: AppDurations.normal,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.surfaceContainerHighest,
+                    color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     opt,
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: isSelected
-                          ? theme.colorScheme.onPrimary
-                          : theme.colorScheme.onSurface,
+                      color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -1895,15 +1682,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             }),
             if (isCustomValue)
               GestureDetector(
-                onTap: () =>
-                    _updateFormValue(tagId, field.id, null),
+                onTap: () => _updateFormValue(tagId, field.id, null),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.tertiary,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: theme.colorScheme.tertiary, borderRadius: BorderRadius.circular(20)),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1915,11 +1697,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Icon(
-                        Icons.close,
-                        size: 14,
-                        color: theme.colorScheme.onTertiary,
-                      ),
+                      Icon(Icons.close, size: 14, color: theme.colorScheme.onTertiary),
                     ],
                   ),
                 ),
@@ -1934,18 +1712,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               style: theme.textTheme.bodySmall,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.3),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 hintText: '自定义...',
-                hintStyle: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 isDense: true,
               ),
               onSubmitted: (val) {
@@ -1960,18 +1731,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     );
   }
 
-  Widget _buildMultiSelectChips(
-    ThemeData theme,
-    ShortcutField field,
-    String tagId,
-  ) {
+  Widget _buildMultiSelectChips(ThemeData theme, ShortcutField field, String tagId) {
     final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
-    final formValues = entry != null
-        ? Map<String, dynamic>.from(entry.fields)
-        : {};
+    final formValues = entry != null ? Map<String, dynamic>.from(entry.fields) : {};
     final currentList = (formValues[field.id] as List?)?.cast<String>() ?? [];
-    final customValues =
-        currentList.where((v) => !field.options.contains(v)).toList();
+    final customValues = currentList.where((v) => !field.options.contains(v)).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1989,26 +1753,20 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   } else {
                     newList.add(opt);
                   }
-                  _updateFormValue(
-                      tagId, field.id, newList.isEmpty ? null : newList);
+                  _updateFormValue(tagId, field.id, newList.isEmpty ? null : newList);
                 },
                 child: AnimatedContainer(
                   duration: AppDurations.normal,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.surfaceContainerHighest,
+                    color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     opt,
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w500,
-                      color: isSelected
-                          ? theme.colorScheme.onPrimary
-                          : theme.colorScheme.onSurface,
+                      color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -2019,16 +1777,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 onTap: () {
                   final newList = List<String>.from(currentList);
                   newList.remove(val);
-                  _updateFormValue(
-                      tagId, field.id, newList.isEmpty ? null : newList);
+                  _updateFormValue(tagId, field.id, newList.isEmpty ? null : newList);
                 },
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.tertiary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: theme.colorScheme.tertiary, borderRadius: BorderRadius.circular(8)),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -2040,11 +1793,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Icon(
-                        Icons.close,
-                        size: 14,
-                        color: theme.colorScheme.onTertiary,
-                      ),
+                      Icon(Icons.close, size: 14, color: theme.colorScheme.onTertiary),
                     ],
                   ),
                 ),
@@ -2060,18 +1809,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               style: theme.textTheme.bodySmall,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.3),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 hintText: '自定义（回车添加）...',
-                hintStyle: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 isDense: true,
               ),
               onSubmitted: (val) {
@@ -2083,8 +1825,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                       newList.add(trimmed);
                     }
                   }
-                  _updateFormValue(
-                      tagId, field.id, newList.isEmpty ? null : newList);
+                  _updateFormValue(tagId, field.id, newList.isEmpty ? null : newList);
                 }
               },
             ),
@@ -2096,9 +1837,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
   Widget _buildTextField(ThemeData theme, ShortcutField field, String tagId) {
     final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
-    final formValues = entry != null
-        ? Map<String, dynamic>.from(entry.fields)
-        : {};
+    final formValues = entry != null ? Map<String, dynamic>.from(entry.fields) : {};
     final currentValue = formValues[field.id]?.toString() ?? '';
     final controller = _getFormController(field.id, currentValue, tagId: tagId);
     return SizedBox(
@@ -2110,27 +1849,19 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest,
           hintText: '请输入${field.label}...',
-          hintStyle: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+          hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           isDense: true,
         ),
-        onChanged: (val) =>
-            _updateFormValue(tagId, field.id, val.isEmpty ? null : val),
+        onChanged: (val) => _updateFormValue(tagId, field.id, val.isEmpty ? null : val),
       ),
     );
   }
 
   Widget _buildNumberField(ThemeData theme, ShortcutField field, String tagId) {
     final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
-    final formValues = entry != null
-        ? Map<String, dynamic>.from(entry.fields)
-        : {};
+    final formValues = entry != null ? Map<String, dynamic>.from(entry.fields) : {};
     final currentValue = formValues[field.id]?.toString() ?? '';
     final controller = _getFormController(field.id, currentValue, tagId: tagId);
     return SizedBox(
@@ -2143,27 +1874,19 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest,
           hintText: '请输入${field.label}...',
-          hintStyle: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+          hintStyle: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           isDense: true,
         ),
-        onChanged: (val) =>
-            _updateFormValue(tagId, field.id, val.isEmpty ? null : val),
+        onChanged: (val) => _updateFormValue(tagId, field.id, val.isEmpty ? null : val),
       ),
     );
   }
 
   Widget _buildTimeField(ThemeData theme, ShortcutField field, String tagId) {
     final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
-    final formValues = entry != null
-        ? Map<String, dynamic>.from(entry.fields)
-        : {};
+    final formValues = entry != null ? Map<String, dynamic>.from(entry.fields) : {};
     final currentValue = formValues[field.id] as String?;
     final isSleepTime = field.id == 'fallAsleepTime';
 
@@ -2177,11 +1900,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             minute = int.tryParse(parts[1]) ?? 0;
           }
         }
-        final result = await showTimeScrollPicker(
-          context: context,
-          initialHour: hour,
-          initialMinute: minute,
-        );
+        final result = await showTimeScrollPicker(context: context, initialHour: hour, initialMinute: minute);
         if (result != null) {
           _updateFormValue(
             tagId,
@@ -2204,9 +1923,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             Text(
               currentValue ?? '选择${field.label}',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: currentValue != null
-                    ? theme.colorScheme.onSurface
-                    : theme.colorScheme.onSurfaceVariant,
+                color: currentValue != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -2235,23 +1952,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     return timeButton;
   }
 
-  Widget _buildDayTab(
-    ThemeData theme,
-    String label,
-    int value,
-    bool isSelected,
-  ) {
+  Widget _buildDayTab(ThemeData theme, String label, int value, bool isSelected) {
     return GestureDetector(
       onTap: () {
         final base = DateTime(_time.year, _time.month, _time.day);
         final start = _startTime ?? _time;
-        final newStart = DateTime(
-          base.year,
-          base.month,
-          base.day,
-          start.hour,
-          start.minute,
-        ).add(Duration(days: value));
+        final newStart = DateTime(base.year, base.month, base.day, start.hour, start.minute).add(Duration(days: value));
         setState(() {
           _startTime = newStart;
           _tagEntries = _tagEntries.map((entry) {
@@ -2273,14 +1979,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         decoration: BoxDecoration(
           color: isSelected
               ? theme.colorScheme.primary.withValues(alpha: 0.15)
-              : theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.5,
-                ),
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                : Colors.transparent,
+            color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.3) : Colors.transparent,
             width: 1,
           ),
         ),
@@ -2288,24 +1990,16 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           label,
           style: theme.textTheme.labelSmall?.copyWith(
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant,
+            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildWaterAmountField(
-    ThemeData theme,
-    ShortcutField field,
-    String tagId,
-  ) {
+  Widget _buildWaterAmountField(ThemeData theme, ShortcutField field, String tagId) {
     final entry = _tagEntries.where((e) => e.id == tagId).firstOrNull;
-    final formValues = entry != null
-        ? Map<String, dynamic>.from(entry.fields)
-        : {};
+    final formValues = entry != null ? Map<String, dynamic>.from(entry.fields) : {};
     final currentValue = (formValues[field.id] as int?) ?? 0;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2321,17 +2015,13 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             ),
             const Spacer(),
             IconButton(
-              onPressed: currentValue > 0
-                  ? () => _updateFormValue(tagId, field.id, currentValue - 100)
-                  : null,
+              onPressed: currentValue > 0 ? () => _updateFormValue(tagId, field.id, currentValue - 100) : null,
               icon: const Icon(Icons.remove_circle_outline, size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
             IconButton(
-              onPressed: currentValue < 2000
-                  ? () => _updateFormValue(tagId, field.id, currentValue + 100)
-                  : null,
+              onPressed: currentValue < 2000 ? () => _updateFormValue(tagId, field.id, currentValue + 100) : null,
               icon: const Icon(Icons.add_circle_outline, size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -2369,11 +2059,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           focusNode: _contentFocusNode,
           maxLines: null,
           minLines: 5,
-          decoration: const InputDecoration(
-            hintText: '输入详细记录内容...',
-            border: InputBorder.none,
-            filled: false,
-          ),
+          decoration: const InputDecoration(hintText: '输入详细记录内容...', border: InputBorder.none, filled: false),
           style: theme.textTheme.bodyLarge,
           // 系统默认项（过滤第三方文本处理项）+ 末尾「给小Q」：把选中文本连同
           // 位置引用给悬浮小Q；用平铺工具栏避免「给小Q」被折叠进 ⋮
@@ -2382,10 +2068,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               anchors: editableTextState.contextMenuAnchors,
               buttonItems: [
                 ...QTextSelectionToolbar.defaultButtonItems(editableTextState),
-                ContextMenuButtonItem(
-                  label: '给小Q',
-                  onPressed: _sendSelectionToQ,
-                ),
+                ContextMenuButtonItem(label: '给小Q', onPressed: _sendSelectionToQ),
               ],
             );
           },
@@ -2449,20 +2132,13 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             height: 80,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-              ),
+              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Stack(
                 children: [
-                  UnifiedImage(
-                    imagePath: path,
-                    width: 80,
-                    height: 80,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  UnifiedImage(imagePath: path, width: 80, height: 80, borderRadius: BorderRadius.circular(12)),
                   if (isCompressing)
                     Container(
                       color: Colors.black.withValues(alpha: 0.4),
@@ -2490,13 +2166,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               child: Container(
                 width: 28,
                 height: 28,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(Icons.close, size: 14, color: Colors.white),
-                ),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+                child: const Center(child: Icon(Icons.close, size: 14, color: Colors.white)),
               ),
             ),
           ),
@@ -2518,10 +2189,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         height: 80,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: colorScheme.outlineVariant,
-            style: BorderStyle.solid,
-          ),
+          border: Border.all(color: colorScheme.outlineVariant, style: BorderStyle.solid),
           color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         ),
         child: Column(
@@ -2531,11 +2199,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -2558,14 +2222,10 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(AppRadius.medium),
                   border: Border.all(
-                    color: _isExtracting
-                        ? colorScheme.outlineVariant
-                        : colorScheme.primary.withValues(alpha: 0.4),
+                    color: _isExtracting ? colorScheme.outlineVariant : colorScheme.primary.withValues(alpha: 0.4),
                   ),
                   color: _isExtracting
-                      ? colorScheme.surfaceContainerHighest.withValues(
-                          alpha: 0.3,
-                        )
+                      ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
                       : colorScheme.primary.withValues(alpha: 0.06),
                 ),
                 child: Row(
@@ -2575,25 +2235,14 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                       SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colorScheme.primary,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
                       )
                     else
-                      Icon(
-                        Icons.auto_awesome,
-                        size: 18,
-                        color: colorScheme.primary,
-                      ),
+                      Icon(Icons.auto_awesome, size: 18, color: colorScheme.primary),
                     const SizedBox(width: 6),
                     Text(
                       _isExtracting ? '优化中...' : '智能优化',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.primary,
-                      ),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
                     ),
                   ],
                 ),
@@ -2614,9 +2263,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                           }
                         },
                   style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.medium),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
                   ),
                   child: Text(
                     // 文案固定，未保存与否交给按钮亮灭 + 顶部状态行表达，
@@ -2633,7 +2280,3 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     );
   }
 }
-
-
-
-

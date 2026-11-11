@@ -52,8 +52,7 @@ Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
     final response = request.response;
     Future<void> reply(int status, String text) async {
       response.statusCode = status;
-      response.headers.contentType =
-          ContentType('text', 'plain', charset: 'utf-8');
+      response.headers.contentType = ContentType('text', 'plain', charset: 'utf-8');
       response.headers.set('Cache-Control', 'no-store');
       response.headers.set('Referrer-Policy', 'no-referrer');
       response.write(text);
@@ -73,8 +72,7 @@ Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
       await reply(405, 'Method not allowed');
       return;
     }
-    if (request.headers.value(HttpHeaders.hostHeader) != origin ||
-        request.uri.path != '/auth/callback') {
+    if (request.headers.value(HttpHeaders.hostHeader) != origin || request.uri.path != '/auth/callback') {
       await reply(404, 'Not found');
       return;
     }
@@ -89,8 +87,7 @@ Future<RaccoonLoopbackLogin> startRaccoonLoopbackLogin({
     }
     final error = request.uri.queryParameters['error'];
     if (error != null && error.isNotEmpty) {
-      final description =
-          request.uri.queryParameters['error_description'] ?? error;
+      final description = request.uri.queryParameters['error_description'] ?? error;
       await reply(400, '登录未获授权，请回 QNote 重新登录。');
       await finish(() => fail(StateError('授权被拒绝：$description')));
       return;

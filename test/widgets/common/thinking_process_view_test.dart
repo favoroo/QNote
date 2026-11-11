@@ -48,9 +48,7 @@ void main() {
   });
 
   testWidgets('折叠态只展示最新一行，点击后展开全文', (tester) async {
-    await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '先想第一步\n再想第二步')),
-    );
+    await tester.pumpWidget(wrap(const ThinkingProcessView(thought: '先想第一步\n再想第二步')));
 
     expect(find.text('思考'), findsOneWidget);
     expect(find.text('再想第二步'), findsOneWidget);
@@ -70,9 +68,7 @@ void main() {
   });
 
   testWidgets('已结束的思考段展示耗时', (tester) async {
-    await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '思考完成', durationSeconds: 7)),
-    );
+    await tester.pumpWidget(wrap(const ThinkingProcessView(thought: '思考完成', durationSeconds: 7)));
 
     expect(find.text(' · 7 秒'), findsOneWidget);
   });
@@ -94,49 +90,25 @@ void main() {
   });
 
   testWidgets('流式结束后自动收起（未手动展开过）', (tester) async {
-    await tester.pumpWidget(
-      wrap(
-        ThinkingProcessView(
-          thought: '思考',
-          isStreaming: true,
-          startedAt: DateTime.now(),
-        ),
-      ),
-    );
+    await tester.pumpWidget(wrap(ThinkingProcessView(thought: '思考', isStreaming: true, startedAt: DateTime.now())));
     expect(find.byType(ThoughtTailScrollView), findsNothing);
 
-    await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '思考', durationSeconds: 3)),
-    );
+    await tester.pumpWidget(wrap(const ThinkingProcessView(thought: '思考', durationSeconds: 3)));
     await tester.pumpAndSettle();
 
     expect(find.byType(ThoughtTailScrollView), findsNothing);
   });
 
   testWidgets('用户手动展开后，流式结束保持展开', (tester) async {
-    await tester.pumpWidget(
-      wrap(
-        ThinkingProcessView(
-          thought: '思考',
-          isStreaming: true,
-          startedAt: DateTime.now(),
-        ),
-      ),
-    );
+    await tester.pumpWidget(wrap(ThinkingProcessView(thought: '思考', isStreaming: true, startedAt: DateTime.now())));
 
     await tester.tap(find.byType(InkWell));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(ThoughtTailScrollView), findsOneWidget);
 
-    await tester.pumpWidget(
-      wrap(const ThinkingProcessView(thought: '思考完成', durationSeconds: 5)),
-    );
+    await tester.pumpWidget(wrap(const ThinkingProcessView(thought: '思考完成', durationSeconds: 5)));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byType(ThoughtTailScrollView),
-      findsOneWidget,
-      reason: '手动展开过就不应被自动收起，否则会打断阅读',
-    );
+    expect(find.byType(ThoughtTailScrollView), findsOneWidget, reason: '手动展开过就不应被自动收起，否则会打断阅读');
   });
 }

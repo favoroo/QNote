@@ -8,7 +8,7 @@ class HealthDailyMetrics {
   final double calories;
   final int activeMinutes;
   final int standingCount; // 站立次数
-  
+
   // 睡眠相关 (单位：分钟)
   final int sleepDurationMinutes;
   final int deepSleepMinutes;

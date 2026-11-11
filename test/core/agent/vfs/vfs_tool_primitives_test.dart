@@ -25,10 +25,7 @@ void main() {
 
   group('VFS 检索与写入原语', () {
     test('grep 命中携带可直接用于读写的虚拟路径', () async {
-      await vfs.writeFile(
-        '/todos/检索分类/找得到我.md',
-        '---\npriority: normal\n---\n关键词：紫罗兰计划',
-      );
+      await vfs.writeFile('/todos/检索分类/找得到我.md', '---\npriority: normal\n---\n关键词：紫罗兰计划');
 
       final hits = await vfs.grep('紫罗兰计划', scope: 'todos');
       expect(hits, isNotEmpty, reason: '应能按待办范围检索到');
@@ -43,18 +40,12 @@ void main() {
     });
 
     test('按实体 id 路径写入命中既有实体，且不把 id 顶成标题', () async {
-      final created = await vfs.writeFile(
-        '/todos/脏数据防护/原始标题.md',
-        '---\npriority: normal\n---\n原始备注',
-      );
+      final created = await vfs.writeFile('/todos/脏数据防护/原始标题.md', '---\npriority: normal\n---\n原始备注');
       final id = created['id'] as String;
       final folderId = created['folder_id'] as String;
 
       // 场景 1：正文不带 id 的 id 路径写入（grep 命中、页面上下文提示都会产出这种路径）
-      await vfs.writeFile(
-        '/todos/脏数据防护/$id.md',
-        '---\npriority: important\n---\n改过的备注',
-      );
+      await vfs.writeFile('/todos/脏数据防护/$id.md', '---\npriority: important\n---\n改过的备注');
 
       var all = await todoRepo.getAll();
       var matched = all.where((t) => t.id == id).toList();
@@ -99,15 +90,8 @@ void main() {
 
     test('write_file 追加模式：时间线追加保留已有事件', () async {
       const day = '2026-03-05';
-      await vfs.writeFile(
-        '/timeline/$day.md',
-        '## [09:00] 事件A\n- 分类: 工作\n- 心情: 4',
-      );
-      await vfs.writeFile(
-        '/timeline/$day.md',
-        '## [20:00] 事件B\n- 分类: 日常\n- 心情: 3',
-        append: true,
-      );
+      await vfs.writeFile('/timeline/$day.md', '## [09:00] 事件A\n- 分类: 工作\n- 心情: 4');
+      await vfs.writeFile('/timeline/$day.md', '## [20:00] 事件B\n- 分类: 日常\n- 心情: 3', append: true);
 
       final content = await vfs.readFile('/timeline/$day.md');
       expect(content, contains('事件A'), reason: '追加不应覆盖已有事件');
@@ -119,11 +103,7 @@ void main() {
 
     test('追加模式在空态日不把占位文案当正文', () async {
       const day = '2026-03-06';
-      await vfs.writeFile(
-        '/timeline/$day.md',
-        '## [08:00] 唯一事件\n- 分类: 日常',
-        append: true,
-      );
+      await vfs.writeFile('/timeline/$day.md', '## [08:00] 唯一事件\n- 分类: 日常', append: true);
 
       final content = await vfs.readFile('/timeline/$day.md');
       expect(content, contains('唯一事件'));
@@ -131,23 +111,14 @@ void main() {
     });
 
     test('追加模式对 JSON 配置端点报错', () async {
-      expect(
-        () => vfs.writeFile('/settings/weight.json', '{"weight": 68}', append: true),
-        throwsA(isA<Exception>()),
-      );
+      expect(() => vfs.writeFile('/settings/weight.json', '{"weight": 68}', append: true), throwsA(isA<Exception>()));
     });
 
     test('move_file 一步完成改分类与改名', () async {
-      final created = await vfs.writeFile(
-        '/todos/移动源分类/待搬走.md',
-        '---\npriority: normal\n---\n搬家前的备注',
-      );
+      final created = await vfs.writeFile('/todos/移动源分类/待搬走.md', '---\npriority: normal\n---\n搬家前的备注');
       final id = created['id'] as String;
 
-      final res = await vfs.moveFile(
-        '/todos/移动源分类/待搬走.md',
-        '/todos/移动目标分类/搬过来了.md',
-      );
+      final res = await vfs.moveFile('/todos/移动源分类/待搬走.md', '/todos/移动目标分类/搬过来了.md');
       expect(res['status'], 'moved');
 
       final all = await todoRepo.getAll();
@@ -162,16 +133,8 @@ void main() {
       // 广度优先：顶层各目录先铺开，即使条目超限被截断也不会整段子树消失
       expect(tree, contains('/todos/'));
       expect(tree, contains('/settings/'));
-      expect(
-        tree.any((p) => p.startsWith('/todos/') && p.endsWith('.md')),
-        isTrue,
-        reason: '应展开到具体条目',
-      );
-      expect(
-        tree.any((p) => p.contains('//')),
-        isFalse,
-        reason: '不应出现双斜杠拼接的路径',
-      );
+      expect(tree.any((p) => p.startsWith('/todos/') && p.endsWith('.md')), isTrue, reason: '应展开到具体条目');
+      expect(tree.any((p) => p.contains('//')), isFalse, reason: '不应出现双斜杠拼接的路径');
     });
 
     test('grep 支持记忆与配置范围', () async {

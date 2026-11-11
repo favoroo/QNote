@@ -22,10 +22,7 @@ class ChatAttachmentRefs {
   final List<String>? todoIds;
   final List<String>? journalIds;
 
-  bool get isEmpty =>
-      (noteIds?.isEmpty ?? true) &&
-      (todoIds?.isEmpty ?? true) &&
-      (journalIds?.isEmpty ?? true);
+  bool get isEmpty => (noteIds?.isEmpty ?? true) && (todoIds?.isEmpty ?? true) && (journalIds?.isEmpty ?? true);
 
   /// 从消息的 `uiDetails['attachments']` 还原引用；无该字段的旧消息返回全空实例。
   factory ChatAttachmentRefs.fromMessage(ChatMessage message) {
@@ -55,20 +52,14 @@ List<String>? _readIds(Map? map, String key) {
 String journalChipTitle(Note note) => '${note.title} 日记';
 
 /// 笔记引用在附件条上的展示名。
-String noteChipTitle(Note note) =>
-    note.title.isNotEmpty ? note.title : '无标题笔记';
+String noteChipTitle(Note note) => note.title.isNotEmpty ? note.title : '无标题笔记';
 
 /// 待办引用在附件条上的展示名。
-String todoChipTitle(Todo todo) =>
-    todo.title.isNotEmpty ? todo.title : '无标题待办';
+String todoChipTitle(Todo todo) => todo.title.isNotEmpty ? todo.title : '无标题待办';
 
 /// 按 id 回查到的附件标题集合；查不到的 id 不入表，由附件条按类型名兜底。
 class ChatAttachmentTitles {
-  const ChatAttachmentTitles({
-    this.journals = const {},
-    this.notes = const {},
-    this.todos = const {},
-  });
+  const ChatAttachmentTitles({this.journals = const {}, this.notes = const {}, this.todos = const {}});
 
   final Map<String, String> journals;
   final Map<String, String> notes;
@@ -137,10 +128,7 @@ int? reeditableUserIndex(List<ChatMessage> messages) {
 /// 撤回是破坏性操作，但拦一次确认也有代价：纯文字问答轮没有任何数据要撤销，
 /// 弹窗纯属噪音。因此只有本函数返回 >0 时页面才弹二次确认。
 /// 下标越界或指向非用户消息时返回 0——那种情况下 `rollbackToMessage` 本就会拒。
-int countTurnUndoChanges(
-  List<ChatMessage> messages, {
-  required int fromUserIndex,
-}) {
+int countTurnUndoChanges(List<ChatMessage> messages, {required int fromUserIndex}) {
   if (fromUserIndex < 0 || fromUserIndex >= messages.length) return 0;
   if (messages[fromUserIndex].role != 'user') return 0;
   var count = 0;
@@ -157,11 +145,7 @@ int countTurnUndoChanges(
 /// `ChatMessage` 没有主键，只能靠对象引用认人：provider 增删消息重建的都是 List
 /// 而非元素，同会话内的正常流转不会误判；而切回会话/冷启动会从库里反序列化出全新
 /// 对象，正好判为失效——此时下标可能已指向另一条提问，再按它撤回就删错轮了。
-bool isReeditAnchorValid({
-  required List<ChatMessage> messages,
-  required int index,
-  required ChatMessage anchor,
-}) {
+bool isReeditAnchorValid({required List<ChatMessage> messages, required int index, required ChatMessage anchor}) {
   if (index < 0 || index >= messages.length) return false;
   return identical(messages[index], anchor);
 }
@@ -205,12 +189,7 @@ class ReeditDraft {
 
   /// 是否已无任何未发送内容
   bool get isEmpty =>
-      text.trim().isEmpty &&
-      images.isEmpty &&
-      noteIds.isEmpty &&
-      todoIds.isEmpty &&
-      journalIds.isEmpty &&
-      !hasQuote;
+      text.trim().isEmpty && images.isEmpty && noteIds.isEmpty && todoIds.isEmpty && journalIds.isEmpty && !hasQuote;
 
   /// 与另一份草稿逐项比对，判断「用户有没有动过这份回填」。
   ///

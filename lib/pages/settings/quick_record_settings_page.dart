@@ -75,11 +75,7 @@ class _QuickRecordSettingsPageState extends ConsumerState<QuickRecordSettingsPag
       ),
       body: Column(
         children: [
-          SettingsSegmentBar(
-            items: _tabs,
-            selectedIndex: _currentIndex,
-            onChanged: _switchTo,
-          ),
+          SettingsSegmentBar(items: _tabs, selectedIndex: _currentIndex, onChanged: _switchTo),
           Expanded(
             // IndexedStack 保留两个分段的滚动位置与编辑态，来回切换不会重建列表
             child: SettingsSegmentContent(

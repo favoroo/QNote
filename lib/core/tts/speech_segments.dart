@@ -8,10 +8,8 @@ import 'package:qnote_flutter/core/utils/speech_chunker.dart';
 /// markdown 噪音、[SpeechTuning.maxSessionChars] 总量护栏。手动点「朗读」与
 /// 小Q自动朗读共用本类，两条路径的截断与清洗行为才不会分叉。
 class SpeechSegmentBuilder {
-  SpeechSegmentBuilder({
-    this.maxTotalChars = SpeechTuning.maxSessionChars,
-    SpeechChunker? chunker,
-  }) : _chunker = chunker ?? SpeechChunker();
+  SpeechSegmentBuilder({this.maxTotalChars = SpeechTuning.maxSessionChars, SpeechChunker? chunker})
+    : _chunker = chunker ?? SpeechChunker();
 
   /// 超长时补在最后的提示语（沿用旧整段朗读的措辞，用户听得懂"后面没念"）
   static const String clippedSuffix = '……后文略。';

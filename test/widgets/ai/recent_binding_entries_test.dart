@@ -5,54 +5,33 @@ import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/widgets/ai/assistant_model_sheet.dart';
 
-AiProvider _provider({
-  required String id,
-  required String name,
-  required List<String> models,
-  bool enabled = true,
-}) => AiProvider(
-  id: id,
-  vendorId: 'custom',
-  name: name,
-  providerType: 'openai',
-  baseUrl: 'https://example.com/v1',
-  apiKeys: const ['sk-test'],
-  models: models.map((m) => AiProviderModel.of(m)).toList(),
-  isDefault: false,
-  enabled: enabled,
-  createdAt: DateTime(2026),
-  updatedAt: DateTime(2026),
-);
+AiProvider _provider({required String id, required String name, required List<String> models, bool enabled = true}) =>
+    AiProvider(
+      id: id,
+      vendorId: 'custom',
+      name: name,
+      providerType: 'openai',
+      baseUrl: 'https://example.com/v1',
+      apiKeys: const ['sk-test'],
+      models: models.map((m) => AiProviderModel.of(m)).toList(),
+      isDefault: false,
+      enabled: enabled,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
 
-AiRouteGroup _group({
-  required String id,
-  required String name,
-  List<RouteGroupMember> members = const [],
-}) => AiRouteGroup(
-  id: id,
-  name: name,
-  members: members,
-  createdAt: DateTime(2026),
-  updatedAt: DateTime(2026),
-);
+AiRouteGroup _group({required String id, required String name, List<RouteGroupMember> members = const []}) =>
+    AiRouteGroup(id: id, name: name, members: members, createdAt: DateTime(2026), updatedAt: DateTime(2026));
 
 void main() {
   final main = _provider(id: 'p1', name: '主力', models: ['gpt-5.4']);
   final backup = _provider(id: 'p2', name: '备用', models: ['glm-4.6']);
-  final disabled = _provider(
-    id: 'p3',
-    name: '停用厂商',
-    models: ['gpt-5.4'],
-    enabled: false,
-  );
+  final disabled = _provider(id: 'p3', name: '停用厂商', models: ['gpt-5.4'], enabled: false);
 
   group('最近使用条目', () {
     test('保留调用方给的顺序，模型行带厂商名', () {
       final entries = recentBindingEntries(
-        const [
-          AiModelRef(providerId: 'p2', modelName: 'glm-4.6'),
-          AiModelRef(providerId: 'p1', modelName: 'gpt-5.4'),
-        ],
+        const [AiModelRef(providerId: 'p2', modelName: 'glm-4.6'), AiModelRef(providerId: 'p1', modelName: 'gpt-5.4')],
         [main, backup],
         const [],
       );
@@ -79,9 +58,7 @@ void main() {
       final live = _group(
         id: 'g1',
         name: '故障转移组',
-        members: const [
-          RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4'),
-        ],
+        members: const [RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4')],
       );
       final empty = _group(id: 'g2', name: '空组');
       final entries = recentBindingEntries(

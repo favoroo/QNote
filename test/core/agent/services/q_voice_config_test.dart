@@ -16,29 +16,21 @@ void main() {
     });
 
     test('合法 JSON 正常解析', () {
-      final settings = QVoiceSettings.decode(
-        jsonEncode({'autoRead': true, 'voice': 'zh-CN-YunxiNeural', 'rate': 1.2}),
-      );
+      final settings = QVoiceSettings.decode(jsonEncode({'autoRead': true, 'voice': 'zh-CN-YunxiNeural', 'rate': 1.2}));
       expect(settings.autoRead, isTrue);
       expect(settings.voice, 'zh-CN-YunxiNeural');
       expect(settings.rate, 1.2);
     });
 
     test('非法字段逐项回退默认值', () {
-      final settings = QVoiceSettings.decode(
-        jsonEncode({'autoRead': 'yes', 'voice': '', 'rate': -1}),
-      );
+      final settings = QVoiceSettings.decode(jsonEncode({'autoRead': 'yes', 'voice': '', 'rate': -1}));
       expect(settings.autoRead, isFalse);
       expect(settings.voice, QVoiceSettings.defaults.voice);
       expect(settings.rate, QVoiceSettings.defaults.rate);
     });
 
     test('encode/decode 往返一致', () {
-      const settings = QVoiceSettings(
-        autoRead: true,
-        voice: 'zh-CN-YunjianNeural',
-        rate: 0.8,
-      );
+      const settings = QVoiceSettings(autoRead: true, voice: 'zh-CN-YunjianNeural', rate: 0.8);
       final decoded = QVoiceSettings.decode(jsonEncode(settings.encode()));
       expect(decoded.autoRead, settings.autoRead);
       expect(decoded.voice, settings.voice);
@@ -54,11 +46,7 @@ void main() {
     });
 
     test('系统语音哨兵 ID 可往返保存', () {
-      const settings = QVoiceSettings(
-        autoRead: true,
-        voice: QVoiceConfig.systemVoiceId,
-        rate: 1.0,
-      );
+      const settings = QVoiceSettings(autoRead: true, voice: QVoiceConfig.systemVoiceId, rate: 1.0);
       final decoded = QVoiceSettings.decode(jsonEncode(settings.encode()));
       expect(decoded.voice, QVoiceConfig.systemVoiceId);
     });

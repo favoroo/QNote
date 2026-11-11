@@ -68,18 +68,12 @@ class AiConfig {
   bool get usesAccountAuth => authMode != AiProvider.authModeApiKey;
 
   /// 由厂商条目 + 模型名组装请求配置
-  factory AiConfig.fromProvider(
-    AiProvider provider,
-    String modelName, {
-    String? displayName,
-  }) {
+  factory AiConfig.fromProvider(AiProvider provider, String modelName, {String? displayName}) {
     final model = provider.models.where((m) => m.id == modelName).firstOrNull;
     final keys = provider.apiKeys.where((k) => k.trim().isNotEmpty).toList();
     return AiConfig(
       providerId: provider.id,
-      name:
-          displayName ??
-          (model?.name.isNotEmpty == true ? model!.name : modelName),
+      name: displayName ?? (model?.name.isNotEmpty == true ? model!.name : modelName),
       provider: provider.providerType,
       modelName: modelName,
       apiKey: keys.isEmpty ? '' : keys.first,

@@ -74,11 +74,11 @@ class HealthSyncService {
     required MiFitnessAuthService authService,
     required DiaryRepository diaryRepo,
     ScreenUsageService? screenUsageService,
-  })  : _apiClient = apiClient,
-        _healthRepo = healthRepo,
-        _authService = authService,
-        _diaryRepo = diaryRepo,
-        _screenUsageService = screenUsageService;
+  }) : _apiClient = apiClient,
+       _healthRepo = healthRepo,
+       _authService = authService,
+       _diaryRepo = diaryRepo,
+       _screenUsageService = screenUsageService;
 
   /// 检查是否配置并授权成功
   Future<bool> isAuthorized() async {
@@ -102,10 +102,7 @@ class HealthSyncService {
     final prefs = await SharedPreferences.getInstance();
     final message = prefs.getString(keyLastFailure);
     if (message == null || message.isEmpty) return null;
-    return HealthSyncFailure(
-      message: message,
-      needsRelogin: prefs.getBool(keyLastFailureNeedsRelogin) ?? false,
-    );
+    return HealthSyncFailure(message: message, needsRelogin: prefs.getBool(keyLastFailureNeedsRelogin) ?? false);
   }
 
   /// 记录（message 非空）或清除（null）上次同步失败原因
@@ -171,10 +168,7 @@ class HealthSyncService {
   }) async {
     final authed = await isAuthorized();
     if (!authed) {
-      return HealthSyncResult(
-        success: false,
-        errorMessage: '未绑定小米运动健康账号，请先授权登录',
-      );
+      return HealthSyncResult(success: false, errorMessage: '未绑定小米运动健康账号，请先授权登录');
     }
 
     try {
@@ -189,10 +183,7 @@ class HealthSyncService {
       onProgress?.call(0, daysBack + 1, '正在拉取运动记录...');
       final startTime = now.subtract(Duration(days: daysBack + 1));
       try {
-        final sports = await _apiClient.fetchSportRecords(
-          startTime: startTime,
-          endTime: now,
-        );
+        final sports = await _apiClient.fetchSportRecords(startTime: startTime, endTime: now);
 
         for (final sport in sports) {
           final exists = await _healthRepo.hasSportRecordBySid(sport.sid);
@@ -261,10 +252,7 @@ class HealthSyncService {
   Future<HealthSyncResult> syncDate(DateTime targetDate) async {
     final authed = await isAuthorized();
     if (!authed) {
-      return HealthSyncResult(
-        success: false,
-        errorMessage: '未绑定小米运动健康账号，请先授权登录',
-      );
+      return HealthSyncResult(success: false, errorMessage: '未绑定小米运动健康账号，请先授权登录');
     }
 
     try {
@@ -314,18 +302,12 @@ class HealthSyncService {
   }
 
   /// 自动生成或更新 23:00 专属「运动健康」日结卡片（聚合当天步数、睡眠、体征与单次运动，并清理历史分散卡片）
-  Future<bool> _upsertDailyHealthSummaryTimelineCard(
-    HealthDailyMetrics summary,
-    List<HealthSportRecord> sports,
-  ) async {
+  Future<bool> _upsertDailyHealthSummaryTimelineCard(HealthDailyMetrics summary, List<HealthSportRecord> sports) async {
     final date = DateTime.tryParse(summary.date);
     if (date == null) return false;
 
     // 只有当有步数、睡眠、体征或运动数据时才生成
-    final hasData = summary.steps > 0 ||
-        summary.sleepDurationMinutes > 0 ||
-        sports.isNotEmpty ||
-        summary.calories > 0;
+    final hasData = summary.steps > 0 || summary.sleepDurationMinutes > 0 || sports.isNotEmpty || summary.calories > 0;
     if (!hasData) return false;
 
     // 固定在当天的 23:00 作为健康日结
@@ -366,12 +348,16 @@ class HealthSyncService {
     final sleepScoreStr = summary.sleepScore != null ? ' (得分: ${summary.sleepScore})' : '';
 
     final contentLines = <String>[];
-    contentLines.add('今日步数: ${summary.steps} 步 (目标 $stepTarget 步) | 消耗: $calStr kcal | 计步: ${summary.activeMinutes} 分钟 | 距离: $distKm km${summary.standingCount > 0 ? ' | 站立: ${summary.standingCount}次' : ''}');
+    contentLines.add(
+      '今日步数: ${summary.steps} 步 (目标 $stepTarget 步) | 消耗: $calStr kcal | 计步: ${summary.activeMinutes} 分钟 | 距离: $distKm km${summary.standingCount > 0 ? ' | 站立: ${summary.standingCount}次' : ''}',
+    );
 
     if (summary.sleepDurationMinutes > 0) {
       final quality = _mapSleepScoreToQuality(summary.sleepScore);
       // 时长为当天各段睡眠之和（含午睡），故措辞用「全天」而非「昨晚」
-      contentLines.add('全天睡眠: $sleepHours小时$sleepMins分 · $quality$sleepScoreStr | 深睡: ${summary.deepSleepMinutes}分 | 浅睡: ${summary.lightSleepMinutes}分 | REM: ${summary.remSleepMinutes}分');
+      contentLines.add(
+        '全天睡眠: $sleepHours小时$sleepMins分 · $quality$sleepScoreStr | 深睡: ${summary.deepSleepMinutes}分 | 浅睡: ${summary.lightSleepMinutes}分 | REM: ${summary.remSleepMinutes}分',
+      );
     }
 
     final vitals = <String>[];
@@ -415,12 +401,17 @@ class HealthSyncService {
             screenTimeMs = usageInfo.totalTimeMs;
             screenYesterdayTimeMs = usageInfo.yesterdayTotalTimeMs;
             screenFormattedTime = usageInfo.formattedTotalTime;
-            screenTopApps = usageInfo.appList.take(4).map((a) => {
-              'package': a.packageName,
-              'name': a.appName,
-              'duration_ms': a.totalTimeInForegroundMs,
-              'formatted': a.formattedDuration,
-            }).toList();
+            screenTopApps = usageInfo.appList
+                .take(4)
+                .map(
+                  (a) => {
+                    'package': a.packageName,
+                    'name': a.appName,
+                    'duration_ms': a.totalTimeInForegroundMs,
+                    'formatted': a.formattedDuration,
+                  },
+                )
+                .toList();
             contentLines.add('屏幕使用: $screenFormattedTime (${usageInfo.diffDescription})');
           }
         }
@@ -429,18 +420,22 @@ class HealthSyncService {
       }
     }
 
-    final sportsData = sports.map((s) => {
-      'sid': s.sid,
-      'title': s.title,
-      'category': s.category,
-      'start_time': s.startTime.toIso8601String(),
-      'end_time': s.endTime.toIso8601String(),
-      'duration_seconds': s.durationSeconds,
-      'distance_meters': s.distanceMeters,
-      'calories': s.calories,
-      'avg_hr': s.avgHeartRate,
-      'avg_pace': s.avgPace != null ? _formatPace(s.avgPace!) : null,
-    }).toList();
+    final sportsData = sports
+        .map(
+          (s) => {
+            'sid': s.sid,
+            'title': s.title,
+            'category': s.category,
+            'start_time': s.startTime.toIso8601String(),
+            'end_time': s.endTime.toIso8601String(),
+            'duration_seconds': s.durationSeconds,
+            'distance_meters': s.distanceMeters,
+            'calories': s.calories,
+            'avg_hr': s.avgHeartRate,
+            'avg_pace': s.avgPace != null ? _formatPace(s.avgPace!) : null,
+          },
+        )
+        .toList();
 
     final bodyState = {
       'source': 'mi_fitness',
@@ -504,18 +499,10 @@ class HealthSyncService {
 
     if (existingCard != null) {
       await _diaryRepo.update(record);
-      WorkspaceEventBus.instance.emit(
-        '/timeline/${summary.date}.json',
-        WorkspaceChangeType.updated,
-        record.toMap(),
-      );
+      WorkspaceEventBus.instance.emit('/timeline/${summary.date}.json', WorkspaceChangeType.updated, record.toMap());
     } else {
       await _diaryRepo.insert(record);
-      WorkspaceEventBus.instance.emit(
-        '/timeline/${summary.date}.json',
-        WorkspaceChangeType.created,
-        record.toMap(),
-      );
+      WorkspaceEventBus.instance.emit('/timeline/${summary.date}.json', WorkspaceChangeType.created, record.toMap());
     }
     return true;
   }

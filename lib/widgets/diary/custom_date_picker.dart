@@ -151,10 +151,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left, size: 24),
-                  onPressed: _prevMonth,
-                ),
+                IconButton(icon: const Icon(Icons.chevron_left, size: 24), onPressed: _prevMonth),
                 Text(
                   monthName,
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -162,10 +159,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
                     color: colorScheme.onSurface,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right, size: 24),
-                  onPressed: _nextMonth,
-                ),
+                IconButton(icon: const Icon(Icons.chevron_right, size: 24), onPressed: _nextMonth),
               ],
             ),
             const SizedBox(height: 12),
@@ -199,7 +193,8 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
               itemBuilder: (context, index) {
                 final date = days[index];
                 final isCurrentMonth = date.month == _focusedMonth.month;
-                final isSelected = date.year == _selectedDate.year &&
+                final isSelected =
+                    date.year == _selectedDate.year &&
                     date.month == _selectedDate.month &&
                     date.day == _selectedDate.day;
 
@@ -223,10 +218,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
                         Container(
                           width: 36,
                           height: 36,
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
+                          decoration: BoxDecoration(color: colorScheme.primary, shape: BoxShape.circle),
                         ),
                       // Day Text
                       Padding(
@@ -238,8 +230,8 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
                             color: isSelected
                                 ? Colors.white
                                 : isCurrentMonth
-                                    ? colorScheme.onSurface
-                                    : colorScheme.onSurface.withValues(alpha: 0.3),
+                                ? colorScheme.onSurface
+                                : colorScheme.onSurface.withValues(alpha: 0.3),
                           ),
                         ),
                       ),
@@ -269,10 +261,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    '取消',
-                    style: TextStyle(color: colorScheme.primary),
-                  ),
+                  child: Text('取消', style: TextStyle(color: colorScheme.primary)),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(

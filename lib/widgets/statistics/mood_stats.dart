@@ -23,8 +23,7 @@ class MoodStatsWidget extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final symptomData = stats.symptomDistribution.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final symptomData = stats.symptomDistribution.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
     return Column(
       children: [
@@ -57,11 +56,7 @@ class MoodStatsWidget extends StatelessWidget {
           StatCardShell(
             isDark: isDark,
             title: '症状分布',
-            child: _SymptomDistribution(
-              symptomData: symptomData,
-              totalRecords: stats.totalRecords,
-              isDark: isDark,
-            ),
+            child: _SymptomDistribution(symptomData: symptomData, totalRecords: stats.totalRecords, isDark: isDark),
           ),
       ],
     );
@@ -88,10 +83,7 @@ class _SeverityTrendChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: AppPalette.chartGrid(isDark),
-            strokeWidth: 1,
-          ),
+          getDrawingHorizontalLine: (value) => FlLine(color: AppPalette.chartGrid(isDark), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -127,10 +119,7 @@ class _SeverityTrendChart extends StatelessWidget {
                 } else {
                   label = '';
                 }
-                return Text(
-                  label,
-                  style: const TextStyle(fontSize: 9, color: AppPalette.textMuted),
-                );
+                return Text(label, style: const TextStyle(fontSize: 9, color: AppPalette.textMuted));
               },
             ),
           ),
@@ -145,10 +134,7 @@ class _SeverityTrendChart extends StatelessWidget {
             color: Colors.teal,
             barWidth: 2,
             dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              color: Colors.teal.withValues(alpha: 0.1),
-            ),
+            belowBarData: BarAreaData(show: true, color: Colors.teal.withValues(alpha: 0.1)),
           ),
         ],
       ),
@@ -161,11 +147,7 @@ class _SymptomDistribution extends StatelessWidget {
   final int totalRecords;
   final bool isDark;
 
-  const _SymptomDistribution({
-    required this.symptomData,
-    required this.totalRecords,
-    required this.isDark,
-  });
+  const _SymptomDistribution({required this.symptomData, required this.totalRecords, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -188,11 +170,7 @@ class _SymptomDistribution extends StatelessWidget {
                   ),
                   Text(
                     '${item.value} 次',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: AppPalette.textMuted,
-                    ),
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppPalette.textMuted),
                   ),
                 ],
               ),

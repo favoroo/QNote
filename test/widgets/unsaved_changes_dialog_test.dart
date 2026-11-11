@@ -67,11 +67,7 @@ void main() {
 
     testWidgets('onSave 返回 false 时留在原页并提示，绝不放行离开', (tester) async {
       bool? result;
-      await pumpHost(
-        tester,
-        onSave: () async => false,
-        onResult: (canLeave) => result = canLeave,
-      );
+      await pumpHost(tester, onSave: () async => false, onResult: (canLeave) => result = canLeave);
 
       await tester.tap(find.text('leave'));
       await tester.pumpAndSettle();
@@ -129,11 +125,7 @@ void main() {
 
     testWidgets('选「取消」不放行', (tester) async {
       bool? result;
-      await pumpHost(
-        tester,
-        onSave: () async => true,
-        onResult: (canLeave) => result = canLeave,
-      );
+      await pumpHost(tester, onSave: () async => true, onResult: (canLeave) => result = canLeave);
 
       await tester.tap(find.text('leave'));
       await tester.pumpAndSettle();
@@ -154,11 +146,7 @@ void main() {
     });
 
     testWidgets('自定义文案生效，供不同页面复用同一对话框', (tester) async {
-      await pumpHost(
-        tester,
-        content: '这条记录有未保存的修改，离开将丢失。',
-        onResult: (_) {},
-      );
+      await pumpHost(tester, content: '这条记录有未保存的修改，离开将丢失。', onResult: (_) {});
 
       await tester.tap(find.text('leave'));
       await tester.pumpAndSettle();

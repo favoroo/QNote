@@ -21,8 +21,7 @@ void main() {
   late _RefreshAdapter adapter;
 
   String jwt(Map<String, dynamic> claims) {
-    String enc(dynamic value) =>
-        base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+    String enc(dynamic value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
     return '${enc({'alg': 'none'})}.${enc(claims)}.sig';
   }
 
@@ -49,11 +48,7 @@ void main() {
         providerId: 'p1',
         kind: AiAccount.kindAutoClaw,
         accessToken: 'old-access',
-        refreshToken: jwt({
-          'device_id': 'dev-1',
-          'source_id': 'agent-login',
-          'exp': 2000000000,
-        }),
+        refreshToken: jwt({'device_id': 'dev-1', 'source_id': 'agent-login', 'exp': 2000000000}),
         expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
         uid: 'u1',
         phone: '138****8000',
@@ -65,12 +60,7 @@ void main() {
 
   test('刷新成功：保存新 token、脱敏手机号与 uid', () async {
     await seedExpired();
-    final nextAccess = jwt({
-      'sub': 'u1',
-      'name': '小浣熊用户',
-      'device_id': 'dev-1',
-      'exp': 2000000000,
-    });
+    final nextAccess = jwt({'sub': 'u1', 'name': '小浣熊用户', 'device_id': 'dev-1', 'exp': 2000000000});
     adapter.scripts['/userapi/v1/refresh'] = [
       (
         200,
@@ -78,10 +68,7 @@ void main() {
           'code': 0,
           'data': {
             'access_token': nextAccess,
-            'refresh_token': jwt({
-              'device_id': 'dev-1',
-              'exp': 2000000000,
-            }),
+            'refresh_token': jwt({'device_id': 'dev-1', 'exp': 2000000000}),
           },
         },
       ),
@@ -91,11 +78,7 @@ void main() {
         200,
         {
           'code': 0,
-          'data': {
-            'user_id': 'u1',
-            'user_name': '小浣熊用户',
-            'user_phone': '13800138000',
-          },
+          'data': {'user_id': 'u1', 'user_name': '小浣熊用户', 'user_phone': '13800138000'},
         },
       ),
     ];
@@ -144,13 +127,7 @@ void main() {
 
     await expectLater(
       service.refreshAccount('a1', force: true),
-      throwsA(
-        isA<AccountAuthRequiredException>().having(
-          (error) => error.message,
-          'message',
-          'AutoClaw 登录已失效，请重新登录',
-        ),
-      ),
+      throwsA(isA<AccountAuthRequiredException>().having((error) => error.message, 'message', 'AutoClaw 登录已失效，请重新登录')),
     );
     final stored = await repo.getById('a1');
     expect(stored?.status, AiAccount.statusExpired);
@@ -171,10 +148,7 @@ class _RefreshAdapter implements HttpClientAdapter {
     final path = options.uri.path;
     if (path.endsWith('/userapi/v1/refresh')) refreshCalls++;
     if (path.endsWith('/userapi/v1/agent-refresh')) agentRefreshCalls++;
-    final script = scripts.entries
-        .where((entry) => path.endsWith(entry.key))
-        .map((entry) => entry.value)
-        .firstOrNull;
+    final script = scripts.entries.where((entry) => path.endsWith(entry.key)).map((entry) => entry.value).firstOrNull;
     if (script == null) {
       return _json(200, {'code': 0, 'data': <String, dynamic>{}});
     }
@@ -185,12 +159,11 @@ class _RefreshAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 
-  static ResponseBody _json(int status, Map<String, dynamic> body) =>
-      ResponseBody.fromString(
-        jsonEncode(body),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
+  static ResponseBody _json(int status, Map<String, dynamic> body) => ResponseBody.fromString(
+    jsonEncode(body),
+    status,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
 }

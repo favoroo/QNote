@@ -62,9 +62,7 @@ ScreenRangeBounds resolveScreenRange(TimeRangeType range, DateTime anchor) {
   }
 
   // 只统计到今天；所选区间整体在未来时不做强截断，交由上层判空
-  final dataEnd = end.isAfter(today)
-      ? (start.isAfter(today) ? start : today)
-      : end;
+  final dataEnd = end.isAfter(today) ? (start.isAfter(today) ? start : today) : end;
   final elapsedDays = dataEnd.difference(start).inDays;
 
   final DateTime prevStart;
@@ -87,34 +85,20 @@ ScreenRangeBounds resolveScreenRange(TimeRangeType range, DateTime anchor) {
       prevNaturalEnd = DateTime(prevStart.year, 12, 31);
   }
   final prevCandidate = prevStart.add(Duration(days: elapsedDays));
-  final prevEnd = prevCandidate.isAfter(prevNaturalEnd)
-      ? prevNaturalEnd
-      : prevCandidate;
+  final prevEnd = prevCandidate.isAfter(prevNaturalEnd) ? prevNaturalEnd : prevCandidate;
 
-  return ScreenRangeBounds(
-    start: start,
-    end: end,
-    dataEnd: dataEnd,
-    prevStart: prevStart,
-    prevEnd: prevEnd,
-  );
+  return ScreenRangeBounds(start: start, end: end, dataEnd: dataEnd, prevStart: prevStart, prevEnd: prevEnd);
 }
 
 /// 周一为一周起点
 DateTime mondayOf(DateTime d) {
-  return DateTime(
-    d.year,
-    d.month,
-    d.day,
-  ).subtract(Duration(days: d.weekday - 1));
+  return DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
 }
 
 /// 包名末段，作为拿不到应用标签时的兜底显示
 String _lastSegment(String packageName) {
   final idx = packageName.lastIndexOf('.');
-  return idx >= 0 && idx < packageName.length - 1
-      ? packageName.substring(idx + 1)
-      : packageName;
+  return idx >= 0 && idx < packageName.length - 1 ? packageName.substring(idx + 1) : packageName;
 }
 
 /// 区间聚合结果
@@ -151,11 +135,7 @@ class ScreenUsageAggregate {
 
   String get formattedTotal => formatScreenDuration(totalMs);
   String get formattedAvg => formatScreenDuration(avgMs);
-  String get diffText => screenDurationDiffText(
-    totalMs,
-    previousTotalMs,
-    comparedLabel: previousLabel,
-  );
+  String get diffText => screenDurationDiffText(totalMs, previousTotalMs, comparedLabel: previousLabel);
 
   /// 日均分母：按有记录天数，而非自然天数。
   ///
@@ -169,10 +149,7 @@ class ScreenUsageAggregate {
   }
 
   /// 把逐日明细合并成区间 Top 榜
-  static List<ScreenAppUsage> mergeTopApps(
-    Iterable<ScreenUsageDaily> days, {
-    int limit = 30,
-  }) {
+  static List<ScreenAppUsage> mergeTopApps(Iterable<ScreenUsageDaily> days, {int limit = 30}) {
     final merged = <String, int>{};
     final names = <String, String>{};
     for (final day in days) {
@@ -184,13 +161,7 @@ class ScreenUsageAggregate {
       }
     }
     final list = merged.entries
-        .map(
-          (e) => ScreenAppUsage(
-            packageName: e.key,
-            appName: names[e.key] ?? _lastSegment(e.key),
-            timeMs: e.value,
-          ),
-        )
+        .map((e) => ScreenAppUsage(packageName: e.key, appName: names[e.key] ?? _lastSegment(e.key), timeMs: e.value))
         .toList();
     list.sort((a, b) => b.timeMs.compareTo(a.timeMs));
     return list.take(limit).toList();
@@ -203,55 +174,41 @@ class ScreenUsageRangeArg {
   final TimeRangeType range;
   final DateTime anchor;
 
-  ScreenUsageRangeArg(this.range, DateTime anchor)
-    : anchor = DateTime(anchor.year, anchor.month, anchor.day);
+  ScreenUsageRangeArg(this.range, DateTime anchor) : anchor = DateTime(anchor.year, anchor.month, anchor.day);
 
   @override
-  bool operator ==(Object other) =>
-      other is ScreenUsageRangeArg &&
-      other.range == range &&
-      other.anchor == anchor;
+  bool operator ==(Object other) => other is ScreenUsageRangeArg && other.range == range && other.anchor == anchor;
 
   @override
   int get hashCode => Object.hash(range, anchor);
 }
 
 /// 区间聚合：总量 / 日均 / 有记录天数 / 上期同期 / 区间累计 Top 应用
-final screenUsageRangeProvider =
-    FutureProvider.family<ScreenUsageAggregate, ScreenUsageRangeArg>((
-      ref,
-      arg,
-    ) async {
-      final repo = ref.read(screenUsageDailyRepositoryProvider);
-      final bounds = resolveScreenRange(arg.range, arg.anchor);
+final screenUsageRangeProvider = FutureProvider.family<ScreenUsageAggregate, ScreenUsageRangeArg>((ref, arg) async {
+  final repo = ref.read(screenUsageDailyRepositoryProvider);
+  final bounds = resolveScreenRange(arg.range, arg.anchor);
 
-      final days = await repo.getRange(
-        ScreenUsageDaily.dateKey(bounds.start),
-        ScreenUsageDaily.dateKey(bounds.dataEnd),
-      );
-      final prevDays = await repo.getRange(
-        ScreenUsageDaily.dateKey(bounds.prevStart),
-        ScreenUsageDaily.dateKey(bounds.prevEnd),
-      );
+  final days = await repo.getRange(ScreenUsageDaily.dateKey(bounds.start), ScreenUsageDaily.dateKey(bounds.dataEnd));
+  final prevDays = await repo.getRange(
+    ScreenUsageDaily.dateKey(bounds.prevStart),
+    ScreenUsageDaily.dateKey(bounds.prevEnd),
+  );
 
-      final totalMs = days.fold<int>(0, (sum, e) => sum + e.totalTimeMs);
-      final recordedDays = days.where((e) => e.totalTimeMs > 0).length;
-      final previousTotalMs = prevDays.fold<int>(
-        0,
-        (sum, e) => sum + e.totalTimeMs,
-      );
+  final totalMs = days.fold<int>(0, (sum, e) => sum + e.totalTimeMs);
+  final recordedDays = days.where((e) => e.totalTimeMs > 0).length;
+  final previousTotalMs = prevDays.fold<int>(0, (sum, e) => sum + e.totalTimeMs);
 
-      return ScreenUsageAggregate(
-        bounds: bounds,
-        totalMs: totalMs,
-        recordedDays: recordedDays,
-        spanDays: bounds.spanDays,
-        avgMs: ScreenUsageAggregate.computeAvg(totalMs, recordedDays),
-        previousTotalMs: previousTotalMs,
-        topApps: ScreenUsageAggregate.mergeTopApps(days),
-        previousLabel: _previousLabel(arg.range),
-      );
-    });
+  return ScreenUsageAggregate(
+    bounds: bounds,
+    totalMs: totalMs,
+    recordedDays: recordedDays,
+    spanDays: bounds.spanDays,
+    avgMs: ScreenUsageAggregate.computeAvg(totalMs, recordedDays),
+    previousTotalMs: previousTotalMs,
+    topApps: ScreenUsageAggregate.mergeTopApps(days),
+    previousLabel: _previousLabel(arg.range),
+  );
+});
 
 String _previousLabel(TimeRangeType range) {
   switch (range) {
@@ -291,79 +248,69 @@ class ScreenUsageDayView {
 
 /// 单日详情：今天与系统窗口内的近期日走实时查询（能拿到图标与完整榜单），
 /// 更早的日期回落到快照。总时长取两者最大值，与快照的「不倒退」策略保持一致。
-final screenUsageDayProvider =
-    FutureProvider.family<ScreenUsageDayView, DateTime>((ref, date) async {
-      final day = DateTime(date.year, date.month, date.day);
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final isToday = day == today;
+final screenUsageDayProvider = FutureProvider.family<ScreenUsageDayView, DateTime>((ref, date) async {
+  final day = DateTime(date.year, date.month, date.day);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final isToday = day == today;
 
-      final repo = ref.read(screenUsageDailyRepositoryProvider);
-      final service = ref.read(screenUsageServiceProvider);
+  final repo = ref.read(screenUsageDailyRepositoryProvider);
+  final service = ref.read(screenUsageServiceProvider);
 
-      final key = ScreenUsageDaily.dateKey(day);
-      final snapshot = await repo.getByDate(key);
-      final earliest = await repo.earliestDate();
+  final key = ScreenUsageDaily.dateKey(day);
+  final snapshot = await repo.getByDate(key);
+  final earliest = await repo.earliestDate();
 
-      TodayScreenUsage? live;
-      if (service.isSupported && !day.isAfter(today)) {
-        live = isToday
-            ? await service.getTodayUsage(limit: 30)
-            : await service.getUsageForDate(day, limit: 30, includeIcons: true);
-      }
+  TodayScreenUsage? live;
+  if (service.isSupported && !day.isAfter(today)) {
+    live = isToday
+        ? await service.getTodayUsage(limit: 30)
+        : await service.getUsageForDate(day, limit: 30, includeIcons: true);
+  }
 
-      final liveTotal = live?.totalTimeMs ?? 0;
-      final snapshotTotal = snapshot?.totalTimeMs ?? 0;
-      final totalMs = liveTotal > snapshotTotal ? liveTotal : snapshotTotal;
+  final liveTotal = live?.totalTimeMs ?? 0;
+  final snapshotTotal = snapshot?.totalTimeMs ?? 0;
+  final totalMs = liveTotal > snapshotTotal ? liveTotal : snapshotTotal;
 
-      final useLiveApps =
-          live != null && live.appList.isNotEmpty && liveTotal >= snapshotTotal;
-      final apps = useLiveApps
-          ? live.appList
-          : (snapshot?.topApps ?? const [])
-                .map(
-                  (e) => AppUsageInfo(
-                    packageName: e.packageName,
-                    appName: e.appName,
-                    totalTimeInForegroundMs: e.timeMs,
-                    lastTimeUsedMs: 0,
-                  ),
-                )
-                .toList();
+  final useLiveApps = live != null && live.appList.isNotEmpty && liveTotal >= snapshotTotal;
+  final apps = useLiveApps
+      ? live.appList
+      : (snapshot?.topApps ?? const [])
+            .map(
+              (e) => AppUsageInfo(
+                packageName: e.packageName,
+                appName: e.appName,
+                totalTimeInForegroundMs: e.timeMs,
+                lastTimeUsedMs: 0,
+              ),
+            )
+            .toList();
 
-      final prevDay = day.subtract(const Duration(days: 1));
-      final prevSnapshot = await repo.getByDate(
-        ScreenUsageDaily.dateKey(prevDay),
-      );
-      final livePrev = live?.yesterdayTotalTimeMs ?? 0;
-      final prevTotal = livePrev > (prevSnapshot?.totalTimeMs ?? 0)
-          ? livePrev
-          : (prevSnapshot?.totalTimeMs ?? 0);
+  final prevDay = day.subtract(const Duration(days: 1));
+  final prevSnapshot = await repo.getByDate(ScreenUsageDaily.dateKey(prevDay));
+  final livePrev = live?.yesterdayTotalTimeMs ?? 0;
+  final prevTotal = livePrev > (prevSnapshot?.totalTimeMs ?? 0) ? livePrev : (prevSnapshot?.totalTimeMs ?? 0);
 
-      return ScreenUsageDayView(
-        date: day,
-        totalTimeMs: totalMs,
-        previousTotalMs: prevTotal,
-        apps: apps,
-        // 表里还没有任何数据时一律按「未采集」处理，否则空库+远期日期会被
-        // 误报成「当天没有使用记录」，把采集缺口说成用户没用手机
-        collected:
-            snapshot != null ||
-            (earliest != null && !day.isBefore(earliest)),
-        isToday: isToday,
-      );
-    });
+  return ScreenUsageDayView(
+    date: day,
+    totalTimeMs: totalMs,
+    previousTotalMs: prevTotal,
+    apps: apps,
+    // 表里还没有任何数据时一律按「未采集」处理，否则空库+远期日期会被
+    // 误报成「当天没有使用记录」，把采集缺口说成用户没用手机
+    collected: snapshot != null || (earliest != null && !day.isBefore(earliest)),
+    isToday: isToday,
+  );
+});
 
 /// 趋势图的请求参数：以哪天为锚点取它所在的整周
 class ScreenUsageTrendArg {
   final DateTime anchor;
 
-  ScreenUsageTrendArg(DateTime anchor)
-    : anchor = DateTime(anchor.year, anchor.month, anchor.day);
+  ScreenUsageTrendArg(DateTime anchor) : anchor = DateTime(anchor.year, anchor.month, anchor.day);
 
   @override
-  bool operator ==(Object other) =>
-      other is ScreenUsageTrendArg && other.anchor == anchor;
+  bool operator ==(Object other) => other is ScreenUsageTrendArg && other.anchor == anchor;
 
   @override
   int get hashCode => anchor.hashCode;
@@ -376,48 +323,35 @@ class ScreenUsageTrend {
   const ScreenUsageTrend({required this.points});
 
   bool get isEmpty => points.every((e) => !e.collected);
-  double get maxHours =>
-      points.fold<double>(0, (m, e) => e.hours > m ? e.hours : m);
+  double get maxHours => points.fold<double>(0, (m, e) => e.hours > m ? e.hours : m);
 }
 
 /// 所选日所在周（周一~周日，未过完的日子不纳入）的逐日趋势。
 /// 缺口日标为未采集，由 UI 画成空柱，与「当天真没用机」区分。
-final screenUsageTrendProvider =
-    FutureProvider.family<ScreenUsageTrend, ScreenUsageTrendArg>((
-      ref,
-      arg,
-    ) async {
-      final repo = ref.read(screenUsageDailyRepositoryProvider);
-      final bounds = resolveScreenRange(TimeRangeType.week, arg.anchor);
-      final start = bounds.start;
-      final end = bounds.dataEnd;
+final screenUsageTrendProvider = FutureProvider.family<ScreenUsageTrend, ScreenUsageTrendArg>((ref, arg) async {
+  final repo = ref.read(screenUsageDailyRepositoryProvider);
+  final bounds = resolveScreenRange(TimeRangeType.week, arg.anchor);
+  final start = bounds.start;
+  final end = bounds.dataEnd;
 
-      final rows = await repo.getRange(
-        ScreenUsageDaily.dateKey(start),
-        ScreenUsageDaily.dateKey(end),
-      );
-      final byDate = {for (final row in rows) row.date: row};
-      final earliest = await repo.earliestDate();
+  final rows = await repo.getRange(ScreenUsageDaily.dateKey(start), ScreenUsageDaily.dateKey(end));
+  final byDate = {for (final row in rows) row.date: row};
+  final earliest = await repo.earliestDate();
 
-      final points = <ScreenUsageTrendPoint>[];
-      for (
-        DateTime d = start;
-        !d.isAfter(end);
-        d = d.add(const Duration(days: 1))
-      ) {
-        final row = byDate[ScreenUsageDaily.dateKey(d)];
-        points.add(
-          ScreenUsageTrendPoint(
-            date: d,
-            totalTimeMs: row?.totalTimeMs ?? 0,
-            collected:
-                row != null || (earliest != null && !d.isBefore(earliest)),
-          ),
-        );
-      }
+  final points = <ScreenUsageTrendPoint>[];
+  for (DateTime d = start; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
+    final row = byDate[ScreenUsageDaily.dateKey(d)];
+    points.add(
+      ScreenUsageTrendPoint(
+        date: d,
+        totalTimeMs: row?.totalTimeMs ?? 0,
+        collected: row != null || (earliest != null && !d.isBefore(earliest)),
+      ),
+    );
+  }
 
-      return ScreenUsageTrend(points: points);
-    });
+  return ScreenUsageTrend(points: points);
+});
 
 /// 最早已采集日期，UI 据此判断「未采集」提示的边界与文案
 final screenUsageEarliestDateProvider = FutureProvider<DateTime?>((ref) {
@@ -428,10 +362,9 @@ final screenUsageEarliestDateProvider = FutureProvider<DateTime?>((ref) {
 ///
 /// 区间应用榜与历史日明细只有包名，图标要回原生按包名补齐；
 /// 字节缓存在 ScreenUsageService 里常驻，同一批包名不会重复走 IPC。
-final screenAppIconProvider =
-    FutureProvider.family<Map<String, Uint8List>, String>((ref, key) async {
-      if (key.isEmpty) {
-        return const {};
-      }
-      return ref.read(screenUsageServiceProvider).getIcons(key.split(','));
-    });
+final screenAppIconProvider = FutureProvider.family<Map<String, Uint8List>, String>((ref, key) async {
+  if (key.isEmpty) {
+    return const {};
+  }
+  return ref.read(screenUsageServiceProvider).getIcons(key.split(','));
+});

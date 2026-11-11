@@ -91,9 +91,7 @@ class LogViewerPageState extends State<LogViewerPage> {
                   onPressed: _selectedLogs.isEmpty
                       ? null
                       : () {
-                          final orderedSelection = entries
-                              .where((e) => _selectedLogs.contains(e))
-                              .toList();
+                          final orderedSelection = entries.where((e) => _selectedLogs.contains(e)).toList();
                           final text = orderedSelection
                               .map((e) => '[${_formatTime(e.timestamp)}] [${e.level.name.toUpperCase()}] ${e.message}')
                               .join('\n');
@@ -130,10 +128,7 @@ class LogViewerPageState extends State<LogViewerPage> {
                             Container(
                               width: 12,
                               height: 12,
-                              decoration: BoxDecoration(
-                                color: _getLevelColor(level),
-                                shape: BoxShape.circle,
-                              ),
+                              decoration: BoxDecoration(color: _getLevelColor(level), shape: BoxShape.circle),
                             ),
                             const SizedBox(width: 8),
                             Text(_getLevelName(level)),
@@ -148,9 +143,7 @@ class LogViewerPageState extends State<LogViewerPage> {
                 IconButton(
                   icon: const Icon(Icons.copy, color: Colors.white70),
                   onPressed: () {
-                    final text = _logger.getAllLogsAsString(
-                      filterLevel: _selectedLevel,
-                    );
+                    final text = _logger.getAllLogsAsString(filterLevel: _selectedLevel);
                     Clipboard.setData(ClipboardData(text: text));
                     Toast.success(context, '已复制');
                   },
@@ -189,7 +182,9 @@ class LogViewerPageState extends State<LogViewerPage> {
             ),
           Expanded(
             child: entries.isEmpty
-                ? const Center(child: Text('暂无日志', style: TextStyle(color: Colors.white54)))
+                ? const Center(
+                    child: Text('暂无日志', style: TextStyle(color: Colors.white54)),
+                  )
                 : SelectionArea(
                     child: ListView.builder(
                       controller: _scrollController,
@@ -272,11 +267,7 @@ class LogViewerPageState extends State<LogViewerPage> {
             Expanded(
               child: Text(
                 '[$formattedTime] [$levelStr] ${entry.message}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  color: levelColor,
-                ),
+                style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: levelColor),
               ),
             ),
           ],

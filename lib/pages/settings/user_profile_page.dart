@@ -96,8 +96,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         // 用户点保存前不写库，所以这里只做展示映射，重复打开结果一致
         final legacyInfo = profile.otherInfo?.trim() ?? '';
         if (legacyInfo.isNotEmpty) {
-          _customFieldControllers[_uniqueFieldName('备注')] =
-              TextEditingController(text: legacyInfo);
+          _customFieldControllers[_uniqueFieldName('备注')] = TextEditingController(text: legacyInfo);
         }
       });
     }
@@ -158,8 +157,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     if (_birthday == null) return 0;
     final now = DateTime.now();
     int age = now.year - _birthday!.year;
-    if (now.month < _birthday!.month ||
-        (now.month == _birthday!.month && now.day < _birthday!.day)) {
+    if (now.month < _birthday!.month || (now.month == _birthday!.month && now.day < _birthday!.day)) {
       age--;
     }
     return age;
@@ -229,8 +227,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   double? get _latestWeightInKg {
     final profile = ref.watch(userProfileNotifierProvider);
     if (profile == null || profile.weightHistory.isEmpty) return null;
-    final sorted = List.of(profile.weightHistory)
-      ..sort((a, b) => b.time.compareTo(a.time));
+    final sorted = List.of(profile.weightHistory)..sort((a, b) => b.time.compareTo(a.time));
     return sorted.first.weight;
   }
 
@@ -290,13 +287,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       _customFieldControllers.forEach((key, controller) {
         customFields[key] = controller.text;
       });
-      final profile = (current ??
-              UserProfile(
-                id: '',
-                createdAt: DateTime.now(),
-                updatedAt: DateTime.now(),
-              ))
-          .copyWith(
+      final profile = (current ?? UserProfile(id: '', createdAt: DateTime.now(), updatedAt: DateTime.now())).copyWith(
         nickname: _nicknameController.text.isEmpty ? null : _nicknameController.text,
         birthday: _birthday?.toIso8601String().split('T').first,
         height: height,
@@ -331,24 +322,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     final minWeight = isJin ? 40.0 : 20.0;
     final maxWeight = isJin ? 600.0 : 300.0;
     if (weight == null || weight < minWeight || weight > maxWeight) {
-      Toast.warning(
-        context,
-        '体重范围 ${minWeight.toInt()}~${maxWeight.toInt()} $_weightUnit',
-      );
+      Toast.warning(context, '体重范围 ${minWeight.toInt()}~${maxWeight.toInt()} $_weightUnit');
       return;
     }
 
     try {
       final weightInKg = isJin ? weight / 2.0 : weight;
-      await ref.read(userProfileNotifierProvider.notifier).addWeightRecord(
-            weightInKg,
-            time: DateTime(
-              _weightDate.year,
-              _weightDate.month,
-              _weightDate.day,
-              12,
-            ),
-          );
+      await ref
+          .read(userProfileNotifierProvider.notifier)
+          .addWeightRecord(weightInKg, time: DateTime(_weightDate.year, _weightDate.month, _weightDate.day, 12));
       if (!mounted) return;
       _weightController.clear();
       setState(() {
@@ -367,10 +349,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         title: const Text('删除体重记录'),
         content: const Text('删除这条体重记录？'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
@@ -405,18 +384,13 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             padding: const EdgeInsets.only(right: 16),
             child: FilledButton.icon(
               onPressed: _save,
-              icon: Icon(
-                _saveSuccess ? Icons.check_circle_rounded : Icons.check_rounded,
-                size: 16,
-              ),
+              icon: Icon(_saveSuccess ? Icons.check_circle_rounded : Icons.check_rounded, size: 16),
               label: Text(_saveSuccess ? '已保存' : '保存'),
               style: FilledButton.styleFrom(
                 backgroundColor: _saveSuccess ? Colors.green.shade600 : theme.colorScheme.primary,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 minimumSize: const Size(0, 34),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(17),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
               ),
             ),
           ),
@@ -447,11 +421,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       ),
                       child: Text(
                         'BMI ${_bmi!.toStringAsFixed(1)} · $_bmiLabel',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _bmiColor(theme),
-                        ),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _bmiColor(theme)),
                       ),
                     )
                   : null,
@@ -489,9 +459,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
       // 先裁剪再画背景层，避免渐变与光斑溢出圆角；描边留在裁剪外不被吃掉
       child: ClipRRect(
@@ -519,18 +487,10 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               ),
             ),
             // 光斑一：右上 primary 柔光
-            Positioned(
-              top: -48,
-              right: -28,
-              child: _softBlob(colorScheme.primary, 132, blobAlpha),
-            ),
+            Positioned(top: -48, right: -28, child: _softBlob(colorScheme.primary, 132, blobAlpha)),
             // 光斑二：刻意压在昵称毛玻璃条正后方（tertiary），让虚化效果真实可感知；
             // 主体藏在条后、只露出少量边缘，避免在条下方拖出一块「污渍感」色斑
-            Positioned(
-              top: 2,
-              left: 66,
-              child: _softBlob(colorScheme.tertiary, 96, blobAlpha),
-            ),
+            Positioned(top: 2, left: 66, child: _softBlob(colorScheme.tertiary, 96, blobAlpha)),
             // 内容层
             Padding(
               padding: const EdgeInsets.all(16),
@@ -549,10 +509,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             // 描边带一点主色调，与卡片渐变底呼应，避免灰色环把头像「切」出来
-                            border: Border.all(
-                              color: colorScheme.primary.withValues(alpha: ringAlpha),
-                              width: 1.5,
-                            ),
+                            border: Border.all(color: colorScheme.primary.withValues(alpha: ringAlpha), width: 1.5),
                           ),
                           child: ClipOval(
                             child: _avatarPath.isNotEmpty
@@ -565,11 +522,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                                   )
                                 : Container(
                                     color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-                                    child: Icon(
-                                      Icons.person_rounded,
-                                      size: 26,
-                                      color: theme.colorScheme.primary,
-                                    ),
+                                    child: Icon(Icons.person_rounded, size: 26, color: theme.colorScheme.primary),
                                   ),
                           ),
                         ),
@@ -581,16 +534,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primary,
                               shape: BoxShape.circle,
-                              border: Border.all(
-                                color: theme.colorScheme.surface,
-                                width: 1.5,
-                              ),
+                              border: Border.all(color: theme.colorScheme.surface, width: 1.5),
                             ),
-                            child: const Icon(
-                              Icons.camera_alt_rounded,
-                              size: 9,
-                              color: Colors.white,
-                            ),
+                            child: const Icon(Icons.camera_alt_rounded, size: 9, color: Colors.white),
                           ),
                         ),
                       ],
@@ -672,7 +618,10 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [color.withValues(alpha: alpha), color.withValues(alpha: 0)],
+          colors: [
+            color.withValues(alpha: alpha),
+            color.withValues(alpha: 0),
+          ],
         ),
       ),
     );
@@ -690,9 +639,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -738,12 +685,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       child: Row(
         children: [
-          Text(
-            '性别',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text('性别', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           const Spacer(),
           Container(
             height: 30,
@@ -777,23 +719,13 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           color: isSelected ? theme.colorScheme.surface : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
           boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 3,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
+              ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 3, offset: const Offset(0, 1))]
               : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 14,
-              color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-            ),
+            Icon(icon, size: 14, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 4),
             Text(
               label,
@@ -815,12 +747,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       child: Row(
         children: [
-          Text(
-            '出生日期',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text('出生日期', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           const Spacer(),
           InkWell(
             onTap: _showBirthdayPicker,
@@ -831,9 +758,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    _birthday != null
-                        ? DateFormat('yyyy-MM-dd').format(_birthday!)
-                        : '选择日期',
+                    _birthday != null ? DateFormat('yyyy-MM-dd').format(_birthday!) : '选择日期',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
                       color: _birthday != null
@@ -852,11 +777,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             ),
           ),
           const SizedBox(width: 10),
-          Container(
-            width: 1,
-            height: 16,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+          Container(width: 1, height: 16, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
           const SizedBox(width: 10),
           SizedBox(
             width: 58,
@@ -869,9 +790,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     keyboardType: TextInputType.number,
                     onChanged: _onAgeTextChanged,
                     textAlign: TextAlign.right,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                     decoration: const InputDecoration(
                       hintText: '--',
                       isDense: true,
@@ -883,12 +802,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     ),
                   ),
                 ),
-                Text(
-                  ' 岁',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                Text(' 岁', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -903,12 +817,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       child: Row(
         children: [
-          Text(
-            '身高',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text('身高', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           const Spacer(),
           SizedBox(
             width: 56,
@@ -916,9 +825,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               controller: _heightController,
               keyboardType: TextInputType.number,
               textAlign: TextAlign.right,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               decoration: const InputDecoration(
                 hintText: '--',
                 isDense: true,
@@ -930,12 +837,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               ),
             ),
           ),
-          Text(
-            ' cm',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text(' cm', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -950,9 +852,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -971,15 +871,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                       child: Row(
                         children: [
-                          Icon(Icons.monitor_weight_outlined,
-                              size: 16, color: theme.colorScheme.primary),
+                          Icon(Icons.monitor_weight_outlined, size: 16, color: theme.colorScheme.primary),
                           const SizedBox(width: 8),
                           Text(
                             '体重记录',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
+                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                           if (_latestWeightInKg != null) ...[
                             const SizedBox(width: 10),
@@ -1020,11 +916,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       children: [
                         Text(
                           _showWeightHistory ? '收起' : '历史',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.primary,
-                          ),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
                         ),
                         Icon(
                           _showWeightHistory ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
@@ -1066,11 +958,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.calendar_today_rounded,
-                            size: 13,
-                            color: theme.colorScheme.primary,
-                          ),
+                          Icon(Icons.calendar_today_rounded, size: 13, color: theme.colorScheme.primary),
                           const SizedBox(width: 4),
                           Text(
                             _isToday(_weightDate) ? '今天' : DateFormat('MM-dd').format(_weightDate),
@@ -1164,28 +1052,19 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildHistoryTabItem(theme, '折线趋势', 0),
-                        _buildHistoryTabItem(theme, '详细记录', 1),
-                      ],
+                      children: [_buildHistoryTabItem(theme, '折线趋势', 0), _buildHistoryTabItem(theme, '详细记录', 1)],
                     ),
                   ),
                   const Spacer(),
                   Text(
                     '共 ${weightHistory.length} 条记录',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                    ),
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                   ),
                 ],
               ),
             ),
             if (_historyTab == 0)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                child: _buildWeightChart(weightHistory, theme),
-              )
+              Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 12), child: _buildWeightChart(weightHistory, theme))
             else
               _buildHistoryList(weightHistory, theme),
           ] else if (_showWeightHistory && weightHistory.isEmpty) ...[
@@ -1195,10 +1074,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               child: Center(
                 child: Text(
                   '暂无体重记录',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                  ),
+                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                 ),
               ),
             ),
@@ -1226,18 +1102,10 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           children: [
             Text(
               _weightUnit,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(width: 3),
-            Icon(
-              Icons.swap_horiz_rounded,
-              size: 13,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-            ),
+            Icon(Icons.swap_horiz_rounded, size: 13, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
           ],
         ),
       ),
@@ -1254,13 +1122,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           color: isSelected ? theme.colorScheme.surface : Colors.transparent,
           borderRadius: BorderRadius.circular(4),
           boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 2,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
+              ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 2, offset: const Offset(0, 1))]
               : null,
         ),
         alignment: Alignment.center,
@@ -1277,8 +1139,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   Widget _buildHistoryList(List<dynamic> weightHistory, ThemeData theme) {
-    final sortedList = List<WeightRecord>.from(weightHistory)
-      ..sort((a, b) => b.time.compareTo(a.time));
+    final sortedList = List<WeightRecord>.from(weightHistory)..sort((a, b) => b.time.compareTo(a.time));
 
     return Container(
       constraints: const BoxConstraints(maxHeight: 160),
@@ -1286,11 +1147,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         shrinkWrap: true,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         itemCount: sortedList.length,
-        separatorBuilder: (_, _) => Divider(
-          height: 1,
-          thickness: 0.5,
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-        ),
+        separatorBuilder: (_, _) =>
+            Divider(height: 1, thickness: 0.5, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
         itemBuilder: (context, index) {
           final record = sortedList[index];
           final val = _weightUnit == '斤' ? (record.weight * 2.0) : record.weight;
@@ -1300,18 +1158,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               children: [
                 Text(
                   DateFormat('yyyy-MM-dd').format(record.time),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                 ),
                 const Spacer(),
                 Text(
                   '${val.toStringAsFixed(1)} $_weightUnit',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 const SizedBox(width: 8),
                 InkWell(
@@ -1319,11 +1171,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   borderRadius: BorderRadius.circular(4),
                   child: Padding(
                     padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.close_rounded,
-                      size: 14,
-                      color: theme.colorScheme.error.withValues(alpha: 0.7),
-                    ),
+                    child: Icon(Icons.close_rounded, size: 14, color: theme.colorScheme.error.withValues(alpha: 0.7)),
                   ),
                 ),
               ],
@@ -1352,11 +1200,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               const SizedBox(width: 2),
               Text(
                 '添加字段',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
-                ),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
               ),
             ],
           ),
@@ -1369,11 +1213,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
             child: Text(
               '还没有补充信息，点右上角「添加字段」记录职业、习惯等',
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.4,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 12, height: 1.4, color: theme.colorScheme.onSurfaceVariant),
             ),
           )
         else ...[
@@ -1410,11 +1250,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                         borderRadius: BorderRadius.circular(4),
                         child: Padding(
                           padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.edit_outlined,
-                            size: 14,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                          child: Icon(Icons.edit_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -1423,11 +1259,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                         borderRadius: BorderRadius.circular(4),
                         child: Padding(
                           padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.delete_outline_rounded,
-                            size: 14,
-                            color: theme.colorScheme.error,
-                          ),
+                          child: Icon(Icons.delete_outline_rounded, size: 14, color: theme.colorScheme.error),
                         ),
                       ),
                     ],
@@ -1450,10 +1282,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -1482,17 +1311,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           title: const Text('添加自定义字段'),
           content: TextField(
             controller: controller,
-            decoration: const InputDecoration(
-              hintText: '例如：工作信息、目标、血型',
-              labelText: '字段名称',
-            ),
+            decoration: const InputDecoration(hintText: '例如：工作信息、目标、血型', labelText: '字段名称'),
             autofocus: true,
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 final name = controller.text.trim();
@@ -1524,16 +1347,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           title: const Text('重命名字段'),
           content: TextField(
             controller: controller,
-            decoration: const InputDecoration(
-              labelText: '新字段名称',
-            ),
+            decoration: const InputDecoration(labelText: '新字段名称'),
             autofocus: true,
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 final newName = controller.text.trim();
@@ -1569,10 +1387,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           title: const Text('确认删除'),
           content: Text('删除“$name”？该字段内容不会保存。'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 setState(() {
@@ -1591,18 +1406,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   Widget _buildWeightChart(List<dynamic> weightHistory, ThemeData theme) {
-    final sortedHistory = List<WeightRecord>.from(weightHistory)
-      ..sort((a, b) => a.time.compareTo(b.time));
+    final sortedHistory = List<WeightRecord>.from(weightHistory)..sort((a, b) => a.time.compareTo(b.time));
 
     final spots = <FlSpot>[];
     for (var i = 0; i < sortedHistory.length; i++) {
-      final double weightVal =
-          _weightUnit == '斤' ? sortedHistory[i].weight * 2.0 : sortedHistory[i].weight;
+      final double weightVal = _weightUnit == '斤' ? sortedHistory[i].weight * 2.0 : sortedHistory[i].weight;
       spots.add(FlSpot(i.toDouble(), weightVal));
     }
 
-    final weights =
-        sortedHistory.map((e) => _weightUnit == '斤' ? e.weight * 2.0 : e.weight).toList();
+    final weights = sortedHistory.map((e) => _weightUnit == '斤' ? e.weight * 2.0 : e.weight).toList();
     final double minW = weights.isEmpty ? 0.0 : weights.reduce((a, b) => a < b ? a : b);
     final double maxW = weights.isEmpty ? 0.0 : weights.reduce((a, b) => a > b ? a : b);
 
@@ -1614,10 +1426,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double availableWidth = constraints.maxWidth;
-        final double chartWidth = math.max(
-          availableWidth,
-          sortedHistory.length * 54.0,
-        );
+        final double chartWidth = math.max(availableWidth, sortedHistory.length * 54.0);
 
         return Container(
           height: 140,
@@ -1638,10 +1447,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     drawVerticalLine: false,
                     drawHorizontalLine: true,
                     horizontalInterval: range < 1.0 ? 1.0 : (range / 3.0).clamp(0.5, 100.0),
-                    getDrawingHorizontalLine: (value) => FlLine(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-                      strokeWidth: 1,
-                    ),
+                    getDrawingHorizontalLine: (value) =>
+                        FlLine(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2), strokeWidth: 1),
                   ),
                   titlesData: FlTitlesData(
                     bottomTitles: AxisTitles(
@@ -1663,8 +1470,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w600,
-                                color:
-                                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                               ),
                             ),
                           );
@@ -1680,19 +1486,14 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                             value.toStringAsFixed(1),
                             style: TextStyle(
                               fontSize: 9,
-                              color:
-                                  theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                             ),
                           );
                         },
                       ),
                     ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   ),
                   borderData: FlBorderData(show: false),
                   minY: minY,
@@ -1729,23 +1530,17 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   ],
                   lineTouchData: LineTouchData(
                     touchTooltipData: LineTouchTooltipData(
-                      getTooltipColor: (touchedSpot) =>
-                          theme.colorScheme.surfaceContainerHighest,
+                      getTooltipColor: (touchedSpot) => theme.colorScheme.surfaceContainerHighest,
                       tooltipRoundedRadius: 6,
                       getTooltipItems: (touchedSpots) {
                         return touchedSpots.map((lineBarSpot) {
                           final index = lineBarSpot.x.toInt();
                           final record = sortedHistory[index];
                           final dateStr = DateFormat('yyyy-MM-dd').format(record.time);
-                          final displayWeight =
-                              _weightUnit == '斤' ? (record.weight * 2.0) : record.weight;
+                          final displayWeight = _weightUnit == '斤' ? (record.weight * 2.0) : record.weight;
                           return LineTooltipItem(
                             '${displayWeight.toStringAsFixed(1)} $_weightUnit\n$dateStr',
-                            TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 10,
-                            ),
+                            TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 10),
                           );
                         }).toList();
                       },

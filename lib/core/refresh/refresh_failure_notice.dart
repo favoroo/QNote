@@ -21,12 +21,7 @@ class RefreshFailureNotice {
   static DateTime? _lastShownAt;
 
   /// [source] 数据源中文名（如「日记」「笔记」），[retry] 为空时只显示提示不提供重试。
-  static void report({
-    required String source,
-    required Object error,
-    StackTrace? stackTrace,
-    VoidCallback? retry,
-  }) {
+  static void report({required String source, required Object error, StackTrace? stackTrace, VoidCallback? retry}) {
     LoggerService.instance.error(
       '$source列表刷新失败',
       category: LogCategory.database,

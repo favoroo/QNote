@@ -11,17 +11,12 @@ import 'package:uuid/uuid.dart';
 ///
 /// Android 侧走 MediaStore（`Pictures/QNote`），iOS 侧走 PHPhotoLibrary addOnly，
 /// 两端共用 `com.appone.qnote_flutter/media` 通道，详见 MainActivity.kt 与 AppDelegate.swift。
-const MethodChannel _mediaChannel = MethodChannel(
-  'com.appone.qnote_flutter/media',
-);
+const MethodChannel _mediaChannel = MethodChannel('com.appone.qnote_flutter/media');
 
 /// 保存本地文件到系统相册；[fileName] 为相册中展示的文件名。
 Future<void> saveImage(String source, String fileName) async {
   final path = await _materializeToFilePath(source, fileName);
-  final ok = await _mediaChannel.invokeMethod<bool>('saveToGallery', {
-    'path': path,
-    'fileName': fileName,
-  });
+  final ok = await _mediaChannel.invokeMethod<bool>('saveToGallery', {'path': path, 'fileName': fileName});
   if (ok != true) {
     throw StateError('系统相册未接收该图片');
   }
@@ -49,9 +44,7 @@ Future<String> _materializeToFilePath(String source, String fileName) async {
   final dir = await getTemporaryDirectory();
   final dotIndex = fileName.lastIndexOf('.');
   final ext = dotIndex == -1 ? 'png' : fileName.substring(dotIndex + 1);
-  final file = File(
-    '${dir.path}/qnote_share_${const Uuid().v4()}.$ext',
-  );
+  final file = File('${dir.path}/qnote_share_${const Uuid().v4()}.$ext');
   await file.writeAsBytes(bytes);
   return file.path;
 }

@@ -23,15 +23,9 @@ void main() {
     test('JSON 往返保留权重与启用状态', () {
       const members = [
         RouteGroupMember(providerId: 'p1', modelName: 'm1', weight: 3),
-        RouteGroupMember(
-          providerId: 'p2',
-          modelName: 'm2',
-          weight: 1,
-          enabled: false,
-        ),
+        RouteGroupMember(providerId: 'p2', modelName: 'm2', weight: 1, enabled: false),
       ];
-      final decoded =
-          RouteGroupMember.listFromJson(RouteGroupMember.listToJson(members));
+      final decoded = RouteGroupMember.listFromJson(RouteGroupMember.listToJson(members));
       expect(decoded, members);
     });
 
@@ -111,13 +105,7 @@ void main() {
     });
 
     test('copyWith 传 null 可清空固定成员（与「不传」区分）', () {
-      final group = AiRouteGroup(
-        id: 'g1',
-        name: 'x',
-        pinnedMember: 'p1::m1',
-        createdAt: _epoch,
-        updatedAt: _epoch,
-      );
+      final group = AiRouteGroup(id: 'g1', name: 'x', pinnedMember: 'p1::m1', createdAt: _epoch, updatedAt: _epoch);
       expect(group.copyWith().pinnedMember, 'p1::m1');
       expect(group.copyWith(pinnedMember: null).pinnedMember, isNull);
     });

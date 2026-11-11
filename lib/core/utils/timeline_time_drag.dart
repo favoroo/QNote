@@ -80,9 +80,7 @@ TimelineTimeShift resolveTimelineTimeShift({
   );
 
   final dayStart = DateTime(anchor.year, anchor.month, anchor.day);
-  final dayEnd = dayStart
-      .add(const Duration(days: 1))
-      .subtract(const Duration(minutes: 1));
+  final dayEnd = dayStart.add(const Duration(days: 1)).subtract(const Duration(minutes: 1));
   final minDelta = dayStart.difference(anchor).inMinutes;
   final maxDelta = dayEnd.difference(anchor).inMinutes;
   delta = delta.clamp(minDelta, maxDelta);

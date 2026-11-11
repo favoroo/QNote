@@ -22,21 +22,15 @@ export 'tts_exception.dart';
 const bool kOnlineSynthesisSupported = kOnlineSynthesisSupportedImpl;
 
 /// 在线合成：返回 mp3 音频字节，失败抛 [TtsException]
-Future<Uint8List> synthesizeOnline(
-  String text, {
-  required String voice,
-  required double rate,
-}) => synthesizeOnlineImpl(text, voice: voice, rate: rate);
+Future<Uint8List> synthesizeOnline(String text, {required String voice, required double rate}) =>
+    synthesizeOnlineImpl(text, voice: voice, rate: rate);
 
 /// 系统语音直接朗读（阻塞至朗读完成），失败抛 [TtsException]。
 ///
 /// [resetQueue] 仅在分段朗读的首段传 true（掐掉上一场残留），段间传 false
 /// 交给平台自带的队列续播。
-Future<void> systemSpeak(
-  String text, {
-  required double rate,
-  bool resetQueue = true,
-}) => systemSpeakImpl(text, rate: rate, resetQueue: resetQueue);
+Future<void> systemSpeak(String text, {required double rate, bool resetQueue = true}) =>
+    systemSpeakImpl(text, rate: rate, resetQueue: resetQueue);
 
 /// 停止系统语音朗读
 Future<void> systemStop() => systemStopImpl();

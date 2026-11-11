@@ -21,9 +21,7 @@ void main() {
 
   group('Toast', () {
     testWidgets('show(context) 仍正常挂载（委托给 showIn 之后的回归保障）', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: SizedBox.shrink())),
-      );
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox.shrink())));
       final context = tester.element(find.byType(Scaffold));
 
       Toast.show(context, '已保存', type: ToastType.success, duration: hold);
@@ -36,9 +34,7 @@ void main() {
     });
 
     testWidgets('showIn 与 show 共用同一单槽，后来者顶掉前一条', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: SizedBox.shrink())),
-      );
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox.shrink())));
       final context = tester.element(find.byType(Scaffold));
       final overlay = Overlay.of(context);
 

@@ -40,12 +40,7 @@ class TtsPlaybackState {
   /// 但用户听不到所选音色，不提示就会被当成「音色选择没生效」。
   final String? notice;
 
-  const TtsPlaybackState({
-    this.messageId,
-    this.status = TtsPlaybackStatus.idle,
-    this.error,
-    this.notice,
-  });
+  const TtsPlaybackState({this.messageId, this.status = TtsPlaybackStatus.idle, this.error, this.notice});
 
   static const TtsPlaybackState idle = TtsPlaybackState();
 }
@@ -110,8 +105,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
 
   /// 合成入口的可替换实现（仅测试注入，避免单测真的联网）
   @visibleForTesting
-  Future<Uint8List> Function(String text, String voice, double rate)?
-      synthesizeOverride;
+  Future<Uint8List> Function(String text, String voice, double rate)? synthesizeOverride;
 
   @override
   TtsPlaybackState build() => TtsPlaybackState.idle;
@@ -121,8 +115,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   /// 消息模型无 id 字段，且自动朗读与气泡渲染拿到的可能是内容相同的
   /// 不同对象（时间戳会有毫秒级差异），按内容摘要定 key 才能保证
   /// 按钮状态精确对齐，点击"停止"不会因 key 不匹配被误判成重新朗读。
-  static String messageKeyOf(ChatMessage message) =>
-      'msg_${message.role}_${md5.convert(utf8.encode(message.content))}';
+  static String messageKeyOf(ChatMessage message) => 'msg_${message.role}_${md5.convert(utf8.encode(message.content))}';
 
   /// 气泡按钮入口：同一消息再次点击时停止，否则开始朗读
   Future<void> toggleMessage(ChatMessage message) async {
@@ -139,27 +132,16 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   ///
   /// 与自动朗读共用同一套分段队列：长回复边合成边播，首声不用等整段合成完。
   /// [voiceOverride]/[rateOverride] 供试听覆盖。
-  Future<void> speakMessage(
-    String messageId,
-    String text, {
-    String? voiceOverride,
-    double? rateOverride,
-  }) async {
+  Future<void> speakMessage(String messageId, String text, {String? voiceOverride, double? rateOverride}) async {
     final builder = SpeechSegmentBuilder();
     final segments = [...builder.feed(text), ...builder.finish()];
     if (segments.isEmpty) {
-      state = const TtsPlaybackState(
-        error: '没有可朗读的文字内容',
-      );
+      state = const TtsPlaybackState(error: '没有可朗读的文字内容');
       return;
     }
 
     final settings = await QVoiceConfig.instance.get();
-    beginSpeech(
-      messageId,
-      voice: voiceOverride ?? settings.voice,
-      rate: rateOverride ?? settings.rate,
-    );
+    beginSpeech(messageId, voice: voiceOverride ?? settings.voice, rate: rateOverride ?? settings.rate);
     for (final segment in segments) {
       enqueueSpeech(segment);
     }
@@ -189,35 +171,33 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
       play: (segment) => _playSegment(gen, segment),
     );
     _queue = queue;
-    state = TtsPlaybackState(
-      messageId: messageId,
-      status: TtsPlaybackStatus.synthesizing,
-    );
-    LoggerService.instance.logAI(
-      _useSystemVoice
-          ? 'TTS 使用系统语音（用户指定，跳过在线合成）'
-          : 'TTS 分段朗读开始',
-    );
+    state = TtsPlaybackState(messageId: messageId, status: TtsPlaybackStatus.synthesizing);
+    LoggerService.instance.logAI(_useSystemVoice ? 'TTS 使用系统语音（用户指定，跳过在线合成）' : 'TTS 分段朗读开始');
 
-    _serial = _serial.then((_) async {
-      await _cancelPlayback();
-      if (gen != _generation) return;
-      // 播放循环必须脱离链启动：queue.add/close（同步方法）是唤醒 run loop 的
-      // 唯一途径，若在这里 await queue.run()，唤醒动作会排在链上永不完成——
-      // 队列等入队、入队等链，整场朗读无声卡死
-      unawaited(
-        queue.run().then((_) {
+    _serial = _serial
+        .then((_) async {
+          await _cancelPlayback();
           if (gen != _generation) return;
-          _closeSession();
-        }).catchError((Object error) {
+          // 播放循环必须脱离链启动：queue.add/close（同步方法）是唤醒 run loop 的
+          // 唯一途径，若在这里 await queue.run()，唤醒动作会排在链上永不完成——
+          // 队列等入队、入队等链，整场朗读无声卡死
+          unawaited(
+            queue
+                .run()
+                .then((_) {
+                  if (gen != _generation) return;
+                  _closeSession();
+                })
+                .catchError((Object error) {
+                  if (gen != _generation) return;
+                  _failSession(error);
+                }),
+          );
+        })
+        .catchError((Object error) {
           if (gen != _generation) return;
           _failSession(error);
-        }),
-      );
-    }).catchError((Object error) {
-      if (gen != _generation) return;
-      _failSession(error);
-    });
+        });
   }
 
   /// 追加一段可朗读文本（须已由 [SpeechSegmentBuilder] 清洗）。
@@ -288,12 +268,9 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
     // 不豁免的话降级场次会念完首段就以"中途失败"中断并弹错误
     if (failure != null && !_useSystemVoice) {
       if (segment.index > 0) {
-        throw failure is TtsException
-            ? failure
-            : TtsException('synthesis_failed', '在线语音合成失败：$failure');
+        throw failure is TtsException ? failure : TtsException('synthesis_failed', '在线语音合成失败：$failure');
       }
-      _onlineFailureReason =
-          failure is TtsException ? failure.message : '$failure';
+      _onlineFailureReason = failure is TtsException ? failure.message : '$failure';
       // 降级对本场是成功的（只是换了音色），不报错但必须说一声：
       // 否则用户选什么音色都听到设备语音，还以为音色设置坏了
       _sessionNotice = '在线音色不可用（$_onlineFailureReason），本场改用设备语音';
@@ -307,17 +284,9 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
       // 走系统语音后 just_audio 不再参与本场，摘掉播放器事件的复位授权，
       // 避免降级前那次播放的迟到 completed 把系统语音的状态提前打回空闲
       _playingGeneration = null;
-      state = TtsPlaybackState(
-        messageId: _sessionMessageId,
-        status: TtsPlaybackStatus.playing,
-        notice: _sessionNotice,
-      );
+      state = TtsPlaybackState(messageId: _sessionMessageId, status: TtsPlaybackStatus.playing, notice: _sessionNotice);
       // 段间不再清队列：原生靠 awaitSpeakCompletion 串行，浏览器靠自带队列续播
-      await TtsService.speakNative(
-        text: segment.text,
-        rate: _sessionRate,
-        resetQueue: segment.index == 0,
-      );
+      await TtsService.speakNative(text: segment.text, rate: _sessionRate, resetQueue: segment.index == 0);
       return;
     }
     await _playBytes(gen, bytes);
@@ -330,19 +299,14 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   void _closeSession() {
     _sessionActive = false;
     _queue = null;
-    state = TtsPlaybackState(
-      messageId: _sessionMessageId,
-      notice: _sessionNotice,
-    );
+    state = TtsPlaybackState(messageId: _sessionMessageId, notice: _sessionNotice);
   }
 
   /// 本场失败：状态复位并带上用户可读的原因
   void _failSession(Object error) {
     final fallbackReason = error is TtsException ? error.message : '$error';
     final online = _onlineFailureReason;
-    final combined = online == null || !_useSystemVoice
-        ? fallbackReason
-        : '$online；系统语音：$fallbackReason';
+    final combined = online == null || !_useSystemVoice ? fallbackReason : '$online；系统语音：$fallbackReason';
     _sessionActive = false;
     _queue = null;
     LoggerService.instance.logAI('语音朗读失败: $combined', level: LogLevel.error);
@@ -388,10 +352,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
     _playbackErrorMessage = null;
     await player.setAudioSource(_BytesAudioSource(bytes));
     if (gen != _generation) return;
-    state = TtsPlaybackState(
-      messageId: state.messageId,
-      status: TtsPlaybackStatus.playing,
-    );
+    state = TtsPlaybackState(messageId: state.messageId, status: TtsPlaybackStatus.playing);
     _playingGeneration = gen;
     await player.play();
     if (gen != _generation) return;
@@ -432,9 +393,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
       },
       // 广播流上单个订阅者出错不影响其它订阅，留痕后继续监听
       onError: (Object e) {
-        _playbackErrorMessage = e is PlayerException
-            ? (e.message ?? '错误码 ${e.code}')
-            : '$e';
+        _playbackErrorMessage = e is PlayerException ? (e.message ?? '错误码 ${e.code}') : '$e';
       },
       cancelOnError: false,
     );
@@ -453,8 +412,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   /// 要等到 `pause()`/`stop()` 才会回到 false，音频自然播完时它仍是 true。
   /// 若额外要求 `!playing`，完成判定就永远不成立，朗读按钮会卡在停止图标，
   /// 用户得点两下（第一下 stop、第二下才重新朗读）才能恢复。
-  static bool playbackFinished(PlayerState ps) =>
-      ps.processingState == ProcessingState.completed;
+  static bool playbackFinished(PlayerState ps) => ps.processingState == ProcessingState.completed;
 
   /// 本次朗读结束：复位为空闲（保留 messageId，让该条按钮回到"朗读"态）
   void _onPlaybackFinished() {
@@ -483,8 +441,7 @@ class TtsPlayer extends Notifier<TtsPlaybackState> implements SpeechSink {
   }
 }
 
-final ttsPlaybackProvider =
-    NotifierProvider<TtsPlayer, TtsPlaybackState>(TtsPlayer.new);
+final ttsPlaybackProvider = NotifierProvider<TtsPlayer, TtsPlaybackState>(TtsPlayer.new);
 
 /// 把内存字节包装成 just_audio 可读的音频源（Android/iOS/Web 通用）
 class _BytesAudioSource extends StreamAudioSource {

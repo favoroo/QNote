@@ -31,23 +31,22 @@ class MiAuthCredentials {
   bool get isExpired => DateTime.now().isAfter(expireTime.subtract(const Duration(hours: 1)));
 
   Map<String, dynamic> toMap() => {
-        'userId': userId,
-        'serviceToken': serviceToken,
-        'ssecurity': ssecurity,
-        'cUserId': cUserId,
-        'passToken': passToken,
-        'expireTime': expireTime.toIso8601String(),
-      };
+    'userId': userId,
+    'serviceToken': serviceToken,
+    'ssecurity': ssecurity,
+    'cUserId': cUserId,
+    'passToken': passToken,
+    'expireTime': expireTime.toIso8601String(),
+  };
 
   factory MiAuthCredentials.fromMap(Map<String, dynamic> map) => MiAuthCredentials(
-        userId: map['userId'] as String? ?? '',
-        serviceToken: map['serviceToken'] as String? ?? '',
-        ssecurity: map['ssecurity'] as String? ?? '',
-        cUserId: map['cUserId'] as String?,
-        passToken: map['passToken'] as String?,
-        expireTime: DateTime.tryParse(map['expireTime'] as String? ?? '') ??
-            DateTime.now().add(const Duration(days: 30)),
-      );
+    userId: map['userId'] as String? ?? '',
+    serviceToken: map['serviceToken'] as String? ?? '',
+    ssecurity: map['ssecurity'] as String? ?? '',
+    cUserId: map['cUserId'] as String?,
+    passToken: map['passToken'] as String?,
+    expireTime: DateTime.tryParse(map['expireTime'] as String? ?? '') ?? DateTime.now().add(const Duration(days: 30)),
+  );
 }
 
 /// 扫码登录会话状态
@@ -56,11 +55,7 @@ class MiQrLoginSession {
   final String lp;
   final String qrCodeUrl;
 
-  MiQrLoginSession({
-    required this.loginUrl,
-    required this.lp,
-    required this.qrCodeUrl,
-  });
+  MiQrLoginSession({required this.loginUrl, required this.lp, required this.qrCodeUrl});
 }
 
 /// 小米登录态相关的**确定性**失败（凭据被服务端拒绝、账号服务回业务错误码），
@@ -106,24 +101,14 @@ class MiPassportLogin {
 }
 
 /// 扫码等待状态
-enum MiQrPollStatus {
-  waiting,
-  scanned,
-  success,
-  expired,
-  failed,
-}
+enum MiQrPollStatus { waiting, scanned, success, expired, failed }
 
 class MiQrPollResult {
   final MiQrPollStatus status;
   final MiAuthCredentials? credentials;
   final String? errorMsg;
 
-  MiQrPollResult({
-    required this.status,
-    this.credentials,
-    this.errorMsg,
-  });
+  MiQrPollResult({required this.status, this.credentials, this.errorMsg});
 }
 
 /// 小米运动健康鉴权服务
@@ -132,16 +117,15 @@ class MiFitnessAuthService {
   static const String sid = 'miothealth'; // 小米运动健康专用统一业务 sid
   static const String accountBase = 'https://account.xiaomi.com';
 
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
-    // passport 系接口一律按纯文本收，再用 parsePassportResponse 剥壳，理由见该方法注释。
-    responseType: ResponseType.plain,
-    headers: {
-      'User-Agent':
-          'APP/com.xiaomi.wearable APPV/2.12.0 iosPassportSDK/3.9.0 iOS/17.4',
-    },
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      // passport 系接口一律按纯文本收，再用 parsePassportResponse 剥壳，理由见该方法注释。
+      responseType: ResponseType.plain,
+      headers: {'User-Agent': 'APP/com.xiaomi.wearable APPV/2.12.0 iosPassportSDK/3.9.0 iOS/17.4'},
+    ),
+  );
 
   MiAuthCredentials? _cachedCredentials;
 
@@ -266,12 +250,7 @@ class MiFitnessAuthService {
   Future<MiQrLoginSession> createQrSession() async {
     final res = await _dio.get(
       '$accountBase/longPolling/loginUrl',
-      queryParameters: {
-        '_json': 'true',
-        'sid': sid,
-        'qs': '%3Fsid%3D$sid',
-        '_locale': 'zh_CN',
-      },
+      queryParameters: {'_json': 'true', 'sid': sid, 'qs': '%3Fsid%3D$sid', '_locale': 'zh_CN'},
     );
 
     final jsonMap = parsePassportResponse(res.data);
@@ -282,11 +261,7 @@ class MiFitnessAuthService {
 
     final qrUrl = (qr != null && qr.isNotEmpty) ? qr : loginUrl;
 
-    return MiQrLoginSession(
-      loginUrl: loginUrl,
-      lp: lp,
-      qrCodeUrl: qrUrl,
-    );
+    return MiQrLoginSession(loginUrl: loginUrl, lp: lp, qrCodeUrl: qrUrl);
   }
 
   /// 轮询长轮询接口查询用户扫码结果
@@ -308,10 +283,7 @@ class MiFitnessAuthService {
       } else if (code == 0) {
         // 扫码成功，拿到 passToken 与 location 重定向地址
         // passToken/userId/cUserId 在个别链路上只走 Set-Cookie，故统一走 parsePassportLogin
-        final login = parsePassportLogin(
-          jsonMap,
-          setCookieHeaders: res.headers['set-cookie'],
-        );
+        final login = parsePassportLogin(jsonMap, setCookieHeaders: res.headers['set-cookie']);
         final location = login.location;
         final ssecurity = login.ssecurity;
         final userId = login.userId;
@@ -385,16 +357,11 @@ class MiFitnessAuthService {
 
       final res = await _dio.get(
         url,
-        options: Options(
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 500,
-        ),
+        options: Options(followRedirects: false, validateStatus: (status) => status != null && status < 500),
       );
 
       final cookies = res.headers['set-cookie'];
-      final serviceToken = findCookie(cookies, '${sid}_serviceToken') ??
-          findCookie(cookies, 'serviceToken') ??
-          '';
+      final serviceToken = findCookie(cookies, '${sid}_serviceToken') ?? findCookie(cookies, 'serviceToken') ?? '';
 
       return MiAuthCredentials(
         userId: userId,
@@ -432,10 +399,7 @@ class MiFitnessAuthService {
   Future<MiAuthCredentials> _doRefreshServiceToken() async {
     final creds = await loadCredentials();
     if (creds == null || (creds.passToken ?? '').isEmpty || creds.userId.isEmpty) {
-      throw MiFitnessAuthException(
-        '本地缺少 passToken/userId，无法静默刷新小米登录态，请重新扫码授权',
-        needsRelogin: true,
-      );
+      throw MiFitnessAuthException('本地缺少 passToken/userId，无法静默刷新小米登录态，请重新扫码授权', needsRelogin: true);
     }
 
     Response res;
@@ -444,9 +408,7 @@ class MiFitnessAuthService {
         '$accountBase/pass/serviceLogin',
         queryParameters: {'sid': sid, '_json': 'true'},
         options: Options(
-          headers: {
-            'Cookie': 'userId=${creds.userId}; passToken=${creds.passToken}',
-          },
+          headers: {'Cookie': 'userId=${creds.userId}; passToken=${creds.passToken}'},
           // 关闭自动重定向：passToken 失效时服务端会跳到登录页，以此区分「被拒绝」与「网络异常」
           followRedirects: false,
           validateStatus: (status) => status != null && status < 500,
@@ -480,10 +442,7 @@ class MiFitnessAuthService {
     // InvalidCredentialException 对应）；其余 code 一律只报错、不动本地凭据
     if (login.code == 70016) {
       await clearCredentials();
-      throw MiFitnessAuthException(
-        '小米登录态已失效（passToken 被拒绝），请重新扫码授权',
-        needsRelogin: true,
-      );
+      throw MiFitnessAuthException('小米登录态已失效（passToken 被拒绝），请重新扫码授权', needsRelogin: true);
     }
     if (login.code != 0) {
       throw MiFitnessAuthException('小米账号服务返回异常（code=${login.code}），本次未刷新登录态');

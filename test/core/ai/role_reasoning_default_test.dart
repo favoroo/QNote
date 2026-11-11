@@ -27,10 +27,7 @@ void main() {
   }
 
   test('时间线提取未设档位时默认关闭', () {
-    final result = applyRoleReasoningDefault(
-      'timelineOptimization',
-      config('my-custom-model'),
-    );
+    final result = applyRoleReasoningDefault('timelineOptimization', config('my-custom-model'));
 
     expect(result.reasoningEffort, ReasoningEffort.none);
   });
@@ -46,45 +43,26 @@ void main() {
   });
 
   test('不支持关闭的模型退到最低档', () {
-    final oSeries = applyRoleReasoningDefault(
-      'timelineOptimization',
-      config('o3-mini'),
-    );
+    final oSeries = applyRoleReasoningDefault('timelineOptimization', config('o3-mini'));
     expect(oSeries.reasoningEffort, ReasoningEffort.low);
 
-    final geminiPro = applyRoleReasoningDefault(
-      'timelineOptimization',
-      config('gemini-2.5-pro', provider: 'gemini'),
-    );
+    final geminiPro = applyRoleReasoningDefault('timelineOptimization', config('gemini-2.5-pro', provider: 'gemini'));
     expect(geminiPro.reasoningEffort, ReasoningEffort.low);
   });
 
   test('自定义档位裁掉关闭与低档时，退到该模型可选的最低档', () {
     final result = applyRoleReasoningDefault(
       'timelineOptimization',
-      config(
-        'gpt-5.4-mini',
-        effort: ReasoningEffort.high,
-        efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh],
-      ),
+      config('gpt-5.4-mini', effort: ReasoningEffort.high, efforts: [ReasoningEffort.minimal, ReasoningEffort.xhigh]),
     );
 
     expect(result.reasoningEffort, ReasoningEffort.minimal);
   });
 
   test('其它角色不受影响', () {
+    expect(applyRoleReasoningDefault('assistant', config('my-custom-model')).reasoningEffort, isNull);
     expect(
-      applyRoleReasoningDefault(
-        'assistant',
-        config('my-custom-model'),
-      ).reasoningEffort,
-      isNull,
-    );
-    expect(
-      applyRoleReasoningDefault(
-        'assistant',
-        config('my-custom-model', effort: ReasoningEffort.high),
-      ).reasoningEffort,
+      applyRoleReasoningDefault('assistant', config('my-custom-model', effort: ReasoningEffort.high)).reasoningEffort,
       ReasoningEffort.high,
     );
     expect(

@@ -35,12 +35,7 @@ class SleepStatsWidget extends StatelessWidget {
             icon: Icons.schedule,
             iconColor: Colors.indigo,
           ),
-          right: StatsCard(
-            title: '质量分布',
-            value: qualityLabel,
-            icon: Icons.emoji_events,
-            iconColor: Colors.amber,
-          ),
+          right: StatsCard(title: '质量分布', value: qualityLabel, icon: Icons.emoji_events, iconColor: Colors.amber),
         ),
         const SizedBox(height: 16),
         StatCardShell(
@@ -96,10 +91,7 @@ class _SleepDurationChart extends StatelessWidget {
           show: true,
           drawVerticalLine: false,
           horizontalInterval: 2,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: AppPalette.chartGrid(isDark),
-            strokeWidth: 1,
-          ),
+          getDrawingHorizontalLine: (value) => FlLine(color: AppPalette.chartGrid(isDark), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -124,10 +116,8 @@ class _SleepDurationChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 30,
-              getTitlesWidget: (value, meta) => Text(
-                '${value.toInt()}h',
-                style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
-              ),
+              getTitlesWidget: (value, meta) =>
+                  Text('${value.toInt()}h', style: const TextStyle(fontSize: 10, color: AppPalette.textMuted)),
             ),
           ),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -141,10 +131,7 @@ class _SleepDurationChart extends StatelessWidget {
             color: Colors.indigo,
             barWidth: 3,
             dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              color: Colors.indigo.withValues(alpha: 0.1),
-            ),
+            belowBarData: BarAreaData(show: true, color: Colors.indigo.withValues(alpha: 0.1)),
           ),
         ],
       ),
@@ -157,11 +144,7 @@ class _QualityDistribution extends StatelessWidget {
   final int totalRecords;
   final bool isDark;
 
-  const _QualityDistribution({
-    required this.qualityDistribution,
-    required this.totalRecords,
-    required this.isDark,
-  });
+  const _QualityDistribution({required this.qualityDistribution, required this.totalRecords, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -182,11 +165,7 @@ class _QualityDistribution extends StatelessWidget {
                 width: 32,
                 child: Text(
                   item.label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: AppPalette.textSecondary(isDark),
-                  ),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppPalette.textSecondary(isDark)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -203,11 +182,7 @@ class _QualityDistribution extends StatelessWidget {
                 width: 24,
                 child: Text(
                   '${item.count}',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppPalette.textMuted,
-                  ),
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppPalette.textMuted),
                   textAlign: TextAlign.end,
                 ),
               ),

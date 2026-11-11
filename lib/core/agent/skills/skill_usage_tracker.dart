@@ -13,16 +13,11 @@ class SkillUsageStat {
   const SkillUsageStat({required this.count, this.lastUsedAt});
 
   factory SkillUsageStat.fromMap(Map<String, dynamic> map) => SkillUsageStat(
-        count: (map['count'] as num?)?.toInt() ?? 0,
-        lastUsedAt: map['lastUsedAt'] != null
-            ? DateTime.tryParse(map['lastUsedAt'] as String)
-            : null,
-      );
+    count: (map['count'] as num?)?.toInt() ?? 0,
+    lastUsedAt: map['lastUsedAt'] != null ? DateTime.tryParse(map['lastUsedAt'] as String) : null,
+  );
 
-  Map<String, dynamic> toMap() => {
-        'count': count,
-        if (lastUsedAt != null) 'lastUsedAt': lastUsedAt!.toIso8601String(),
-      };
+  Map<String, dynamic> toMap() => {'count': count, if (lastUsedAt != null) 'lastUsedAt': lastUsedAt!.toIso8601String()};
 }
 
 /// 技能使用统计追踪器（Curator 轻量版）
@@ -49,10 +44,7 @@ class SkillUsageTracker {
     try {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
       return _cache = decoded.map(
-        (name, value) => MapEntry(
-          name,
-          SkillUsageStat.fromMap(value as Map<String, dynamic>),
-        ),
+        (name, value) => MapEntry(name, SkillUsageStat.fromMap(value as Map<String, dynamic>)),
       );
     } catch (_) {
       // 历史数据损坏时按无统计兜底，不阻断技能管理页
@@ -68,15 +60,9 @@ class SkillUsageTracker {
     try {
       final stats = await getStats();
       final current = stats[name] ?? const SkillUsageStat(count: 0);
-      stats[name] = SkillUsageStat(
-        count: current.count + 1,
-        lastUsedAt: DateTime.now(),
-      );
+      stats[name] = SkillUsageStat(count: current.count + 1, lastUsedAt: DateTime.now());
       _cache = stats;
-      await ConfigRepository.instance.setAppConfig(
-        storageKey,
-        jsonEncode(stats.map((k, v) => MapEntry(k, v.toMap()))),
-      );
+      await ConfigRepository.instance.setAppConfig(storageKey, jsonEncode(stats.map((k, v) => MapEntry(k, v.toMap()))));
     } catch (_) {
       // 持久化失败仅放弃本次统计，保持缓存供本会话内读取
     }
@@ -90,10 +76,7 @@ class SkillUsageTracker {
       final stats = await getStats();
       if (stats.remove(name) == null) return;
       _cache = stats;
-      await ConfigRepository.instance.setAppConfig(
-        storageKey,
-        jsonEncode(stats.map((k, v) => MapEntry(k, v.toMap()))),
-      );
+      await ConfigRepository.instance.setAppConfig(storageKey, jsonEncode(stats.map((k, v) => MapEntry(k, v.toMap()))));
     } catch (_) {
       // 清理失败无碍主流程
     }

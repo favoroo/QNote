@@ -46,10 +46,7 @@ class HealthDayLineChart extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
         ),
-        child: Text(
-          emptyHint,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-        ),
+        child: Text(emptyHint, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
       );
     }
 
@@ -72,10 +69,8 @@ class HealthDayLineChart extends StatelessWidget {
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
-            getDrawingHorizontalLine: (value) => FlLine(
-              color: scheme.outlineVariant.withValues(alpha: 0.4),
-              strokeWidth: 1,
-            ),
+            getDrawingHorizontalLine: (value) =>
+                FlLine(color: scheme.outlineVariant.withValues(alpha: 0.4), strokeWidth: 1),
           ),
           extraLinesData: referenceValue == null
               ? const ExtraLinesData()
@@ -109,10 +104,7 @@ class HealthDayLineChart extends StatelessWidget {
                 showTitles: true,
                 reservedSize: 38,
                 getTitlesWidget: (value, meta) {
-                  return Text(
-                    '${value.toInt()}$unit',
-                    style: TextStyle(fontSize: 10, color: axisColor),
-                  );
+                  return Text('${value.toInt()}$unit', style: TextStyle(fontSize: 10, color: axisColor));
                 },
               ),
             ),
@@ -131,11 +123,8 @@ class HealthDayLineChart extends StatelessWidget {
               isStrokeCapRound: true,
               dotData: FlDotData(
                 show: spots.length <= 40,
-                getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
-                  radius: 2.4,
-                  color: color,
-                  strokeWidth: 0,
-                ),
+                getDotPainter: (spot, percent, bar, index) =>
+                    FlDotCirclePainter(radius: 2.4, color: color, strokeWidth: 0),
               ),
               belowBarData: BarAreaData(
                 show: true,
@@ -179,17 +168,10 @@ class HealthChartReferenceNote extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
-        Container(
-          width: 18,
-          height: 2,
-          color: color.withValues(alpha: 0.6),
-        ),
+        Container(width: 18, height: 2, color: color.withValues(alpha: 0.6)),
         const SizedBox(width: 6),
         Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
+          child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ),
       ],
     );

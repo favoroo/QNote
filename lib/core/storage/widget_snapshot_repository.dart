@@ -4,9 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/models/widget_snapshot.dart';
 
-final widgetSnapshotRepositoryProvider = Provider<WidgetSnapshotRepository>(
-  (ref) => WidgetSnapshotRepository(),
-);
+final widgetSnapshotRepositoryProvider = Provider<WidgetSnapshotRepository>((ref) => WidgetSnapshotRepository());
 
 /// 桌面小组件快照仓储
 ///
@@ -31,12 +29,7 @@ class WidgetSnapshotRepository {
   /// 读取一行快照，[date] 默认空串对应与日期无关的高频小值
   Future<WidgetSnapshot?> get(String key, {String date = ''}) async {
     final db = await _db;
-    final rows = await db.query(
-      table,
-      where: 'key = ? AND date = ?',
-      whereArgs: [key, date],
-      limit: 1,
-    );
+    final rows = await db.query(table, where: 'key = ? AND date = ?', whereArgs: [key, date], limit: 1);
     if (rows.isEmpty) {
       return null;
     }
@@ -48,23 +41,14 @@ class WidgetSnapshotRepository {
     final db = await _db;
     final rows = date == null
         ? await db.query(table, orderBy: 'key ASC, date ASC')
-        : await db.query(
-            table,
-            where: 'date = ?',
-            whereArgs: [date],
-            orderBy: 'key ASC',
-          );
+        : await db.query(table, where: 'date = ?', whereArgs: [date], orderBy: 'key ASC');
     return rows.map(WidgetSnapshot.fromMap).toList();
   }
 
   /// 幂等写入：同 (key, date) 直接覆盖为最新值
   Future<void> put(WidgetSnapshot snapshot) async {
     final db = await _db;
-    await db.insert(
-      table,
-      snapshot.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(table, snapshot.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// 批量写入共用一个事务，避免逐条开事务放大热路径开销
@@ -75,21 +59,13 @@ class WidgetSnapshotRepository {
     final db = await _db;
     await db.transaction((txn) async {
       for (final snapshot in snapshots) {
-        await txn.insert(
-          table,
-          snapshot.toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await txn.insert(table, snapshot.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
   }
 
   Future<int> hardDelete(String key, {String date = ''}) async {
     final db = await _db;
-    return await db.delete(
-      table,
-      where: 'key = ? AND date = ?',
-      whereArgs: [key, date],
-    );
+    return await db.delete(table, where: 'key = ? AND date = ?', whereArgs: [key, date]);
   }
 }

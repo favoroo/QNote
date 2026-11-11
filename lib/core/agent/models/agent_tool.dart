@@ -12,32 +12,14 @@ class ToolResult {
   final List<String>? images;
   final bool isError;
 
-  const ToolResult({
-    required this.modelOutput,
-    this.uiDetails,
-    this.images,
-    this.isError = false,
-  });
+  const ToolResult({required this.modelOutput, this.uiDetails, this.images, this.isError = false});
 
-  factory ToolResult.success(
-    String message, {
-    Map<String, dynamic>? uiDetails,
-    List<String>? images,
-  }) {
-    return ToolResult(
-      modelOutput: message,
-      uiDetails: uiDetails,
-      images: images,
-      isError: false,
-    );
+  factory ToolResult.success(String message, {Map<String, dynamic>? uiDetails, List<String>? images}) {
+    return ToolResult(modelOutput: message, uiDetails: uiDetails, images: images, isError: false);
   }
 
   factory ToolResult.error(String error, {Map<String, dynamic>? uiDetails}) {
-    return ToolResult(
-      modelOutput: '错误: $error',
-      uiDetails: uiDetails,
-      isError: true,
-    );
+    return ToolResult(modelOutput: '错误: $error', uiDetails: uiDetails, isError: true);
   }
 }
 
@@ -65,20 +47,13 @@ abstract class AgentTool {
   Map<String, dynamic> get parametersSchema;
 
   /// 执行具体工具逻辑
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  });
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress});
 
   /// 转换为符合 OpenAI `tools` 参数的 function definition
   Map<String, dynamic> toFunctionDefinition() {
     return {
       'type': 'function',
-      'function': {
-        'name': name,
-        'description': description,
-        'parameters': parametersSchema,
-      },
+      'function': {'name': name, 'description': description, 'parameters': parametersSchema},
     };
   }
 

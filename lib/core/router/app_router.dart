@@ -63,9 +63,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                     pageBuilder: (context, state) {
                       final record = state.extra as DiaryRecord?;
                       // P2-37: 复用 _fadeTransitionPage helper，避免重复 transitionsBuilder
-                      return _fadeTransitionPage(
-                        record != null ? DiaryEditorView(record: record) : const DiaryPage(),
-                      );
+                      return _fadeTransitionPage(record != null ? DiaryEditorView(record: record) : const DiaryPage());
                     },
                   ),
                   GoRoute(
@@ -76,10 +74,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                       final initialTags = extra?['initialTags'] as List<String>?;
                       final initialDateRange = extra?['initialDateRange'] as DateTimeRange?;
                       return _fadeTransitionPage(
-                        DiaryBatchManageView(
-                          initialTags: initialTags,
-                          initialDateRange: initialDateRange,
-                        ),
+                        DiaryBatchManageView(initialTags: initialTags, initialDateRange: initialDateRange),
                       );
                     },
                   ),
@@ -99,9 +94,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                     pageBuilder: (context, state) {
                       final note = state.extra as Note?;
                       // P2-37: 复用 _fadeTransitionPage helper
-                      return _fadeTransitionPage(
-                        note != null ? NoteEditorView(note: note) : const NotesPage(),
-                      );
+                      return _fadeTransitionPage(note != null ? NoteEditorView(note: note) : const NotesPage());
                     },
                   ),
                 ],
@@ -109,29 +102,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/todo',
-                builder: (context, state) => const TodoPage(),
-              ),
-            ],
+            routes: [GoRoute(path: '/todo', builder: (context, state) => const TodoPage())],
           ),
           StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/statistics',
-                builder: (context, state) => const StatisticsPage(),
-              ),
-            ],
+            routes: [GoRoute(path: '/statistics', builder: (context, state) => const StatisticsPage())],
           ),
           // /ai 小Q全页面：不作为导航栏 tab 显示，由中央停靠按钮单击进入
           StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/ai',
-                builder: (context, state) => const AiPage(),
-              ),
-            ],
+            routes: [GoRoute(path: '/ai', builder: (context, state) => const AiPage())],
           ),
         ],
       ),
@@ -168,9 +146,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/ai-config',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) {
-          final args = state.extra is AiConfigPageArgs
-              ? state.extra as AiConfigPageArgs
-              : const AiConfigPageArgs();
+          final args = state.extra is AiConfigPageArgs ? state.extra as AiConfigPageArgs : const AiConfigPageArgs();
           return _fadeTransitionPage(AiConfigPage(autoOpenAdd: args.autoOpenAdd));
         },
       ),
@@ -182,10 +158,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               ? state.extra as AiProviderEditArgs
               : const AiProviderEditArgs();
           return _fadeTransitionPage(
-            AiProviderEditPage(
-              provider: args.provider,
-              initialVendorId: args.initialVendorId,
-            ),
+            AiProviderEditPage(provider: args.provider, initialVendorId: args.initialVendorId),
           );
         },
       ),
@@ -203,9 +176,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         // 快捷记录：快捷按钮与固定事件合并为一个入口，用 query 定位分段
         path: '/settings/shortcuts',
         parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(
-          QuickRecordSettingsPage(initialTab: _quickRecordTab(state.uri.queryParameters['tab'])),
-        ),
+        pageBuilder: (context, state) =>
+            _fadeTransitionPage(QuickRecordSettingsPage(initialTab: _quickRecordTab(state.uri.queryParameters['tab']))),
       ),
       GoRoute(
         // 旧「固定事件」路径保留，统一重定向到快捷记录页的固定事件分段
@@ -238,10 +210,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final initialDate = state.extra as DateTime?;
           return _fadeTransitionPage(
-            HealthSettingsPage(
-              initialTab: _healthTab(state.uri.queryParameters['tab']),
-              initialDate: initialDate,
-            ),
+            HealthSettingsPage(initialTab: _healthTab(state.uri.queryParameters['tab']), initialDate: initialDate),
           );
         },
       ),
@@ -250,17 +219,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         // 不用 redirect——redirect 会丢掉 extra 里的日期，而日记日结卡片正是带日期跳过来的。
         path: '/settings/screen-usage',
         parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(
-          HealthSettingsPage(initialTab: 1, initialDate: state.extra as DateTime?),
-        ),
+        pageBuilder: (context, state) =>
+            _fadeTransitionPage(HealthSettingsPage(initialTab: 1, initialDate: state.extra as DateTime?)),
       ),
       GoRoute(
         // 健康指标二级详情页：数据由主看板通过 extra 带入，不自己查库
         path: '/health-detail',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) {
-          final args = state.extra as HealthDetailArgs? ??
-              const HealthDetailArgs(kind: HealthMetricKind.vitals, title: '健康详情');
+          final args =
+              state.extra as HealthDetailArgs? ?? const HealthDetailArgs(kind: HealthMetricKind.vitals, title: '健康详情');
           return _fadeTransitionPage(HealthMetricDetailPage(args: args));
         },
       ),
@@ -318,18 +286,11 @@ CustomTransitionPage _fadeTransitionPage(Widget child) {
       // 系统开启减弱动效时直接呈现终态，不做任何位移/淡入。
       if (MediaQuery.disableAnimationsOf(context)) return child;
 
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: AppCurves.emphasized,
-        reverseCurve: AppCurves.exit,
-      );
+      final curved = CurvedAnimation(parent: animation, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit);
       return FadeTransition(
         opacity: curved,
         child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.02),
-            end: Offset.zero,
-          ).animate(curved),
+          position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero).animate(curved),
           child: child,
         ),
       );

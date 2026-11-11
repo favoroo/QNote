@@ -14,17 +14,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// pump 冲刷，因此测试里所有触库动作（预置开关、点击写库、查库核对）都必须包在
 /// [WidgetTester.runAsync] 内，否则测试直接挂死；开关缓存则由 setUp（真实区）
 /// 预热，按钮 initState 的读库才是同步命中。
-Icon _toggleIcon(WidgetTester tester) => tester.widget<Icon>(
-  find.descendant(
-    of: find.byType(AutoReadToggleButton),
-    matching: find.byType(Icon),
-  ),
-);
+Icon _toggleIcon(WidgetTester tester) =>
+    tester.widget<Icon>(find.descendant(of: find.byType(AutoReadToggleButton), matching: find.byType(Icon)));
 
 Future<void> _pumpButton(WidgetTester tester) async {
-  await tester.pumpWidget(
-    const MaterialApp(home: Scaffold(body: AutoReadToggleButton())),
-  );
+  await tester.pumpWidget(const MaterialApp(home: Scaffold(body: AutoReadToggleButton())));
   await tester.pump();
 }
 
@@ -39,18 +33,13 @@ Future<void> _tap(WidgetTester tester) => tester.runAsync(() async {
 });
 
 /// 绕开内存缓存直接查 app_configs，确认写入真的落库
-Future<Object?> _storedAutoRead(WidgetTester tester) =>
-    tester.runAsync(() async {
-      final db = await DatabaseHelper.instance.database;
-      final rows = await db.query(
-        'app_configs',
-        where: 'key = ?',
-        whereArgs: [QVoiceConfig.storageKey],
-      );
-      expect(rows, isNotEmpty, reason: 'app_configs 里应有 q_voice 记录');
-      final map = jsonDecode(rows.first['value'] as String);
-      return (map as Map<String, dynamic>)['autoRead'];
-    });
+Future<Object?> _storedAutoRead(WidgetTester tester) => tester.runAsync(() async {
+  final db = await DatabaseHelper.instance.database;
+  final rows = await db.query('app_configs', where: 'key = ?', whereArgs: [QVoiceConfig.storageKey]);
+  expect(rows, isNotEmpty, reason: 'app_configs 里应有 q_voice 记录');
+  final map = jsonDecode(rows.first['value'] as String);
+  return (map as Map<String, dynamic>)['autoRead'];
+});
 
 void main() {
   setUpAll(() async {

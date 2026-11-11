@@ -7,11 +7,7 @@ class ReasoningEffortOption {
   final String label;
   final String description;
 
-  const ReasoningEffortOption({
-    required this.effort,
-    required this.label,
-    required this.description,
-  });
+  const ReasoningEffortOption({required this.effort, required this.label, required this.description});
 }
 
 /// 当前模型可选的思考强度（首项固定为「自动」）
@@ -33,16 +29,8 @@ List<ReasoningEffortOption> reasoningEffortOptions({
   );
 
   return [
-    const ReasoningEffortOption(
-      effort: null,
-      label: '自动',
-      description: '由模型服务决定',
-    ),
+    const ReasoningEffortOption(effort: null, label: '自动', description: '由模型服务决定'),
     for (final effort in capability.levels)
-      ReasoningEffortOption(
-        effort: effort,
-        label: capability.labelFor(effort),
-        description: effort.description,
-      ),
+      ReasoningEffortOption(effort: effort, label: capability.labelFor(effort), description: effort.description),
   ];
 }

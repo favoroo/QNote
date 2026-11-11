@@ -32,17 +32,10 @@ class WidgetSnapshotService {
       final pending = await TodoRepository().getPending();
       final count = pending.where(_inTodayFolder).length;
       await _repo.put(
-        WidgetSnapshot(
-          key: WidgetSnapshotKeys.todoPendingToday,
-          valueNum: count,
-          updatedAt: DateTime.now(),
-        ),
+        WidgetSnapshot(key: WidgetSnapshotKeys.todoPendingToday, valueNum: count, updatedAt: DateTime.now()),
       );
     } catch (e, s) {
-      LoggerService.instance.error(
-        'WidgetSnapshotService.writeTodoSnapshot failed: $e',
-        stackTrace: s,
-      );
+      LoggerService.instance.error('WidgetSnapshotService.writeTodoSnapshot failed: $e', stackTrace: s);
     } finally {
       _running = false;
     }

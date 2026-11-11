@@ -9,10 +9,7 @@ import 'package:qnote_flutter/widgets/ai/token_usage_detail_sheet.dart';
 ///
 /// 直接测纯展示组件 [TokenUsageDetailView]，不拉起数据库与 Riverpod，
 /// 避免 widget 测试被 sqflite 的 FakeAsync 挂死（见 AGENTS.md 已知坑）。
-Widget _wrap(
-  AiTokenUsageDetail detail, {
-  List<AiProvider> providers = const [],
-}) {
+Widget _wrap(AiTokenUsageDetail detail, {List<AiProvider> providers = const []}) {
   return MaterialApp(
     home: Scaffold(
       body: SingleChildScrollView(
@@ -39,12 +36,7 @@ AiProvider _provider(String id, String name, List<AiProviderModel> models) {
 
 const _detail = AiTokenUsageDetail(
   period: AiTokenUsagePeriod.all,
-  summary: AiTokenUsageSummary(
-    promptTokens: 9000,
-    completionTokens: 3000,
-    totalTokens: 12000,
-    requestCount: 30,
-  ),
+  summary: AiTokenUsageSummary(promptTokens: 9000, completionTokens: 3000, totalTokens: 12000, requestCount: 30),
   providers: [
     AiTokenUsageBreakdown(
       providerId: 'p1',
@@ -95,10 +87,7 @@ void main() {
       _wrap(
         _detail,
         providers: [
-          _provider('p1', '甲服务', [
-            AiProviderModel.of('m1', name: '模型一'),
-            AiProviderModel.of('m2', name: '模型二'),
-          ]),
+          _provider('p1', '甲服务', [AiProviderModel.of('m1', name: '模型一'), AiProviderModel.of('m2', name: '模型二')]),
           _provider('p2', '乙服务', [AiProviderModel.of('m3', name: '模型三')]),
         ],
       ),
@@ -125,11 +114,7 @@ void main() {
     expect(find.text('模型二'), findsOneWidget);
     expect(find.text('模型三'), findsOneWidget);
     expect(find.text('5K'), findsOneWidget);
-    expect(
-      find.text('3K'),
-      findsNWidgets(2),
-      reason: '总览的输出与模型二的用量都是 3K',
-    );
+    expect(find.text('3K'), findsNWidgets(2), reason: '总览的输出与模型二的用量都是 3K');
     expect(find.text('41.7%'), findsOneWidget);
     expect(find.text('25.0%'), findsOneWidget);
   });
@@ -168,9 +153,7 @@ void main() {
   });
 
   testWidgets('该范围无数据时显示对应空态', (tester) async {
-    await tester.pumpWidget(
-      _wrap(AiTokenUsageDetail.empty(AiTokenUsagePeriod.today)),
-    );
+    await tester.pumpWidget(_wrap(AiTokenUsageDetail.empty(AiTokenUsagePeriod.today)));
 
     expect(find.text('今日暂无消耗记录'), findsOneWidget);
     expect(find.text('厂商排行'), findsNothing);
@@ -178,9 +161,7 @@ void main() {
   });
 
   testWidgets('全部范围无数据时空态不带时间前缀', (tester) async {
-    await tester.pumpWidget(
-      _wrap(AiTokenUsageDetail.empty(AiTokenUsagePeriod.all)),
-    );
+    await tester.pumpWidget(_wrap(AiTokenUsageDetail.empty(AiTokenUsagePeriod.all)));
 
     expect(find.text('暂无消耗记录'), findsOneWidget);
     expect(find.text('全部暂无消耗记录'), findsNothing);

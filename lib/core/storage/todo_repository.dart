@@ -33,11 +33,7 @@ class TodoRepository {
 
   Future<List<Todo>> getCompleted() async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'todos',
-      where: 'is_completed = 1 AND is_deleted = 0',
-      orderBy: 'updated_at DESC',
-    );
+    final maps = await db.query('todos', where: 'is_completed = 1 AND is_deleted = 0', orderBy: 'updated_at DESC');
     return maps.map((m) => Todo.fromMap(m)).toList();
   }
 
@@ -93,30 +89,15 @@ class TodoRepository {
   Future<Todo> insert(Todo todo) async {
     final db = await _dbHelper.database;
     await db.insert('todos', todo.toMap());
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: todo.id,
-      operation: 'insert',
-      data: todo.toMap(),
-    );
+    await _syncLog.logChange(tableName: 'todos', recordId: todo.id, operation: 'insert', data: todo.toMap());
     return todo;
   }
 
   Future<Todo> update(Todo todo) async {
     final db = await _dbHelper.database;
     final updated = todo.copyWith(updatedAt: DateTime.now());
-    await db.update(
-      'todos',
-      updated.toMap(),
-      where: 'id = ?',
-      whereArgs: [todo.id],
-    );
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: todo.id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('todos', updated.toMap(), where: 'id = ?', whereArgs: [todo.id]);
+    await _syncLog.logChange(tableName: 'todos', recordId: todo.id, operation: 'update', data: updated.toMap());
     return updated;
   }
 
@@ -126,22 +107,9 @@ class TodoRepository {
     if (existing == null) return;
 
     final nowStr = DateTime.now().toIso8601String();
-    await db.update(
-      'todos',
-      {'is_deleted': 1, 'updated_at': nowStr},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final updated = existing.copyWith(
-      isDeleted: true,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('todos', {'is_deleted': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+    final updated = existing.copyWith(isDeleted: true, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'todos', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   /// 批量软删除待办事项（使用事务保证原子性并写入同步日志）
@@ -156,22 +124,9 @@ class TodoRepository {
         final existing = await getById(id);
         if (existing == null) continue;
 
-        await txn.update(
-          'todos',
-          {'is_deleted': 1, 'updated_at': nowStr},
-          where: 'id = ?',
-          whereArgs: [id],
-        );
-        final updated = existing.copyWith(
-          isDeleted: true,
-          updatedAt: now,
-        );
-        await _syncLog.logChange(
-          tableName: 'todos',
-          recordId: id,
-          operation: 'update',
-          data: updated.toMap(),
-        );
+        await txn.update('todos', {'is_deleted': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+        final updated = existing.copyWith(isDeleted: true, updatedAt: now);
+        await _syncLog.logChange(tableName: 'todos', recordId: id, operation: 'update', data: updated.toMap());
       }
     });
   }
@@ -179,31 +134,19 @@ class TodoRepository {
   Future<void> hardDelete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('todos', where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: id,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: 'todos', recordId: id, operation: 'delete');
   }
 
   /// 清理所有标题为空的存量待办记录（软删除），避免脏数据残留
   Future<int> cleanEmptyTodos() async {
     final db = await _dbHelper.database;
-    final emptyRows = await db.query(
-      'todos',
-      where: "(TRIM(title) = '' OR title IS NULL) AND is_deleted = 0",
-    );
+    final emptyRows = await db.query('todos', where: "(TRIM(title) = '' OR title IS NULL) AND is_deleted = 0");
     if (emptyRows.isEmpty) return 0;
 
     final nowStr = DateTime.now().toIso8601String();
     for (final row in emptyRows) {
       final id = row['id'] as String;
-      await db.update(
-        'todos',
-        {'is_deleted': 1, 'updated_at': nowStr},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+      await db.update('todos', {'is_deleted': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
       await _syncLog.logChange(
         tableName: 'todos',
         recordId: id,
@@ -242,16 +185,8 @@ class TodoRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
-    final updated = existing.copyWith(
-      isCompleted: isCompleted,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    final updated = existing.copyWith(isCompleted: isCompleted, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'todos', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   Future<void> moveToLongTerm(String id) async {
@@ -260,22 +195,9 @@ class TodoRepository {
     if (existing == null) return;
 
     final nowStr = DateTime.now().toIso8601String();
-    await db.update(
-      'todos',
-      {'is_long_term': 1, 'updated_at': nowStr},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final updated = existing.copyWith(
-      isLongTerm: true,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('todos', {'is_long_term': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+    final updated = existing.copyWith(isLongTerm: true, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'todos', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   Future<void> moveToToday(String id) async {
@@ -284,22 +206,9 @@ class TodoRepository {
     if (existing == null) return;
 
     final nowStr = DateTime.now().toIso8601String();
-    await db.update(
-      'todos',
-      {'is_long_term': 0, 'updated_at': nowStr},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final updated = existing.copyWith(
-      isLongTerm: false,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('todos', {'is_long_term': 0, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+    final updated = existing.copyWith(isLongTerm: false, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'todos', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   /// 将待办移动到指定分类
@@ -309,22 +218,9 @@ class TodoRepository {
     if (existing == null) return null;
 
     final nowStr = DateTime.now().toIso8601String();
-    await db.update(
-      'todos',
-      {'folder_id': folderId, 'updated_at': nowStr},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final updated = existing.copyWith(
-      folderId: folderId,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'todos',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('todos', {'folder_id': folderId, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+    final updated = existing.copyWith(folderId: folderId, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'todos', recordId: id, operation: 'update', data: updated.toMap());
     return updated;
   }
 
@@ -336,12 +232,7 @@ class TodoRepository {
 
     final nowStr = DateTime.now().toIso8601String();
     for (final todo in todos) {
-      await db.update(
-        'todos',
-        {'is_deleted': 1, 'updated_at': nowStr},
-        where: 'id = ?',
-        whereArgs: [todo.id],
-      );
+      await db.update('todos', {'is_deleted': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [todo.id]);
       await _syncLog.logChange(
         tableName: 'todos',
         recordId: todo.id,
@@ -357,22 +248,21 @@ class TodoRepository {
     final db = await _dbHelper.database;
     final batch = db.batch();
     for (final todo in todos) {
-      batch.update(
-        'todos',
-        todo.toMap(),
-        where: 'id = ?',
-        whereArgs: [todo.id],
-      );
+      batch.update('todos', todo.toMap(), where: 'id = ?', whereArgs: [todo.id]);
     }
     await batch.commit(noResult: true);
-    
-    final syncLogEntries = todos.map((todo) => SyncLogEntry(
-      tableName: 'todos',
-      recordId: todo.id,
-      operation: 'update',
-      data: todo.toMap(),
-      timestamp: DateTime.now(),
-    )).toList();
+
+    final syncLogEntries = todos
+        .map(
+          (todo) => SyncLogEntry(
+            tableName: 'todos',
+            recordId: todo.id,
+            operation: 'update',
+            data: todo.toMap(),
+            timestamp: DateTime.now(),
+          ),
+        )
+        .toList();
     await _syncLog.logChanges(syncLogEntries);
   }
 

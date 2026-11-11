@@ -49,8 +49,7 @@ DiarySelectionTimes resolveDiarySelectionTimes({
   DateTime? endDate,
 }) {
   final baseDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
-  int offsetOf(DateTime date) =>
-      DateTime(date.year, date.month, date.day).difference(baseDay).inDays;
+  int offsetOf(DateTime date) => DateTime(date.year, date.month, date.day).difference(baseDay).inDays;
 
   return DiarySelectionTimes(
     startTime: startTime,
@@ -64,18 +63,8 @@ DiarySelectionTimes resolveDiarySelectionTimes({
 ///
 /// 与记录面板原有的换算顺序一致：先构造当天的时分，再加天数偏移。
 /// [dayOffset] 为空或 0 时就是选中日期当天；负数用于补记前一天。
-DateTime resolveDiaryDateTime({
-  required DateTime selectedDate,
-  required TimeOfDay time,
-  int? dayOffset,
-}) {
-  var result = DateTime(
-    selectedDate.year,
-    selectedDate.month,
-    selectedDate.day,
-    time.hour,
-    time.minute,
-  );
+DateTime resolveDiaryDateTime({required DateTime selectedDate, required TimeOfDay time, int? dayOffset}) {
+  var result = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, time.hour, time.minute);
   if (dayOffset != null) {
     result = result.add(Duration(days: dayOffset));
   }
@@ -88,11 +77,7 @@ DateTime resolveDiaryDateTime({
 /// 1. `bodyState['fixed_event_id']` 非空时只认 id，命中与否都立即返回；
 /// 2. `bodyState['fixed_event_name']` 非空时只认名称；
 /// 3. 兼容历史记录，用 `title` 或 `displayTag` 与模板名称比对。
-bool isFixedEventAddedOnDate(
-  FixedEventTemplate template,
-  DateTime date,
-  List<DiaryRecord> records,
-) {
+bool isFixedEventAddedOnDate(FixedEventTemplate template, DateTime date, List<DiaryRecord> records) {
   final targetDate = DateTime(date.year, date.month, date.day);
   return records.any((r) {
     if (r.isDeleted) return false;
@@ -158,10 +143,7 @@ FixedEventSelectionTimes resolveFixedEventSelectionTimes(FixedEventTemplate temp
 /// 每个模板先取 `effectiveContent`（未填备注时回退为事件名称），内容为空串的跳过，
 /// 其余用 `\n` 拼接。传入顺序就是用户在面板里的选中顺序。
 String mergeFixedEventContents(Iterable<FixedEventTemplate> templates) {
-  return templates
-      .map((t) => t.effectiveContent)
-      .where((c) => c.isNotEmpty)
-      .join('\n');
+  return templates.map((t) => t.effectiveContent).where((c) => c.isNotEmpty).join('\n');
 }
 
 /// 标签字段的必填校验，返回需要提示的文案；全部通过时返回 null。
@@ -184,11 +166,7 @@ String? diaryTagValidationWarning(Iterable<TagEntry> tagEntries) {
 ///
 /// 任一项有内容就算非空。与 `DiaryComposeDraft.isEmpty` 同一口径，
 /// 抽出来是为了让发送与按钮禁用共用一份可测试的判断。
-bool isDiaryDraftEmpty({
-  required String inputText,
-  required int tagEntryCount,
-  required int photoCount,
-}) {
+bool isDiaryDraftEmpty({required String inputText, required int tagEntryCount, required int photoCount}) {
   return inputText.trim().isEmpty && tagEntryCount == 0 && photoCount == 0;
 }
 
@@ -197,8 +175,7 @@ bool isDiaryDraftEmpty({
 /// 时间线顶部已经显示当前选中的日期，所以同一天（[offset] 为空或 0）时只写 `HH:mm`；
 /// 只有跨天补记才补上 `MM-dd` 前缀。输入输出均为纯值，偏移不改变传入的 [selectedDate]。
 String formatDiaryTimeLabel(DateTime selectedDate, TimeOfDay time, {int? offset}) {
-  final timeStr =
-      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   if (offset == null || offset == 0) {
     return timeStr;
   }

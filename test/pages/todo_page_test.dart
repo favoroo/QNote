@@ -56,37 +56,26 @@ class _MockTodoListNotifier extends TodoListNotifier {
 
   @override
   Future<void> deleteTodo(String id) async {
-    state = AsyncData(
-      (state.value ?? []).where((t) => t.id != id).toList(),
-    );
+    state = AsyncData((state.value ?? []).where((t) => t.id != id).toList());
   }
 
   @override
   Future<void> deleteTodos(List<String> ids) async {
     final idSet = ids.toSet();
-    state = AsyncData(
-      (state.value ?? []).where((t) => !idSet.contains(t.id)).toList(),
-    );
+    state = AsyncData((state.value ?? []).where((t) => !idSet.contains(t.id)).toList());
   }
 }
 
 class _MockTodoFolderNotifier extends TodoFolderListNotifier {
   @override
   Future<List<Folder>> build() async => [
-        Folder(
-          id: 'folder-1',
-          name: '工作',
-          createdAt: DateTime(2026),
-          updatedAt: DateTime(2026),
-        ),
-      ];
+    Folder(id: 'folder-1', name: '工作', createdAt: DateTime(2026), updatedAt: DateTime(2026)),
+  ];
 }
 
 void main() {
   setUp(() {
-    SharedPreferences.setMockInitialValues({
-      'todo_completed_collapsed': false,
-    });
+    SharedPreferences.setMockInitialValues({'todo_completed_collapsed': false});
   });
 
   testWidgets('待办页面正常渲染，未完成与已完成分段展示，且无三点菜单', (tester) async {
@@ -115,9 +104,7 @@ void main() {
           todoListProvider.overrideWith(() => _MockTodoListNotifier(todos)),
           todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
         ],
-        child: const MaterialApp(
-          home: TodoPage(),
-        ),
+        child: const MaterialApp(home: TodoPage()),
       ),
     );
 
@@ -147,9 +134,7 @@ void main() {
           todoListProvider.overrideWith(() => _MockTodoListNotifier([])),
           todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
         ],
-        child: const MaterialApp(
-          home: TodoPage(),
-        ),
+        child: const MaterialApp(home: TodoPage()),
       ),
     );
 
@@ -199,9 +184,7 @@ void main() {
           todoListProvider.overrideWith(() => _MockTodoListNotifier([])),
           todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
         ],
-        child: const MaterialApp(
-          home: TodoPage(),
-        ),
+        child: const MaterialApp(home: TodoPage()),
       ),
     );
 
@@ -241,9 +224,7 @@ void main() {
           todoListProvider.overrideWith(() => _MockTodoListNotifier(todos)),
           todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
         ],
-        child: const MaterialApp(
-          home: TodoPage(),
-        ),
+        child: const MaterialApp(home: TodoPage()),
       ),
     );
 
@@ -312,9 +293,7 @@ void main() {
           todoListProvider.overrideWith(() => _MockTodoListNotifier(todos)),
           todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
         ],
-        child: const MaterialApp(
-          home: TodoPage(),
-        ),
+        child: const MaterialApp(home: TodoPage()),
       ),
     );
 

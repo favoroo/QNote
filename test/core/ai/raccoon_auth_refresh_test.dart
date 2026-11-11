@@ -21,8 +21,7 @@ void main() {
   late _RefreshAdapter adapter;
 
   String jwt(Map<String, dynamic> claims) {
-    String enc(dynamic value) =>
-        base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+    String enc(dynamic value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
     return '${enc({'alg': 'none'})}.${enc(claims)}.sig';
   }
 
@@ -82,14 +81,9 @@ void main() {
   test('刷新被 401 拒绝时把账号标记为 expired', () async {
     await seedExpired();
     adapter.refreshStatus = 401;
-    adapter.refreshBody = {
-      'message': 'invalid refresh token',
-    };
+    adapter.refreshBody = {'message': 'invalid refresh token'};
 
-    await expectLater(
-      service.refreshAccount('a1', force: true),
-      throwsA(isA<RaccoonAuthRequiredException>()),
-    );
+    await expectLater(service.refreshAccount('a1', force: true), throwsA(isA<RaccoonAuthRequiredException>()));
 
     final stored = await repo.getById('a1');
     expect(stored?.isExpired, isTrue);

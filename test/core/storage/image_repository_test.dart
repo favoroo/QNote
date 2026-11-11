@@ -86,10 +86,7 @@ void main() {
       final source2 = await createJpegFile('b.jpg', 900, 1600);
 
       final repo = ImageRepository();
-      final paths = await Future.wait([
-        repo.saveImage(File(source1)),
-        repo.saveImage(File(source2)),
-      ]);
+      final paths = await Future.wait([repo.saveImage(File(source1)), repo.saveImage(File(source2))]);
 
       expect(paths.length, 2);
       expect(paths[0], isNot(paths[1]));

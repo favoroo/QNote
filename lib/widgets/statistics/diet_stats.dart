@@ -57,11 +57,7 @@ class DietStatsWidget extends StatelessWidget {
               color: const Color(0xFF10B981),
               backgroundColor: isDark ? const Color(0x3310B981) : const Color(0x1A10B981),
             ),
-            child: StatPieChart(
-              isDark: isDark,
-              data: healthData,
-              colorOf: (label, _) => _getRatingColor(label),
-            ),
+            child: StatPieChart(isDark: isDark, data: healthData, colorOf: (label, _) => _getRatingColor(label)),
           ),
       ],
     );

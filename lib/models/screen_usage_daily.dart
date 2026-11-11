@@ -6,11 +6,7 @@ class ScreenAppUsage {
   final String appName;
   final int timeMs;
 
-  const ScreenAppUsage({
-    required this.packageName,
-    required this.appName,
-    required this.timeMs,
-  });
+  const ScreenAppUsage({required this.packageName, required this.appName, required this.timeMs});
 
   int get minutes => timeMs ~/ 60000;
 
@@ -25,11 +21,7 @@ class ScreenAppUsage {
     );
   }
 
-  Map<String, dynamic> toMap() => {
-    'pkg': packageName,
-    'name': appName,
-    'ms': timeMs,
-  };
+  Map<String, dynamic> toMap() => {'pkg': packageName, 'name': appName, 'ms': timeMs};
 }
 
 /// 每日屏幕时长快照，对应 screen_usage_daily 表
@@ -103,12 +95,8 @@ class ScreenUsageDaily {
       topApps: _decodeApps(map['top_apps_json'] as String?),
       isComplete: ((map['is_complete'] as num?)?.toInt() ?? 0) != 0,
       source: map['source'] as String? ?? 'usage_stats',
-      createdAt:
-          DateTime.tryParse(map['created_at'] as String? ?? '') ??
-          DateTime.now(),
-      updatedAt:
-          DateTime.tryParse(map['updated_at'] as String? ?? '') ??
-          DateTime.now(),
+      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(map['updated_at'] as String? ?? '') ?? DateTime.now(),
     );
   }
 
@@ -121,10 +109,7 @@ class ScreenUsageDaily {
       if (decoded is! List) {
         return const [];
       }
-      return decoded
-          .whereType<Map<dynamic, dynamic>>()
-          .map((e) => ScreenAppUsage.fromMap(e))
-          .toList();
+      return decoded.whereType<Map<dynamic, dynamic>>().map((e) => ScreenAppUsage.fromMap(e)).toList();
     } catch (_) {
       // 快照明细损坏时降级为空列表，总时长仍可用
       return const [];
@@ -168,11 +153,7 @@ String formatScreenDuration(int timeMs) {
 }
 
 /// 与上一周期对比的差值文案；[comparedLabel] 为被比较对象本身（如「昨日」「上周」）
-String screenDurationDiffText(
-  int currentMs,
-  int previousMs, {
-  String comparedLabel = '昨日',
-}) {
+String screenDurationDiffText(int currentMs, int previousMs, {String comparedLabel = '昨日'}) {
   if (previousMs <= 0) {
     return '暂无$comparedLabel对比数据';
   }
@@ -185,9 +166,7 @@ String screenDurationDiffText(
   final timeStr = diffHours > 0 && remMins > 0
       ? '$diffHours小时$remMins分钟'
       : (diffHours > 0 ? '$diffHours小时' : '$remMins分钟');
-  return currentMs > previousMs
-      ? '较$comparedLabel增加$timeStr'
-      : '较$comparedLabel减少$timeStr';
+  return currentMs > previousMs ? '较$comparedLabel增加$timeStr' : '较$comparedLabel减少$timeStr';
 }
 
 /// 趋势图中的一根柱子
@@ -198,11 +177,7 @@ class ScreenUsageTrendPoint {
   /// 该日是否落在快照采集范围内；false 表示「还没开始记录」而非「没用手机」
   final bool collected;
 
-  const ScreenUsageTrendPoint({
-    required this.date,
-    required this.totalTimeMs,
-    required this.collected,
-  });
+  const ScreenUsageTrendPoint({required this.date, required this.totalTimeMs, required this.collected});
 
   double get hours => totalTimeMs / 3600000.0;
 

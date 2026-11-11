@@ -28,32 +28,31 @@ class WriteFileTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'path': {
-            'type': 'string',
-            'description': '虚拟文件绝对路径（以 "/" 开头，如 "/todos/工作/写周报.md"、'
-                '"/timeline/2026-09-11.md"、"/notes/技术/架构.md"、"/settings/weight.json"）',
-          },
-          'content': {
-            'type': 'string',
-            'description': '写入的完整内容。待办为 YAML Frontmatter + 正文；'
-                '时间线为二级时间标题块；设置与分类为 JSON 文本',
-          },
-          'mode': {
-            'type': 'string',
-            'enum': [modeOverwrite, modeAppend],
-            'description': '写入模式：overwrite 覆写整篇（默认）；append 追加到末尾（仅待办/笔记/时间线/日记/记忆）',
-          },
-        },
-        'required': ['path', 'content'],
-      };
+    'type': 'object',
+    'properties': {
+      'path': {
+        'type': 'string',
+        'description':
+            '虚拟文件绝对路径（以 "/" 开头，如 "/todos/工作/写周报.md"、'
+            '"/timeline/2026-09-11.md"、"/notes/技术/架构.md"、"/settings/weight.json"）',
+      },
+      'content': {
+        'type': 'string',
+        'description':
+            '写入的完整内容。待办为 YAML Frontmatter + 正文；'
+            '时间线为二级时间标题块；设置与分类为 JSON 文本',
+      },
+      'mode': {
+        'type': 'string',
+        'enum': [modeOverwrite, modeAppend],
+        'description': '写入模式：overwrite 覆写整篇（默认）；append 追加到末尾（仅待办/笔记/时间线/日记/记忆）',
+      },
+    },
+    'required': ['path', 'content'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final path = arguments['path'] as String? ?? '';
     final content = arguments['content'] as String? ?? '';
     final mode = (arguments['mode'] as String? ?? modeOverwrite).trim();
@@ -73,9 +72,7 @@ class WriteFileTool extends AgentTool {
       final res = await _vfs.writeFile(path, content, append: isAppend);
       final status = res['status'] ?? 'saved';
       final title = res['title'] ?? path;
-      final buffer = StringBuffer(
-        '已成功保存文件 [$path] ($status${isAppend ? '，追加模式' : ''})\n标题: $title',
-      );
+      final buffer = StringBuffer('已成功保存文件 [$path] ($status${isAppend ? '，追加模式' : ''})\n标题: $title');
       // 回显待办的定时字段，便于模型自检是否真正写入了提醒
       if (res['due_date'] != null) {
         buffer.write('\n截止时间: ${res['due_date']}');

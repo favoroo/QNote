@@ -53,9 +53,7 @@ void main() {
   late File avatarFile;
 
   setUp(() async {
-    avatarFile = File(
-      '${Directory.systemTemp.createTempSync('qnote_avatar_test').path}/avatar.png',
-    );
+    avatarFile = File('${Directory.systemTemp.createTempSync('qnote_avatar_test').path}/avatar.png');
     await avatarFile.writeAsBytes(pngBytes);
   });
 

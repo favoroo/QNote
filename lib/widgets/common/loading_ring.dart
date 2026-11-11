@@ -23,18 +23,14 @@ class LoadingRing extends StatefulWidget {
   State<LoadingRing> createState() => _LoadingRingState();
 }
 
-class _LoadingRingState extends State<LoadingRing>
-    with SingleTickerProviderStateMixin {
+class _LoadingRingState extends State<LoadingRing> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   bool _reduceMotion = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: widget.duration,
-    )..repeat();
+    _controller = AnimationController(vsync: this, duration: widget.duration)..repeat();
   }
 
   @override
@@ -70,18 +66,14 @@ class _LoadingRingState extends State<LoadingRing>
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor =
-        widget.color ?? Theme.of(context).colorScheme.primary;
+    final effectiveColor = widget.color ?? Theme.of(context).colorScheme.primary;
 
     return RepaintBoundary(
       child: RotationTransition(
         turns: _controller,
         child: CustomPaint(
           size: Size(widget.size, widget.size),
-          painter: _LoadingRingPainter(
-            color: effectiveColor,
-            strokeWidth: widget.strokeWidth * (widget.size / 24.0),
-          ),
+          painter: _LoadingRingPainter(color: effectiveColor, strokeWidth: widget.strokeWidth * (widget.size / 24.0)),
         ),
       ),
     );
@@ -110,10 +102,7 @@ class _LoadingRingPainter extends CustomPainter {
     return path;
   }
 
-  _LoadingRingPainter({
-    required this.color,
-    required this.strokeWidth,
-  });
+  _LoadingRingPainter({required this.color, required this.strokeWidth});
 
   @override
   void paint(Canvas canvas, Size size) {

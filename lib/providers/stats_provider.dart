@@ -12,18 +12,10 @@ class StatsQuery {
   final DateTime end;
   final StatTab tab;
 
-  const StatsQuery({
-    required this.start,
-    required this.end,
-    required this.tab,
-  });
+  const StatsQuery({required this.start, required this.end, required this.tab});
 
   @override
-  bool operator ==(Object other) =>
-      other is StatsQuery &&
-      start == other.start &&
-      end == other.end &&
-      tab == other.tab;
+  bool operator ==(Object other) => other is StatsQuery && start == other.start && end == other.end && tab == other.tab;
 
   @override
   int get hashCode => Object.hash(start, end, tab);
@@ -33,19 +25,11 @@ class StatsQuery {
 // 通过 Map 传参，避免 isolate 边界对闭包的限制
 
 SleepStatistics _calcSleepStats(Map<String, dynamic> args) {
-  return calculateSleepStats(
-    args['records'] as List<DiaryRecord>,
-    args['start'] as DateTime,
-    args['end'] as DateTime,
-  );
+  return calculateSleepStats(args['records'] as List<DiaryRecord>, args['start'] as DateTime, args['end'] as DateTime);
 }
 
 DietStatistics _calcDietStats(Map<String, dynamic> args) {
-  return calculateDietStats(
-    args['records'] as List<DiaryRecord>,
-    args['start'] as DateTime,
-    args['end'] as DateTime,
-  );
+  return calculateDietStats(args['records'] as List<DiaryRecord>, args['start'] as DateTime, args['end'] as DateTime);
 }
 
 FinanceStatistics _calcFinanceStats(Map<String, dynamic> args) {
@@ -57,11 +41,7 @@ FinanceStatistics _calcFinanceStats(Map<String, dynamic> args) {
 }
 
 MoodStatistics _calcMoodStats(Map<String, dynamic> args) {
-  return calculateMoodStats(
-    args['records'] as List<DiaryRecord>,
-    args['start'] as DateTime,
-    args['end'] as DateTime,
-  );
+  return calculateMoodStats(args['records'] as List<DiaryRecord>, args['start'] as DateTime, args['end'] as DateTime);
 }
 
 ActivityStatistics _calcActivityStats(Map<String, dynamic> args) {
@@ -77,21 +57,10 @@ ActivityStatistics _calcActivityStats(Map<String, dynamic> args) {
 /// - 自动响应 [diaryListByDateRangeProvider]：日记增删改后重算
 /// - 走 [compute] 在 isolate 中跑统计，不阻塞 UI 线程
 /// - 解决 P0-2（isolate 化）+ P0-9（按时间范围拉取）+ P1-26（避免 stats 函数内部冗余过滤）
-final statsProvider = FutureProvider.family<Object, StatsQuery>((
-  ref,
-  query,
-) async {
+final statsProvider = FutureProvider.family<Object, StatsQuery>((ref, query) async {
   // watch future：records 还在加载时本 provider 会自动 awaiting
-  final records = await ref.watch(
-    diaryListByDateRangeProvider(
-      (start: query.start, end: query.end),
-    ).future,
-  );
-  final args = <String, dynamic>{
-    'records': records,
-    'start': query.start,
-    'end': query.end,
-  };
+  final records = await ref.watch(diaryListByDateRangeProvider((start: query.start, end: query.end)).future);
+  final args = <String, dynamic>{'records': records, 'start': query.start, 'end': query.end};
   switch (query.tab) {
     case StatTab.sleep:
       return compute(_calcSleepStats, args);

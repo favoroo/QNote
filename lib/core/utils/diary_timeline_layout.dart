@@ -95,9 +95,7 @@ bool isTodayDate(DateTime date, DateTime today) {
 bool isDiaryDateExpandedByDefault(DateTime date, DateTime today) {
   final yesterday = diaryDateForDayOffset(today, -1);
   final tomorrow = diaryDateForDayOffset(today, 1);
-  return isSameCalendarDay(date, today) ||
-      isSameCalendarDay(date, yesterday) ||
-      isSameCalendarDay(date, tomorrow);
+  return isSameCalendarDay(date, today) || isSameCalendarDay(date, yesterday) || isSameCalendarDay(date, tomorrow);
 }
 
 /// 顶部日期标题文案，例如 `26年11月11日 周三`。
@@ -131,11 +129,7 @@ int diaryTimelineNodeIndex(DateTime time) {
 ///
 /// 优先展示正文，正文为空时退回标题；两者都为空时按图片数量展示
 /// `N 张图片`，没有图片则显示 `一条记录`。首尾空白会被裁剪。
-String diaryDragPreviewText({
-  required String content,
-  required String title,
-  required int photoCount,
-}) {
+String diaryDragPreviewText({required String content, required String title, required int photoCount}) {
   final trimmedContent = content.trim();
   if (trimmedContent.isNotEmpty) {
     return trimmedContent;
@@ -252,20 +246,17 @@ double estimateDiaryOffsetForTimeWithRecords({
 
     if (d < dayOffset) {
       offset += (kDiaryTimelineItemsPerDay - 1) * nodeHeight;
-      offset +=
-          (recordCountForDate?.call(date) ?? 0) * averageRecordExtraHeight;
+      offset += (recordCountForDate?.call(date) ?? 0) * averageRecordExtraHeight;
     } else {
       offset += nodeIndex * nodeHeight;
-      final displayTimes =
-          displayTimesForDate?.call(date) ?? const <DateTime>[];
+      final displayTimes = displayTimesForDate?.call(date) ?? const <DateTime>[];
       for (final displayTime in displayTimes) {
         if (diaryTimelineNodeIndex(displayTime) < nodeIndex) {
           offset += averageRecordExtraHeight;
         }
       }
       // 当天非整点/半点时，页面会插入专用当前时刻指示节点，估算需补其高度。
-      if (isTodayDate(date, today) &&
-          !(targetTime.minute == 0 || targetTime.minute == 30)) {
+      if (isTodayDate(date, today) && !(targetTime.minute == 0 || targetTime.minute == 30)) {
         offset += currentTimeNodeHeight * 0.5;
       }
       // 对准当前节点中心。

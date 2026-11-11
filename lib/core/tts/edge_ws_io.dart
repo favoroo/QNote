@@ -21,28 +21,17 @@ Future<EdgeWsConnection> connectEdgeWsImpl(Uri uri, Duration timeout) async {
   client.connectionTimeout = timeout;
   try {
     // HttpClient 不支持 wss scheme，升级握手走 https GET（同一 TLS 端点）
-    final httpUri = uri.replace(
-      scheme: uri.scheme == 'wss' ? 'https' : 'http',
-    );
+    final httpUri = uri.replace(scheme: uri.scheme == 'wss' ? 'https' : 'http');
     final request = await client.openUrl('GET', httpUri);
     request.headers.set('Accept', '*/*');
     request.headers.set('Accept-Encoding', 'gzip, deflate, br, zstd');
     request.headers.set('Accept-Language', 'en-US,en;q=0.9');
     request.headers.set('Cache-Control', 'no-cache');
     request.headers.set('Connection', 'Upgrade');
-    request.headers.set(
-      'Cookie',
-      'muid=${_randomHex(16).toUpperCase()};',
-    );
-    request.headers.set(
-      'Origin',
-      'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
-    );
+    request.headers.set('Cookie', 'muid=${_randomHex(16).toUpperCase()};');
+    request.headers.set('Origin', 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold');
     request.headers.set('Pragma', 'no-cache');
-    request.headers.set(
-      'Sec-WebSocket-Key',
-      base64.encode(_randomBytes(16)),
-    );
+    request.headers.set('Sec-WebSocket-Key', base64.encode(_randomBytes(16)));
     request.headers.set('Sec-WebSocket-Version', '13');
     request.headers.set('Upgrade', 'websocket');
 
@@ -50,10 +39,7 @@ Future<EdgeWsConnection> connectEdgeWsImpl(Uri uri, Duration timeout) async {
     if (response.statusCode != HttpStatus.switchingProtocols) {
       final status = response.statusCode;
       await response.drain<void>().catchError((_) {});
-      throw TtsException(
-        'handshake_failed',
-        '语音服务握手被拒绝（HTTP $status）',
-      );
+      throw TtsException('handshake_failed', '语音服务握手被拒绝（HTTP $status）');
     }
 
     // 101 响应头已消费，剩余的裸 socket 就是纯 WS 通道
@@ -77,11 +63,11 @@ class _IoEdgeWsConnection implements EdgeWsConnection {
 
   @override
   Stream<EdgeWsFrame> get frames => _ws.map((data) {
-        if (data is String) return EdgeWsTextFrame(data);
-        if (data is Uint8List) return EdgeWsBinaryFrame(data);
-        if (data is List<int>) return EdgeWsBinaryFrame(data);
-        throw const TtsException('unknown_frame', '语音服务返回了未知帧类型');
-      });
+    if (data is String) return EdgeWsTextFrame(data);
+    if (data is Uint8List) return EdgeWsBinaryFrame(data);
+    if (data is List<int>) return EdgeWsBinaryFrame(data);
+    throw const TtsException('unknown_frame', '语音服务返回了未知帧类型');
+  });
 
   @override
   void sendText(String data) => _ws.add(data);
@@ -95,12 +81,7 @@ class _IoEdgeWsConnection implements EdgeWsConnection {
 
 Uint8List _randomBytes(int length) {
   final random = Random.secure();
-  return Uint8List.fromList(
-    List.generate(length, (_) => random.nextInt(256)),
-  );
+  return Uint8List.fromList(List.generate(length, (_) => random.nextInt(256)));
 }
 
-String _randomHex(int bytesLength) =>
-    _randomBytes(bytesLength)
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
+String _randomHex(int bytesLength) => _randomBytes(bytesLength).map((b) => b.toRadixString(16).padLeft(2, '0')).join();

@@ -71,9 +71,7 @@ class DiaryRecord {
       tagEntries = TagEntry.listFromJson(map['tag_entries'] as String);
     }
 
-    final tags = map['tags'] != null
-        ? List<String>.from(jsonDecode(map['tags'] as String) as List)
-        : <String>[];
+    final tags = map['tags'] != null ? List<String>.from(jsonDecode(map['tags'] as String) as List) : <String>[];
     final displayTag = map['display_tag'] as String? ?? '';
     final bodyState = map['body_state'] != null
         ? jsonDecode(map['body_state'] as String) as Map<String, dynamic>
@@ -93,20 +91,14 @@ class DiaryRecord {
       id: map['id'] as String,
       title: map['title'] as String,
       time: DateTime.parse(map['time'] as String),
-      startTime: map['start_time'] != null
-          ? DateTime.parse(map['start_time'] as String)
-          : null,
-      endTime: map['end_time'] != null
-          ? DateTime.parse(map['end_time'] as String)
-          : null,
+      startTime: map['start_time'] != null ? DateTime.parse(map['start_time'] as String) : null,
+      endTime: map['end_time'] != null ? DateTime.parse(map['end_time'] as String) : null,
       tags: tags,
       displayTag: displayTag,
       content: map['content'] as String? ?? '',
       bodyState: bodyState,
       tagEntries: tagEntries,
-      photos: map['photos'] != null
-          ? List<String>.from(jsonDecode(map['photos'] as String) as List)
-          : [],
+      photos: map['photos'] != null ? List<String>.from(jsonDecode(map['photos'] as String) as List) : [],
       colorMark: map['color_mark'] as String? ?? '',
       mood: map['mood'] as int? ?? 3,
       weather: map['weather'] as String? ?? '',
@@ -191,8 +183,8 @@ class DiaryRecord {
     final targetDate = DateTime(date.year, date.month, date.day);
     final effectiveDate = getEffectiveDate();
     return effectiveDate.year == targetDate.year &&
-           effectiveDate.month == targetDate.month &&
-           effectiveDate.day == targetDate.day;
+        effectiveDate.month == targetDate.month &&
+        effectiveDate.day == targetDate.day;
   }
 
   bool intersectsDateRange(DateTime startDate, DateTime endDate) {
@@ -229,9 +221,7 @@ class DiaryRecord {
     final effectiveDate = getEffectiveDate();
     final endDay = DateTime(end.year, end.month, end.day);
 
-    if (effectiveDate.year == endDay.year &&
-        effectiveDate.month == endDay.month &&
-        effectiveDate.day == endDay.day) {
+    if (effectiveDate.year == endDay.year && effectiveDate.month == endDay.month && effectiveDate.day == endDay.day) {
       // 如果归属为后一天，返回结束时间 (endTime)
       return end;
     } else {

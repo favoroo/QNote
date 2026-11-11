@@ -55,14 +55,8 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
         title: const Text('导入数据'),
         content: const Text('将覆盖当前本地数据。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('继续'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('继续')),
         ],
       ),
     );
@@ -124,12 +118,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
   }
 
   void _showLogViewer() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => const _LogViewerPage(),
-      ),
-    );
+    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _LogViewerPage()));
   }
 
   Future<void> _handleClearData() async {
@@ -139,10 +128,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
         title: const Text('清除数据'),
         content: const Text('将删除全部本地数据，不可恢复。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -160,10 +146,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
         title: const Text('再次确认'),
         content: const Text('删除后无法恢复。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -204,16 +187,16 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('数据管理'),
-        centerTitle: false,
-      ),
+      appBar: AppBar(title: const Text('数据管理'), centerTitle: false),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 12),
-            child: Text('导入与导出', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            child: Text(
+              '导入与导出',
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
           ),
           Container(
             decoration: BoxDecoration(
@@ -221,11 +204,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
               boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
               ],
             ),
             padding: const EdgeInsets.all(20),
@@ -292,10 +271,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
+        decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(16)),
         child: Row(
           children: [
             Icon(icon, color: color, size: 20),
@@ -303,18 +279,11 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
             Expanded(
               child: Text(
                 title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: theme.textTheme.titleMedium?.copyWith(color: color, fontWeight: FontWeight.bold),
               ),
             ),
             if (isLoading)
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: color),
-              )
+              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: color))
             else
               Icon(Icons.chevron_right, color: color, size: 20),
           ],
@@ -356,12 +325,12 @@ class _LogViewerPageState extends State<_LogViewerPage> {
       setState(() {});
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     // 日志按时间倒序排列，最新生成的日志展示在最上方
     var entries = _logger.entries.reversed.toList();
-    
+
     if (_selectedLevel != null) {
       entries = entries.where((e) => e.level == _selectedLevel).toList();
     }
@@ -407,9 +376,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                   onPressed: _selectedLogs.isEmpty
                       ? null
                       : () {
-                          final orderedSelection = entries
-                              .where((e) => _selectedLogs.contains(e))
-                              .toList();
+                          final orderedSelection = entries.where((e) => _selectedLogs.contains(e)).toList();
                           final text = orderedSelection
                               .map((e) => '[${_formatTime(e.timestamp)}] [${e.level.name.toUpperCase()}] ${e.message}')
                               .join('\n');
@@ -438,30 +405,30 @@ class _LogViewerPageState extends State<_LogViewerPage> {
                   itemBuilder: (context) => [
                     const PopupMenuItem(value: 'all', child: Text('显示全部')),
                     const PopupMenuDivider(),
-                    ...LogLevel.values.map((level) => PopupMenuItem(
-                      value: 'lvl_${level.index}',
-                      child: Row(
-                        children: [
-                          Container(width: 12, height: 12, decoration: BoxDecoration(
-                            color: _getLevelColor(level),
-                            shape: BoxShape.circle,
-                          )),
-                          const SizedBox(width: 8),
-                          Text(_getLevelName(level)),
-                          const Spacer(),
-                          if (_selectedLevel == level)
-                            const Icon(Icons.check, size: 18, color: Colors.blue),
-                        ],
+                    ...LogLevel.values.map(
+                      (level) => PopupMenuItem(
+                        value: 'lvl_${level.index}',
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(color: _getLevelColor(level), shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(_getLevelName(level)),
+                            const Spacer(),
+                            if (_selectedLevel == level) const Icon(Icons.check, size: 18, color: Colors.blue),
+                          ],
+                        ),
                       ),
-                    )),
+                    ),
                   ],
                 ),
                 IconButton(
                   icon: const Icon(Icons.copy, color: Colors.white70),
                   onPressed: () {
-                    final text = _logger.getAllLogsAsString(
-                      filterLevel: _selectedLevel,
-                    );
+                    final text = _logger.getAllLogsAsString(filterLevel: _selectedLevel);
                     Clipboard.setData(ClipboardData(text: text));
                     Toast.success(context, '日志已复制');
                   },
@@ -500,7 +467,9 @@ class _LogViewerPageState extends State<_LogViewerPage> {
             ),
           Expanded(
             child: entries.isEmpty
-                ? const Center(child: Text('暂无日志', style: TextStyle(color: Colors.white54)))
+                ? const Center(
+                    child: Text('暂无日志', style: TextStyle(color: Colors.white54)),
+                  )
                 : SelectionArea(
                     child: ListView.builder(
                       controller: _scrollController,
@@ -536,7 +505,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
     final levelColor = _getLevelColor(entry.level);
     final formattedTime = _formatTime(entry.timestamp);
     final isSelected = _selectedLogs.contains(entry);
-    
+
     return InkWell(
       onTap: () {
         if (_isSelectMode) {
@@ -583,11 +552,7 @@ class _LogViewerPageState extends State<_LogViewerPage> {
             Expanded(
               child: Text(
                 '[$formattedTime] [$levelStr] ${entry.message}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  color: levelColor,
-                ),
+                style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: levelColor),
               ),
             ),
           ],
@@ -627,4 +592,3 @@ class _LogViewerPageState extends State<_LogViewerPage> {
     };
   }
 }
-

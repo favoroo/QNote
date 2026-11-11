@@ -102,9 +102,7 @@ void main() {
       final vision = _RecordingVision();
       final tool = DescribeImageTool(visionRequester: vision.call);
 
-      final result = await tool.execute({
-        'path': '${Directory.systemTemp.path}/qnote-missing-image-9f3a.jpg',
-      });
+      final result = await tool.execute({'path': '${Directory.systemTemp.path}/qnote-missing-image-9f3a.jpg'});
 
       expect(result.isError, isTrue);
       expect(result.modelOutput, contains('不存在或读取失败'));
@@ -127,12 +125,7 @@ void main() {
     final tool = DescribeImageTool(visionRequester: (_, _) async => '');
 
     test('正常结果带识图来源标记与 uiDetails', () {
-      final result = tool.buildVisionResult(
-        '/images/a.jpg',
-        '图里是什么颜色',
-        '  左=红色，右=蓝色  ',
-        modelName: 'gpt-4o-vision',
-      );
+      final result = tool.buildVisionResult('/images/a.jpg', '图里是什么颜色', '  左=红色，右=蓝色  ', modelName: 'gpt-4o-vision');
 
       expect(result.isError, isFalse);
       expect(result.modelOutput, contains('左=红色，右=蓝色'));
@@ -154,11 +147,7 @@ void main() {
     });
 
     test('超长回复按输出上限截断，不冲爆上下文', () {
-      final result = tool.buildVisionResult(
-        '/images/a.jpg',
-        '问题',
-        '字' * 4000,
-      );
+      final result = tool.buildVisionResult('/images/a.jpg', '问题', '字' * 4000);
 
       expect(result.modelOutput, contains('输出已截断'));
       expect(result.modelOutput.length, lessThan(4200));
@@ -174,28 +163,14 @@ void main() {
 
   group('输入形态与图片类型判定（纯函数）', () {
     test('classifyImageSource 区分 data URI / http(s) / 本地路径', () {
-      expect(
-        DescribeImageTool.classifyImageSource('DATA:image/jpeg;base64,AAA'),
-        ImageSourceKind.dataUri,
-      );
-      expect(
-        DescribeImageTool.classifyImageSource('https://a.com/x.png'),
-        ImageSourceKind.url,
-      );
-      expect(
-        DescribeImageTool.classifyImageSource('/images/x.png'),
-        ImageSourceKind.localPath,
-      );
+      expect(DescribeImageTool.classifyImageSource('DATA:image/jpeg;base64,AAA'), ImageSourceKind.dataUri);
+      expect(DescribeImageTool.classifyImageSource('https://a.com/x.png'), ImageSourceKind.url);
+      expect(DescribeImageTool.classifyImageSource('/images/x.png'), ImageSourceKind.localPath);
     });
 
     test('detectImageMime 按文件头识别，未知一律兜到 jpeg', () {
       expect(DescribeImageTool.detectImageMime(_bytes([0xFF, 0xD8, 0xFF])), 'image/jpeg');
-      expect(
-        DescribeImageTool.detectImageMime(
-          _bytes([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0, 0, 0, 0]),
-        ),
-        'image/png',
-      );
+      expect(DescribeImageTool.detectImageMime(_bytes([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0, 0, 0, 0])), 'image/png');
       final webp = List<int>.filled(12, 0);
       webp.setAll(0, [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
       expect(DescribeImageTool.detectImageMime(webp), 'image/webp');
@@ -204,17 +179,8 @@ void main() {
 
     test('resolveDownloadedMime 优先信响应头，CDN 报成 octet-stream 时退回魔数', () {
       final pngBytes = _bytes([0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0, 0, 0, 0]);
-      expect(
-        DescribeImageTool.resolveDownloadedMime('image/webp', pngBytes),
-        'image/webp',
-      );
-      expect(
-        DescribeImageTool.resolveDownloadedMime(
-          'application/octet-stream',
-          pngBytes,
-        ),
-        'image/png',
-      );
+      expect(DescribeImageTool.resolveDownloadedMime('image/webp', pngBytes), 'image/webp');
+      expect(DescribeImageTool.resolveDownloadedMime('application/octet-stream', pngBytes), 'image/png');
       expect(DescribeImageTool.resolveDownloadedMime(null, pngBytes), 'image/png');
     });
 

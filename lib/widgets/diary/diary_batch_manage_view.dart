@@ -18,11 +18,7 @@ class DiaryBatchManageView extends ConsumerStatefulWidget {
   final List<String>? initialTags;
   final DateTimeRange? initialDateRange;
 
-  const DiaryBatchManageView({
-    super.key,
-    this.initialTags,
-    this.initialDateRange,
-  });
+  const DiaryBatchManageView({super.key, this.initialTags, this.initialDateRange});
 
   @override
   ConsumerState<DiaryBatchManageView> createState() => _DiaryBatchManageViewState();
@@ -83,19 +79,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
 
       List<DiaryRecord> records;
       if (_dateRange != null) {
-        final start = DateTime(
-          _dateRange!.start.year,
-          _dateRange!.start.month,
-          _dateRange!.start.day,
-        );
-        final end = DateTime(
-          _dateRange!.end.year,
-          _dateRange!.end.month,
-          _dateRange!.end.day,
-          23,
-          59,
-          59,
-        );
+        final start = DateTime(_dateRange!.start.year, _dateRange!.start.month, _dateRange!.start.day);
+        final end = DateTime(_dateRange!.end.year, _dateRange!.end.month, _dateRange!.end.day, 23, 59, 59);
         records = await repo.getByDateRange(start, end);
       } else {
         records = await repo.getAll();
@@ -191,12 +176,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          '标签筛选',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        Text('标签筛选', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                         if (tempSelectedTags.isNotEmpty)
                           GestureDetector(
                             onTap: () {
@@ -221,17 +201,13 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         child: Center(
                           child: Text(
                             '暂无标签',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
                           ),
                         ),
                       )
                     else
                       ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.45,
-                        ),
+                        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.45),
                         child: SingleChildScrollView(
                           child: Wrap(
                             spacing: 8,
@@ -264,9 +240,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                       : colorScheme.outlineVariant.withValues(alpha: 0.4),
                                   width: 1,
                                 ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               );
                             }).toList(),
                           ),
@@ -280,9 +254,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             onPressed: () => Navigator.of(ctx).pop(),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             ),
                             child: const Text('取消'),
                           ),
@@ -300,15 +272,9 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             },
                             style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             ),
-                            child: Text(
-                              tempSelectedTags.isEmpty
-                                  ? '全部展示'
-                                  : '确定 (${tempSelectedTags.length})',
-                            ),
+                            child: Text(tempSelectedTags.isEmpty ? '全部展示' : '确定 (${tempSelectedTags.length})'),
                           ),
                         ),
                       ],
@@ -373,6 +339,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     _confirmTimer?.cancel();
     _loadRecords();
   }
+
   String _formatTimeRange(DiaryRecord record) {
     final start = record.startTime ?? record.time;
     final dateStr = DateFormat('MM-dd HH:mm').format(start);
@@ -486,9 +453,19 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
         if (formatted.isNotEmpty) tags.add('$formatted元');
       }
       handledKeys.addAll([
-        '_category', 'category', '收支类型', '收支',
-        'type', 'incomeType', '支出类型', '收入类型', '分类', '类型',
-        'amount', '金额', '钱数'
+        '_category',
+        'category',
+        '收支类型',
+        '收支',
+        'type',
+        'incomeType',
+        '支出类型',
+        '收入类型',
+        '分类',
+        '类型',
+        'amount',
+        '金额',
+        '钱数',
       ]);
     }
 
@@ -538,9 +515,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
         if (tagName == '饮食') return '种类';
         if (tagName == '活动') return '类型';
         if (tagName == '记账') {
-          final isIncome = fields['_category'] == 'income' || 
-                           fields.containsKey('incomeType') || 
-                           fields.containsKey('收入类型');
+          final isIncome =
+              fields['_category'] == 'income' || fields.containsKey('incomeType') || fields.containsKey('收入类型');
           return isIncome ? '收入类型' : '支出类型';
         }
         return '类型';
@@ -596,79 +572,72 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     if (record.tagEntries.isNotEmpty) {
       for (final entry in record.tagEntries) {
         final color = _tagColor(entry.name);
-        
+
         // Add the primary tag pill (filled)
-        rowItems.add(Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            entry.name,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.bold,
+        rowItems.add(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+            child: Text(
+              entry.name,
+              style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.bold),
             ),
           ),
-        ));
+        );
 
         // Add the additional fields (outlined)
         final additionalTags = _buildAdditionalTags(entry);
         for (final tagText in additionalTags) {
-          rowItems.add(Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.02),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: color.withValues(alpha: 0.35),
-                width: 1,
+          rowItems.add(
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
+              ),
+              child: Text(
+                tagText,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: color.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-            child: Text(
-              tagText,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: color.withValues(alpha: 0.9),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ));
+          );
         }
 
         final showTime = entry.displayTime ?? entry.time;
         // 时间与记录主时间相同则不重复显示
         final recordTimeStr = DateFormat('HH:mm').format(record.startTime ?? record.time);
         if (showTime != null && showTime.isNotEmpty && showTime != recordTimeStr) {
-          rowItems.add(Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
-              showTime,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                fontWeight: FontWeight.w500,
+          rowItems.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Text(
+                showTime,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ));
+          );
         }
       }
     } else if (record.displayTag.isNotEmpty) {
       // Just display tag if no tagEntries
       final color = _tagColor(record.displayTag);
-      rowItems.add(Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          record.displayTag,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: color,
-            fontWeight: FontWeight.bold,
+      rowItems.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+          child: Text(
+            record.displayTag,
+            style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.bold),
           ),
         ),
-      ));
+      );
     }
 
     if (rowItems.isEmpty) return const SizedBox.shrink();
@@ -731,10 +700,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
             decoration: BoxDecoration(
               color: brandGreen.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: brandGreen.withValues(alpha: 0.15),
-                width: 0.8,
-              ),
+              border: Border.all(color: brandGreen.withValues(alpha: 0.15), width: 0.8),
             ),
             child: Column(
               children: [
@@ -791,10 +757,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                   children: [
                     Text(
                       '🔥 ${calories.toStringAsFixed(0)} kcal',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: activityOrange,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: theme.textTheme.labelSmall?.copyWith(color: activityOrange, fontWeight: FontWeight.w600),
                     ),
                     Text(
                       '⏱ $activeMinutes 分钟',
@@ -937,10 +900,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   void _openGallery(DiaryRecord record, int index) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _FullScreenImageGallery(
-          photos: record.photos,
-          initialIndex: index,
-        ),
+        builder: (_) => _FullScreenImageGallery(photos: record.photos, initialIndex: index),
       ),
     );
   }
@@ -954,12 +914,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       appBar: AppBar(
         title: const Text('批量管理'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop())],
       ),
       body: Column(
         children: [
@@ -1024,9 +979,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.25),
-        ),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
@@ -1038,9 +991,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
-                  color: _dateRange != null
-                      ? colorScheme.primary.withValues(alpha: 0.1)
-                      : colorScheme.surface,
+                  color: _dateRange != null ? colorScheme.primary.withValues(alpha: 0.1) : colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: _dateRange != null
@@ -1075,19 +1026,11 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         onTap: _clearDateRange,
                         child: Padding(
                           padding: const EdgeInsets.only(left: 4),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 14,
-                            color: colorScheme.primary,
-                          ),
+                          child: Icon(Icons.close_rounded, size: 14, color: colorScheme.primary),
                         ),
                       )
                     else
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: colorScheme.onSurfaceVariant),
                   ],
                 ),
               ),
@@ -1103,9 +1046,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
-                  color: _selectedTags.isNotEmpty
-                      ? colorScheme.primary.withValues(alpha: 0.1)
-                      : colorScheme.surface,
+                  color: _selectedTags.isNotEmpty ? colorScheme.primary.withValues(alpha: 0.1) : colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: _selectedTags.isNotEmpty
@@ -1145,19 +1086,11 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         },
                         child: Padding(
                           padding: const EdgeInsets.only(left: 4),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 14,
-                            color: colorScheme.primary,
-                          ),
+                          child: Icon(Icons.close_rounded, size: 14, color: colorScheme.primary),
                         ),
                       )
                     else
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: colorScheme.onSurfaceVariant),
                   ],
                 ),
               ),
@@ -1172,11 +1105,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               borderRadius: BorderRadius.circular(10),
               child: Padding(
                 padding: const EdgeInsets.all(6),
-                child: Icon(
-                  Icons.refresh_rounded,
-                  size: 18,
-                  color: colorScheme.primary,
-                ),
+                child: Icon(Icons.refresh_rounded, size: 18, color: colorScheme.primary),
               ),
             ),
           ],
@@ -1192,10 +1121,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       children: [
         Text(
           '${_filteredRecords.length} 条记录',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.bold,
-          ),
+          style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold),
         ),
         GestureDetector(
           onTap: _toggleSelectAll,
@@ -1210,10 +1136,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               const SizedBox(width: 4),
               Text(
                 isAllSelected ? '取消全选' : '全选',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1237,10 +1160,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40),
         child: Center(
-          child: Text(
-            '无匹配记录',
-            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
-          ),
+          child: Text('无匹配记录', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
         ),
       );
     }
@@ -1259,14 +1179,10 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? colorScheme.primary.withValues(alpha: 0.05)
-                      : colorScheme.surface,
+                  color: isSelected ? colorScheme.primary.withValues(alpha: 0.05) : colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                    color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -1293,22 +1209,16 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      _isHealthDailySummary(record)
-                                          ? Icons.favorite_rounded
-                                          : Icons.access_time,
+                                      _isHealthDailySummary(record) ? Icons.favorite_rounded : Icons.access_time,
                                       size: 12,
-                                      color: _isHealthDailySummary(record)
-                                          ? TagColors.health
-                                          : tagColor,
+                                      color: _isHealthDailySummary(record) ? TagColors.health : tagColor,
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
                                       _formatTimeRange(record),
                                       style: theme.textTheme.labelSmall?.copyWith(
                                         fontWeight: FontWeight.bold,
-                                        color: _isHealthDailySummary(record)
-                                            ? TagColors.health
-                                            : tagColor,
+                                        color: _isHealthDailySummary(record) ? TagColors.health : tagColor,
                                       ),
                                     ),
                                   ],
@@ -1393,11 +1303,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       onTap: () => _editRecord(record),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                        child: Icon(
-                          Icons.edit_outlined,
-                          color: colorScheme.primary,
-                          size: 20,
-                        ),
+                        child: Icon(Icons.edit_outlined, color: colorScheme.primary, size: 20),
                       ),
                     ),
                   ],
@@ -1416,11 +1322,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
         color: colorScheme.surface,
         border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.1))),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            offset: const Offset(0, -4),
-            blurRadius: 20,
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -4), blurRadius: 20),
         ],
       ),
       child: SafeArea(
@@ -1445,10 +1347,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                   children: [
                     const Icon(Icons.delete_outline, size: 16),
                     const SizedBox(width: 6),
-                    Text(
-                      _isConfirming ? '再点确认' : '删除',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    Text(_isConfirming ? '再点确认' : '删除', style: const TextStyle(fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -1464,10 +1363,7 @@ class _FullScreenImageGallery extends StatefulWidget {
   final List<String> photos;
   final int initialIndex;
 
-  const _FullScreenImageGallery({
-    required this.photos,
-    required this.initialIndex,
-  });
+  const _FullScreenImageGallery({required this.photos, required this.initialIndex});
 
   @override
   State<_FullScreenImageGallery> createState() => _FullScreenImageGalleryState();
@@ -1521,10 +1417,7 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
             child: InteractiveViewer(
               minScale: 1.0,
               maxScale: 4.0,
-              child: UnifiedImage(
-                imagePath: widget.photos[index],
-                fit: BoxFit.contain,
-              ),
+              child: UnifiedImage(imagePath: widget.photos[index], fit: BoxFit.contain),
             ),
           );
         },
@@ -1587,11 +1480,11 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
   Future<void> _editRecord(DiaryRecord record) async {
     // Navigate to editor screen
     await GoRouter.of(context).push('/diary/editor', extra: record);
-    
+
     // Fetch updated record from database
     final repo = ref.read(diaryRepositoryProvider);
     final updatedRecord = await repo.getById(record.id);
-    
+
     if (mounted) {
       if (updatedRecord == null || updatedRecord.isDeleted) {
         // Record was deleted
@@ -1663,10 +1556,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
                   Text(
                     '记录详情 (${_currentIndex + 1} / ${_localRecords.length})',
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -1725,12 +1615,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
     );
   }
 
-  Widget _buildRecordDetail(
-    BuildContext context,
-    DiaryRecord record,
-    ThemeData theme,
-    ColorScheme colorScheme,
-  ) {
+  Widget _buildRecordDetail(BuildContext context, DiaryRecord record, ThemeData theme, ColorScheme colorScheme) {
     final tagColor = _tagColor(record.displayTag);
     final tagIcon = _tagIcon(record.displayTag);
     final fields = record.bodyState ?? {};
@@ -1756,10 +1641,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                     const SizedBox(width: 6),
                     Text(
                       _formatTimeRange(record),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: tagColor,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: theme.textTheme.labelSmall?.copyWith(color: tagColor, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -1779,10 +1661,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                       const SizedBox(width: 6),
                       Text(
                         record.displayTag,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: tagColor,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: theme.textTheme.labelSmall?.copyWith(color: tagColor, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -1808,9 +1687,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerLowest,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                ),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
               ),
               child: Wrap(
                 spacing: 16,
@@ -1851,12 +1728,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                           color: colorScheme.onSurface,
                         ),
                       ),
-                      Text(
-                        val,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                      Text(val, style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
                     ],
                   );
                 }).toList(),
@@ -1880,16 +1752,11 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-              ),
+              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
             ),
             child: Text(
               record.content.isNotEmpty ? record.content : '（无内容）',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                height: 1.6,
-                color: colorScheme.onSurface,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.6, color: colorScheme.onSurface),
             ),
           ),
           const SizedBox(height: 20),
@@ -1914,28 +1781,18 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => _FullScreenImageGallery(
-                          photos: record.photos,
-                          initialIndex: idx,
-                        ),
+                        builder: (_) => _FullScreenImageGallery(photos: record.photos, initialIndex: idx),
                       ),
                     );
                   },
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                      ),
+                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: UnifiedImage(
-                        imagePath: photo,
-                        width: 100,
-                        height: 100,
-                        fit: BoxFit.cover,
-                      ),
+                      child: UnifiedImage(imagePath: photo, width: 100, height: 100, fit: BoxFit.cover),
                     ),
                   ),
                 );

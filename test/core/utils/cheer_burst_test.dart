@@ -6,30 +6,13 @@ import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 import 'package:qnote_flutter/core/utils/diary_progress.dart';
 
 /// 造一份进度：只关心分级用到的几个字段，其余给安全默认值。
-DiaryProgress _progress({
-  required int todayCount,
-  int target = 3,
-  int maxPerDay = 0,
-}) {
-  return DiaryProgress(
-    todayCount: todayCount,
-    target: target,
-    maxPerDay: maxPerDay,
-  );
+DiaryProgress _progress({required int todayCount, int target = 3, int maxPerDay = 0}) {
+  return DiaryProgress(todayCount: todayCount, target: target, maxPerDay: maxPerDay);
 }
 
 Iterable<Object?> _fingerprint(Iterable<CheerParticle> particles) {
   return [
-    for (final p in particles) ...[
-      p.shape,
-      p.angle,
-      p.speed,
-      p.lifeMs,
-      p.delayMs,
-      p.spin,
-      p.curl,
-      p.colorIndex,
-    ],
+    for (final p in particles) ...[p.shape, p.angle, p.speed, p.lifeMs, p.delayMs, p.spin, p.curl, p.colorIndex],
   ];
 }
 
@@ -56,36 +39,24 @@ void main() {
     });
 
     test('首次够到目标算满档，已经在目标之上再加只算破纪录', () {
-      expect(
-        resolveCheerLevel(_progress(todayCount: 2), _progress(todayCount: 3)),
-        CheerLevel.full,
-      );
+      expect(resolveCheerLevel(_progress(todayCount: 2), _progress(todayCount: 3)), CheerLevel.full);
       // 已经 3/3 再加一条：不是「首次达标」。
       expect(
-        resolveCheerLevel(
-          _progress(todayCount: 3, maxPerDay: 3),
-          _progress(todayCount: 4, maxPerDay: 3),
-        ),
+        resolveCheerLevel(_progress(todayCount: 3, maxPerDay: 3), _progress(todayCount: 4, maxPerDay: 3)),
         CheerLevel.record,
       );
     });
 
     test('目标改大后仍未达标，只是普通记录', () {
       expect(
-        resolveCheerLevel(
-          _progress(todayCount: 3, target: 5),
-          _progress(todayCount: 4, target: 5, maxPerDay: 3),
-        ),
+        resolveCheerLevel(_progress(todayCount: 3, target: 5), _progress(todayCount: 4, target: 5, maxPerDay: 3)),
         CheerLevel.plain,
       );
     });
 
     test('满档优先于破纪录：一次跨达标线又刷新单日最高，只按满档庆祝', () {
       expect(
-        resolveCheerLevel(
-          _progress(todayCount: 2, maxPerDay: 2),
-          _progress(todayCount: 3, maxPerDay: 2),
-        ),
+        resolveCheerLevel(_progress(todayCount: 2, maxPerDay: 2), _progress(todayCount: 3, maxPerDay: 2)),
         CheerLevel.full,
       );
     });
@@ -207,20 +178,14 @@ void main() {
 
   group('resolveBurstOrigin', () {
     test('圆环还没上报时回退到左下角常规位置', () {
-      final origin = resolveBurstOrigin(
-        anchor: null,
-        size: const Size(400, 800),
-      );
+      final origin = resolveBurstOrigin(anchor: null, size: const Size(400, 800));
 
       expect(origin.dx, 34);
       expect(origin.dy, 800 - 34);
     });
 
     test('有锚点时如实采用，不做二次加工', () {
-      expect(
-        resolveBurstOrigin(anchor: const Offset(123, 456), size: const Size(400, 800)),
-        const Offset(123, 456),
-      );
+      expect(resolveBurstOrigin(anchor: const Offset(123, 456), size: const Size(400, 800)), const Offset(123, 456));
     });
   });
 }

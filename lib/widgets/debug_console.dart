@@ -8,9 +8,7 @@ OverlayEntry? _debugOverlayEntry;
 void showDebugConsole(BuildContext context) {
   if (_debugOverlayEntry != null) return;
 
-  _debugOverlayEntry = OverlayEntry(
-    builder: (context) => const _DebugConsoleOverlay(),
-  );
+  _debugOverlayEntry = OverlayEntry(builder: (context) => const _DebugConsoleOverlay());
   Overlay.of(context).insert(_debugOverlayEntry!);
 }
 
@@ -106,10 +104,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
                 Expanded(
                   child: logs.isEmpty
                       ? const Center(
-                          child: Text(
-                            '暂无日志',
-                            style: TextStyle(color: Colors.white54),
-                          ),
+                          child: Text('暂无日志', style: TextStyle(color: Colors.white54)),
                         )
                       : SelectionArea(
                           child: ListView.builder(
@@ -146,13 +141,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
                           ),
                         ],
                       ),
-                      child: Text(
-                        _toastMessage!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                        ),
-                      ),
+                      child: Text(_toastMessage!, style: const TextStyle(color: Colors.white, fontSize: 13)),
                     ),
                   ),
                 ),
@@ -184,11 +173,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
             const SizedBox(width: 8),
             Text(
               '已选择 ${_selectedLogs.length} 项',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const Spacer(),
             IconButton(
@@ -236,19 +221,13 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
         children: [
           const Text(
             'Debug Console',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.copy, color: Colors.white70, size: 20),
             onPressed: () {
-              final text = LoggerService.instance.getAllLogsAsString(
-                filterLevel: _filter,
-              );
+              final text = LoggerService.instance.getAllLogsAsString(filterLevel: _filter);
               if (text.isNotEmpty) {
                 Clipboard.setData(ClipboardData(text: text));
                 _showToast('已复制');
@@ -321,11 +300,7 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
             Expanded(
               child: Text(
                 '[${_formatTime(entry.timestamp)}] [${entry.level.name.toUpperCase()}] ${entry.message}',
-                style: TextStyle(
-                  color: levelColor,
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                ),
+                style: TextStyle(color: levelColor, fontSize: 12, fontFamily: 'monospace'),
               ),
             ),
           ],
@@ -365,17 +340,9 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
         decoration: BoxDecoration(
           color: selected ? Colors.white24 : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? Colors.white54 : Colors.white24,
-          ),
+          border: Border.all(color: selected ? Colors.white54 : Colors.white24),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.white54,
-            fontSize: 12,
-          ),
-        ),
+        child: Text(label, style: TextStyle(color: selected ? Colors.white : Colors.white54, fontSize: 12)),
       ),
     );
   }

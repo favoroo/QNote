@@ -10,8 +10,7 @@ final folderRepositoryProvider = Provider<FolderRepository>((ref) {
   return FolderRepository();
 });
 
-final folderListProvider =
-    AsyncNotifierProvider<FolderListNotifier, List<Folder>>(() {
+final folderListProvider = AsyncNotifierProvider<FolderListNotifier, List<Folder>>(() {
   return FolderListNotifier();
 });
 
@@ -42,9 +41,7 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
     try {
       await JournalService.instance.ensureRootFolder();
       await JournalService.instance.cleanupEmptyJournalsIfNeeded();
-      state = AsyncData(
-        await repo.getByTypes(['note', JournalService.rootFolderType, JournalService.monthFolderType]),
-      );
+      state = AsyncData(await repo.getByTypes(['note', JournalService.rootFolderType, JournalService.monthFolderType]));
     } catch (e, st) {
       RefreshFailureNotice.report(
         source: '文件夹',
@@ -78,20 +75,14 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
     final repo = ref.read(folderRepositoryProvider);
     await repo.update(folder);
     // 内存替换目标项
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((f) => f.id == folder.id ? folder : f)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((f) => f.id == folder.id ? folder : f).toList());
   }
 
   Future<void> deleteFolder(String id) async {
     final repo = ref.read(folderRepositoryProvider);
     await repo.delete(id);
     // 内存移除当前文件夹；调用方若需级联删除子文件夹应在外部处理
-    state = AsyncData(
-      (state.valueOrNull ?? []).where((f) => f.id != id).toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).where((f) => f.id != id).toList());
   }
 
   Future<void> toggleExpanded(String id, bool isExpanded) async {
@@ -101,11 +92,7 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
       final updated = folder.copyWith(isExpanded: isExpanded);
       await repo.update(updated);
       // 内存替换
-      state = AsyncData(
-        (state.valueOrNull ?? [])
-            .map((f) => f.id == id ? updated : f)
-            .toList(),
-      );
+      state = AsyncData((state.valueOrNull ?? []).map((f) => f.id == id ? updated : f).toList());
     }
   }
 
@@ -113,17 +100,10 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
     final repo = ref.read(folderRepositoryProvider);
     final folder = await repo.getById(folderId);
     if (folder != null) {
-      final updated = folder.copyWith(
-        parentId: parentId,
-        clearParentId: parentId == null,
-      );
+      final updated = folder.copyWith(parentId: parentId, clearParentId: parentId == null);
       await repo.update(updated);
       // 内存替换
-      state = AsyncData(
-        (state.valueOrNull ?? [])
-            .map((f) => f.id == folderId ? updated : f)
-            .toList(),
-      );
+      state = AsyncData((state.valueOrNull ?? []).map((f) => f.id == folderId ? updated : f).toList());
     }
   }
 

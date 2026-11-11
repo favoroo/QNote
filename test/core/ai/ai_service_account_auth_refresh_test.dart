@@ -25,25 +25,22 @@ void main() {
   final auth = RaccoonAuthService.instance;
 
   String jwt(Map<String, dynamic> claims) {
-    String enc(dynamic value) =>
-        base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+    String enc(dynamic value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
     return '${enc({'alg': 'none'})}.${enc(claims)}.sig';
   }
 
   AiProvider provider() => AiProvider(
-        id: 'pRaccoon',
-        vendorId: 'raccoon',
-        name: '商汤小浣熊',
-        providerType: 'openai',
-        baseUrl: 'https://xiaohuanxiong.com/api/web/llm/v2',
-        authMode: AiProvider.authModeRaccoon,
-        apiKeys: const [],
-        models: const [
-          AiProviderModel(id: 'raccoon-chat-ml-5-5', name: 'Raccoon Chat'),
-        ],
-        createdAt: DateTime(2026, 1, 1),
-        updatedAt: DateTime(2026, 1, 1),
-      );
+    id: 'pRaccoon',
+    vendorId: 'raccoon',
+    name: '商汤小浣熊',
+    providerType: 'openai',
+    baseUrl: 'https://xiaohuanxiong.com/api/web/llm/v2',
+    authMode: AiProvider.authModeRaccoon,
+    apiKeys: const [],
+    models: const [AiProviderModel(id: 'raccoon-chat-ml-5-5', name: 'Raccoon Chat')],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -59,9 +56,7 @@ void main() {
     auth.httpClientAdapterForTest = adapter;
     service = AiService();
     service.httpClientAdapterForTest = adapter;
-    service.updateConfig(
-      AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'));
 
     // 登录态本身还没过期，但服务端已经不认这把 access token
     final newAccess = jwt({'name': '李四', 'exp': 2000000000});
@@ -80,13 +75,10 @@ void main() {
     );
   });
 
-  tearDown(() {
-  });
+  tearDown(() {});
 
   test('聊天 401 → 刷新 token → 用新凭证重发并成功', () async {
-    final reply = await service.chatResponse([
-      ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now()),
-    ]);
+    final reply = await service.chatResponse([ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now())]);
 
     expect(reply.content, 'ok');
     expect(adapter.chatAuthHeaders, ['Bearer old-access', 'Bearer ${adapter.newAccess}']);
@@ -121,7 +113,9 @@ class _AuthRetryAdapter implements HttpClientAdapter {
       final auth = _header(options.headers, 'authorization');
       chatAuthHeaders.add(auth);
       if (auth == 'Bearer old-access') {
-        return _json({'error': {'message': 'expired'}}, status: 401);
+        return _json({
+          'error': {'message': 'expired'},
+        }, status: 401);
       }
       return _json({
         'choices': [
@@ -129,11 +123,7 @@ class _AuthRetryAdapter implements HttpClientAdapter {
             'message': {'role': 'assistant', 'content': 'ok'},
           },
         ],
-        'usage': {
-          'prompt_tokens': 1,
-          'completion_tokens': 1,
-          'total_tokens': 2,
-        },
+        'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
       });
     }
     return _json({'message': 'unexpected path $path'}, status: 404);

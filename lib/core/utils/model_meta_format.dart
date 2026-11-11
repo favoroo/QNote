@@ -7,9 +7,7 @@ library;
 /// 倍率 → `0.25×` / `1×`；没有倍率信息时返回 null
 String? formatRate(num? rate) {
   if (rate == null) return null;
-  final text = rate == rate.roundToDouble()
-      ? rate.toInt().toString()
-      : rate.toString();
+  final text = rate == rate.roundToDouble() ? rate.toInt().toString() : rate.toString();
   return '$text×';
 }
 
@@ -19,9 +17,7 @@ String? formatContextWindow(int? tokens) {
   if (tokens >= 1000000) {
     // 先按 0.1M 取整：1_048_576（1M 的二进制近似）要显示成 1M 而不是 1.0M
     final millions = (tokens / 1000000 * 10).round() / 10;
-    final text = millions == millions.roundToDouble()
-        ? millions.toInt().toString()
-        : millions.toStringAsFixed(1);
+    final text = millions == millions.roundToDouble() ? millions.toInt().toString() : millions.toStringAsFixed(1);
     return '${text}M';
   }
   if (tokens >= 1000) return '${(tokens / 1000).round()}K';

@@ -124,9 +124,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     _initActiveModelId();
     _registerTargetBridge();
     // 用户资料默认懒加载（仅在个人信息页打开时加载），聊天页需要主动拉一次才能显示头像/昵称
-    Future.microtask(
-      () => ref.read(userProfileNotifierProvider.notifier).load(),
-    );
+    Future.microtask(() => ref.read(userProfileNotifierProvider.notifier).load());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(currentChatProvider.notifier).initLastSession();
       _scrollToBottom();
@@ -141,12 +139,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         quoteSelection: () {
           final text = _currentSelectedText?.trim();
           if (text == null || text.isEmpty) return null;
-          return QTextQuote(
-            source: QQuoteSource.chat,
-            sourceId: '',
-            sourceTitle: '对话内容',
-            quotedText: text,
-          );
+          return QTextQuote(source: QQuoteSource.chat, sourceId: '', sourceTitle: '对话内容', quotedText: text);
         },
         onApplyQuote: (quote) {
           _applyQuote(quote.quotedText);
@@ -208,8 +201,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final slashIdx = before.lastIndexOf('/');
     if (slashIdx >= 0) {
       final token = before.substring(slashIdx + 1);
-      final atBoundary =
-          slashIdx == 0 || RegExp(r'\s').hasMatch(before[slashIdx - 1]);
+      final atBoundary = slashIdx == 0 || RegExp(r'\s').hasMatch(before[slashIdx - 1]);
       if (atBoundary && !RegExp(r'\s').hasMatch(token) && token.length <= 40) {
         slashQuery = token;
       }
@@ -219,8 +211,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final atIdx = before.lastIndexOf('@');
     if (atIdx >= 0) {
       final token = before.substring(atIdx + 1);
-      final atBoundary =
-          atIdx == 0 || RegExp(r'\s').hasMatch(before[atIdx - 1]);
+      final atBoundary = atIdx == 0 || RegExp(r'\s').hasMatch(before[atIdx - 1]);
       if (atBoundary && !RegExp(r'\s').hasMatch(token) && token.length <= 20) {
         atQuery = token;
       }
@@ -322,34 +313,22 @@ class _AiPageState extends ConsumerState<AiPage> {
       return;
     }
     final provider =
-        providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
-        providers.where((p) => p.isUsable).firstOrNull;
+        providers.where((p) => p.isDefault && p.isUsable).firstOrNull ?? providers.where((p) => p.isUsable).firstOrNull;
     final model = provider?.firstModel;
     if (model != null && mounted) {
-      setState(
-        () => _activeModelId = AiModelRef(
-          providerId: provider!.id,
-          modelName: model.id,
-        ),
-      );
+      setState(() => _activeModelId = AiModelRef(providerId: provider!.id, modelName: model.id));
     }
   }
 
   /// 顶部胶囊指向的绑定若已失效（厂商/模型/路由组被删），回落到默认厂商首个模型
-  void _syncActiveBindingIfStale(
-    List<AiProvider> providers,
-    List<AiRouteGroup> groups,
-  ) {
+  void _syncActiveBindingIfStale(List<AiProvider> providers, List<AiRouteGroup> groups) {
     final current = _activeModelId;
     if (isBindingUsable(current, providers, groups)) return;
     final provider =
-        providers.where((p) => p.isDefault && p.isUsable).firstOrNull ??
-        providers.where((p) => p.isUsable).firstOrNull;
+        providers.where((p) => p.isDefault && p.isUsable).firstOrNull ?? providers.where((p) => p.isUsable).firstOrNull;
     final model = provider?.firstModel;
     setState(() {
-      _activeModelId = model == null
-          ? null
-          : AiModelRef(providerId: provider!.id, modelName: model.id);
+      _activeModelId = model == null ? null : AiModelRef(providerId: provider!.id, modelName: model.id);
     });
   }
 
@@ -404,12 +383,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final hasTodos = _attachedTodoIds.isNotEmpty;
     final hasJournals = _attachedJournalIds.isNotEmpty;
 
-    if (text.isEmpty &&
-        !hasQuote &&
-        !hasImages &&
-        !hasNotes &&
-        !hasTodos &&
-        !hasJournals) {
+    if (text.isEmpty && !hasQuote && !hasImages && !hasNotes && !hasTodos && !hasJournals) {
       return;
     }
     if (_isTyping || _reeditBusy) {
@@ -423,8 +397,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (!mounted) return;
     // 当前会话已有任务在后台生成（如切走后再切回）：拦截发送，避免同会话并发两轮任务
     final activeId = ref.read(currentChatProvider)?.id;
-    if (activeId != null &&
-        ref.read(agentRunningSessionsProvider).contains(activeId)) {
+    if (activeId != null && ref.read(agentRunningSessionsProvider).contains(activeId)) {
       Toast.warning(context, '小Q正在处理对话，稍候或先中止');
       return;
     }
@@ -435,16 +408,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     final quotePrefix = hasQuote ? '【引用对话】：\n"""\n$quoteToSend\n"""\n\n' : '';
     final content = text.isNotEmpty
         ? '$quotePrefix$text'
-        : (hasQuote
-              ? '请分析我引用的这段对话内容：\n$quoteToSend'
-              : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析'));
+        : (hasQuote ? '请分析我引用的这段对话内容：\n$quoteToSend' : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析'));
 
     final imagesToSend = hasImages ? List<String>.from(_attachedImages) : null;
     final notesToSend = hasNotes ? List<String>.from(_attachedNoteIds) : null;
     final todosToSend = hasTodos ? List<String>.from(_attachedTodoIds) : null;
-    final journalsToSend = hasJournals
-        ? List<String>.from(_attachedJournalIds)
-        : null;
+    final journalsToSend = hasJournals ? List<String>.from(_attachedJournalIds) : null;
 
     // 编辑态下点发送才是撤回时机：确认与回退全部发生在清空输入框之前，
     // 任何一步没过（用户取消、回退被拒）就原样退回，改过的字一个字都不会丢
@@ -472,9 +441,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     try {
       if (ref.read(currentChatProvider) == null) {
-        final session = await ref
-            .read(chatSessionListProvider.notifier)
-            .createSession();
+        final session = await ref.read(chatSessionListProvider.notifier).createSession();
         ref.read(currentChatProvider.notifier).setSession(session);
       }
 
@@ -523,9 +490,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   /// 下标都会对不上。
   Future<void> _beginReedit(int stateIndex) async {
     if (_reeditBusy) return;
-    if (_isTyping ||
-        ref.read(aiStreamingMessageProvider) != null ||
-        ref.read(aiStreamingStatusProvider) != null) {
+    if (_isTyping || ref.read(aiStreamingMessageProvider) != null || ref.read(aiStreamingStatusProvider) != null) {
       Toast.warning(context, '小Q正在生成，请稍候');
       return;
     }
@@ -534,11 +499,8 @@ class _AiPageState extends ConsumerState<AiPage> {
       return;
     }
 
-    final messages =
-        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
-    if (stateIndex < 0 ||
-        stateIndex >= messages.length ||
-        messages[stateIndex].role != 'user') {
+    final messages = ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    if (stateIndex < 0 || stateIndex >= messages.length || messages[stateIndex].role != 'user') {
       return;
     }
     final message = messages[stateIndex];
@@ -599,13 +561,8 @@ class _AiPageState extends ConsumerState<AiPage> {
     final anchor = _reeditAnchor;
     if (index == null || anchor == null) return true;
 
-    final messages =
-        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
-    if (!isReeditAnchorValid(
-          messages: messages,
-          index: index,
-          anchor: anchor,
-        ) ||
+    final messages = ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    if (!isReeditAnchorValid(messages: messages, index: index, anchor: anchor) ||
         reeditableUserIndex(messages) != index) {
       _exitReeditMode();
       Toast.warning(context, '原提问已不在末轮，将作为新提问发送');
@@ -621,14 +578,8 @@ class _AiPageState extends ConsumerState<AiPage> {
           title: const Text('撤回提问？'),
           content: Text('本轮有 $changeCount 处数据修改，发送前会先撤销。'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogCtx, true),
-              child: const Text('撤回并发送'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(dialogCtx, true), child: const Text('撤回并发送')),
           ],
         ),
       );
@@ -640,9 +591,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     _reeditBusy = true;
     setState(() => _isTyping = true);
     try {
-      final result = await ref
-          .read(currentChatProvider.notifier)
-          .rollbackToMessage(index);
+      final result = await ref.read(currentChatProvider.notifier).rollbackToMessage(index);
       if (!mounted) return false;
       if (result == null) {
         Toast.error(context, '无法重新编辑');
@@ -684,11 +633,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final anchor = _reeditAnchor;
     if (index == null || anchor == null || _reeditBusy) return;
     final messages = session?.messages ?? const <ChatMessage>[];
-    if (!isReeditAnchorValid(
-          messages: messages,
-          index: index,
-          anchor: anchor,
-        ) ||
+    if (!isReeditAnchorValid(messages: messages, index: index, anchor: anchor) ||
         reeditableUserIndex(messages) != index) {
       _exitReeditMode();
     }
@@ -701,24 +646,19 @@ class _AiPageState extends ConsumerState<AiPage> {
   /// 长按失败气泡弹出的操作菜单；[stateIndex] 为该消息在会话态中的真实下标。
   /// 仅当失败气泡是会话最后一条时提供重试，避免回退误删其后已发生的新对话。
   void _showErrorAssistantActions(int stateIndex, ChatMessage message) {
-    if (_isTyping ||
-        ref.read(aiStreamingMessageProvider) != null ||
-        ref.read(aiStreamingStatusProvider) != null) {
+    if (_isTyping || ref.read(aiStreamingMessageProvider) != null || ref.read(aiStreamingStatusProvider) != null) {
       Toast.warning(context, '小Q正在生成，请稍候');
       return;
     }
 
-    final messages =
-        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    final messages = ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
     final canRetry = stateIndex == messages.length - 1;
 
     final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
       backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheetCtx) {
         return SafeArea(
           child: Padding(
@@ -731,9 +671,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.5,
-                    ),
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -741,10 +679,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                   ListTile(
                     leading: const Icon(Icons.refresh_rounded, size: 22),
                     title: const Text('重试本轮对话', style: TextStyle(fontSize: 14)),
-                    subtitle: const Text(
-                      '回退本轮并撤销数据修改，再重新发送上一条',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    subtitle: const Text('回退本轮并撤销数据修改，再重新发送上一条', style: TextStyle(fontSize: 12)),
                     onTap: () {
                       Navigator.pop(sheetCtx);
                       _retryFailedTurn(stateIndex);
@@ -770,8 +705,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   /// 重试失败本轮：先回退到本轮用户消息之前（恢复期间已产生的数据修改），
   /// 再按原文本/图片/附件引用重新发送。附件引用来自发送时持久化的 uiDetails。
   Future<void> _retryFailedTurn(int errorIndex) async {
-    final messages =
-        ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    final messages = ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
     if (errorIndex <= 0 || errorIndex >= messages.length) return;
 
     // 定位本轮用户消息（失败气泡之前最近的一条 user 消息）
@@ -786,10 +720,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final userMessage = messages[userIndex];
 
     // 该轮（含其后轮次）记录过数据修改时需二次确认：重试前的回退会撤销这些修改
-    final changeCount = countTurnUndoChanges(
-      messages,
-      fromUserIndex: userIndex,
-    );
+    final changeCount = countTurnUndoChanges(messages, fromUserIndex: userIndex);
     if (changeCount > 0) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -797,14 +728,8 @@ class _AiPageState extends ConsumerState<AiPage> {
           title: const Text('重试本轮对话？'),
           content: Text('本轮有 $changeCount 处数据修改，重试前会先撤销。'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogCtx, true),
-              child: const Text('重试'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(dialogCtx, true), child: const Text('重试')),
           ],
         ),
       );
@@ -818,9 +743,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     setState(() => _isTyping = true);
     _scrollToBottom();
     try {
-      final result = await ref
-          .read(currentChatProvider.notifier)
-          .rollbackToMessage(userIndex);
+      final result = await ref.read(currentChatProvider.notifier).rollbackToMessage(userIndex);
       if (!mounted) return;
       if (result == null) {
         Toast.error(context, '无法重试');
@@ -942,17 +865,12 @@ class _AiPageState extends ConsumerState<AiPage> {
     final journals = await JournalService.instance.getAllJournals();
     if (!mounted) return;
     if (journals.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('暂无日记，可在时间线左下角撰写')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无日记，可在时间线左下角撰写')));
       return;
     }
     final result = await showDialog<List<String>>(
       context: context,
-      builder: (ctx) => _MultiJournalSelectorDialog(
-        journals: journals,
-        initialSelected: _attachedJournalIds,
-      ),
+      builder: (ctx) => _MultiJournalSelectorDialog(journals: journals, initialSelected: _attachedJournalIds),
     );
     if (result != null && mounted) {
       setState(() {
@@ -969,15 +887,10 @@ class _AiPageState extends ConsumerState<AiPage> {
     final notes = await NoteRepository().getAll();
     if (!mounted) return;
     // 排除日记笔记，保持普通笔记专属
-    final validNotes = notes
-        .where((n) => !n.isDeleted && !JournalService.isJournalNote(n.id))
-        .toList();
+    final validNotes = notes.where((n) => !n.isDeleted && !JournalService.isJournalNote(n.id)).toList();
     final result = await showDialog<List<String>>(
       context: context,
-      builder: (ctx) => _MultiNoteSelectorDialog(
-        notes: validNotes,
-        initialSelected: _attachedNoteIds,
-      ),
+      builder: (ctx) => _MultiNoteSelectorDialog(notes: validNotes, initialSelected: _attachedNoteIds),
     );
     if (result != null && mounted) {
       setState(() {
@@ -996,10 +909,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final validTodos = todos.where((t) => !t.isDeleted).toList();
     final result = await showDialog<List<String>>(
       context: context,
-      builder: (ctx) => _MultiTodoSelectorDialog(
-        todos: validTodos,
-        initialSelected: _attachedTodoIds,
-      ),
+      builder: (ctx) => _MultiTodoSelectorDialog(todos: validTodos, initialSelected: _attachedTodoIds),
     );
     if (result != null && mounted) {
       setState(() {
@@ -1016,9 +926,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     showModalBottomSheet(
       context: context,
       backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
@@ -1031,9 +939,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 20),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.5,
-                    ),
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1046,9 +952,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.camera_alt_rounded,
                         label: '相机',
                         iconColor: const Color(0xFF3F51B5),
-                        bgColor: const Color(
-                          0xFF3F51B5,
-                        ).withValues(alpha: 0.12),
+                        bgColor: const Color(0xFF3F51B5).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickFromCamera();
@@ -1060,9 +964,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.photo_library_rounded,
                         label: '相册',
                         iconColor: const Color(0xFF009688),
-                        bgColor: const Color(
-                          0xFF009688,
-                        ).withValues(alpha: 0.12),
+                        bgColor: const Color(0xFF009688).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickFromGallery();
@@ -1074,9 +976,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.auto_stories_rounded,
                         label: '日记',
                         iconColor: const Color(0xFFE91E63),
-                        bgColor: const Color(
-                          0xFFE91E63,
-                        ).withValues(alpha: 0.12),
+                        bgColor: const Color(0xFFE91E63).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickJournals();
@@ -1088,9 +988,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.description_rounded,
                         label: '笔记',
                         iconColor: const Color(0xFFFF9800),
-                        bgColor: const Color(
-                          0xFFFF9800,
-                        ).withValues(alpha: 0.12),
+                        bgColor: const Color(0xFFFF9800).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickNotes();
@@ -1102,9 +1000,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.check_circle_outline_rounded,
                         label: '待办',
                         iconColor: const Color(0xFF4CAF50),
-                        bgColor: const Color(
-                          0xFF4CAF50,
-                        ).withValues(alpha: 0.12),
+                        bgColor: const Color(0xFF4CAF50).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickTodos();
@@ -1140,20 +1036,13 @@ class _AiPageState extends ConsumerState<AiPage> {
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
+            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(16)),
             child: Icon(icon, color: iconColor, size: 28),
           ),
           const SizedBox(height: 8),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: theme.colorScheme.onSurface,
-            ),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface),
           ),
         ],
       ),
@@ -1183,27 +1072,15 @@ class _AiPageState extends ConsumerState<AiPage> {
     });
 
     // 厂商/模型/路由组增删改后，校正顶部胶囊指向的绑定；失效时回落到默认厂商首个模型
-    ref.listen<AsyncValue<List<AiProvider>>>(aiProviderListProvider, (
-      prev,
-      next,
-    ) {
+    ref.listen<AsyncValue<List<AiProvider>>>(aiProviderListProvider, (prev, next) {
       final providers = next.valueOrNull;
       if (providers == null) return;
-      _syncActiveBindingIfStale(
-        providers,
-        routeGroupsAsync.valueOrNull ?? const <AiRouteGroup>[],
-      );
+      _syncActiveBindingIfStale(providers, routeGroupsAsync.valueOrNull ?? const <AiRouteGroup>[]);
     });
-    ref.listen<AsyncValue<List<AiRouteGroup>>>(aiRouteGroupListProvider, (
-      prev,
-      next,
-    ) {
+    ref.listen<AsyncValue<List<AiRouteGroup>>>(aiRouteGroupListProvider, (prev, next) {
       final groups = next.valueOrNull;
       if (groups == null) return;
-      _syncActiveBindingIfStale(
-        providersAsync.valueOrNull ?? const <AiProvider>[],
-        groups,
-      );
+      _syncActiveBindingIfStale(providersAsync.valueOrNull ?? const <AiProvider>[], groups);
     });
 
     ref.listen(currentChatProvider, (prev, next) {
@@ -1259,10 +1136,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
-        ),
+        leading: IconButton(icon: const Icon(Icons.menu), onPressed: () => rootScaffoldKey.currentState?.openDrawer()),
         title: const Text('小Q'),
         actions: [
           // 自动朗读开关：与语音设置页同一真源，随手切换不必跳设置
@@ -1275,13 +1149,10 @@ class _AiPageState extends ConsumerState<AiPage> {
               // 先收起键盘，避免新会话打开后键盘自动弹出
               FocusManager.instance.primaryFocus?.unfocus();
               final previous = ref.read(currentChatProvider);
-              final session = await ref
-                  .read(chatSessionListProvider.notifier)
-                  .createSession();
+              final session = await ref.read(chatSessionListProvider.notifier).createSession();
               ref.read(currentChatProvider.notifier).setSession(session);
               // 本来就停在空白新对话上时，界面点了不会有任何变化，用 Toast 明确回应
-              if (context.mounted &&
-                  (previous == null || isBlankNewChatSession(previous))) {
+              if (context.mounted && (previous == null || isBlankNewChatSession(previous))) {
                 Toast.info(context, '已是新对话');
               }
             },
@@ -1301,10 +1172,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         builder: (context, ref, _) {
           final sessionsAsync = ref.watch(chatSessionListProvider);
           final activeId = ref.watch(currentChatProvider.select((c) => c?.id));
-          return ChatHistoryDrawer(
-            sessionsAsync: sessionsAsync,
-            activeId: activeId,
-          );
+          return ChatHistoryDrawer(sessionsAsync: sessionsAsync, activeId: activeId);
         },
       ),
       body: Column(
@@ -1332,9 +1200,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             ChatTimelineEntry(
               ChatMessage(
                 role: 'assistant',
-                content:
-                    defaultSystemPrompts['assistant_greeting'] ??
-                    '嗨，我是小Q —— 记待办、写笔记、打卡时间线、看统计，说一句就行',
+                content: defaultSystemPrompts['assistant_greeting'] ?? '嗨，我是小Q —— 记待办、写笔记、打卡时间线、看统计，说一句就行',
                 timestamp: DateTime.now(),
               ),
             ),
@@ -1342,23 +1208,17 @@ class _AiPageState extends ConsumerState<AiPage> {
         : timeline;
 
     final hasStreaming =
-        ref.watch(
-          aiStreamingMessageProvider.select((value) => value != null),
-        ) ||
+        ref.watch(aiStreamingMessageProvider.select((value) => value != null)) ||
         ref.watch(aiStreamingStatusProvider.select((value) => value != null));
     final showTyping =
-        _isTyping &&
-        !hasStreaming &&
-        displayItems.isNotEmpty &&
-        displayItems.last.message.role == 'user';
+        _isTyping && !hasStreaming && displayItems.isNotEmpty && displayItems.last.message.role == 'user';
     final showStreaming = hasStreaming;
 
     // 「再次编辑」入口只挂在我最后发的那条提问上：更早的轮次回退会连带撤销其后
     // 所有真实数据修改，误触代价不可接受
     final reeditIndex = reeditableUserIndex(stateMessages);
 
-    final totalCount =
-        displayItems.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
+    final totalCount = displayItems.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 
     bool isUserMsg(ChatMessage m) => m.role == 'user';
 
@@ -1373,9 +1233,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         return QTextSelectionToolbar(
           anchors: selectableRegionState.contextMenuAnchors,
           buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems.where(
-              (item) => item.type != ContextMenuButtonType.custom,
-            ),
+            ...selectableRegionState.contextMenuButtonItems.where((item) => item.type != ContextMenuButtonType.custom),
             if (hasSelection)
               ContextMenuButtonItem(
                 label: '给小Q',
@@ -1413,9 +1271,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                 if (prevIsUser == currentIsUser) {
                   final prevTime = prevMsg.timestamp;
                   final currTime = currentMsg.timestamp;
-                  if (prevTime == null ||
-                      currTime == null ||
-                      currTime.difference(prevTime).abs().inMinutes < 5) {
+                  if (prevTime == null || currTime == null || currTime.difference(prevTime).abs().inMinutes < 5) {
                     isFirstInGroup = false;
                   }
                 }
@@ -1429,9 +1285,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                 if (nextIsUser == currentIsUser) {
                   final nextTime = nextMsg.timestamp;
                   final currTime = currentMsg.timestamp;
-                  if (nextTime == null ||
-                      currTime == null ||
-                      nextTime.difference(currTime).abs().inMinutes < 5) {
+                  if (nextTime == null || currTime == null || nextTime.difference(currTime).abs().inMinutes < 5) {
                     isLastInGroup = false;
                   }
                 }
@@ -1457,24 +1311,15 @@ class _AiPageState extends ConsumerState<AiPage> {
                 actionsEnabled: !hasStreaming,
                 generatedImageKeys: generatedImageKeys,
                 onSendToQ: _attachImageToInput,
-                onRegenerate: canRegenerate
-                    ? () => _retryFailedTurn(entry.stateIndex!)
-                    : null,
+                onRegenerate: canRegenerate ? () => _retryFailedTurn(entry.stateIndex!) : null,
                 // 回退与重发期间置灰，避免连点触发两轮
                 regenerateEnabled: !_isTyping,
-                onContinue: () => ref
-                    .read(currentChatProvider.notifier)
-                    .continueAfterTurnLimit(),
-                onPause: () => ref
-                    .read(currentChatProvider.notifier)
-                    .pauseAfterTurnLimit(),
+                onContinue: () => ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
+                onPause: () => ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
               );
               // 我最后发的那条提问：点一下把提问填回输入框慢慢改，撤回留到点发送时；
               // 失败气泡仍走长按弹重试菜单
-              final canReedit =
-                  currentIsUser &&
-                  reeditIndex != null &&
-                  entry.stateIndex == reeditIndex;
+              final canReedit = currentIsUser && reeditIndex != null && entry.stateIndex == reeditIndex;
               return RepaintBoundary(
                 child: canReedit
                     ? UserBubbleReeditTap(
@@ -1483,14 +1328,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                         onTap: () => _beginReedit(entry.stateIndex!),
                         child: bubble,
                       )
-                    : !currentIsUser &&
-                          currentMsg.isError == true &&
-                          entry.stateIndex != null
+                    : !currentIsUser && currentMsg.isError == true && entry.stateIndex != null
                     ? GestureDetector(
-                        onLongPress: () => _showErrorAssistantActions(
-                          entry.stateIndex!,
-                          currentMsg,
-                        ),
+                        onLongPress: () => _showErrorAssistantActions(entry.stateIndex!, currentMsg),
                         child: bubble,
                       )
                     : bubble,
@@ -1499,22 +1339,15 @@ class _AiPageState extends ConsumerState<AiPage> {
 
             if (showTyping && index == displayItems.length) {
               // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
-              final prevIsAssistant =
-                  displayItems.isNotEmpty &&
-                  !isUserMsg(displayItems.last.message);
+              final prevIsAssistant = displayItems.isNotEmpty && !isUserMsg(displayItems.last.message);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _TypingBubble(
-                  isFirstInGroup: !prevIsAssistant,
-                  isLastInGroup: !showStreaming,
-                ),
+                child: _TypingBubble(isFirstInGroup: !prevIsAssistant, isLastInGroup: !showStreaming),
               );
             }
 
             // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
-            final lastMsg = displayItems.isNotEmpty
-                ? displayItems.last.message
-                : null;
+            final lastMsg = displayItems.isNotEmpty ? displayItems.last.message : null;
             final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -1546,9 +1379,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 防止往正在生成的会话并发发送第二条消息
     final activeId = ref.watch(currentChatProvider.select((c) => c?.id));
     final isSessionBusy = ref.watch(
-      agentRunningSessionsProvider.select(
-        (s) => activeId != null && s.contains(activeId),
-      ),
+      agentRunningSessionsProvider.select((s) => activeId != null && s.contains(activeId)),
     );
     final busy = _isTyping || isSessionBusy;
 
@@ -1575,29 +1406,16 @@ class _AiPageState extends ConsumerState<AiPage> {
             children: [
               // 0. 输入增强浮层：斜杠命令 / @ 引用（位于附件挂载条之上）
               if (_slashQuery != null) ...[
-                SlashCommandPanel(
-                  skills: _slashCandidates,
-                  query: _slashQuery!,
-                  onSelected: _applySlashSelection,
-                ),
+                SlashCommandPanel(skills: _slashCandidates, query: _slashQuery!, onSelected: _applySlashSelection),
                 const SizedBox(height: 6),
               ],
-              if (_atQuery != null) ...[
-                AtReferencePanel(onSelected: _applyAtSelection),
-                const SizedBox(height: 6),
-              ],
+              if (_atQuery != null) ...[AtReferencePanel(onSelected: _applyAtSelection), const SizedBox(height: 6)],
 
               // 0.5 框选对话引用卡片（框选「给小Q」或点击悬浮球挂起）
-              if (_quotedChatText != null) ...[
-                _buildQuotePreviewCard(theme),
-                const SizedBox(height: 6),
-              ],
+              if (_quotedChatText != null) ...[_buildQuotePreviewCard(theme), const SizedBox(height: 6)],
 
               // 1. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
-              if (hasAttachments) ...[
-                _buildAttachmentBar(theme),
-                const SizedBox(height: 6),
-              ],
+              if (hasAttachments) ...[_buildAttachmentBar(theme), const SizedBox(height: 6)],
 
               // 1.5 输入栏上方功能行：左侧常用提示词，右侧模型胶囊（含思考强度档位）
               Padding(
@@ -1610,9 +1428,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                       label: '常用提示词',
                       onTap: () => showQuickPromptDialog(context, ref, (text) {
                         _inputController.text = text;
-                        _inputController.selection = TextSelection.fromPosition(
-                          TextPosition(offset: text.length),
-                        );
+                        _inputController.selection = TextSelection.fromPosition(TextPosition(offset: text.length));
                         _inputFocusNode.requestFocus();
                       }),
                     ),
@@ -1631,10 +1447,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                                 icon: Icons.memory_rounded,
                                 label: aiBindingShortName(
                                   _activeModelId,
-                                  providersAsync.valueOrNull ??
-                                      const <AiProvider>[],
-                                  routeGroupsAsync.valueOrNull ??
-                                      const <AiRouteGroup>[],
+                                  providersAsync.valueOrNull ?? const <AiProvider>[],
+                                  routeGroupsAsync.valueOrNull ?? const <AiRouteGroup>[],
                                 ),
                                 suffix: effortLabel,
                                 trailing: Icons.expand_more_rounded,
@@ -1663,15 +1477,10 @@ class _AiPageState extends ConsumerState<AiPage> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.6),
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
-                          Icons.add_rounded,
-                          size: 26,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        child: Icon(Icons.add_rounded, size: 26, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
                   ),
@@ -1702,33 +1511,23 @@ class _AiPageState extends ConsumerState<AiPage> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: primary.withValues(
-                                    alpha: isDark ? 0.14 : 0.08,
-                                  ),
+                                  color: primary.withValues(alpha: isDark ? 0.14 : 0.08),
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: primary.withValues(
-                                      alpha: isDark ? 0.22 : 0.14,
-                                    ),
+                                    color: primary.withValues(alpha: isDark ? 0.22 : 0.14),
                                     width: 0.8,
                                   ),
                                 ),
                                 child: Stack(
                                   alignment: Alignment.center,
                                   children: [
-                                    LoadingRing(
-                                      size: 32,
-                                      strokeWidth: 1.3,
-                                      color: primary,
-                                    ),
+                                    LoadingRing(size: 32, strokeWidth: 1.3, color: primary),
                                     Container(
                                       width: 9.5,
                                       height: 9.5,
                                       decoration: BoxDecoration(
                                         color: primary,
-                                        borderRadius: BorderRadius.circular(
-                                          2.0,
-                                        ),
+                                        borderRadius: BorderRadius.circular(2.0),
                                       ),
                                     ),
                                   ],
@@ -1752,8 +1551,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                           decoration: BoxDecoration(
                             color: canSend
                                 ? theme.colorScheme.primary
-                                : theme.colorScheme.surfaceContainerHighest
-                                      .withValues(alpha: 0.5),
+                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                             shape: BoxShape.circle,
                           ),
                           child: Center(
@@ -1762,8 +1560,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                               size: 22,
                               color: canSend
                                   ? theme.colorScheme.onPrimary
-                                  : theme.colorScheme.onSurfaceVariant
-                                        .withValues(alpha: 0.3),
+                                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                             ),
                           ),
                         ),
@@ -1786,24 +1583,16 @@ class _AiPageState extends ConsumerState<AiPage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.format_quote_rounded,
-            size: 16,
-            color: theme.colorScheme.primary,
-          ),
+          Icon(Icons.format_quote_rounded, size: 16, color: theme.colorScheme.primary),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               '引用：$_quotedChatText',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1813,11 +1602,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(2),
-              child: Icon(
-                Icons.close_rounded,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              child: Icon(Icons.close_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -1847,10 +1632,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                       child: SizedBox(
                         width: 52,
                         height: 52,
-                        child: UnifiedImage(
-                          imagePath: imgPath,
-                          fit: BoxFit.cover,
-                        ),
+                        child: UnifiedImage(imagePath: imgPath, fit: BoxFit.cover),
                       ),
                     ),
                     Positioned(
@@ -1865,15 +1647,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                         child: Container(
                           width: 18,
                           height: 18,
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            size: 12,
-                            color: Colors.white,
-                          ),
+                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          child: const Icon(Icons.close, size: 12, color: Colors.white),
                         ),
                       ),
                     ),
@@ -1888,27 +1663,16 @@ class _AiPageState extends ConsumerState<AiPage> {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(
-                        alpha: 0.4,
-                      ),
-                    ),
+                    border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.auto_stories_outlined,
-                        size: 14,
-                        color: Color(0xFFE91E63),
-                      ),
+                      const Icon(Icons.auto_stories_outlined, size: 14, color: Color(0xFFE91E63)),
                       const SizedBox(width: 4),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 100),
@@ -1916,10 +1680,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                           title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface,
-                          ),
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -1929,11 +1690,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                             _attachedJournalIds.remove(jId);
                           });
                         },
-                        child: Icon(
-                          Icons.close,
-                          size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -1947,27 +1704,16 @@ class _AiPageState extends ConsumerState<AiPage> {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(
-                        alpha: 0.4,
-                      ),
-                    ),
+                    border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.description_outlined,
-                        size: 14,
-                        color: theme.colorScheme.primary,
-                      ),
+                      Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.primary),
                       const SizedBox(width: 4),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 100),
@@ -1975,10 +1721,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                           title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface,
-                          ),
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -1988,11 +1731,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                             _attachedNoteIds.remove(noteId);
                           });
                         },
-                        child: Icon(
-                          Icons.close,
-                          size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -2006,27 +1745,16 @@ class _AiPageState extends ConsumerState<AiPage> {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withValues(
-                        alpha: 0.4,
-                      ),
-                    ),
+                    border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.check_box_outlined,
-                        size: 14,
-                        color: theme.colorScheme.secondary,
-                      ),
+                      Icon(Icons.check_box_outlined, size: 14, color: theme.colorScheme.secondary),
                       const SizedBox(width: 4),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 100),
@@ -2034,10 +1762,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                           title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface,
-                          ),
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -2047,11 +1772,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                             _attachedTodoIds.remove(todoId);
                           });
                         },
-                        child: Icon(
-                          Icons.close,
-                          size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -2067,24 +1788,14 @@ class _AiPageState extends ConsumerState<AiPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.4,
-                    ),
-                  ),
+                  border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.add, size: 14, color: theme.colorScheme.primary),
                     const SizedBox(width: 2),
-                    Text(
-                      '添加',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
+                    Text('添加', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
                   ],
                 ),
               ),
@@ -2099,9 +1810,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   /// 软键盘行为由 textInputAction:newline 交给 IME（移动端发送一律点按钮）；
   /// 返回 handled 后 engine 不再把 Enter 送入文本输入通道，避免发送与换行叠加
   KeyEventResult _handleEnterKey(FocusNode node, KeyEvent event) {
-    final isEnter =
-        event.logicalKey == LogicalKeyboardKey.enter ||
-        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    final isEnter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (!isEnter || event is KeyRepeatEvent) return KeyEventResult.ignored;
     if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
     if (event is KeyDownEvent) _sendMessage();
@@ -2114,10 +1823,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
-          width: 1,
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
       ),
       child: Stack(
         alignment: Alignment.bottomRight,
@@ -2137,12 +1843,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                 focusedBorder: InputBorder.none,
                 errorBorder: InputBorder.none,
                 disabledBorder: InputBorder.none,
-                contentPadding: EdgeInsets.only(
-                  left: 16,
-                  top: 10,
-                  bottom: 10,
-                  right: 42,
-                ),
+                contentPadding: EdgeInsets.only(left: 16, top: 10, bottom: 10, right: 42),
               ),
               // 软键盘回车键为「换行」，发送一律点右侧按钮；
               // 桌面/Web 物理回车在 _handleEnterKey 拦截发送，Shift+Enter 换行
@@ -2169,27 +1870,17 @@ class _AiPageState extends ConsumerState<AiPage> {
                         width: 20,
                         height: 20,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.error.withValues(
-                            alpha: 0.85,
-                          ),
+                          color: theme.colorScheme.error.withValues(alpha: 0.85),
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: theme.colorScheme.error.withValues(
-                                alpha: 0.25,
-                              ),
+                              color: theme.colorScheme.error.withValues(alpha: 0.25),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.close,
-                            size: 12,
-                            color: Colors.white,
-                          ),
-                        ),
+                        child: const Center(child: Icon(Icons.close, size: 12, color: Colors.white)),
                       ),
                     ),
                   ),

@@ -7,25 +7,20 @@ import 'package:qnote_flutter/core/agent/tools/general/web_search_tool.dart';
 
 void main() {
   /// 构造标准 Bing 结果节点：标题链接 + 可选摘要 + 可选跳转链接
-  String bingItemHtml({
-    required String title,
-    required String href,
-    String? caption,
-    bool useRedirectHref = false,
-  }) {
+  String bingItemHtml({required String title, required String href, String? caption, bool useRedirectHref = false}) {
     final realHref = useRedirectHref
         // 模拟 Bing /ck/a 跳转：u 参数 = 'a1' + base64url(真实地址)
         ? 'https://www.bing.com/ck/a?!&p=1&u=a1${base64UrlEncode(href.codeUnits)}&ntb=1'
         : href;
-    final captionHtml =
-        caption == null ? '' : '<div class="b_caption"><p>$caption</p></div>';
+    final captionHtml = caption == null ? '' : '<div class="b_caption"><p>$caption</p></div>';
     return '<li class="b_algo"><h2><a href="$realHref">$title</a></h2>'
         '$captionHtml<p>兜底摘要段落</p></li>';
   }
 
   group('WebSearchTool.parseBingResults', () {
     test('解析标准结果页：标题、链接、摘要齐全', () {
-      final html = '<html><body><ol id="b_results">'
+      final html =
+          '<html><body><ol id="b_results">'
           '${bingItemHtml(title: 'Flutter 官网', href: 'https://flutter.dev', caption: 'Flutter 是 UI 框架')}'
           '${bingItemHtml(title: 'Dart 语言', href: 'https://dart.dev')}'
           '</ol></body></html>';
@@ -40,7 +35,8 @@ void main() {
     });
 
     test('Bing 跳转链接被还原为真实地址', () {
-      final html = '<html><body><ol id="b_results">'
+      final html =
+          '<html><body><ol id="b_results">'
           '${bingItemHtml(title: '真实地址', href: 'https://example.com/article', useRedirectHref: true)}'
           '</ol></body></html>';
       final results = WebSearchTool.parseBingResults(html_parser.parse(html));
@@ -49,7 +45,8 @@ void main() {
     });
 
     test('默认条数内重复链接被去重，limit 限制返回条数', () {
-      final html = '<html><body><ol id="b_results">'
+      final html =
+          '<html><body><ol id="b_results">'
           '${List.generate(5, (i) => bingItemHtml(title: '结果$i', href: 'https://example.com/$i')).join()}'
           // 与第 0 条重复的链接应被过滤
           '${bingItemHtml(title: '重复链接', href: 'https://example.com/0')}'
@@ -58,15 +55,15 @@ void main() {
       expect(all.length, 5);
       expect(all.where((r) => r['url'] == 'https://example.com/0').length, 1);
 
-      final limited =
-          WebSearchTool.parseBingResults(html_parser.parse(html), limit: 3);
+      final limited = WebSearchTool.parseBingResults(html_parser.parse(html), limit: 3);
       expect(limited.length, 3);
     });
   });
 
   group('WebSearchTool.detectEmptyState', () {
     test('无结果页（b_no 节点）返回 no_results', () {
-      const html = '<html><body><ol id="b_results">'
+      const html =
+          '<html><body><ol id="b_results">'
           '<li class="b_no">没有找到与 xxx 相关的结果</li></ol></body></html>';
       expect(WebSearchTool.detectEmptyState(html_parser.parse(html)), 'no_results');
     });

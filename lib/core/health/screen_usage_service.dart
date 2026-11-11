@@ -45,10 +45,7 @@ class ScreenUsageService {
   Future<TodayScreenUsage?> getTodayUsage({int limit = 30}) async {
     if (!isSupported) return null;
     try {
-      final res = await _channel.invokeMapMethod<dynamic, dynamic>(
-        'getTodayUsage',
-        {'limit': limit},
-      );
+      final res = await _channel.invokeMapMethod<dynamic, dynamic>('getTodayUsage', {'limit': limit});
       if (res == null) return null;
       return TodayScreenUsage.fromMap(res);
     } catch (e, stack) {
@@ -58,21 +55,14 @@ class ScreenUsageService {
   }
 
   /// 获取指定日期的屏幕总时长与各应用使用情况
-  Future<TodayScreenUsage?> getUsageForDate(
-    DateTime date, {
-    int limit = 10,
-    bool includeIcons = false,
-  }) async {
+  Future<TodayScreenUsage?> getUsageForDate(DateTime date, {int limit = 10, bool includeIcons = false}) async {
     if (!isSupported) return null;
     try {
-      final res = await _channel.invokeMapMethod<dynamic, dynamic>(
-        'getUsageForDate',
-        {
-          'dateMillis': date.millisecondsSinceEpoch,
-          'limit': limit,
-          'includeIcons': includeIcons,
-        },
-      );
+      final res = await _channel.invokeMapMethod<dynamic, dynamic>('getUsageForDate', {
+        'dateMillis': date.millisecondsSinceEpoch,
+        'limit': limit,
+        'includeIcons': includeIcons,
+      });
       if (res == null) return null;
       return TodayScreenUsage.fromMap(res);
     } catch (e, stack) {
@@ -101,10 +91,7 @@ class ScreenUsageService {
 
     if (pending.isNotEmpty) {
       try {
-        final res = await _channel.invokeMapMethod<dynamic, dynamic>(
-          'getAppIcons',
-          {'packageNames': pending},
-        );
+        final res = await _channel.invokeMapMethod<dynamic, dynamic>('getAppIcons', {'packageNames': pending});
         final fetched = <String, Uint8List>{};
         res?.forEach((key, value) {
           if (key is String && value is Uint8List && value.isNotEmpty) {
@@ -136,10 +123,7 @@ class ScreenUsageService {
     try {
       final res = await _channel.invokeListMethod<dynamic>('getWeeklyScreenTime');
       if (res == null) return [];
-      return res
-          .whereType<Map<dynamic, dynamic>>()
-          .map((m) => DailyScreenTime.fromMap(m))
-          .toList();
+      return res.whereType<Map<dynamic, dynamic>>().map((m) => DailyScreenTime.fromMap(m)).toList();
     } catch (e, stack) {
       LoggerService.instance.error('ScreenUsageService.getWeeklyScreenTime failed: $e', stackTrace: stack);
       return [];
@@ -157,14 +141,11 @@ class ScreenUsageService {
   }) async {
     if (!isSupported) return [];
     try {
-      final res = await _channel.invokeListMethod<dynamic>(
-        'getDailyScreenTimeRange',
-        {
-          'startMillis': start.millisecondsSinceEpoch,
-          'endMillis': end.millisecondsSinceEpoch,
-          'appLimitPerDay': appLimitPerDay,
-        },
-      );
+      final res = await _channel.invokeListMethod<dynamic>('getDailyScreenTimeRange', {
+        'startMillis': start.millisecondsSinceEpoch,
+        'endMillis': end.millisecondsSinceEpoch,
+        'appLimitPerDay': appLimitPerDay,
+      });
       if (res == null) return [];
       return res.whereType<Map<dynamic, dynamic>>().map(_parseDailyRange).toList();
     } catch (e, stack) {
@@ -182,10 +163,7 @@ class ScreenUsageService {
     return ScreenUsageDaily(
       date: ScreenUsageDaily.dateKey(date),
       totalTimeMs: (map['totalTime'] as num?)?.toInt() ?? 0,
-      topApps: rawApps
-          .whereType<Map<dynamic, dynamic>>()
-          .map((e) => ScreenAppUsage.fromMap(e))
-          .toList(),
+      topApps: rawApps.whereType<Map<dynamic, dynamic>>().map((e) => ScreenAppUsage.fromMap(e)).toList(),
       // 今日尚未过完，标记为未完成，避免被当成整日数据参与环比
       isComplete: !isToday,
       createdAt: now,

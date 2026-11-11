@@ -47,12 +47,7 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     }
   }
 
-  Future<Note> addNote({
-    required String title,
-    String content = '',
-    String? folderId,
-    String tags = '',
-  }) async {
+  Future<Note> addNote({required String title, String content = '', String? folderId, String tags = ''}) async {
     final repo = ref.read(noteRepositoryProvider);
     final now = DateTime.now();
     final note = Note(
@@ -74,31 +69,21 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     final repo = ref.read(noteRepositoryProvider);
     await repo.update(note);
     // 内存替换目标项
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((n) => n.id == note.id ? note : n)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((n) => n.id == note.id ? note : n).toList());
   }
 
   Future<void> deleteNote(String id) async {
     final repo = ref.read(noteRepositoryProvider);
     await repo.softDelete(id);
     // 内存移除
-    state = AsyncData(
-      (state.valueOrNull ?? []).where((n) => n.id != id).toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).where((n) => n.id != id).toList());
   }
 
   Future<void> togglePin(String id, bool isPinned) async {
     final repo = ref.read(noteRepositoryProvider);
     await repo.togglePin(id, isPinned);
     // 内存替换：仅更新 isPinned 字段
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((n) => n.id == id ? n.copyWith(isPinned: isPinned) : n)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((n) => n.id == id ? n.copyWith(isPinned: isPinned) : n).toList());
   }
 
   Future<void> searchNotes(String keyword) async {
@@ -114,17 +99,10 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     final repo = ref.read(noteRepositoryProvider);
     final note = await repo.getById(noteId);
     if (note != null) {
-      final updated = note.copyWith(
-        folderId: folderId,
-        clearFolderId: folderId == null,
-      );
+      final updated = note.copyWith(folderId: folderId, clearFolderId: folderId == null);
       await repo.update(updated);
       // 内存替换
-      state = AsyncData(
-        (state.valueOrNull ?? [])
-            .map((n) => n.id == noteId ? updated : n)
-            .toList(),
-      );
+      state = AsyncData((state.valueOrNull ?? []).map((n) => n.id == noteId ? updated : n).toList());
     }
   }
 

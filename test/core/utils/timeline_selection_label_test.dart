@@ -71,11 +71,8 @@ void main() {
   });
 
   test('日期角标：今天不标，昨天/明天用中文，更远用月-日', () {
-    TimelineSelectionLabel labelFor(DateTime date) => buildTimelineSelectionLabel(
-      startTime: const TimeOfDay(hour: 8, minute: 0),
-      startDate: date,
-      today: today,
-    );
+    TimelineSelectionLabel labelFor(DateTime date) =>
+        buildTimelineSelectionLabel(startTime: const TimeOfDay(hour: 8, minute: 0), startDate: date, today: today);
 
     expect(labelFor(today).dayBadge, isNull);
     expect(labelFor(today.subtract(const Duration(days: 1))).dayBadge, '昨天');

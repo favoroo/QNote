@@ -33,12 +33,7 @@ void main() {
       final mockSsecurity = base64.encode(List<int>.generate(32, (i) => i * 7 % 256));
       const method = 'POST';
       const path = '/app/v1/data/get_fitness_data_by_time';
-      final payload = {
-        'start_time': 1711929600,
-        'end_time': 1712015999,
-        'key': 'steps',
-        'reverse': true,
-      };
+      final payload = {'start_time': 1711929600, 'end_time': 1712015999, 'key': 'steps', 'reverse': true};
 
       final formParams = MiFitnessCrypto.encryptRequestParams(
         method: method,
@@ -58,9 +53,9 @@ void main() {
         'message': 'ok',
         'result': {
           'data_list': [
-            {'key': 'steps', 'time': 1711933200, 'value': '{"steps":100}'}
-          ]
-        }
+            {'key': 'steps', 'time': 1711933200, 'value': '{"steps":100}'},
+          ],
+        },
       };
 
       final rawNonce = base64.decode(formParams['_nonce']!);

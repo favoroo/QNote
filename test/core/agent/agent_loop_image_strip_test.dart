@@ -36,17 +36,10 @@ ChatMessage _userWithImages(List<String> images, {String content = '这张图里
 
 Future<List<List<ChatMessage>>> _runOnce({required bool supportsImageInput}) async {
   final service = _RecordingAiService();
-  final loop = AgentLoop(
-    aiService: service,
-    dispatcher: ToolDispatcher(),
-    supportsImageInput: supportsImageInput,
-  );
+  final loop = AgentLoop(aiService: service, dispatcher: ToolDispatcher(), supportsImageInput: supportsImageInput);
   await for (final _ in loop.run(
     conversationHistory: [
-      _userWithImages([
-        '/images/photo-1.jpg',
-        'data:image/jpeg;base64,QUFBQlVCQllCRQ',
-      ]),
+      _userWithImages(['/images/photo-1.jpg', 'data:image/jpeg;base64,QUFBQlVCQllCRQ']),
     ],
     systemPrompt: '你是小Q',
   )) {
@@ -65,11 +58,7 @@ void main() {
 
       expect(captured, isNotEmpty, reason: '至少发过一轮请求');
       for (final message in captured.first) {
-        expect(
-          message.images == null || message.images!.isEmpty,
-          isTrue,
-          reason: '不支持图片输入的模型不应收到任何图片',
-        );
+        expect(message.images == null || message.images!.isEmpty, isTrue, reason: '不支持图片输入的模型不应收到任何图片');
       }
     });
 
@@ -79,8 +68,7 @@ void main() {
 
       expect(user.content, contains('这张图里是什么？'), reason: '用户原话一个字都不能改');
       expect(user.content, contains('describe_image'));
-      expect(user.content, contains('/images/photo-1.jpg'),
-          reason: '要给出能回传给工具的图片标识');
+      expect(user.content, contains('/images/photo-1.jpg'), reason: '要给出能回传给工具的图片标识');
       expect(user.content, contains('内联图片'));
       expect(user.content, contains('严禁'));
     });
@@ -107,17 +95,14 @@ void main() {
   group('工具回显图片的注入分支', () {
     test('模型不支持图片输入时，view_image 注入的合成消息也换成文字引导', () async {
       final service = _RecordingAiService();
-      final loop = AgentLoop(
-        aiService: service,
-        dispatcher: ToolDispatcher(),
-        supportsImageInput: false,
-      );
+      final loop = AgentLoop(aiService: service, dispatcher: ToolDispatcher(), supportsImageInput: false);
       // 预置一条 view_image 的注入消息（模拟历史上已注入的图片），走首轮剥离
       await for (final _ in loop.run(
         conversationHistory: [
           ChatMessage(
             role: 'user',
-            content: '[系统注入] 工具 view_image 的结果附带 1 张图片（来源: /images/x.jpg）。'
+            content:
+                '[系统注入] 工具 view_image 的结果附带 1 张图片（来源: /images/x.jpg）。'
                 '图片已附加在本条消息中，请直接基于图片画面内容继续分析。',
             images: const ['data:image/jpeg;base64,QUFBQlVCQllCRQ'],
           ),
@@ -125,8 +110,7 @@ void main() {
         systemPrompt: '你是小Q',
       )) {}
 
-      final injected = service.allSent
-          .firstWhere((m) => m.content.startsWith('[系统注入]'));
+      final injected = service.allSent.firstWhere((m) => m.content.startsWith('[系统注入]'));
       expect(injected.images == null || injected.images!.isEmpty, isTrue);
       expect(injected.content, contains('describe_image'));
       expect(injected.content, isNot(contains('请直接基于图片画面内容')));

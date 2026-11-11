@@ -22,11 +22,7 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(floatingQProvider.notifier);
 
-      const diary = QPageContext(
-        type: QContextType.diaryList,
-        signature: 'page:diary',
-        displayLabel: '时间线',
-      );
+      const diary = QPageContext(type: QContextType.diaryList, signature: 'page:diary', displayLabel: '时间线');
       notifier.setBaseContext(diary);
 
       final state = container.read(floatingQProvider);
@@ -40,11 +36,7 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(floatingQProvider.notifier);
 
-      const notes = QPageContext(
-        type: QContextType.notesList,
-        signature: 'page:notes',
-        displayLabel: '笔记库',
-      );
+      const notes = QPageContext(type: QContextType.notesList, signature: 'page:notes', displayLabel: '笔记库');
       const note = QPageContext(
         type: QContextType.noteDetail,
         targetId: 'n1',
@@ -220,12 +212,9 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(floatingQProvider.notifier);
 
-      notifier.openWithQuote(const QTextQuote(
-        source: QQuoteSource.external,
-        sourceId: '',
-        sourceTitle: '系统分享',
-        quotedText: '外部内容',
-      ));
+      notifier.openWithQuote(
+        const QTextQuote(source: QQuoteSource.external, sourceId: '', sourceTitle: '系统分享', quotedText: '外部内容'),
+      );
       expect(container.read(floatingQProvider).externalShareMode, isTrue);
 
       // 手动点开面板 → 回到页面上下文模式
@@ -233,18 +222,13 @@ void main() {
       expect(container.read(floatingQProvider).externalShareMode, isFalse);
 
       // 再次分享进入外部模式后，切页（签名变化）同样退出
-      notifier.openWithQuote(const QTextQuote(
-        source: QQuoteSource.external,
-        sourceId: '',
-        sourceTitle: '系统分享',
-        quotedText: '外部内容',
-      ));
+      notifier.openWithQuote(
+        const QTextQuote(source: QQuoteSource.external, sourceId: '', sourceTitle: '系统分享', quotedText: '外部内容'),
+      );
       expect(container.read(floatingQProvider).externalShareMode, isTrue);
-      notifier.setBaseContext(const QPageContext(
-        type: QContextType.diaryList,
-        signature: 'page:diary',
-        displayLabel: '时间线',
-      ));
+      notifier.setBaseContext(
+        const QPageContext(type: QContextType.diaryList, signature: 'page:diary', displayLabel: '时间线'),
+      );
       expect(container.read(floatingQProvider).externalShareMode, isFalse);
     });
 
@@ -285,8 +269,7 @@ void main() {
       // 第一次投递（主动推送）：挂起并消费进附件区
       notifier.openWithImages(['/cache/shared_images/a.jpg']);
       notifier.consumePendingImages();
-      expect(container.read(floatingQProvider).attachedImages,
-          ['/cache/shared_images/a.jpg']);
+      expect(container.read(floatingQProvider).attachedImages, ['/cache/shared_images/a.jpg']);
 
       // 第二次投递（回前台拉取到同一份遗留数据）：消费后仍只保留一张
       notifier.openWithImages(['/cache/shared_images/a.jpg']);
@@ -317,24 +300,14 @@ void main() {
 
     test('纯空白文本返回 null（无可注入内容）', () {
       final block = FloatingQNotifier.buildExternalQuoteBlock(
-        const QTextQuote(
-          source: QQuoteSource.external,
-          sourceId: '',
-          sourceTitle: '系统分享',
-          quotedText: '   ',
-        ),
+        const QTextQuote(source: QQuoteSource.external, sourceId: '', sourceTitle: '系统分享', quotedText: '   '),
       );
       expect(block, isNull);
     });
 
     test('超长文本截断到 2000 字并附截断提示', () {
       final block = FloatingQNotifier.buildExternalQuoteBlock(
-        QTextQuote(
-          source: QQuoteSource.external,
-          sourceId: '',
-          sourceTitle: '系统分享',
-          quotedText: '长' * 2500,
-        ),
+        QTextQuote(source: QQuoteSource.external, sourceId: '', sourceTitle: '系统分享', quotedText: '长' * 2500),
       );
 
       expect(block, isNotNull);
@@ -369,10 +342,7 @@ void main() {
     test('指纹未变时任务结束触发重载', () async {
       final bridge = QTargetBridge.test();
       var reloaded = false;
-      bridge.register('note:t1', QTargetHooks(
-        fingerprint: () => 'v1',
-        reload: () async => reloaded = true,
-      ));
+      bridge.register('note:t1', QTargetHooks(fingerprint: () => 'v1', reload: () async => reloaded = true));
 
       bridge.notifyTaskStart('note:t1');
       final reloadedByEnd = await bridge.notifyTaskEnd('note:t1');
@@ -384,10 +354,7 @@ void main() {
       final bridge = QTargetBridge.test();
       var reloaded = false;
       var version = 'v1';
-      bridge.register('note:t2', QTargetHooks(
-        fingerprint: () => version,
-        reload: () async => reloaded = true,
-      ));
+      bridge.register('note:t2', QTargetHooks(fingerprint: () => version, reload: () async => reloaded = true));
 
       bridge.notifyTaskStart('note:t2');
       version = 'user-edited';
@@ -418,10 +385,7 @@ void main() {
     test('unregister 后不再触发', () async {
       final bridge = QTargetBridge.test();
       var reloaded = false;
-      bridge.register('note:u1', QTargetHooks(
-        fingerprint: () => 'v',
-        reload: () async => reloaded = true,
-      ));
+      bridge.register('note:u1', QTargetHooks(fingerprint: () => 'v', reload: () async => reloaded = true));
       bridge.unregister('note:u1');
 
       bridge.notifyTaskStart('note:u1');
@@ -448,10 +412,7 @@ void main() {
 
     test('captureQuote 钩子抛异常时安全返回 null', () {
       final bridge = QTargetBridge.test();
-      bridge.register(
-        'note:q2',
-        QTargetHooks(quoteSelection: () => throw Exception('boom')),
-      );
+      bridge.register('note:q2', QTargetHooks(quoteSelection: () => throw Exception('boom')));
       expect(bridge.captureQuote('note:q2'), isNull);
     });
   });

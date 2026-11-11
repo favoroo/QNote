@@ -5,8 +5,7 @@ import 'package:qnote_flutter/pages/ai_page.dart';
 
 void main() {
   group('小Q对话流工具卡片紧凑与折叠测试', () {
-    testWidgets('skill 工具：仅显示单行技能胶囊，不展开大段手册，点击「查看」弹出手册弹窗',
-        (tester) async {
+    testWidgets('skill 工具：仅显示单行技能胶囊，不展开大段手册，点击「查看」弹出手册弹窗', (tester) async {
       final skillMessage = ChatMessage(
         role: 'tool',
         toolName: 'skill',
@@ -18,13 +17,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: Builder(
-              builder: (context) => ChatBubble.buildToolFeedback(
-                context,
-                skillMessage,
-                Theme.of(context),
-              ),
-            ),
+            body: Builder(builder: (context) => ChatBubble.buildToolFeedback(context, skillMessage, Theme.of(context))),
           ),
         ),
       );
@@ -45,8 +38,7 @@ void main() {
       expect(find.textContaining('这里是非常长的大段技能手册内容'), findsOneWidget);
     });
 
-    testWidgets('list_dir 工具：折叠展示目录及条目总数，点击可展开查看条目列表',
-        (tester) async {
+    testWidgets('list_dir 工具：折叠展示目录及条目总数，点击可展开查看条目列表', (tester) async {
       final listDirMessage = ChatMessage(
         role: 'tool',
         toolName: 'list_dir',
@@ -62,11 +54,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => ChatBubble.buildToolFeedback(
-                context,
-                listDirMessage,
-                Theme.of(context),
-              ),
+              builder: (context) => ChatBubble.buildToolFeedback(context, listDirMessage, Theme.of(context)),
             ),
           ),
         ),
@@ -87,8 +75,7 @@ void main() {
       expect(find.text('notes/c.md'), findsOneWidget);
     });
 
-    testWidgets('read_file 工具：成功时展示路径与「预览」按钮，失败时展示错误提示',
-        (tester) async {
+    testWidgets('read_file 工具：成功时展示路径与「预览」按钮，失败时展示错误提示', (tester) async {
       final readSuccessMsg = ChatMessage(
         role: 'tool',
         toolName: 'read_file',
@@ -101,11 +88,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => ChatBubble.buildToolFeedback(
-                context,
-                readSuccessMsg,
-                Theme.of(context),
-              ),
+              builder: (context) => ChatBubble.buildToolFeedback(context, readSuccessMsg, Theme.of(context)),
             ),
           ),
         ),
@@ -137,13 +120,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: Builder(
-              builder: (context) => ChatBubble.buildToolFeedback(
-                context,
-                readErrorMsg,
-                Theme.of(context),
-              ),
-            ),
+            body: Builder(builder: (context) => ChatBubble.buildToolFeedback(context, readErrorMsg, Theme.of(context))),
           ),
         ),
       );
@@ -151,13 +128,11 @@ void main() {
       expect(find.text('文件不存在: /notes/not_found.md'), findsOneWidget);
     });
 
-    testWidgets('通用工具结果（describe_image）：默认折叠成单行标签条，点击展开正文，错误时不折叠',
-        (tester) async {
+    testWidgets('通用工具结果（describe_image）：默认折叠成单行标签条，点击展开正文，错误时不折叠', (tester) async {
       final describeMsg = ChatMessage(
         role: 'tool',
         toolName: 'describe_image',
-        content:
-            '【识图结果 · sensenova-6.8-flash-lite】这张图片展示了一个小男孩的头部特写，短黑发、皮肤白皙。',
+        content: '【识图结果 · sensenova-6.8-flash-lite】这张图片展示了一个小男孩的头部特写，短黑发、皮肤白皙。',
         uiDetails: {'path': '/storage/emulated/0/Pictures/IMG_001.png'},
         timestamp: DateTime.now(),
       );
@@ -165,13 +140,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: Builder(
-              builder: (context) => ChatBubble.buildToolFeedback(
-                context,
-                describeMsg,
-                Theme.of(context),
-              ),
-            ),
+            body: Builder(builder: (context) => ChatBubble.buildToolFeedback(context, describeMsg, Theme.of(context))),
           ),
         ),
       );
@@ -202,13 +171,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: Builder(
-              builder: (context) => ChatBubble.buildToolFeedback(
-                context,
-                errorMsg,
-                Theme.of(context),
-              ),
-            ),
+            body: Builder(builder: (context) => ChatBubble.buildToolFeedback(context, errorMsg, Theme.of(context))),
           ),
         ),
       );
@@ -216,13 +179,15 @@ void main() {
       expect(find.textContaining('识图失败：图片文件不存在'), findsOneWidget);
     });
 
-    testWidgets('_ToolChainGroupWidget 多步连续工具调用折叠组件：汇总步骤数与分布，展开显示各步细节',
-        (tester) async {
+    testWidgets('_ToolChainGroupWidget 多步连续工具调用折叠组件：汇总步骤数与分布，展开显示各步细节', (tester) async {
       final tool1 = ChatMessage(
         role: 'tool',
         toolName: 'list_dir',
         content: '1.md\n2.md',
-        uiDetails: {'path': '/notes', 'items': ['1.md', '2.md']},
+        uiDetails: {
+          'path': '/notes',
+          'items': ['1.md', '2.md'],
+        },
         timestamp: DateTime.now(),
       );
       final tool2 = ChatMessage(
@@ -244,10 +209,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => ToolChainGroupWidget(
-                toolMessages: [tool1, tool2, tool3],
-                theme: Theme.of(context),
-              ),
+              builder: (context) => ToolChainGroupWidget(toolMessages: [tool1, tool2, tool3], theme: Theme.of(context)),
             ),
           ),
         ),

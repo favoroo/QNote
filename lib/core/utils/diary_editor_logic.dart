@@ -58,18 +58,13 @@ class DiaryEditSnapshot {
 /// 若标签配置了分类，则在该标签摘要前加「分类名 - 」前缀。
 /// [tagEntries] 为记录当前标签条目，[shortcuts] 为当前可用快捷标签配置；
 /// 找不到对应配置或配置未开启弹窗字段的条目会被跳过，没有可展示字段时返回空串。
-String buildDiaryPopupDetails(
-  List<TagEntry> tagEntries,
-  List<ShortcutConfig> shortcuts,
-) {
+String buildDiaryPopupDetails(List<TagEntry> tagEntries, List<ShortcutConfig> shortcuts) {
   final popupEntries = <TagEntry>[];
   final popupConfigs = <ShortcutConfig>[];
 
   for (final entry in tagEntries) {
     try {
-      final config = shortcuts.firstWhere(
-        (s) => s.id == entry.id || s.name == entry.name,
-      );
+      final config = shortcuts.firstWhere((s) => s.id == entry.id || s.name == entry.name);
       if (config.hasPopup) {
         popupEntries.add(entry);
         popupConfigs.add(config);
@@ -86,9 +81,7 @@ String buildDiaryPopupDetails(
     final config = popupConfigs[pi];
 
     List<ShortcutField> fieldsToProcess = config.fields;
-    final Map<String, dynamic> entryFields = Map<String, dynamic>.from(
-      entry.fields,
-    );
+    final Map<String, dynamic> entryFields = Map<String, dynamic>.from(entry.fields);
     String categoryPrefix = '';
 
     if (config.categories != null && config.categories!.isNotEmpty) {
@@ -110,9 +103,7 @@ String buildDiaryPopupDetails(
         .where((s) => s != null && s.isNotEmpty)
         .join('，');
 
-    final fullDetails = categoryPrefix.isNotEmpty
-        ? '$categoryPrefix$details'
-        : details;
+    final fullDetails = categoryPrefix.isNotEmpty ? '$categoryPrefix$details' : details;
     if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
   }
 
@@ -124,11 +115,7 @@ String buildDiaryPopupDetails(
 /// 逐行、逐段比对：含冒号的片段按「标签名：值」取冒号前的标签名，
 /// 不含冒号的片段则要求命中已知字段名或字段值；空内容视为纯摘要（true）。
 /// [tagEntries] 提供已知字段名与值，[shortcuts] 提供字段 label 与分类字段定义。
-bool isDiaryFieldSummaryOnly(
-  String content,
-  List<TagEntry> tagEntries,
-  List<ShortcutConfig> shortcuts,
-) {
+bool isDiaryFieldSummaryOnly(String content, List<TagEntry> tagEntries, List<ShortcutConfig> shortcuts) {
   final trimmed = content.trim();
   if (trimmed.isEmpty) return true;
 
@@ -136,9 +123,7 @@ bool isDiaryFieldSummaryOnly(
   final knownValues = <String>{};
 
   for (final entry in tagEntries) {
-    final sc = shortcuts
-        .where((s) => s.id == entry.id || s.name == entry.name)
-        .firstOrNull;
+    final sc = shortcuts.where((s) => s.id == entry.id || s.name == entry.name).firstOrNull;
     if (sc != null) {
       for (final f in sc.fields) {
         knownLabels.add(f.label);
@@ -201,11 +186,7 @@ bool isDiaryFieldSummaryOnly(
 /// 否则尝试删除开头的字段摘要，剩余部分去掉分隔符后作为备注。
 /// 纯字段摘要返回空串；看起来是自由正文（含冒号、图：等）时原样返回，避免误清空。
 /// [shortcuts] 为当前快捷标签配置，用于识别弹窗字段。
-String parseDiaryUserRemarks(
-  String content,
-  List<TagEntry> tagEntries,
-  List<ShortcutConfig> shortcuts,
-) {
+String parseDiaryUserRemarks(String content, List<TagEntry> tagEntries, List<ShortcutConfig> shortcuts) {
   final trimmed = content.trim();
   if (trimmed.isEmpty) return '';
 
@@ -223,9 +204,7 @@ String parseDiaryUserRemarks(
   }
 
   final hasPopupFields = tagEntries.any((entry) {
-    final sc = shortcuts
-        .where((s) => s.id == entry.id || s.name == entry.name)
-        .firstOrNull;
+    final sc = shortcuts.where((s) => s.id == entry.id || s.name == entry.name).firstOrNull;
     return sc != null && sc.hasPopup;
   });
 

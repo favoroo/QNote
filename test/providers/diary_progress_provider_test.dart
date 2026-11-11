@@ -28,35 +28,19 @@ class _ReadyDiaryListNotifier extends DiaryListNotifier {
 DiaryRecord _todayRecord(int minute) {
   final now = DateTime.now();
   final time = DateTime(now.year, now.month, now.day, 9, minute);
-  return DiaryRecord(
-    id: 'r-$minute',
-    title: '记录',
-    time: time,
-    createdAt: time,
-    updatedAt: time,
-  );
+  return DiaryRecord(id: 'r-$minute', title: '记录', time: time, createdAt: time, updatedAt: time);
 }
 
 void main() {
   group('diaryProgressProvider 的就绪语义', () {
     test('列表还在加载时返回 null，而不是按空列表算出的 0 条', () async {
       final notifier = _PendingDiaryListNotifier();
-      final container = ProviderContainer(
-        overrides: [diaryListProvider.overrideWith(() => notifier)],
-      );
+      final container = ProviderContainer(overrides: [diaryListProvider.overrideWith(() => notifier)]);
       addTearDown(container.dispose);
 
-      expect(
-        container.read(diaryProgressProvider),
-        isNull,
-        reason: '把「还不知道」写成 0 条，会让首帧的 0→真实值跳变被误判成新记了一条',
-      );
+      expect(container.read(diaryProgressProvider), isNull, reason: '把「还不知道」写成 0 条，会让首帧的 0→真实值跳变被误判成新记了一条');
 
-      notifier.completer.complete([
-        _todayRecord(1),
-        _todayRecord(2),
-        _todayRecord(3),
-      ]);
+      notifier.completer.complete([_todayRecord(1), _todayRecord(2), _todayRecord(3)]);
       await container.read(diaryListProvider.future);
 
       final progress = container.read(diaryProgressProvider);
@@ -68,9 +52,7 @@ void main() {
     test('目标条数可被 dailyTargetProvider 覆盖', () async {
       final container = ProviderContainer(
         overrides: [
-          diaryListProvider.overrideWith(
-            () => _ReadyDiaryListNotifier([_todayRecord(1), _todayRecord(2)]),
-          ),
+          diaryListProvider.overrideWith(() => _ReadyDiaryListNotifier([_todayRecord(1), _todayRecord(2)])),
         ],
       );
       addTearDown(container.dispose);

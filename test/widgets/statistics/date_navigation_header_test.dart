@@ -16,23 +16,20 @@ void main() {
   final todayPill = find.byKey(const ValueKey('date_nav_today_pill'));
 
   IconButton navButton(WidgetTester tester, IconData icon) {
-    return tester.widget<IconButton>(
-      find.ancestor(
-        of: find.byIcon(icon),
-        matching: find.byType(IconButton),
-      ),
-    );
+    return tester.widget<IconButton>(find.ancestor(of: find.byIcon(icon), matching: find.byType(IconButton)));
   }
 
   testWidgets('左右箭头按天移动日期', (tester) async {
     DateTime? changed;
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        // 用远离今天的日期，避免右箭头因「不能超过今天」而被禁用
-        selectedDate: DateTime(2026, 3, 10),
-        onDateChanged: (date) => changed = date,
+    await tester.pumpWidget(
+      wrap(
+        DateNavigationHeader(
+          // 用远离今天的日期，避免右箭头因「不能超过今天」而被禁用
+          selectedDate: DateTime(2026, 3, 10),
+          onDateChanged: (date) => changed = date,
+        ),
       ),
-    ));
+    );
 
     await tester.tap(find.byIcon(Icons.chevron_left));
     await tester.pump();
@@ -45,12 +42,9 @@ void main() {
 
   testWidgets('传入带时分秒的日期时，回调归一化到当日 00:00', (tester) async {
     DateTime? changed;
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        selectedDate: DateTime(2026, 9, 19, 14, 30),
-        onDateChanged: (date) => changed = date,
-      ),
-    ));
+    await tester.pumpWidget(
+      wrap(DateNavigationHeader(selectedDate: DateTime(2026, 9, 19, 14, 30), onDateChanged: (date) => changed = date)),
+    );
 
     await tester.tap(find.byIcon(Icons.chevron_left));
     await tester.pump();
@@ -61,27 +55,24 @@ void main() {
   testWidgets('已到今天的日期禁止向右切换', (tester) async {
     final today = DateTime.now();
     final todayNoon = DateTime(today.year, today.month, today.day, 12);
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        selectedDate: todayNoon,
-        onDateChanged: (_) {},
-      ),
-    ));
+    await tester.pumpWidget(wrap(DateNavigationHeader(selectedDate: todayNoon, onDateChanged: (_) {})));
 
     final next = navButton(tester, Icons.chevron_right);
     expect(next.onPressed, isNull);
   });
 
   testWidgets('enabled 为 false 时整条禁用', (tester) async {
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        // 用远离今天的过去日期：右箭头本就可点，禁用后必须变灰；
-        // 同时胶囊会出现，验证它只是置灰而非消失（避免宽度跳动）
-        selectedDate: DateTime(2020, 1, 1),
-        onDateChanged: (_) {},
-        enabled: false,
+    await tester.pumpWidget(
+      wrap(
+        DateNavigationHeader(
+          // 用远离今天的过去日期：右箭头本就可点，禁用后必须变灰；
+          // 同时胶囊会出现，验证它只是置灰而非消失（避免宽度跳动）
+          selectedDate: DateTime(2020, 1, 1),
+          onDateChanged: (_) {},
+          enabled: false,
+        ),
       ),
-    ));
+    );
 
     expect(navButton(tester, Icons.chevron_left).onPressed, isNull);
     expect(navButton(tester, Icons.chevron_right).onPressed, isNull);
@@ -91,12 +82,9 @@ void main() {
 
   testWidgets('点「今天」胶囊把日期设为今天 00:00', (tester) async {
     DateTime? changed;
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        selectedDate: DateTime(2026, 1, 1),
-        onDateChanged: (date) => changed = date,
-      ),
-    ));
+    await tester.pumpWidget(
+      wrap(DateNavigationHeader(selectedDate: DateTime(2026, 1, 1), onDateChanged: (date) => changed = date)),
+    );
 
     await tester.tap(todayPill);
     await tester.pump();
@@ -105,35 +93,22 @@ void main() {
   });
 
   testWidgets('选中日期不是今天时显示「今天」胶囊', (tester) async {
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        selectedDate: DateTime(2026, 1, 1),
-        onDateChanged: (_) {},
-      ),
-    ));
+    await tester.pumpWidget(wrap(DateNavigationHeader(selectedDate: DateTime(2026, 1, 1), onDateChanged: (_) {})));
 
     expect(find.byKey(const ValueKey('date_nav_today_text')), findsOneWidget);
   });
 
   testWidgets('已选中今天时不显示「今天」胶囊', (tester) async {
     final today = DateTime.now();
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        selectedDate: DateTime(today.year, today.month, today.day),
-        onDateChanged: (_) {},
-      ),
-    ));
+    await tester.pumpWidget(
+      wrap(DateNavigationHeader(selectedDate: DateTime(today.year, today.month, today.day), onDateChanged: (_) {})),
+    );
 
     expect(find.byKey(const ValueKey('date_nav_today_text')), findsNothing);
   });
 
   testWidgets('整条收进单行 48 高，不再挤占内容空间', (tester) async {
-    await tester.pumpWidget(wrap(
-      DateNavigationHeader(
-        selectedDate: DateTime(2026, 1, 1),
-        onDateChanged: (_) {},
-      ),
-    ));
+    await tester.pumpWidget(wrap(DateNavigationHeader(selectedDate: DateTime(2026, 1, 1), onDateChanged: (_) {})));
 
     expect(tester.getRect(find.byType(DateNavigationHeader)).height, 48);
   });

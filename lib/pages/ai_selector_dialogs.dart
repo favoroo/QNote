@@ -4,14 +4,10 @@ part of 'ai_page.dart';
 class _MultiNoteSelectorDialog extends StatefulWidget {
   final List<Note> notes;
   final List<String> initialSelected;
-  const _MultiNoteSelectorDialog({
-    required this.notes,
-    required this.initialSelected,
-  });
+  const _MultiNoteSelectorDialog({required this.notes, required this.initialSelected});
 
   @override
-  State<_MultiNoteSelectorDialog> createState() =>
-      _MultiNoteSelectorDialogState();
+  State<_MultiNoteSelectorDialog> createState() => _MultiNoteSelectorDialogState();
 }
 
 class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
@@ -26,8 +22,7 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAllSelected =
-        _selected.length == widget.notes.length && widget.notes.isNotEmpty;
+    final isAllSelected = _selected.length == widget.notes.length && widget.notes.isNotEmpty;
 
     return AlertDialog(
       title: Row(
@@ -49,10 +44,7 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
               ),
-              child: Text(
-                isAllSelected ? '取消全选' : '全选',
-                style: const TextStyle(fontSize: 14),
-              ),
+              child: Text(isAllSelected ? '取消全选' : '全选', style: const TextStyle(fontSize: 14)),
             ),
         ],
       ),
@@ -68,17 +60,10 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
                   final isSelected = _selected.contains(note.id);
                   return CheckboxListTile(
                     value: isSelected,
-                    title: Text(
-                      note.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    title: Text(note.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text(
                       DateFormat('MM/dd HH:mm').format(note.updatedAt),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
                     ),
                     onChanged: (v) {
                       setState(() {
@@ -94,14 +79,8 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
               ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _selected),
-          child: Text('确定（${_selected.length}）'),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.pop(context, _selected), child: Text('确定（${_selected.length}）')),
       ],
     );
   }
@@ -110,14 +89,10 @@ class _MultiNoteSelectorDialogState extends State<_MultiNoteSelectorDialog> {
 class _MultiTodoSelectorDialog extends StatefulWidget {
   final List<Todo> todos;
   final List<String> initialSelected;
-  const _MultiTodoSelectorDialog({
-    required this.todos,
-    required this.initialSelected,
-  });
+  const _MultiTodoSelectorDialog({required this.todos, required this.initialSelected});
 
   @override
-  State<_MultiTodoSelectorDialog> createState() =>
-      _MultiTodoSelectorDialogState();
+  State<_MultiTodoSelectorDialog> createState() => _MultiTodoSelectorDialogState();
 }
 
 class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
@@ -132,8 +107,7 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAllSelected =
-        _selected.length == widget.todos.length && widget.todos.isNotEmpty;
+    final isAllSelected = _selected.length == widget.todos.length && widget.todos.isNotEmpty;
 
     return AlertDialog(
       title: Row(
@@ -155,10 +129,7 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
               ),
-              child: Text(
-                isAllSelected ? '取消全选' : '全选',
-                style: const TextStyle(fontSize: 14),
-              ),
+              child: Text(isAllSelected ? '取消全选' : '全选', style: const TextStyle(fontSize: 14)),
             ),
         ],
       ),
@@ -178,18 +149,11 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
                       todo.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        decoration: todo.isCompleted
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
+                      style: TextStyle(decoration: todo.isCompleted ? TextDecoration.lineThrough : null),
                     ),
                     subtitle: Text(
                       todo.isCompleted ? '已完成' : '未完成',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
                     ),
                     onChanged: (v) {
                       setState(() {
@@ -205,14 +169,8 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
               ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(_selected),
-          child: const Text('确定'),
-        ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
+        TextButton(onPressed: () => Navigator.of(context).pop(_selected), child: const Text('确定')),
       ],
     );
   }
@@ -221,18 +179,13 @@ class _MultiTodoSelectorDialogState extends State<_MultiTodoSelectorDialog> {
 class _MultiJournalSelectorDialog extends StatefulWidget {
   final List<Note> journals;
   final List<String> initialSelected;
-  const _MultiJournalSelectorDialog({
-    required this.journals,
-    required this.initialSelected,
-  });
+  const _MultiJournalSelectorDialog({required this.journals, required this.initialSelected});
 
   @override
-  State<_MultiJournalSelectorDialog> createState() =>
-      _MultiJournalSelectorDialogState();
+  State<_MultiJournalSelectorDialog> createState() => _MultiJournalSelectorDialogState();
 }
 
-class _MultiJournalSelectorDialogState
-    extends State<_MultiJournalSelectorDialog> {
+class _MultiJournalSelectorDialogState extends State<_MultiJournalSelectorDialog> {
   late List<String> _selected;
 
   @override
@@ -244,9 +197,7 @@ class _MultiJournalSelectorDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAllSelected =
-        _selected.length == widget.journals.length &&
-        widget.journals.isNotEmpty;
+    final isAllSelected = _selected.length == widget.journals.length && widget.journals.isNotEmpty;
 
     return AlertDialog(
       title: Row(
@@ -268,10 +219,7 @@ class _MultiJournalSelectorDialogState
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
               ),
-              child: Text(
-                isAllSelected ? '取消全选' : '全选',
-                style: const TextStyle(fontSize: 14),
-              ),
+              child: Text(isAllSelected ? '取消全选' : '全选', style: const TextStyle(fontSize: 14)),
             ),
         ],
       ),
@@ -289,19 +237,9 @@ class _MultiJournalSelectorDialogState
                     value: isSelected,
                     title: Row(
                       children: [
-                        const Icon(
-                          Icons.auto_stories_outlined,
-                          size: 16,
-                          color: Color(0xFFE91E63),
-                        ),
+                        const Icon(Icons.auto_stories_outlined, size: 16, color: Color(0xFFE91E63)),
                         const SizedBox(width: 6),
-                        Text(
-                          '${journal.title} 日记',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
+                        Text('${journal.title} 日记', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                       ],
                     ),
                     subtitle: Padding(
@@ -310,10 +248,7 @@ class _MultiJournalSelectorDialogState
                         journal.content.trim(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
                     onChanged: (v) {
@@ -330,14 +265,8 @@ class _MultiJournalSelectorDialogState
               ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _selected),
-          child: Text('确定（${_selected.length}）'),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.pop(context, _selected), child: Text('确定（${_selected.length}）')),
       ],
     );
   }

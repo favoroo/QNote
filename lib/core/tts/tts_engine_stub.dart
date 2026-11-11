@@ -6,19 +6,11 @@ import 'tts_exception.dart';
 /// 环境参与编译（正常构建不会走到），保持与 io/web 实现相同的顶层 API 形状。
 const bool kOnlineSynthesisSupportedImpl = false;
 
-Future<Uint8List> synthesizeOnlineImpl(
-  String text, {
-  required String voice,
-  required double rate,
-}) async {
+Future<Uint8List> synthesizeOnlineImpl(String text, {required String voice, required double rate}) async {
   throw const TtsException('unsupported_platform', '当前平台不支持语音合成');
 }
 
-Future<void> systemSpeakImpl(
-  String text, {
-  required double rate,
-  bool resetQueue = true,
-}) async {
+Future<void> systemSpeakImpl(String text, {required double rate, bool resetQueue = true}) async {
   throw const TtsException('unsupported_platform', '当前平台不支持语音朗读');
 }
 

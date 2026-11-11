@@ -46,11 +46,7 @@ void main() {
           noteListProvider.overrideWith(() => _MockNoteListNotifier([note])),
           folderListProvider.overrideWith(() => _MockFolderListNotifier([])),
         ],
-        child: const MaterialApp(
-          home: Scaffold(
-            body: NotesPage(),
-          ),
-        ),
+        child: const MaterialApp(home: Scaffold(body: NotesPage())),
       ),
     );
 
@@ -87,11 +83,7 @@ void main() {
           noteListProvider.overrideWith(() => _MockNoteListNotifier([])),
           folderListProvider.overrideWith(() => _MockFolderListNotifier([folder])),
         ],
-        child: const MaterialApp(
-          home: Scaffold(
-            body: NotesPage(),
-          ),
-        ),
+        child: const MaterialApp(home: Scaffold(body: NotesPage())),
       ),
     );
 

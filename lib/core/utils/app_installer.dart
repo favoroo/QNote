@@ -19,10 +19,7 @@ class AppInstaller {
     }
 
     try {
-      final result = await _installerChannel.invokeMethod<bool>(
-        'installApk',
-        <String, dynamic>{'filePath': filePath},
-      );
+      final result = await _installerChannel.invokeMethod<bool>('installApk', <String, dynamic>{'filePath': filePath});
       return result ?? false;
     } on PlatformException catch (e, stackTrace) {
       LoggerService.instance.error(
@@ -32,11 +29,7 @@ class AppInstaller {
       );
       return false;
     } catch (e, stackTrace) {
-      LoggerService.instance.error(
-        '调起 APK 安装异常: $e',
-        category: LogCategory.system,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.error('调起 APK 安装异常: $e', category: LogCategory.system, details: stackTrace.toString());
       return false;
     }
   }

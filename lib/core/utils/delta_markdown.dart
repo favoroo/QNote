@@ -21,10 +21,7 @@ String extractPlainTextFromDelta(String deltaJsonStr, {int maxLength = 100}) {
   } catch (_) {
     // 非 delta 内容（Markdown/HTML 等纯文本）：剥离 HTML 标签后再截断，
     // 避免小Q生成的网页源码直接进入搜索摘要
-    var text = deltaJsonStr
-        .replaceAll(RegExp(r'<[^>]*>'), ' ')
-        .replaceAll('\n', ' ')
-        .trim();
+    var text = deltaJsonStr.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll('\n', ' ').trim();
     while (text.contains('  ')) {
       text = text.replaceAll('  ', ' ');
     }
@@ -63,13 +60,14 @@ List<_DeltaLine> _splitDeltaIntoLines(Delta delta) {
       for (var i = 0; i < text.length; i++) {
         if (text[i] == '\n') {
           if (i > start) {
-            currentLine.segments.add(_DeltaSegment(
-              text.substring(start, i),
-              attributes != null ? Map<String, dynamic>.from(attributes) : null,
-            ));
+            currentLine.segments.add(
+              _DeltaSegment(
+                text.substring(start, i),
+                attributes != null ? Map<String, dynamic>.from(attributes) : null,
+              ),
+            );
           }
-          currentLine.lineAttributes =
-              attributes != null ? Map<String, dynamic>.from(attributes) : null;
+          currentLine.lineAttributes = attributes != null ? Map<String, dynamic>.from(attributes) : null;
           lines.add(currentLine);
           currentLine = _DeltaLine();
           start = i + 1;
@@ -77,18 +75,14 @@ List<_DeltaLine> _splitDeltaIntoLines(Delta delta) {
       }
 
       if (start < text.length) {
-        currentLine.segments.add(_DeltaSegment(
-          text.substring(start),
-          attributes != null ? Map<String, dynamic>.from(attributes) : null,
-        ));
+        currentLine.segments.add(
+          _DeltaSegment(text.substring(start), attributes != null ? Map<String, dynamic>.from(attributes) : null),
+        );
       }
     } else {
-      currentLine.segments.add(_DeltaSegment(
-        op.data ?? '',
-        op.attributes != null
-            ? Map<String, dynamic>.from(op.attributes!)
-            : null,
-      ));
+      currentLine.segments.add(
+        _DeltaSegment(op.data ?? '', op.attributes != null ? Map<String, dynamic>.from(op.attributes!) : null),
+      );
     }
   }
 

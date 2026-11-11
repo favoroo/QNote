@@ -33,10 +33,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
           children: [
             Text('加载失败：$e', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: () => ref.invalidate(agentMemoryListProvider),
-              child: const Text('重试'),
-            ),
+            FilledButton.tonal(onPressed: () => ref.invalidate(agentMemoryListProvider), child: const Text('重试')),
           ],
         ),
       ),
@@ -62,10 +59,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('小Q记忆'),
-        centerTitle: false,
-      ),
+      appBar: AppBar(title: const Text('小Q记忆'), centerTitle: false),
       body: body,
     );
   }
@@ -78,17 +72,14 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.psychology_outlined,
-                size: 56, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+            Icon(Icons.psychology_outlined, size: 56, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             Text('还没有任何记忆', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
               '聊天时小Q会自动沉淀你的偏好与约定，每轮对话自动载入。',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
             FilledButton.tonalIcon(
@@ -114,13 +105,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,17 +130,13 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: isOver
-                      ? theme.colorScheme.errorContainer
-                      : theme.colorScheme.surfaceContainerHighest,
+                  color: isOver ? theme.colorScheme.errorContainer : theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   '${doc.usagePercent}% · ${doc.content.length}/$maxChars',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: isOver
-                        ? theme.colorScheme.onErrorContainer
-                        : theme.colorScheme.onSurfaceVariant,
+                    color: isOver ? theme.colorScheme.onErrorContainer : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -167,15 +148,11 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 '暂无记忆条目，聊天时自动沉淀，也可手动添加。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
             )
           else
-            ...doc.entries.map(
-              (entry) => _buildEntryRow(context, doc.category, entry),
-            ),
+            ...doc.entries.map((entry) => _buildEntryRow(context, doc.category, entry)),
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerRight,
@@ -214,10 +191,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
             icon: const Icon(Icons.edit_outlined, size: 20),
             color: theme.colorScheme.onSurfaceVariant,
             tooltip: '编辑',
-            onPressed: () => _showEntryDialog(
-              category: category,
-              initialText: entry,
-            ),
+            onPressed: () => _showEntryDialog(category: category, initialText: entry),
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
@@ -232,10 +206,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
   }
 
   /// 新增/编辑一条记忆的弹窗；编辑时按原文本精准替换
-  Future<void> _showEntryDialog({
-    required String category,
-    String? initialText,
-  }) async {
+  Future<void> _showEntryDialog({required String category, String? initialText}) async {
     final controller = TextEditingController(text: initialText ?? '');
     final confirmed = await showDialog<bool>(
       context: context,
@@ -248,19 +219,11 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
           minLines: 1,
           maxLength: AgentMemoryCategory.maxChars(category),
           keyboardType: TextInputType.multiline,
-          decoration: const InputDecoration(
-            hintText: '例如：习惯晚上 11 点后不安排提醒',
-          ),
+          decoration: const InputDecoration(hintText: '例如：习惯晚上 11 点后不安排提醒'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('保存'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('保存')),
         ],
       ),
     );
@@ -297,10 +260,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
         title: const Text('删除记忆'),
         content: const Text('删除这条记忆？小Q将不再记得。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(dialogContext).colorScheme.error,

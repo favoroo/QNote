@@ -25,8 +25,7 @@ class ObfuscationUtils {
   static String deobfuscate(String obfuscatedText) {
     try {
       // 1. 字符串翻转
-      final base64Str =
-          String.fromCharCodes(obfuscatedText.codeUnits.reversed);
+      final base64Str = String.fromCharCodes(obfuscatedText.codeUnits.reversed);
       // 2. Base64解码
       final xorBytes = base64Decode(base64Str);
       // 3. XOR

@@ -18,17 +18,12 @@ class AiRoles {
   /// 小Q 生图工具使用的模型（需支持 OpenAI 兼容 images/generations）
   final AiModelRef? imageGeneration;
 
-  const AiRoles({
-    this.assistant,
-    this.timelineOptimization,
-    this.imageGeneration,
-  });
+  const AiRoles({this.assistant, this.timelineOptimization, this.imageGeneration});
 
   Map<String, dynamic> toMap() {
     return {
       if (assistant != null) 'assistant': assistant!.encode(),
-      if (timelineOptimization != null)
-        'timelineOptimization': timelineOptimization!.encode(),
+      if (timelineOptimization != null) 'timelineOptimization': timelineOptimization!.encode(),
       if (imageGeneration != null) 'imageGeneration': imageGeneration!.encode(),
     };
   }
@@ -36,16 +31,14 @@ class AiRoles {
   factory AiRoles.fromMap(Map<String, dynamic> map) {
     return AiRoles(
       assistant: AiModelRef.tryParse(map['assistant'] as String?),
-      timelineOptimization:
-          AiModelRef.tryParse(map['timelineOptimization'] as String?),
+      timelineOptimization: AiModelRef.tryParse(map['timelineOptimization'] as String?),
       imageGeneration: AiModelRef.tryParse(map['imageGeneration'] as String?),
     );
   }
 
   String toJson() => jsonEncode(toMap());
 
-  static AiRoles fromJson(String json) =>
-      AiRoles.fromMap(jsonDecode(json) as Map<String, dynamic>);
+  static AiRoles fromJson(String json) => AiRoles.fromMap(jsonDecode(json) as Map<String, dynamic>);
 
   /// 哨兵值：区分「未传参（保持原值）」与「显式传 null（清空绑定）」
   static const Object _unset = Object();
@@ -56,14 +49,11 @@ class AiRoles {
     Object? imageGeneration = _unset,
   }) {
     return AiRoles(
-      assistant:
-          identical(assistant, _unset) ? this.assistant : assistant as AiModelRef?,
+      assistant: identical(assistant, _unset) ? this.assistant : assistant as AiModelRef?,
       timelineOptimization: identical(timelineOptimization, _unset)
           ? this.timelineOptimization
           : timelineOptimization as AiModelRef?,
-      imageGeneration: identical(imageGeneration, _unset)
-          ? this.imageGeneration
-          : imageGeneration as AiModelRef?,
+      imageGeneration: identical(imageGeneration, _unset) ? this.imageGeneration : imageGeneration as AiModelRef?,
     );
   }
 }
@@ -81,11 +71,7 @@ class AiRoleSettings {
   });
 
   Map<String, dynamic> toMap() {
-    return {
-      'temperature': temperature,
-      'maxTokens': maxTokens,
-      'extractImages': extractImages,
-    };
+    return {'temperature': temperature, 'maxTokens': maxTokens, 'extractImages': extractImages};
   }
 
   factory AiRoleSettings.fromMap(Map<String, dynamic> map) {
@@ -96,11 +82,7 @@ class AiRoleSettings {
     );
   }
 
-  AiRoleSettings copyWith({
-    double? temperature,
-    int? maxTokens,
-    bool? extractImages,
-  }) {
+  AiRoleSettings copyWith({double? temperature, int? maxTokens, bool? extractImages}) {
     return AiRoleSettings(
       temperature: temperature ?? this.temperature,
       maxTokens: maxTokens ?? this.maxTokens,
@@ -124,22 +106,15 @@ class AiTemperatures {
     ),
   });
 
-  AiTemperatures copyWith({
-    AiRoleSettings? assistant,
-    AiRoleSettings? timelineOptimization,
-  }) {
+  AiTemperatures copyWith({AiRoleSettings? assistant, AiRoleSettings? timelineOptimization}) {
     return AiTemperatures(
       assistant: assistant ?? this.assistant,
-      timelineOptimization:
-          timelineOptimization ?? this.timelineOptimization,
+      timelineOptimization: timelineOptimization ?? this.timelineOptimization,
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {
-      'assistant': assistant.toMap(),
-      'timelineOptimization': timelineOptimization.toMap(),
-    };
+    return {'assistant': assistant.toMap(), 'timelineOptimization': timelineOptimization.toMap()};
   }
 
   factory AiTemperatures.fromMap(Map<String, dynamic> map) {
@@ -154,24 +129,16 @@ class AiTemperatures {
 
     var timelineSettings = map['timelineOptimization'] != null
         ? AiRoleSettings.fromMap(map['timelineOptimization'] as Map<String, dynamic>)
-        : const AiRoleSettings(
-            temperature: 0.01,
-            maxTokens: 12000,
-            extractImages: true,
-          );
+        : const AiRoleSettings(temperature: 0.01, maxTokens: 12000, extractImages: true);
     // 同上：老用户存的 2048 等低预算统一拉到 12000，保证推理模型思维链不被截断
     if (timelineSettings.maxTokens < 12000) {
       timelineSettings = timelineSettings.copyWith(maxTokens: 12000);
     }
 
-    return AiTemperatures(
-      assistant: assistantSettings,
-      timelineOptimization: timelineSettings,
-    );
+    return AiTemperatures(assistant: assistantSettings, timelineOptimization: timelineSettings);
   }
 
   String toJson() => jsonEncode(toMap());
 
-  static AiTemperatures fromJson(String json) =>
-      AiTemperatures.fromMap(jsonDecode(json) as Map<String, dynamic>);
+  static AiTemperatures fromJson(String json) => AiTemperatures.fromMap(jsonDecode(json) as Map<String, dynamic>);
 }

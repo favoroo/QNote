@@ -26,10 +26,7 @@ class DiaryRecordFabStyle {
   final List<BoxShadow> boxShadow;
   final Color dotColor;
 
-  factory DiaryRecordFabStyle.resolve(
-    ThemeData theme, {
-    required bool hasSelection,
-  }) {
+  factory DiaryRecordFabStyle.resolve(ThemeData theme, {required bool hasSelection}) {
     final scheme = theme.colorScheme;
     return DiaryRecordFabStyle(
       // 主题里的 primaryContainer 是带 alpha 的强调色（见 app_theme.dart），
@@ -37,13 +34,9 @@ class DiaryRecordFabStyle {
       // 时间叠在一起。先把它混到不透明的 surface 上，色调不变但彻底挡住背后。
       // 选中态用主色容器而不是主色实心：它是过渡状态，不该和右侧实心的智能提取
       // 按钮抢同样的视觉重量。
-      background: hasSelection
-          ? Color.alphaBlend(scheme.primaryContainer, scheme.surface)
-          : scheme.surface,
+      background: hasSelection ? Color.alphaBlend(scheme.primaryContainer, scheme.surface) : scheme.surface,
       foreground: hasSelection ? scheme.primary : scheme.onSurfaceVariant,
-      border: hasSelection
-          ? null
-          : Border.all(color: scheme.outlineVariant, width: 1.5),
+      border: hasSelection ? null : Border.all(color: scheme.outlineVariant, width: 1.5),
       boxShadow: [
         BoxShadow(
           color: scheme.shadow.withValues(alpha: hasSelection ? 0.10 : 0.06),
@@ -84,8 +77,7 @@ class DiaryRecordFab extends ConsumerStatefulWidget {
   ConsumerState<DiaryRecordFab> createState() => _DiaryRecordFabState();
 }
 
-class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab>
-    with SingleTickerProviderStateMixin {
+class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab> with SingleTickerProviderStateMixin {
   /// 胶囊 morph 时长与曲线。
   ///
   /// 这里是整段交互的主角，宁慢勿快：0.56s 配 M3 emphasized（起步轻、中段
@@ -115,15 +107,9 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab>
   @override
   void initState() {
     super.initState();
-    _bounceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 360),
-    );
+    _bounceController = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
     _bounce = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.02).chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 35,
-      ),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.02).chain(CurveTween(curve: Curves.easeOutCubic)), weight: 35),
       TweenSequenceItem(
         tween: Tween(begin: 1.02, end: 1.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 65,
@@ -142,9 +128,7 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab>
     final theme = Theme.of(context);
     final selection = ref.watch(diaryInputTimeProvider);
     // 只关心「草稿是不是空的」：默认 watch 会让按钮跟着每一次打字重建。
-    final hasDraft = ref.watch(
-      diaryComposeDraftProvider.select((draft) => !draft.isEmpty),
-    );
+    final hasDraft = ref.watch(diaryComposeDraftProvider.select((draft) => !draft.isEmpty));
     final hasSelection = selection != null;
 
     // 从无到有的那一次转换才回弹：改时间、改区间都不该反复弹。
@@ -170,22 +154,13 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab>
 
     return AnimatedBuilder(
       animation: _bounce,
-      builder: (context, child) => Transform.scale(
-        scale: reduceMotion ? 1 : _bounce.value,
-        child: child,
-      ),
+      builder: (context, child) => Transform.scale(scale: reduceMotion ? 1 : _bounce.value, child: child),
       // morph 的尺寸动画在 _buildBody 内部（贴着装饰层），这里只留按压反馈。
       child: AnimatedScale(
         scale: _pressed ? 0.95 : 1,
         duration: reduceMotion ? Duration.zero : _pressDuration,
         curve: Curves.easeOutCubic,
-        child: _buildBody(
-          theme,
-          label,
-          hasSelection: hasSelection,
-          hasDraft: hasDraft,
-          reduceMotion: reduceMotion,
-        ),
+        child: _buildBody(theme, label, hasSelection: hasSelection, hasDraft: hasDraft, reduceMotion: reduceMotion),
       ),
     );
   }
@@ -261,8 +236,7 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab>
                               alignment: Alignment.centerLeft,
                               clipBehavior: Clip.none,
                               children: [
-                                for (final child in previous)
-                                  Positioned(left: 0, top: 0, bottom: 0, child: child),
+                                for (final child in previous) Positioned(left: 0, top: 0, bottom: 0, child: child),
                                 ?current,
                               ],
                             ),
@@ -286,10 +260,7 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab>
                                     const SizedBox(width: 2),
                                     _SelectionLabel(label: label, foreground: style.foreground),
                                     const SizedBox(width: 2),
-                                    _ClearSelectionButton(
-                                      foreground: style.foreground,
-                                      onTap: _clearSelection,
-                                    ),
+                                    _ClearSelectionButton(foreground: style.foreground, onTap: _clearSelection),
                                   ],
                                 ),
                         ),
@@ -349,10 +320,7 @@ class DiaryRecordFabPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final selection = this.selection;
-    final style = DiaryRecordFabStyle.resolve(
-      theme,
-      hasSelection: selection != null,
-    );
+    final style = DiaryRecordFabStyle.resolve(theme, hasSelection: selection != null);
     final now = DateTime.now();
     final label = selection == null
         ? null
@@ -380,10 +348,7 @@ class DiaryRecordFabPreview extends StatelessWidget {
                       const SizedBox(width: 2),
                       _SelectionLabel(label: label, foreground: style.foreground),
                       const SizedBox(width: 2),
-                      _ClearSelectionButton(
-                        foreground: style.foreground,
-                        onTap: () {},
-                      ),
+                      _ClearSelectionButton(foreground: style.foreground, onTap: () {}),
                     ],
                   ],
                 ),
@@ -413,10 +378,7 @@ class DiaryRecordFabPreview extends StatelessWidget {
 /// 胶囊里的清除钮：把「记哪一刻」和「取消这次时间选择」分成两个可点区域，
 /// 点时间开面板、点 × 取消选择，互不误触。
 class _ClearSelectionButton extends StatefulWidget {
-  const _ClearSelectionButton({
-    required this.foreground,
-    required this.onTap,
-  });
+  const _ClearSelectionButton({required this.foreground, required this.onTap});
 
   final Color foreground;
   final VoidCallback onTap;
@@ -451,10 +413,7 @@ class _ClearSelectionButtonState extends State<_ClearSelectionButton> {
               child: Container(
                 width: 18,
                 height: 18,
-                decoration: BoxDecoration(
-                  color: widget.foreground.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: widget.foreground.withValues(alpha: 0.12), shape: BoxShape.circle),
                 child: Icon(Icons.close_rounded, size: 13, color: widget.foreground),
               ),
             ),
@@ -489,8 +448,7 @@ class _SelectionLabel extends StatelessWidget {
           alignment: Alignment.centerLeft,
           clipBehavior: Clip.none,
           children: [
-            for (final child in previous)
-              Positioned(left: 0, top: 0, bottom: 0, child: child),
+            for (final child in previous) Positioned(left: 0, top: 0, bottom: 0, child: child),
             ?current,
           ],
         ),
@@ -498,10 +456,7 @@ class _SelectionLabel extends StatelessWidget {
       transitionBuilder: (child, animation) => FadeTransition(
         opacity: animation,
         child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.12, 0),
-            end: Offset.zero,
-          ).animate(animation),
+          position: Tween<Offset>(begin: const Offset(0.12, 0), end: Offset.zero).animate(animation),
           child: child,
         ),
       ),
@@ -550,4 +505,3 @@ class _SelectionLabel extends StatelessWidget {
     );
   }
 }
-

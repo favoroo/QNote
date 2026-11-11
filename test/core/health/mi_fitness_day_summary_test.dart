@@ -4,11 +4,8 @@ import 'package:qnote_flutter/core/health/mi_fitness_auth_service.dart';
 
 /// 按 key 返回预置数据、并可指定某些 key 抛异常的假客户端（不触网）
 class _StubMiFitnessApiClient extends MiFitnessApiClient {
-  _StubMiFitnessApiClient({
-    required this.dataByKey,
-    this.failingKeys = const {},
-    this.authFailingKeys = const {},
-  }) : super(MiFitnessAuthService());
+  _StubMiFitnessApiClient({required this.dataByKey, this.failingKeys = const {}, this.authFailingKeys = const {}})
+    : super(MiFitnessAuthService());
 
   final Map<String, List<Map<String, dynamic>>> dataByKey;
   final Set<String> failingKeys;
@@ -34,10 +31,10 @@ class _StubMiFitnessApiClient extends MiFitnessApiClient {
 
 /// 一条最小可用的分钟步数样本（value 为云端原样的 JSON 字符串）
 Map<String, dynamic> _stepItem(int epochSec, int steps) => {
-      'time': epochSec,
-      'sid': 'hlth.gen_1',
-      'value': '{"steps":$steps,"distance":0.8,"calories":0.03}',
-    };
+  'time': epochSec,
+  'sid': 'hlth.gen_1',
+  'value': '{"steps":$steps,"distance":0.8,"calories":0.03}',
+};
 
 void main() {
   final date = DateTime(2026, 9, 25);
@@ -48,21 +45,10 @@ void main() {
     test('所有指标一起失败时抛异常，而不是返回全零汇总覆盖已有数据', () async {
       final client = _StubMiFitnessApiClient(
         dataByKey: {},
-        failingKeys: {
-          'steps',
-          'sleep',
-          'heart_rate',
-          'spo2',
-          'stress',
-          'valid_stand',
-          'resting_heart_rate',
-        },
+        failingKeys: {'steps', 'sleep', 'heart_rate', 'spo2', 'stress', 'valid_stand', 'resting_heart_rate'},
       );
 
-      expect(
-        () => client.fetchDaySummary(date),
-        throwsA(isA<Exception>()),
-      );
+      expect(() => client.fetchDaySummary(date), throwsA(isA<Exception>()));
     });
 
     test('个别指标不支持（血氧/压力抛错）时当天仍可同步，其余数据正常解析', () async {
@@ -100,9 +86,7 @@ void main() {
 
       await expectLater(
         client.fetchDaySummary(date),
-        throwsA(
-          isA<MiFitnessAuthException>().having((e) => e.needsRelogin, 'needsRelogin', isTrue),
-        ),
+        throwsA(isA<MiFitnessAuthException>().having((e) => e.needsRelogin, 'needsRelogin', isTrue)),
       );
     });
   });

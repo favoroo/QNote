@@ -88,9 +88,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
               title: Text('自动朗读回复', style: theme.textTheme.bodyLarge),
               subtitle: Text(
                 '回复后朗读，可在对话界面右上角切换',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ),
           ),
@@ -110,21 +108,14 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                       _current.voice == QVoiceConfig.systemVoiceId
                           ? '系统语音'
                           : TtsService.voiceById(_current.voice).label,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
                     ),
                     const Icon(Icons.chevron_right),
                   ],
                 ),
                 onTap: _showVoicePicker,
               ),
-              Divider(
-                height: 1,
-                indent: 16,
-                endIndent: 16,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
+              Divider(height: 1, indent: 16, endIndent: 16, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                 title: Text('语速', style: theme.textTheme.bodyLarge),
@@ -133,9 +124,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                   children: [
                     Text(
                       QVoiceConfig.rateOptions[_current.rate] ?? '正常',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
                     ),
                     const Icon(Icons.chevron_right),
                   ],
@@ -153,10 +142,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('小Q语音'),
-        centerTitle: false,
-      ),
+      appBar: AppBar(title: const Text('小Q语音'), centerTitle: false),
       body: body,
     );
   }
@@ -167,17 +153,12 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       clipBehavior: Clip.antiAlias,
       // ListTile 的水波纹画在最近的 Material 上，包一层透明 Material
       // 避免被带背景色的 DecoratedBox 遮挡（调试断言要求）
-      child: Material(
-        type: MaterialType.transparency,
-        child: child,
-      ),
+      child: Material(type: MaterialType.transparency, child: child),
     );
   }
 
@@ -218,26 +199,16 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                     children: [
                       // 系统语音：设备自带引擎，离线可用，无网络依赖
                       ListTile(
-                        leading: const _PreviewButton(
-                          voiceId: QVoiceConfig.systemVoiceId,
-                        ),
+                        leading: const _PreviewButton(voiceId: QVoiceConfig.systemVoiceId),
                         title: const Text('系统语音'),
                         subtitle: Text(
                           '设备自带 · 离线可用',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                         trailing: _current.voice == QVoiceConfig.systemVoiceId
-                            ? Icon(
-                                Icons.check_circle,
-                                color: theme.colorScheme.primary,
-                              )
+                            ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
                             : null,
-                        onTap: () => _selectVoice(
-                          QVoiceConfig.systemVoiceId,
-                          sheetSetState,
-                        ),
+                        onTap: () => _selectVoice(QVoiceConfig.systemVoiceId, sheetSetState),
                       ),
                       for (final voice in TtsService.builtinVoices)
                         ListTile(
@@ -245,15 +216,10 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                           title: Text(voice.label),
                           subtitle: Text(
                             voice.note,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                           ),
                           trailing: voice.id == _current.voice
-                              ? Icon(
-                                  Icons.check_circle,
-                                  color: theme.colorScheme.primary,
-                                )
+                              ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
                               : null,
                           onTap: () => _selectVoice(voice.id, sheetSetState),
                         ),
@@ -310,15 +276,10 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
 
   /// 试播固定示例句：正在播这一条就停下（再点一次即重播），播别的试听时
   /// 由播放器单通道逻辑自动切换
-  void _preview(
-    String previewKey, {
-    String? voiceOverride,
-    double? rateOverride,
-  }) {
+  void _preview(String previewKey, {String? voiceOverride, double? rateOverride}) {
     final notifier = ref.read(ttsPlaybackProvider.notifier);
     final playback = ref.read(ttsPlaybackProvider);
-    if (playback.messageId == previewKey &&
-        playback.status != TtsPlaybackStatus.idle) {
+    if (playback.messageId == previewKey && playback.status != TtsPlaybackStatus.idle) {
       notifier.stop();
       return;
     }
@@ -356,27 +317,19 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                       ListTile(
                         // leading 与 trailing 等宽常驻：勾选图标出现或消失时
                         // 标题可用宽度不变，档位名就不会左右挪位
-                        leading: const SizedBox(
-                          width: _kRateSlotWidth,
-                          height: _kRateSlotWidth,
-                        ),
+                        leading: const SizedBox(width: _kRateSlotWidth, height: _kRateSlotWidth),
                         titleAlignment: ListTileTitleAlignment.center,
                         title: Text(entry.value, textAlign: TextAlign.center),
                         subtitle: Text(
                           '${entry.key} 倍速',
                           textAlign: TextAlign.center,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                         trailing: SizedBox(
                           width: _kRateSlotWidth,
                           height: _kRateSlotWidth,
                           child: entry.key == _current.rate
-                              ? Icon(
-                                  Icons.check_circle,
-                                  color: theme.colorScheme.primary,
-                                )
+                              ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
                               : null,
                         ),
                         onTap: () => _selectRate(entry.key, sheetSetState),
@@ -420,9 +373,7 @@ class _SheetPanel extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.2,
-                  ),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -455,10 +406,8 @@ class _PreviewButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final previewKey = _voicePreviewKey(voiceId);
     final playback = ref.watch(ttsPlaybackProvider);
-    final isPlaying = playback.messageId == previewKey &&
-        playback.status == TtsPlaybackStatus.playing;
-    final isBusy = playback.messageId == previewKey &&
-        playback.status == TtsPlaybackStatus.synthesizing;
+    final isPlaying = playback.messageId == previewKey && playback.status == TtsPlaybackStatus.playing;
+    final isBusy = playback.messageId == previewKey && playback.status == TtsPlaybackStatus.synthesizing;
 
     return IconButton.filledTonal(
       iconSize: 20,
@@ -468,11 +417,7 @@ class _PreviewButton extends ConsumerWidget {
           notifier.stop();
           return;
         }
-        notifier.speakMessage(
-          previewKey,
-          previewText,
-          voiceOverride: voiceId,
-        );
+        notifier.speakMessage(previewKey, previewText, voiceOverride: voiceId);
       },
       // 合成需一次网络请求，转圈让"延迟"变成可见的加载而非卡住
       icon: AnimatedSwitcher(
@@ -484,10 +429,7 @@ class _PreviewButton extends ConsumerWidget {
                 height: 14,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : Icon(
-                isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                key: ValueKey(isPlaying),
-              ),
+            : Icon(isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded, key: ValueKey(isPlaying)),
       ),
     );
   }

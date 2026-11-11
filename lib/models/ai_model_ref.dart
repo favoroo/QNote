@@ -22,8 +22,7 @@ class AiModelRef {
   static const String _separator = '::';
 
   /// 路由组引用：`providerId` 位置放组 id
-  factory AiModelRef.routeGroup(String groupId) =>
-      AiModelRef(providerId: groupId, modelName: groupMarker);
+  factory AiModelRef.routeGroup(String groupId) => AiModelRef(providerId: groupId, modelName: groupMarker);
 
   /// 是否指向模型路由组（而非具体模型）
   bool get isRouteGroup => modelName == groupMarker;
@@ -45,9 +44,7 @@ class AiModelRef {
 
   @override
   bool operator ==(Object other) =>
-      other is AiModelRef &&
-      other.providerId == providerId &&
-      other.modelName == modelName;
+      other is AiModelRef && other.providerId == providerId && other.modelName == modelName;
 
   @override
   int get hashCode => Object.hash(providerId, modelName);

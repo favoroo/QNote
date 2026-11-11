@@ -7,12 +7,7 @@ class ToolCall {
   final String name;
   final Map<String, dynamic> arguments;
 
-  const ToolCall({
-    required this.id,
-    this.type = 'function',
-    required this.name,
-    required this.arguments,
-  });
+  const ToolCall({required this.id, this.type = 'function', required this.name, required this.arguments});
 
   Map<String, dynamic> toMap() {
     return {
@@ -55,8 +50,7 @@ class ChatMessage {
   final String? toolName; // 当 role == 'tool' 时的工具名称
   final bool? isError; // 当 role == 'tool' 时表示执行是否出错
   final Map<String, dynamic>? uiDetails; // 供客户端 UI 渲染的结构化卡片数据
-  final String?
-  undoLog; // 仅用户消息：本轮对话 VFS 变更快照（WorkspaceUndoEntry 列表 JSON），支撑撤回/再次编辑
+  final String? undoLog; // 仅用户消息：本轮对话 VFS 变更快照（WorkspaceUndoEntry 列表 JSON），支撑撤回/再次编辑
 
   ChatMessage({
     required this.role,
@@ -81,8 +75,7 @@ class ChatMessage {
       if (images != null && images!.isNotEmpty) 'images': images,
       if (thought != null && thought!.isNotEmpty) 'thought': thought,
       if (thoughtSeconds != null) 'thought_seconds': thoughtSeconds,
-      if (toolCalls != null && toolCalls!.isNotEmpty)
-        'tool_calls': toolCalls!.map((t) => t.toMap()).toList(),
+      if (toolCalls != null && toolCalls!.isNotEmpty) 'tool_calls': toolCalls!.map((t) => t.toMap()).toList(),
       if (toolCallId != null) 'tool_call_id': toolCallId,
       if (toolName != null) 'tool_name': toolName,
       if (isError != null) 'is_error': isError,
@@ -108,17 +101,14 @@ class ChatMessage {
     }
 
     Map<String, dynamic>? uiDetails;
-    if (map['ui_details'] != null &&
-        map['ui_details'] is Map<String, dynamic>) {
+    if (map['ui_details'] != null && map['ui_details'] is Map<String, dynamic>) {
       uiDetails = map['ui_details'] as Map<String, dynamic>;
     }
 
     return ChatMessage(
       role: map['role'] as String,
       content: map['content'] as String? ?? '',
-      timestamp: map['timestamp'] != null
-          ? DateTime.parse(map['timestamp'] as String)
-          : null,
+      timestamp: map['timestamp'] != null ? DateTime.parse(map['timestamp'] as String) : null,
       images: images,
       thought: map['thought'] as String?,
       thoughtSeconds: (map['thought_seconds'] as num?)?.toInt(),
@@ -207,14 +197,10 @@ class ChatSession {
       if (messagesRaw is String) {
         try {
           final decoded = jsonDecode(messagesRaw) as List;
-          messages = decoded
-              .map((m) => ChatMessage.fromMap(m as Map<String, dynamic>))
-              .toList();
+          messages = decoded.map((m) => ChatMessage.fromMap(m as Map<String, dynamic>)).toList();
         } catch (_) {}
       } else if (messagesRaw is List) {
-        messages = messagesRaw
-            .map((m) => ChatMessage.fromMap(m as Map<String, dynamic>))
-            .toList();
+        messages = messagesRaw.map((m) => ChatMessage.fromMap(m as Map<String, dynamic>)).toList();
       }
     }
 
@@ -232,8 +218,7 @@ class ChatSession {
 
   /// 标志位收口：库里是 0/1，但旧备份与对端 JSON 可能直接写 true/false，
   /// 用 `as int?` 读到 bool 会当场抛；缺键（迁移前的行、旧版本备份）按未置顶处理。
-  static bool _flagOf(Object? value) =>
-      value is bool ? value : (value as int? ?? 0) != 0;
+  static bool _flagOf(Object? value) => value is bool ? value : (value as int? ?? 0) != 0;
 
   ChatSession copyWith({
     String? id,

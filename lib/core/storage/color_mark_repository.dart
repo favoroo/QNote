@@ -16,11 +16,7 @@ class ColorMarkRepository {
   Future<DateColorMark?> getByDate(DateTime date) async {
     final db = await _db;
     final dateStr = date.toIso8601String().split('T').first;
-    final results = await db.query(
-      'date_color_marks',
-      where: 'date = ?',
-      whereArgs: [dateStr],
-    );
+    final results = await db.query('date_color_marks', where: 'date = ?', whereArgs: [dateStr]);
     if (results.isEmpty) return null;
     return DateColorMark.fromMap(results.first);
   }
@@ -33,41 +29,23 @@ class ColorMarkRepository {
 
   Future<void> insert(DateColorMark mark) async {
     final db = await _db;
-    await db.insert('date_color_marks', mark.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
-    await _syncLog.logChange(
-      tableName: 'date_color_marks',
-      recordId: mark.id,
-      operation: 'insert',
-      data: mark.toMap(),
-    );
+    await db.insert('date_color_marks', mark.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    await _syncLog.logChange(tableName: 'date_color_marks', recordId: mark.id, operation: 'insert', data: mark.toMap());
   }
 
   Future<void> delete(String id) async {
     final db = await _db;
     await db.delete('date_color_marks', where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: 'date_color_marks',
-      recordId: id,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: 'date_color_marks', recordId: id, operation: 'delete');
   }
 
   Future<void> deleteByDate(DateTime date) async {
     final db = await _db;
     final dateStr = date.toIso8601String().split('T').first;
-    final existing = await db.query(
-      'date_color_marks',
-      where: 'date = ?',
-      whereArgs: [dateStr],
-    );
+    final existing = await db.query('date_color_marks', where: 'date = ?', whereArgs: [dateStr]);
     await db.delete('date_color_marks', where: 'date = ?', whereArgs: [dateStr]);
     for (final mark in existing) {
-      await _syncLog.logChange(
-        tableName: 'date_color_marks',
-        recordId: mark['id'] as String,
-        operation: 'delete',
-      );
+      await _syncLog.logChange(tableName: 'date_color_marks', recordId: mark['id'] as String, operation: 'delete');
     }
   }
 }

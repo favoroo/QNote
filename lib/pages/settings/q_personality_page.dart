@@ -104,10 +104,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
       final snapshot = await _refreshFromStore();
       if (!mounted) return;
       if (text.isEmpty) {
-        Toast.warning(
-          context,
-          '自定义人格已清空，回退为「${snapshot.effective.name}」',
-        );
+        Toast.warning(context, '自定义人格已清空，回退为「${snapshot.effective.name}」');
       } else if (alsoActivate) {
         Toast.success(context, '已保存并启用，下轮生效');
       } else {
@@ -128,13 +125,8 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
             children: [
               _buildEffectiveCard(context),
               const SizedBox(height: 12),
-              ...QPersonalities.presets.map(
-                (p) => _buildPresetCard(context, p),
-              ),
-              if (_activeId == QPersonalities.customId) ...[
-                const SizedBox(height: 12),
-                _buildCustomEditor(context),
-              ],
+              ...QPersonalities.presets.map((p) => _buildPresetCard(context, p)),
+              if (_activeId == QPersonalities.customId) ...[const SizedBox(height: 12), _buildCustomEditor(context)],
               const SizedBox(height: 20),
             ],
           );
@@ -176,18 +168,9 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.auto_awesome_rounded,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
+              Icon(Icons.auto_awesome_rounded, size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
-              Text(
-                '当前生效个性',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('当前生效个性', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const Spacer(),
               Text(
                 effective.name,
@@ -208,18 +191,12 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 16,
-                    color: theme.colorScheme.onTertiaryContainer,
-                  ),
+                  Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.onTertiaryContainer),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '描述为空，仍按「${effective.name}」说话；填写后点「保存并启用」。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onTertiaryContainer),
                     ),
                   ),
                 ],
@@ -229,10 +206,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
           const SizedBox(height: 10),
           Text(
             effective.prompt,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.5),
             maxLines: 6,
             overflow: TextOverflow.ellipsis,
           ),
@@ -270,9 +244,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
             decoration: BoxDecoration(
               color: selected
                   ? (isDark
-                        ? theme.colorScheme.surfaceContainerHigh.withValues(
-                            alpha: 0.6,
-                          )
+                        ? theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.6)
                         : theme.colorScheme.primary.withValues(alpha: 0.035))
                   : theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
@@ -285,25 +257,19 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
               boxShadow: selected
                   ? [
                       BoxShadow(
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: isDark ? 0.20 : 0.08,
-                        ),
+                        color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.20 : 0.08),
                         blurRadius: 14,
                         offset: const Offset(0, 4),
                       ),
                       BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: isDark ? 0.15 : 0.02,
-                        ),
+                        color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.02),
                         blurRadius: 4,
                         offset: const Offset(0, 1),
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: isDark ? 0.10 : 0.02,
-                        ),
+                        color: Colors.black.withValues(alpha: isDark ? 0.10 : 0.02),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -312,13 +278,9 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
             child: Row(
               children: [
                 Icon(
-                  selected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_unchecked_rounded,
+                  selected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
                   size: 22,
-                  color: selected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.outlineVariant.withValues(alpha: 0.9),
+                  color: selected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.9),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -331,26 +293,17 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                             child: Text(
                               preset.name,
                               style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: selected
-                                    ? FontWeight.bold
-                                    : FontWeight.w600,
-                                color: selected
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.onSurface,
+                                fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                                color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
                               ),
                             ),
                           ),
                           if (selected) ...[
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 1.5,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withValues(
-                                  alpha: isDark ? 0.20 : 0.10,
-                                ),
+                                color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.20 : 0.10),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -369,9 +322,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                       const SizedBox(height: 4),
                       Text(
                         preset.description,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -393,9 +344,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.02),
@@ -407,12 +356,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '自定义人格描述',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text('自定义人格描述', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           TextField(
             controller: _customController,
@@ -422,29 +366,19 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
             textInputAction: TextInputAction.newline,
             // 实时回显尾部语气摘要预览，让用户看到这句话将如何被钉在提示词结尾
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              hintText: '例如：说话带点幽默感的极简主义助手，爱用短句，偶尔打比方',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(hintText: '例如：说话带点幽默感的极简主义助手，爱用短句，偶尔打比方', border: OutlineInputBorder()),
           ),
           if (_customController.text.trim().isNotEmpty) ...[
             const SizedBox(height: 4),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.arrow_drop_down_circle_outlined,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                Icon(Icons.arrow_drop_down_circle_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     '结尾复述句：${QPersonalityService.digestOf(_customController.text)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      height: 1.45,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.45),
                   ),
                 ),
               ],
@@ -454,15 +388,9 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              OutlinedButton(
-                onPressed: () => _saveCustomPrompt(),
-                child: const Text('保存'),
-              ),
+              OutlinedButton(onPressed: () => _saveCustomPrompt(), child: const Text('保存')),
               const SizedBox(width: 10),
-              FilledButton.tonal(
-                onPressed: () => _saveCustomPrompt(alsoActivate: true),
-                child: const Text('保存并启用'),
-              ),
+              FilledButton.tonal(onPressed: () => _saveCustomPrompt(alsoActivate: true), child: const Text('保存并启用')),
             ],
           ),
         ],

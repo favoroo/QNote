@@ -31,11 +31,7 @@ class AiRoleResolution {
 ///
 /// 厂商被手动停用时也算「当前无效」：界面会显示成跟随默认模型，真正发信时也
 /// 确实不会用到它。绑定本身不被清理（见 [isBindingResolvable]）。
-bool isBindingUsable(
-  AiModelRef? ref,
-  List<AiProvider> providers,
-  List<AiRouteGroup> groups,
-) {
+bool isBindingUsable(AiModelRef? ref, List<AiProvider> providers, List<AiRouteGroup> groups) {
   if (ref == null) return false;
   if (ref.isRouteGroup) {
     final group = groups.where((g) => g.id == ref.providerId).firstOrNull;
@@ -43,27 +39,20 @@ bool isBindingUsable(
     return hasResolvableMember(group, providers);
   }
   final provider = providers.where((p) => p.id == ref.providerId).firstOrNull;
-  return provider != null &&
-      provider.enabled &&
-      provider.hasModel(ref.modelName);
+  return provider != null && provider.enabled && provider.hasModel(ref.modelName);
 }
 
 /// 绑定是否仍指向存在的厂商/组与模型（**忽略**厂商的停用开关）
 ///
 /// 供「清理陈旧绑定」使用：停用厂商是临时动作，绑定要留到再次启用时复用，
 /// 只有厂商/组被删、或模型被逐条停用才算真的失效。
-bool isBindingResolvable(
-  AiModelRef? ref,
-  List<AiProvider> providers,
-  List<AiRouteGroup> groups,
-) {
+bool isBindingResolvable(AiModelRef? ref, List<AiProvider> providers, List<AiRouteGroup> groups) {
   if (ref == null) return false;
   if (ref.isRouteGroup) {
     final group = groups.where((g) => g.id == ref.providerId).firstOrNull;
     if (group == null) return false;
     for (final member in group.enabledMembers) {
-      final provider =
-          providers.where((p) => p.id == member.providerId).firstOrNull;
+      final provider = providers.where((p) => p.id == member.providerId).firstOrNull;
       if (provider != null && provider.hasModel(member.modelName)) return true;
     }
     return false;
@@ -77,11 +66,8 @@ bool isBindingResolvable(
 /// 只做结构性校验，不看冷却状态：冷却中的组仍是「配置有效」，只是暂时不用它。
 bool hasResolvableMember(AiRouteGroup group, List<AiProvider> providers) {
   for (final member in group.enabledMembers) {
-    final provider =
-        providers.where((p) => p.id == member.providerId).firstOrNull;
-    if (provider != null &&
-        provider.enabled &&
-        provider.hasModel(member.modelName)) {
+    final provider = providers.where((p) => p.id == member.providerId).firstOrNull;
+    if (provider != null && provider.enabled && provider.hasModel(member.modelName)) {
       return true;
     }
   }
@@ -165,8 +151,7 @@ class AiRoleService {
     // 已有用户：如果 timelineOptimization.extractImages 为 false，升级为 true
     if (!existingTemps.timelineOptimization.extractImages) {
       final updated = existingTemps.copyWith(
-        timelineOptimization:
-            existingTemps.timelineOptimization.copyWith(extractImages: true),
+        timelineOptimization: existingTemps.timelineOptimization.copyWith(extractImages: true),
       );
       await _repo.saveAiTemperatures(updated);
     }
@@ -204,8 +189,7 @@ class AiRoleService {
       updated = updated.copyWith(timelineOptimization: null);
       changed = true;
     }
-    if (roles.imageGeneration != null &&
-        !isBindingResolvable(roles.imageGeneration, providers, groups)) {
+    if (roles.imageGeneration != null && !isBindingResolvable(roles.imageGeneration, providers, groups)) {
       updated = updated.copyWith(imageGeneration: null);
       changed = true;
     }
@@ -281,25 +265,19 @@ class AiRoleService {
   ///
   /// [preferVision] 表示本次请求是否带图片：为真时路由组优先选支持识图的成员
   /// （小Q 主对话/悬浮窗在构建上下文时已经知道本轮有没有图片）。
-  Future<AiRoleResolution> resolveForRole(
-    String role, {
-    bool preferVision = false,
-  }) async {
+  Future<AiRoleResolution> resolveForRole(String role, {bool preferVision = false}) async {
     final providers = await _providers.getAll();
     final groups = await _groups.getAll();
     final ref = await boundRefForRole(role);
 
-    final bound =
-        _resolveRef(providers, groups, ref, preferVision: preferVision);
+    final bound = _resolveRef(providers, groups, ref, preferVision: preferVision);
     if (bound != null) return bound;
 
     // 绑定缺失/失效：默认厂商的首个已启用模型 → 首个可用厂商的首个已启用模型
     final fallback = _firstUsableProvider(providers);
     if (fallback != null) {
       final model = fallback.firstModel!;
-      return AiRoleResolution(
-        config: AiConfig.fromProvider(fallback, model.id),
-      );
+      return AiRoleResolution(config: AiConfig.fromProvider(fallback, model.id));
     }
 
     throw NoModelConfiguredException(role);
@@ -319,21 +297,12 @@ class AiRoleService {
   /// 给可用性预检与能力判定这类不发请求的调用方用：否则一次提问里的预检会把
   /// 轮次提前用掉，真正的请求落到别的成员上，用户会觉得「轮流没按预期走」。
   /// 无可用模型时返回 null（不抛异常）。
-  Future<AiConfig?> peekConfigForRole(
-    String role, {
-    bool preferVision = false,
-  }) async {
+  Future<AiConfig?> peekConfigForRole(String role, {bool preferVision = false}) async {
     try {
       final providers = await _providers.getAll();
       final groups = await _groups.getAll();
       final ref = await boundRefForRole(role);
-      final resolved = _resolveRef(
-        providers,
-        groups,
-        ref,
-        preferVision: preferVision,
-        advance: false,
-      );
+      final resolved = _resolveRef(providers, groups, ref, preferVision: preferVision, advance: false);
       if (resolved != null) return resolved.config;
       final fallback = _firstUsableProvider(providers);
       if (fallback == null) return null;
@@ -384,26 +353,20 @@ class AiRoleService {
           preferVision: preferVision,
           advance: advance,
         );
-        return AiRoleResolution(
-          config: selection.config,
-          route: selection.toRoute(),
-        );
+        return AiRoleResolution(config: selection.config, route: selection.toRoute());
       } on NoModelConfiguredException {
         return null;
       }
     }
 
-    final provider =
-        providers.where((p) => p.id == ref.providerId).firstOrNull;
+    final provider = providers.where((p) => p.id == ref.providerId).firstOrNull;
     if (provider == null) return null;
     // 已停用的厂商等同于「当前没有这个模型」：绑定保留，但请求回落到默认厂商
     if (!provider.enabled) return null;
     if (!provider.hasModel(ref.modelName)) return null;
     if (provider.baseUrl.trim().isEmpty) return null;
     if (!provider.hasCredentials) return null;
-    return AiRoleResolution(
-      config: AiConfig.fromProvider(provider, ref.modelName),
-    );
+    return AiRoleResolution(config: AiConfig.fromProvider(provider, ref.modelName));
   }
 
   /// 默认厂商优先，其次按创建顺序取第一个「地址 + 密钥 + 模型」齐全的厂商

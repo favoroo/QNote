@@ -43,11 +43,7 @@ class ImageSaver {
   }
 
   /// UI 层直接调用：保存 + Toast 反馈；原生端保存失败时降级为系统分享面板。
-  static Future<void> saveWithToast(
-    BuildContext context,
-    String source, {
-    String? fileName,
-  }) async {
+  static Future<void> saveWithToast(BuildContext context, String source, {String? fileName}) async {
     if (source.trim().isEmpty) {
       Toast.warning(context, '图片数据为空，无法保存');
       return;
@@ -87,9 +83,7 @@ class ImageSaver {
     if (colonIndex == -1) {
       return 'image/png';
     }
-    return semicolonIndex == -1
-        ? meta.substring(colonIndex + 1)
-        : meta.substring(colonIndex + 1, semicolonIndex);
+    return semicolonIndex == -1 ? meta.substring(colonIndex + 1) : meta.substring(colonIndex + 1, semicolonIndex);
   }
 
   static String _extensionOfMime(String mime) {

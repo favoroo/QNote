@@ -59,22 +59,14 @@ class HeartRateDetail extends StatelessWidget {
           title: '关键数值',
           child: HealthStatRow(
             children: [
-              HealthStatTile(
-                label: '平均',
-                value: metrics.avgHeartRate?.toString() ?? '--',
-                unit: 'bpm',
-              ),
+              HealthStatTile(label: '平均', value: metrics.avgHeartRate?.toString() ?? '--', unit: 'bpm'),
               HealthStatTile(
                 label: '静息',
                 value: metrics.restingHeartRate?.toString() ?? '--',
                 unit: 'bpm',
                 valueColor: Colors.lightBlue,
               ),
-              HealthStatTile(
-                label: '最低',
-                value: metrics.minHeartRate?.toString() ?? '--',
-                unit: 'bpm',
-              ),
+              HealthStatTile(label: '最低', value: metrics.minHeartRate?.toString() ?? '--', unit: 'bpm'),
               HealthStatTile(
                 label: '最高',
                 value: metrics.maxHeartRate?.toString() ?? '--',
@@ -89,10 +81,7 @@ class HeartRateDetail extends StatelessWidget {
           title: '采样点区间分布',
           subtitle: '按采样点个数统计，非时长',
           child: values.isEmpty
-              ? Text(
-                  '暂无数据',
-                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                )
+              ? Text('暂无数据', style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

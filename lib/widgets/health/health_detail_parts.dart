@@ -28,10 +28,7 @@ class HealthStatTile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-        ),
+        Text(label, style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
         const SizedBox(height: 2),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -84,13 +81,7 @@ class HealthStatRow extends StatelessWidget {
 
 /// 详情页的分区卡片：标题 + 内容，浅色底与主看板拉开层级
 class HealthDetailSection extends StatelessWidget {
-  const HealthDetailSection({
-    super.key,
-    required this.title,
-    required this.child,
-    this.subtitle,
-    this.trailing,
-  });
+  const HealthDetailSection({super.key, required this.title, required this.child, this.subtitle, this.trailing});
 
   final String title;
   final Widget child;
@@ -115,20 +106,14 @@ class HealthDetailSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
+                child: Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               ),
               ?trailing,
             ],
           ),
           if (subtitle != null) ...[
             const SizedBox(height: 2),
-            Text(
-              subtitle!,
-              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
+            Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
           ],
           const SizedBox(height: 12),
           child,
@@ -198,15 +183,9 @@ class HealthRatioLegend extends StatelessWidget {
                 decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 5),
-              Text(
-                s.label,
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
+              Text(s.label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               const SizedBox(width: 5),
-              Text(
-                s.text,
-                style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-              ),
+              Text(s.text, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
             ],
           ),
       ],

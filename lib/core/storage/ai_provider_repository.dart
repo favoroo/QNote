@@ -25,23 +25,14 @@ class AiProviderRepository {
 
   Future<AiProvider?> getById(String id) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      tableName,
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
+    final maps = await db.query(tableName, where: 'id = ?', whereArgs: [id], limit: 1);
     if (maps.isEmpty) return null;
     return AiProvider.fromMap(maps.first);
   }
 
   Future<AiProvider?> getDefault() async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      tableName,
-      where: 'is_default = 1',
-      limit: 1,
-    );
+    final maps = await db.query(tableName, where: 'is_default = 1', limit: 1);
     if (maps.isEmpty) return null;
     return AiProvider.fromMap(maps.first);
   }
@@ -54,12 +45,7 @@ class AiProviderRepository {
     if (existing == null) {
       await db.insert(tableName, saved.toMap());
     } else {
-      await db.update(
-        tableName,
-        saved.toMap(),
-        where: 'id = ?',
-        whereArgs: [saved.id],
-      );
+      await db.update(tableName, saved.toMap(), where: 'id = ?', whereArgs: [saved.id]);
     }
     await _syncLog.logChange(
       tableName: tableName,
@@ -73,11 +59,7 @@ class AiProviderRepository {
   Future<void> delete(String id) async {
     final db = await _dbHelper.database;
     await db.delete(tableName, where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: tableName,
-      recordId: id,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: tableName, recordId: id, operation: 'delete');
   }
 
   /// 物理清空本地表（不写 sync_log）
@@ -92,8 +74,7 @@ class AiProviderRepository {
   /// 迁移/导入写库（不写 sync_log，避免把本机迁移动作当成用户变更广播出去）
   Future<void> insertSilently(AiProvider provider) async {
     final db = await _dbHelper.database;
-    await db.insert(tableName, provider.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(tableName, provider.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// 把默认标记收敛到唯一一条：设置 [id] 为默认，其余清除

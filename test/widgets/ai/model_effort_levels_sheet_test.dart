@@ -46,9 +46,8 @@ Future<void> _openSheet(
 }
 
 /// 某个档位行的勾选状态
-bool? _checked(WidgetTester tester, String label) => tester
-    .widget<CheckboxListTile>(find.widgetWithText(CheckboxListTile, label))
-    .value;
+bool? _checked(WidgetTester tester, String label) =>
+    tester.widget<CheckboxListTile>(find.widgetWithText(CheckboxListTile, label)).value;
 
 void main() {
   testWidgets('默认勾选自动识别档位，minimal/xhigh/max 默认不勾', (tester) async {
@@ -66,11 +65,7 @@ void main() {
 
   testWidgets('勾选额外档位后完成，返回按由弱到强排序的集合', (tester) async {
     ModelEffortLevelsSelection? result;
-    await _openSheet(
-      tester,
-      modelName: 'gpt-5.4-mini',
-      onResult: (value) => result = value,
-    );
+    await _openSheet(tester, modelName: 'gpt-5.4-mini', onResult: (value) => result = value);
 
     await tester.tap(find.text('最少'));
     await tester.pumpAndSettle();
@@ -94,22 +89,14 @@ void main() {
 
   testWidgets('取消勾选当前自动识别里的档位，保存为自定义集合', (tester) async {
     ModelEffortLevelsSelection? result;
-    await _openSheet(
-      tester,
-      modelName: 'gpt-5.4-mini',
-      onResult: (value) => result = value,
-    );
+    await _openSheet(tester, modelName: 'gpt-5.4-mini', onResult: (value) => result = value);
 
     await tester.tap(find.text('低'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
 
-    expect(result?.customLevels, [
-      ReasoningEffort.none,
-      ReasoningEffort.medium,
-      ReasoningEffort.high,
-    ]);
+    expect(result?.customLevels, [ReasoningEffort.none, ReasoningEffort.medium, ReasoningEffort.high]);
   });
 
   testWidgets('已有自定义集合时可直接恢复自动识别', (tester) async {
@@ -144,17 +131,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('至少保留一个档位，或恢复自动识别'), findsOneWidget);
-    final done = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '完成'),
-    );
+    final done = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '完成'));
     expect(done.onPressed, isNull);
 
     // 恢复自动识别后又能保存
     await tester.tap(find.text('恢复自动识别'));
     await tester.pumpAndSettle();
-    final restored = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '完成'),
-    );
+    final restored = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '完成'));
     expect(restored.onPressed, isNotNull);
   });
 
@@ -168,26 +151,15 @@ void main() {
       expect(_checked(tester, effort.label), isTrue, reason: effort.label);
     }
     // 当前已是全选，快捷按钮置灰
-    final all = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, '全选'),
-    );
+    final all = tester.widget<TextButton>(find.widgetWithText(TextButton, '全选'));
     expect(all.onPressed, isNull);
   });
 
   testWidgets('GLM 也能勾选低/中/高，默认四档', (tester) async {
-    await _openSheet(
-      tester,
-      modelName: 'glm-4.6',
-      vendorId: 'zhipu',
-      onResult: (_) {},
-    );
+    await _openSheet(tester, modelName: 'glm-4.6', vendorId: 'zhipu', onResult: (_) {});
 
     for (final label in ['关闭', '低', '中', '高', '最少', '极高', '最高']) {
-      expect(
-        find.widgetWithText(CheckboxListTile, label),
-        findsOneWidget,
-        reason: '$label 应可勾选',
-      );
+      expect(find.widgetWithText(CheckboxListTile, label), findsOneWidget, reason: '$label 应可勾选');
     }
     expect(_checked(tester, '关闭'), isTrue);
     expect(_checked(tester, '低'), isTrue);
@@ -202,19 +174,10 @@ void main() {
   });
 
   testWidgets('Gemini 3 默认低/高，其余档位也能自行勾选', (tester) async {
-    await _openSheet(
-      tester,
-      modelName: 'gemini-3-flash-preview',
-      providerType: 'gemini',
-      onResult: (_) {},
-    );
+    await _openSheet(tester, modelName: 'gemini-3-flash-preview', providerType: 'gemini', onResult: (_) {});
 
     for (final label in ['关闭', '最少', '低', '中', '高', '极高', '最高']) {
-      expect(
-        find.widgetWithText(CheckboxListTile, label),
-        findsOneWidget,
-        reason: '$label 应可勾选',
-      );
+      expect(find.widgetWithText(CheckboxListTile, label), findsOneWidget, reason: '$label 应可勾选');
     }
     expect(_checked(tester, '低'), isTrue);
     expect(_checked(tester, '高'), isTrue);

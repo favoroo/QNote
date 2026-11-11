@@ -10,8 +10,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 class NotificationService {
   static final NotificationService instance = NotificationService._internal();
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   final TodoRepository _todoRepository = TodoRepository();
   Timer? _reminderTimer;
   final Set<String> _notifiedReminderIds = {};
@@ -24,8 +23,7 @@ class NotificationService {
     _setupLocalTimeZone();
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();
-    const settings =
-        InitializationSettings(android: androidSettings, iOS: iosSettings);
+    const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
     await _plugin.initialize(settings);
     await requestPermission();
   }
@@ -93,8 +91,7 @@ class NotificationService {
   Future<void> requestPermission() async {
     if (kIsWeb) return;
     try {
-      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await androidPlugin?.requestNotificationsPermission();
       const channel = AndroidNotificationChannel(
         'qnote_channel',
@@ -112,25 +109,14 @@ class NotificationService {
       await androidPlugin?.createNotificationChannel(scheduledChannel);
     } catch (e) {
       // Android 通知权限/渠道创建失败会直接影响提醒送达，需留痕
-      LoggerService.instance.warning(
-        '创建 Android 通知渠道或申请权限失败: $e',
-        category: LogCategory.system,
-      );
+      LoggerService.instance.warning('创建 Android 通知渠道或申请权限失败: $e', category: LogCategory.system);
     }
     try {
-      final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin>();
-      await iosPlugin?.requestPermissions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      final iosPlugin = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      await iosPlugin?.requestPermissions(alert: true, badge: true, sound: true);
     } catch (e) {
       // iOS 权限申请失败会直接影响提醒送达，需留痕
-      LoggerService.instance.warning(
-        '申请 iOS 通知权限失败: $e',
-        category: LogCategory.system,
-      );
+      LoggerService.instance.warning('申请 iOS 通知权限失败: $e', category: LogCategory.system);
     }
   }
 
@@ -170,19 +156,11 @@ class NotificationService {
       }
     } catch (e) {
       // 定时轮询失败不能让异常逃逸，但需留痕排查提醒未触发
-      LoggerService.instance.warning(
-        '检查待办提醒失败: $e',
-        category: LogCategory.system,
-      );
+      LoggerService.instance.warning('检查待办提醒失败: $e', category: LogCategory.system);
     }
   }
 
-  Future<void> showNotification({
-    required int id,
-    required String title,
-    required String body,
-    String? payload,
-  }) async {
+  Future<void> showNotification({required int id, required String title, required String body, String? payload}) async {
     if (kIsWeb) return;
     try {
       const androidDetails = AndroidNotificationDetails(
@@ -197,10 +175,7 @@ class NotificationService {
       await _plugin.show(id, title, body, details, payload: payload);
     } catch (e) {
       // 通知失败不阻断业务，但需留痕排查权限/渠道问题
-      LoggerService.instance.warning(
-        '显示本地通知失败(id=$id): $e',
-        category: LogCategory.system,
-      );
+      LoggerService.instance.warning('显示本地通知失败(id=$id): $e', category: LogCategory.system);
     }
   }
 
@@ -229,16 +204,12 @@ class NotificationService {
         tz.TZDateTime.from(scheduledTime, tz.local),
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,
       );
     } catch (e) {
       // Android 13/14 的精确闹钟或权限限制常在这里抛异常，需留痕排查提醒未调度
-      LoggerService.instance.warning(
-        '调度本地通知失败(id=$id): $e',
-        category: LogCategory.system,
-      );
+      LoggerService.instance.warning('调度本地通知失败(id=$id): $e', category: LogCategory.system);
     }
   }
 
@@ -248,10 +219,7 @@ class NotificationService {
       await _plugin.cancel(id);
     } catch (e) {
       // 取消失败可能让已完成待办继续提醒，需留痕
-      LoggerService.instance.warning(
-        '取消本地通知失败(id=$id): $e',
-        category: LogCategory.system,
-      );
+      LoggerService.instance.warning('取消本地通知失败(id=$id): $e', category: LogCategory.system);
     }
   }
 
@@ -261,10 +229,7 @@ class NotificationService {
       await _plugin.cancelAll();
     } catch (e) {
       // 批量取消失败可能残留过期提醒，需留痕
-      LoggerService.instance.warning(
-        '取消全部本地通知失败: $e',
-        category: LogCategory.system,
-      );
+      LoggerService.instance.warning('取消全部本地通知失败: $e', category: LogCategory.system);
     }
   }
 
@@ -274,12 +239,7 @@ class NotificationService {
     required String body,
     required DateTime scheduledTime,
   }) async {
-    await scheduleNotification(
-      id: id,
-      title: title,
-      body: body,
-      scheduledTime: scheduledTime,
-    );
+    await scheduleNotification(id: id, title: title, body: body, scheduledTime: scheduledTime);
   }
 
   Future<void> showTodoReminder({
@@ -288,12 +248,7 @@ class NotificationService {
     required String body,
     required DateTime scheduledTime,
   }) async {
-    await scheduleNotification(
-      id: id,
-      title: title,
-      body: body,
-      scheduledTime: scheduledTime,
-    );
+    await scheduleNotification(id: id, title: title, body: body, scheduledTime: scheduledTime);
   }
 
   Future<void> scheduleTodoReminder(Todo todo) async {

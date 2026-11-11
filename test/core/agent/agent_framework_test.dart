@@ -29,11 +29,7 @@ void main() {
 
     test('ToolDispatcher dispatch 未知工具能安全返回 isError 消息', () async {
       final dispatcher = AgentToolRegistry.createDefaultDispatcher();
-      const call = ToolCall(
-        id: 'test_call_1',
-        name: 'non_existent_tool',
-        arguments: {},
-      );
+      const call = ToolCall(id: 'test_call_1', name: 'non_existent_tool', arguments: {});
 
       final result = await dispatcher.dispatch(call);
       expect(result.role, 'tool');
@@ -49,12 +45,7 @@ void main() {
         arguments: {'path': '/todos/今日/测试待办.md', 'content': '测试内容'},
       );
 
-      final msg = ChatMessage(
-        role: 'assistant',
-        content: '我为你创建了一条待办',
-        thought: '用户想记录一件事情',
-        toolCalls: [toolCall],
-      );
+      final msg = ChatMessage(role: 'assistant', content: '我为你创建了一条待办', thought: '用户想记录一件事情', toolCalls: [toolCall]);
 
       final map = msg.toMap();
       final restored = ChatMessage.fromMap(map);

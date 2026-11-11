@@ -26,14 +26,7 @@ class Toast {
     String? actionLabel,
     VoidCallback? onAction,
   }) {
-    showIn(
-      Overlay.of(context),
-      message,
-      type: type,
-      duration: duration,
-      actionLabel: actionLabel,
-      onAction: onAction,
-    );
+    showIn(Overlay.of(context), message, type: type, duration: duration, actionLabel: actionLabel, onAction: onAction);
   }
 
   /// 直接指定挂载 Overlay 的入口，供没有 widget context 的层复用同一套样式与
@@ -53,9 +46,7 @@ class Toast {
     }
 
     if (_hostEntry == null) {
-      final entry = OverlayEntry(
-        builder: (_) => _ToastHost(controller: _hostController),
-      );
+      final entry = OverlayEntry(builder: (_) => _ToastHost(controller: _hostController));
       _hostEntry = entry;
       _hostOverlay = overlay;
       overlay.insert(entry);
@@ -234,10 +225,7 @@ class _ToastHostState extends State<_ToastHost> {
               return FadeTransition(
                 opacity: animation,
                 child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, -0.35),
-                    end: Offset.zero,
-                  ).animate(animation),
+                  position: Tween<Offset>(begin: const Offset(0, -0.35), end: Offset.zero).animate(animation),
                   child: child,
                 ),
               );
@@ -291,19 +279,13 @@ class _ToastCard extends StatelessWidget {
       liveRegion: true,
       container: true,
       child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * (hasAction ? 0.8 : 0.7),
-        ),
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * (hasAction ? 0.8 : 0.7)),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.black87,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4)),
           ],
         ),
         child: Row(
@@ -333,11 +315,7 @@ class _ToastCard extends StatelessWidget {
                 },
                 child: Text(
                   data.actionLabel!,
-                  style: const TextStyle(
-                    color: Color(0xFF81D4FA),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: const TextStyle(color: Color(0xFF81D4FA), fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               ),
             ],

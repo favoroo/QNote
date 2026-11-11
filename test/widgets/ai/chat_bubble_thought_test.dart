@@ -13,9 +13,7 @@ void main() {
     return ProviderScope(
       overrides: [
         aiStreamingThoughtProvider.overrideWith((ref) => thought),
-        aiStreamingTurnStartedAtProvider.overrideWith(
-          (ref) => thought == null ? null : DateTime.now(),
-        ),
+        aiStreamingTurnStartedAtProvider.overrideWith((ref) => thought == null ? null : DateTime.now()),
       ],
       child: MaterialApp(
         theme: ThemeData(useMaterial3: true),
@@ -28,11 +26,7 @@ void main() {
     await tester.pumpWidget(
       harness(
         ChatBubble(
-          message: ChatMessage(
-            role: 'thought',
-            content: '第一步\n第二步',
-            thoughtSeconds: 4,
-          ),
+          message: ChatMessage(role: 'thought', content: '第一步\n第二步', thoughtSeconds: 4),
         ),
       ),
     );

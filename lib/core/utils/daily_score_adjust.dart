@@ -44,14 +44,8 @@ const Set<ScoreField> kAllScoreFields = {
 
 /// 一次调整意图：[delta] 与 [setValue] 二选一，作用于 [fields] 列出的字段。
 class ScoreAdjustSpec {
-  const ScoreAdjustSpec({
-    this.delta,
-    this.setValue,
-    required this.fields,
-  }) : assert(
-         (delta == null) != (setValue == null),
-         'delta 与 setValue 必须且只能提供一个',
-       );
+  const ScoreAdjustSpec({this.delta, this.setValue, required this.fields})
+    : assert((delta == null) != (setValue == null), 'delta 与 setValue 必须且只能提供一个');
 
   /// 相对加减分，可为负。
   final int? delta;
@@ -66,12 +60,7 @@ class ScoreAdjustSpec {
 
 /// 单个字段的变更明细；[before] 为 null 表示该字段原本缺失。
 class ScoreFieldChange {
-  const ScoreFieldChange({
-    required this.field,
-    required this.before,
-    required this.after,
-    required this.clamped,
-  });
+  const ScoreFieldChange({required this.field, required this.before, required this.after, required this.clamped});
 
   final ScoreField field;
   final int? before;
@@ -85,11 +74,7 @@ class ScoreFieldChange {
 
 /// 单日调整结果。
 class ScoreAdjustOutcome {
-  const ScoreAdjustOutcome({
-    required this.before,
-    required this.after,
-    required this.changes,
-  });
+  const ScoreAdjustOutcome({required this.before, required this.after, required this.changes});
 
   final DailyScore before;
   final DailyScore after;
@@ -129,14 +114,7 @@ ScoreAdjustOutcome applyScoreAdjust(DailyScore existing, ScoreAdjustSpec spec) {
     final applied = clampScore(target);
     if (applied == current) continue;
 
-    changes.add(
-      ScoreFieldChange(
-        field: field,
-        before: current,
-        after: applied,
-        clamped: applied != target,
-      ),
-    );
+    changes.add(ScoreFieldChange(field: field, before: current, after: applied, clamped: applied != target));
     if (field.isDimension) {
       dims[field.storageKey] = applied;
     } else {
@@ -151,20 +129,14 @@ ScoreAdjustOutcome applyScoreAdjust(DailyScore existing, ScoreAdjustSpec spec) {
 /// 按键增量合并维度分：[incoming] 未出现的键一律保留 [existing] 的原值。
 ///
 /// 这是「只改饮食分却把其余四维写成总分」那个缺陷的正解。
-Map<String, int> mergeDimensionScores(
-  Map<String, int> existing,
-  Map<String, int> incoming,
-) {
+Map<String, int> mergeDimensionScores(Map<String, int> existing, Map<String, int> incoming) {
   final merged = Map<String, int>.from(existing);
   incoming.forEach((key, value) => merged[key] = value);
   return merged;
 }
 
 /// 预览摘要，统计页与端点返回值共用同一份文案口径。
-String describeScoreAdjustPreview(
-  List<ScoreAdjustOutcome> outcomes, {
-  int missingDays = 0,
-}) {
+String describeScoreAdjustPreview(List<ScoreAdjustOutcome> outcomes, {int missingDays = 0}) {
   final applied = outcomes.where((o) => o.changed).length;
   final parts = <String>['命中 $applied 天'];
   if (missingDays > 0) {

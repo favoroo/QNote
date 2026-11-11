@@ -28,40 +28,31 @@ class WriteFilesTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'files': {
-            'type': 'array',
-            'description': '要写入的文件列表，逐条串行执行',
-            'items': {
-              'type': 'object',
-              'properties': {
-                'path': {
-                  'type': 'string',
-                  'description': '虚拟文件绝对路径（以 "/" 开头）',
-                },
-                'content': {
-                  'type': 'string',
-                  'description': '写入内容，格式规范与 write_file 完全一致',
-                },
-                'mode': {
-                  'type': 'string',
-                  'enum': [modeOverwrite, modeAppend],
-                  'description': '写入模式：overwrite 覆写（默认）；append 追加到末尾',
-                },
-              },
-              'required': ['path', 'content'],
+    'type': 'object',
+    'properties': {
+      'files': {
+        'type': 'array',
+        'description': '要写入的文件列表，逐条串行执行',
+        'items': {
+          'type': 'object',
+          'properties': {
+            'path': {'type': 'string', 'description': '虚拟文件绝对路径（以 "/" 开头）'},
+            'content': {'type': 'string', 'description': '写入内容，格式规范与 write_file 完全一致'},
+            'mode': {
+              'type': 'string',
+              'enum': [modeOverwrite, modeAppend],
+              'description': '写入模式：overwrite 覆写（默认）；append 追加到末尾',
             },
           },
+          'required': ['path', 'content'],
         },
-        'required': ['files'],
-      };
+      },
+    },
+    'required': ['files'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final rawFiles = arguments['files'];
     if (rawFiles is! List || rawFiles.isEmpty) {
       return ToolResult.error('files 不能为空，请提供要写入的文件列表');
@@ -90,11 +81,7 @@ class WriteFilesTool extends AgentTool {
 
       onProgress?.call('正在批量写入：$path');
       try {
-        final res = await _vfs.writeFile(
-          path,
-          content,
-          append: mode == modeAppend,
-        );
+        final res = await _vfs.writeFile(path, content, append: mode == modeAppend);
         succeeded++;
         results.add({
           'ok': true,
@@ -133,11 +120,7 @@ class WriteFilesTool extends AgentTool {
 
     // 全部失败按错误上报，部分成功按成功上报（明细里带失败原因，避免掩盖已生效的写入）
     return succeeded == 0
-        ? ToolResult(
-            modelOutput: summary.toString(),
-            uiDetails: details,
-            isError: true,
-          )
+        ? ToolResult(modelOutput: summary.toString(), uiDetails: details, isError: true)
         : ToolResult.success(summary.toString(), uiDetails: details);
   }
 }

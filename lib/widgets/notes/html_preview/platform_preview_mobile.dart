@@ -10,11 +10,7 @@ class PlatformPreview extends StatefulWidget {
   final String htmlContent;
   final String? noteId;
 
-  const PlatformPreview({
-    super.key,
-    required this.htmlContent,
-    this.noteId,
-  });
+  const PlatformPreview({super.key, required this.htmlContent, this.noteId});
 
   @override
   State<PlatformPreview> createState() => _PlatformPreviewState();

@@ -7,25 +7,21 @@ import 'package:qnote_flutter/widgets/diary/cheer_burst_overlay.dart';
 
 /// 粒子层内部 painter 是私有的，但字段是公开名：走 dynamic 派发读出来断言，
 /// 比为了测试把内部实现暴露成公共 API 更划算。
-Finder get _burstCanvas => find.descendant(
-      of: find.byType(CheerBurstOverlay),
-      matching: find.byType(CustomPaint),
-    );
+Finder get _burstCanvas => find.descendant(of: find.byType(CheerBurstOverlay), matching: find.byType(CustomPaint));
 
 // Scaffold 自己树里就挂着 CustomPaint，任何 byType(CustomPaint) 都必须限定在粒子层内。
-dynamic _painterOf(WidgetTester tester) =>
-    (tester.widget<CustomPaint>(_burstCanvas).painter as dynamic);
+dynamic _painterOf(WidgetTester tester) => (tester.widget<CustomPaint>(_burstCanvas).painter as dynamic);
 
-Widget _host(
-  Widget child, {
-  bool disableAnimations = false,
-}) {
+Widget _host(Widget child, {bool disableAnimations = false}) {
   return MaterialApp(
     home: Scaffold(
       body: MediaQuery(
         data: MediaQueryData(disableAnimations: disableAnimations),
         child: Stack(
-          children: [const SizedBox.expand(), Positioned.fill(child: child)],
+          children: [
+            const SizedBox.expand(),
+            Positioned.fill(child: child),
+          ],
         ),
       ),
     ),
@@ -37,11 +33,7 @@ void main() {
 
   group('CheerBurstOverlay', () {
     testWidgets('满档按档位颗数画出粒子', (tester) async {
-      await tester.pumpWidget(
-        _host(
-          const CheerBurstOverlay(level: CheerLevel.full, seed: 5),
-        ),
-      );
+      await tester.pumpWidget(_host(const CheerBurstOverlay(level: CheerLevel.full, seed: 5)));
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(_burstCanvas, findsOneWidget);
@@ -49,20 +41,12 @@ void main() {
     });
 
     testWidgets('破纪录粒子更少，普通记录整层不挂', (tester) async {
-      await tester.pumpWidget(
-        _host(
-          const CheerBurstOverlay(level: CheerLevel.record, seed: 5),
-        ),
-      );
+      await tester.pumpWidget(_host(const CheerBurstOverlay(level: CheerLevel.record, seed: 5)));
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(_painterOf(tester).particles.length, CheerLevel.record.particleCount);
 
-      await tester.pumpWidget(
-        _host(
-          const CheerBurstOverlay(level: CheerLevel.plain, seed: 5),
-        ),
-      );
+      await tester.pumpWidget(_host(const CheerBurstOverlay(level: CheerLevel.plain, seed: 5)));
       await tester.pump(const Duration(milliseconds: 200));
 
       // 普通记录不放粒子，也不该留一块每帧脏重绘的透明画布。
@@ -71,15 +55,7 @@ void main() {
 
     testWidgets('散尽后回调一次并停掉 ticker，不留在树里空转', (tester) async {
       var finished = 0;
-      await tester.pumpWidget(
-        _host(
-          CheerBurstOverlay(
-            level: CheerLevel.full,
-            seed: 9,
-            onFinished: () => finished++,
-          ),
-        ),
-      );
+      await tester.pumpWidget(_host(CheerBurstOverlay(level: CheerLevel.full, seed: 9, onFinished: () => finished++)));
 
       await tester.pump(const Duration(milliseconds: 1300));
       expect(finished, 1);
@@ -91,12 +67,7 @@ void main() {
     });
 
     testWidgets('系统要求减少动效时整层不出图', (tester) async {
-      await tester.pumpWidget(
-        _host(
-          const CheerBurstOverlay(level: CheerLevel.full, seed: 5),
-          disableAnimations: true,
-        ),
-      );
+      await tester.pumpWidget(_host(const CheerBurstOverlay(level: CheerLevel.full, seed: 5), disableAnimations: true));
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(_burstCanvas, findsNothing);
@@ -107,11 +78,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(
-        _host(
-          const CheerBurstOverlay(level: CheerLevel.full, seed: 2),
-        ),
-      );
+      await tester.pumpWidget(_host(const CheerBurstOverlay(level: CheerLevel.full, seed: 2)));
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
 

@@ -40,15 +40,10 @@ class RecentModelStore {
   /// 记录一次使用：提到最前、去重、截断；返回更新后的列表
   Future<List<AiModelRef>> record(AiModelRef ref) async {
     final current = await load();
-    final next = [ref, ...current.where((item) => item != ref)]
-        .take(maxEntries)
-        .toList();
+    final next = [ref, ...current.where((item) => item != ref)].take(maxEntries).toList();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(
-        prefsKey,
-        [for (final item in next) item.encode()],
-      );
+      await prefs.setStringList(prefsKey, [for (final item in next) item.encode()]);
     } catch (_) {
       // 写偏好失败不影响本次切换，界面用返回值先更新
     }

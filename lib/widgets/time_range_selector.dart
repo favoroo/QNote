@@ -6,11 +6,7 @@ class TimeRangeSelector extends StatelessWidget {
   final TimeRangeType selectedRange;
   final ValueChanged<TimeRangeType> onRangeChanged;
 
-  const TimeRangeSelector({
-    super.key,
-    required this.selectedRange,
-    required this.onRangeChanged,
-  });
+  const TimeRangeSelector({super.key, required this.selectedRange, required this.onRangeChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -42,16 +38,14 @@ class TimeRangeSelector extends StatelessWidget {
                           color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 2,
                           offset: const Offset(0, 1),
-                        )
+                        ),
                       ]
                     : null,
               ),
               child: Text(
                 _label(range),
                 style: TextStyle(
-                  color: isSelected
-                      ? colorScheme.onPrimary
-                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                 ),

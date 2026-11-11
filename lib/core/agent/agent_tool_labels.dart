@@ -66,10 +66,7 @@ abstract final class AgentToolLabels {
   /// 参数 JSON 可能尚未闭合（如 write_file 的 content 正在流出），
   /// 无法整体 jsonDecode，这里按工具候选键用正则捕获已流出的字符串值，
   /// 返回的 map 交给 [progressLabel] 复用副标题与截断逻辑。
-  static Map<String, dynamic> detailFromPartialArguments(
-    String toolName,
-    String partialArgs,
-  ) {
+  static Map<String, dynamic> detailFromPartialArguments(String toolName, String partialArgs) {
     if (partialArgs.isEmpty) return const {};
     final keys = switch (toolName) {
       'read_file' ||
@@ -89,12 +86,10 @@ abstract final class AgentToolLabels {
     };
     if (keys.isEmpty) return const {};
     // 大参数（如 write_file 的 content）占据尾部，关键键都在头部，只扫描窗口
-    final window =
-        partialArgs.length > 4000 ? partialArgs.substring(0, 4000) : partialArgs;
+    final window = partialArgs.length > 4000 ? partialArgs.substring(0, 4000) : partialArgs;
     final result = <String, dynamic>{};
     for (final key in keys) {
-      final match =
-          RegExp('"$key"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').firstMatch(window);
+      final match = RegExp('"$key"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').firstMatch(window);
       if (match != null) {
         result[key] = _unescapeJsonString(match.group(1)!);
       }

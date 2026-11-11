@@ -13,17 +13,9 @@ const bool kOnlineSynthesisSupportedImpl = true;
 
 /// Edge 在线合成：返回 mp3 音频字节（24kHz 48kbit 单声道）。
 /// 接口为非官方协议，任何异常统一包成 [TtsException] 交上层降级。
-Future<Uint8List> synthesizeOnlineImpl(
-  String text, {
-  required String voice,
-  required double rate,
-}) async {
+Future<Uint8List> synthesizeOnlineImpl(String text, {required String voice, required double rate}) async {
   try {
-    return await EdgeTtsClient.synthesize(
-      text: text,
-      voice: voice,
-      rate: rate,
-    );
+    return await EdgeTtsClient.synthesize(text: text, voice: voice, rate: rate);
   } on TtsException {
     rethrow;
   } catch (e) {
@@ -55,11 +47,7 @@ Future<FlutterTts> _sharedSystemTts() async {
 ///
 /// [resetQueue] 只在分段朗读的首段为 true：先掐掉可能残留的上一场朗读。
 /// 分段之间靠 `awaitSpeakCompletion(true)` 天然串行排队，无需也不应再 stop。
-Future<void> systemSpeakImpl(
-  String text, {
-  required double rate,
-  bool resetQueue = true,
-}) async {
+Future<void> systemSpeakImpl(String text, {required double rate, bool resetQueue = true}) async {
   final tts = await _sharedSystemTts();
   if (resetQueue) await tts.stop().catchError((_) {});
   await tts.setLanguage('zh-CN');
@@ -69,20 +57,14 @@ Future<void> systemSpeakImpl(
   try {
     final result = await tts.speak(text).timeout(const Duration(seconds: 300));
     if (result is int && result < 0) {
-      throw const TtsException(
-        'speech_failed',
-        '系统语音朗读失败（设备可能没有可用的中文语音引擎）',
-      );
+      throw const TtsException('speech_failed', '系统语音朗读失败（设备可能没有可用的中文语音引擎）');
     }
   } on TtsException {
     rethrow;
   } on TimeoutException {
     // 超时意味着引擎从未回调（未安装/未就绪），静默当成成功会让用户只听到无声
     await tts.stop().catchError((_) {});
-    throw const TtsException(
-      'speech_timeout',
-      '系统语音无响应：设备可能未安装中文语音引擎',
-    );
+    throw const TtsException('speech_timeout', '系统语音无响应：设备可能未安装中文语音引擎');
   } catch (e) {
     throw TtsException('speech_failed', '系统语音朗读失败：$e');
   }

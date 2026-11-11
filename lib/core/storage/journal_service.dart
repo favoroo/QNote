@@ -31,18 +31,15 @@ class JournalService {
 
   static String noteId(DateTime date) => 'journal_note_${_ymd(date)}';
 
-  static String _ym(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}';
+  static String _ym(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}';
 
-  static String _ymd(DateTime d) =>
-      '${_ym(d)}-${d.day.toString().padLeft(2, '0')}';
+  static String _ymd(DateTime d) => '${_ym(d)}-${d.day.toString().padLeft(2, '0')}';
 
   /// 判断一条笔记是否为日记
   static bool isJournalNote(String id) => id.startsWith(noteIdPrefix);
 
   /// 判断一个文件夹是否属于日记体系（根或月份子文件夹）
-  static bool isJournalFolder(Folder folder) =>
-      folder.type == rootFolderType || folder.type == monthFolderType;
+  static bool isJournalFolder(Folder folder) => folder.type == rootFolderType || folder.type == monthFolderType;
 
   /// 确保日记根文件夹存在（幂等）
   Future<Folder> ensureRootFolder() async {
@@ -148,8 +145,7 @@ class JournalService {
   bool _emptyCleanedThisSession = false;
 
   /// 清理某月残留的空日记；若该月已无任何日记，连带删除月份子文件夹
-  Future<void> _cleanupMonthFolder(DateTime date) =>
-      _cleanupMonthFolderById(monthFolderId(date));
+  Future<void> _cleanupMonthFolder(DateTime date) => _cleanupMonthFolderById(monthFolderId(date));
 
   Future<void> _cleanupMonthFolderById(String monthId) async {
     final notes = await _noteRepo.getByFolder(monthId);
@@ -182,9 +178,7 @@ class JournalService {
   Future<List<Note>> getAllJournals() async {
     final allNotes = await _noteRepo.getAll();
     final list = allNotes.where((n) {
-      return !n.isDeleted &&
-          isJournalNote(n.id) &&
-          n.content.trim().isNotEmpty;
+      return !n.isDeleted && isJournalNote(n.id) && n.content.trim().isNotEmpty;
     }).toList();
     list.sort((a, b) => b.title.compareTo(a.title));
     return list;
@@ -197,8 +191,7 @@ class JournalService {
     final endDateStr = _ymd(DateTime(end.year, end.month, end.day));
 
     return journals.where((j) {
-      return j.title.compareTo(startDateStr) >= 0 &&
-          j.title.compareTo(endDateStr) <= 0;
+      return j.title.compareTo(startDateStr) >= 0 && j.title.compareTo(endDateStr) <= 0;
     }).toList();
   }
 }

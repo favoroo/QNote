@@ -11,9 +11,7 @@
 /// - `Future<EdgeWsConnection> connectEdgeWs(Uri uri, Duration timeout)`
 library;
 
-import 'edge_ws_stub.dart'
-    if (dart.library.js_interop) 'edge_ws_web.dart'
-    if (dart.library.io) 'edge_ws_io.dart';
+import 'edge_ws_stub.dart' if (dart.library.js_interop) 'edge_ws_web.dart' if (dart.library.io) 'edge_ws_io.dart';
 
 export 'tts_exception.dart';
 

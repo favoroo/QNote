@@ -56,8 +56,7 @@ Future<void> _pumpHealth(WidgetTester tester, {int initialTab = 0}) async {
   await tester.pump();
 }
 
-int? _stackIndex(WidgetTester tester) =>
-    tester.widget<IndexedStack>(find.byType(IndexedStack)).index;
+int? _stackIndex(WidgetTester tester) => tester.widget<IndexedStack>(find.byType(IndexedStack)).index;
 
 void main() {
   setUpAll(() async {
@@ -127,17 +126,11 @@ void main() {
       await _pumpQuickRecord(tester);
 
       // 快捷按钮分段：新建按钮 tooltip 指向快捷按钮
-      expect(
-        tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.add)).tooltip,
-        '新建快捷按钮',
-      );
+      expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.add)).tooltip, '新建快捷按钮');
 
       await tester.tap(find.text('固定事件'));
       await tester.pump();
-      expect(
-        tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.add)).tooltip,
-        '新建固定事件',
-      );
+      expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.add)).tooltip, '新建固定事件');
     });
   });
 

@@ -53,7 +53,7 @@ void main() {
         {
           'code': 0,
           'data': {'available_points': 12345},
-        }
+        },
       ),
     ];
     adapter.entitlement = [
@@ -68,7 +68,7 @@ void main() {
               'pro_expired_time': '2027-01-01T00:00:00Z',
             },
           },
-        }
+        },
       ),
     ];
 
@@ -76,10 +76,7 @@ void main() {
 
     expect(quota.balance, 12345);
     expect(quota.plan, 'Pro');
-    expect(
-      quota.planExpiresAt?.toUtc(),
-      DateTime.utc(2027, 1, 1),
-    );
+    expect(quota.planExpiresAt?.toUtc(), DateTime.utc(2027, 1, 1));
     expect(adapter.settingCalls, 0);
   });
 
@@ -93,7 +90,7 @@ void main() {
         {
           'code': 0,
           'data': {'available_points': 6789},
-        }
+        },
       ),
     ];
     adapter.entitlement = [
@@ -116,7 +113,7 @@ void main() {
         {
           'code': 0,
           'data': {'available_points': 100},
-        }
+        },
       ),
     ];
     adapter.entitlement = [
@@ -127,11 +124,10 @@ void main() {
           'data': {
             'office': {'pro_enable': false},
           },
-        }
+        },
       ),
     ];
-    RaccoonAuthService.accountRefresherForTest = (current) async =>
-        current.copyWith(accessToken: 'access-2');
+    RaccoonAuthService.accountRefresherForTest = (current) async => current.copyWith(accessToken: 'access-2');
 
     final quota = await auth.fetchQuota(account());
 
@@ -145,18 +141,11 @@ void main() {
     adapter.balance = [
       (401, {'code': 200001, 'details': 'authorization invalid'}),
     ];
-    RaccoonAuthService.accountRefresherForTest = (current) async =>
-        current.copyWith(accessToken: 'access-2');
+    RaccoonAuthService.accountRefresherForTest = (current) async => current.copyWith(accessToken: 'access-2');
 
     await expectLater(
       auth.fetchQuota(account()),
-      throwsA(
-        isA<RaccoonAuthRequiredException>().having(
-          (error) => error.message,
-          'message',
-          '小浣熊登录已失效，请重新登录',
-        ),
-      ),
+      throwsA(isA<RaccoonAuthRequiredException>().having((error) => error.message, 'message', '小浣熊登录已失效，请重新登录')),
     );
     expect(adapter.balanceCalls, 2);
     expect(saved.single.status, AiAccount.statusExpired);
@@ -164,10 +153,7 @@ void main() {
   });
 
   test('没有可用 token 时不发请求，直接要求重新登录', () async {
-    await expectLater(
-      auth.fetchQuota(account(access: '')),
-      throwsA(isA<RaccoonAuthRequiredException>()),
-    );
+    await expectLater(auth.fetchQuota(account(access: '')), throwsA(isA<RaccoonAuthRequiredException>()));
     expect(adapter.balanceCalls, 0);
   });
 
@@ -181,13 +167,7 @@ void main() {
 
     await expectLater(
       auth.fetchQuota(account()),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          'balance unavailable',
-        ),
-      ),
+      throwsA(isA<FormatException>().having((error) => error.message, 'message', 'balance unavailable')),
     );
   });
 }
@@ -230,10 +210,7 @@ class _QuotaAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 
-  static (int, Map<String, dynamic>) _pick(
-    List<(int, Map<String, dynamic>)> script,
-    int call,
-  ) {
+  static (int, Map<String, dynamic>) _pick(List<(int, Map<String, dynamic>)> script, int call) {
     if (script.isEmpty) {
       return (200, {'code': 0, 'data': <String, dynamic>{}});
     }
@@ -249,12 +226,11 @@ class _QuotaAdapter implements HttpClientAdapter {
     return '';
   }
 
-  static ResponseBody _json(int status, Map<String, dynamic> body) =>
-      ResponseBody.fromString(
-        jsonEncode(body),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
+  static ResponseBody _json(int status, Map<String, dynamic> body) => ResponseBody.fromString(
+    jsonEncode(body),
+    status,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
 }

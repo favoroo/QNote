@@ -62,7 +62,8 @@ class ImageRepository {
 
     LoggerService.instance.logDatabase(
       '保存并压缩图片文件',
-      details: '源=${imageFile.path}, 目标=$newPath, 原始大小≈${(originalSize / 1024).toStringAsFixed(1)}KB, 压缩后大小≈${(compressedSize / 1024).toStringAsFixed(1)}KB'
+      details:
+          '源=${imageFile.path}, 目标=$newPath, 原始大小≈${(originalSize / 1024).toStringAsFixed(1)}KB, 压缩后大小≈${(compressedSize / 1024).toStringAsFixed(1)}KB',
     );
 
     await File(newPath).writeAsBytes(compressedBytes);
@@ -112,10 +113,7 @@ class ImageRepository {
       if (targetWidth < 1) targetWidth = 1;
       if (targetHeight < 1) targetHeight = 1;
 
-      codec = await descriptor.instantiateCodec(
-        targetWidth: targetWidth,
-        targetHeight: targetHeight,
-      );
+      codec = await descriptor.instantiateCodec(targetWidth: targetWidth, targetHeight: targetHeight);
       frame = await codec.getNextFrame();
       final data = await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (data == null) return null;

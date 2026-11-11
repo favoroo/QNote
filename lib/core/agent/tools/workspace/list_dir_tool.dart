@@ -19,40 +19,29 @@ class ListDirTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'path': {
-            'type': 'string',
-            'description': '要查看的虚拟目录路径（如 "/"、"/todos"、"/notes"、"/timeline"、'
-                '"/settings"、"/folders" 等，默认为 "/"）',
-          },
-          'recursive': {
-            'type': 'boolean',
-            'description': '是否递归展开整棵目录树，默认 false（仅列一层）',
-          },
-        },
-        'required': ['path'],
-      };
+    'type': 'object',
+    'properties': {
+      'path': {
+        'type': 'string',
+        'description':
+            '要查看的虚拟目录路径（如 "/"、"/todos"、"/notes"、"/timeline"、'
+            '"/settings"、"/folders" 等，默认为 "/"）',
+      },
+      'recursive': {'type': 'boolean', 'description': '是否递归展开整棵目录树，默认 false（仅列一层）'},
+    },
+    'required': ['path'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final path = arguments['path'] as String? ?? '/';
     final recursive = arguments['recursive'] as bool? ?? false;
     try {
       final items = await _vfs.listDir(path, recursive: recursive);
       if (items.isEmpty) {
-        return ToolResult.success(
-          '目录 [$path] 为空',
-          uiDetails: {'path': path, 'recursive': recursive, 'items': []},
-        );
+        return ToolResult.success('目录 [$path] 为空', uiDetails: {'path': path, 'recursive': recursive, 'items': []});
       }
-      return ToolResult.success(
-        items.join('\n'),
-        uiDetails: {'path': path, 'recursive': recursive, 'items': items},
-      );
+      return ToolResult.success(items.join('\n'), uiDetails: {'path': path, 'recursive': recursive, 'items': items});
     } catch (e) {
       return ToolResult.error('列出目录失败: $e');
     }

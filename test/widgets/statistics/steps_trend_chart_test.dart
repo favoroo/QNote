@@ -3,11 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/core/utils/health_step_trend.dart';
 import 'package:qnote_flutter/widgets/statistics/steps_trend_chart.dart';
 
-Future<void> _pumpChart(
-  WidgetTester tester,
-  StepTrend trend, {
-  double width = 320,
-}) async {
+Future<void> _pumpChart(WidgetTester tester, StepTrend trend, {double width = 320}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -15,11 +11,7 @@ Future<void> _pumpChart(
           child: SizedBox(
             width: width,
             child: SingleChildScrollView(
-              child: StepsTrendChart(
-                buckets: trend.buckets,
-                caption: trend.caption,
-                dailyTarget: 8000,
-              ),
+              child: StepsTrendChart(buckets: trend.buckets, caption: trend.caption, dailyTarget: 8000),
             ),
           ),
         ),
@@ -41,11 +33,7 @@ void main() {
   testWidgets('月区间在小屏上渲染不溢出，X 轴标签按宽度抽稀', (tester) async {
     final from = DateTime(2026, 2, 1);
     final to = DateTime(2026, 3, 4);
-    final trend = buildStepTrend(
-      startDate: from,
-      endDate: to,
-      stepsByDay: _everyDay(from, to, 6000),
-    );
+    final trend = buildStepTrend(startDate: from, endDate: to, stepsByDay: _everyDay(from, to, 6000));
 
     await _pumpChart(tester, trend);
 

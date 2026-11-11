@@ -109,13 +109,9 @@ void main() {
   });
 
   test('昨天或消费类账单不算签到发放', () async {
-    final yesterday = DateTime.now()
-        .toUtc()
-        .add(const Duration(hours: 8))
-        .subtract(const Duration(days: 1));
+    final yesterday = DateTime.now().toUtc().add(const Duration(hours: 8)).subtract(const Duration(days: 1));
     String two(int value) => value.toString().padLeft(2, '0');
-    final oldDate =
-        '${yesterday.year}-${two(yesterday.month)}-${two(yesterday.day)}';
+    final oldDate = '${yesterday.year}-${two(yesterday.month)}-${two(yesterday.day)}';
     adapter.bills = [
       (
         200,
@@ -130,12 +126,7 @@ void main() {
           'code': 0,
           'data': {
             'items': [
-              _bill(
-                points: 300,
-                event: '每日签到',
-                biz: 'daily_grant',
-                date: oldDate,
-              ),
+              _bill(points: 300, event: '每日签到', biz: 'daily_grant', date: oldDate),
               _bill(points: -120, event: '对话消耗', biz: 'chat_consume'),
             ],
           },
@@ -179,8 +170,7 @@ void main() {
       (401, {'code': 200001, 'details': 'authorization invalid'}),
       (200, {'code': 0, 'data': <String, dynamic>{}}),
     ];
-    RaccoonAuthService.accountRefresherForTest = (current) async =>
-        current.copyWith(accessToken: 'access-2');
+    RaccoonAuthService.accountRefresherForTest = (current) async => current.copyWith(accessToken: 'access-2');
 
     final result = await auth.checkIn(account());
 
@@ -203,18 +193,11 @@ void main() {
     adapter.setting = [
       (401, {'code': 200001, 'details': 'authorization invalid'}),
     ];
-    RaccoonAuthService.accountRefresherForTest = (current) async =>
-        current.copyWith(accessToken: 'access-2');
+    RaccoonAuthService.accountRefresherForTest = (current) async => current.copyWith(accessToken: 'access-2');
 
     await expectLater(
       auth.checkIn(account()),
-      throwsA(
-        isA<RaccoonAuthRequiredException>().having(
-          (error) => error.message,
-          'message',
-          '小浣熊登录已失效，请重新登录',
-        ),
-      ),
+      throwsA(isA<RaccoonAuthRequiredException>().having((error) => error.message, 'message', '小浣熊登录已失效，请重新登录')),
     );
     expect(adapter.settingCalls, 2);
     expect(saved.single.status, AiAccount.statusExpired);
@@ -236,10 +219,7 @@ void main() {
   });
 
   test('没有可用 token 时不发请求，直接要求重新登录', () async {
-    await expectLater(
-      auth.checkIn(account(access: '')),
-      throwsA(isA<RaccoonAuthRequiredException>()),
-    );
+    await expectLater(auth.checkIn(account(access: '')), throwsA(isA<RaccoonAuthRequiredException>()));
     expect(adapter.billsCalls, 0);
     expect(adapter.settingCalls, 0);
   });
@@ -251,12 +231,7 @@ String _beijingToday() {
   return '${now.year.toString().padLeft(4, '0')}-${two(now.month)}-${two(now.day)}';
 }
 
-Map<String, dynamic> _bill({
-  required int points,
-  required String event,
-  required String biz,
-  String? date,
-}) {
+Map<String, dynamic> _bill({required int points, required String event, required String biz, String? date}) {
   return {
     'bill_id': 'bill-$points-$event-$biz-${date ?? ''}',
     'points': points,
@@ -302,10 +277,7 @@ class _CheckInAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 
-  static (int, Map<String, dynamic>) _pick(
-    List<(int, Map<String, dynamic>)> script,
-    int call,
-  ) {
+  static (int, Map<String, dynamic>) _pick(List<(int, Map<String, dynamic>)> script, int call) {
     if (script.isEmpty) {
       return (200, {'code': 0, 'data': <String, dynamic>{}});
     }
@@ -321,12 +293,11 @@ class _CheckInAdapter implements HttpClientAdapter {
     return '';
   }
 
-  static ResponseBody _json(int status, Map<String, dynamic> body) =>
-      ResponseBody.fromString(
-        jsonEncode(body),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
+  static ResponseBody _json(int status, Map<String, dynamic> body) => ResponseBody.fromString(
+    jsonEncode(body),
+    status,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
 }

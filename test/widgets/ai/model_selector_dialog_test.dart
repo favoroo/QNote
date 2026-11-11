@@ -12,20 +12,19 @@ AiProvider _provider({
   required List<String> models,
   bool isDefault = false,
   bool enabled = true,
-}) =>
-    AiProvider(
-      id: id,
-      vendorId: 'custom',
-      name: name,
-      providerType: 'openai',
-      baseUrl: 'https://example.com/v1',
-      apiKeys: const ['sk-test'],
-      models: models.map((m) => AiProviderModel.of(m)).toList(),
-      isDefault: isDefault,
-      enabled: enabled,
-      createdAt: DateTime(2026),
-      updatedAt: DateTime(2026),
-    );
+}) => AiProvider(
+  id: id,
+  vendorId: 'custom',
+  name: name,
+  providerType: 'openai',
+  baseUrl: 'https://example.com/v1',
+  apiKeys: const ['sk-test'],
+  models: models.map((m) => AiProviderModel.of(m)).toList(),
+  isDefault: isDefault,
+  enabled: enabled,
+  createdAt: DateTime(2026),
+  updatedAt: DateTime(2026),
+);
 
 /// 直接用带元数据的模型构造厂商条目（生图标识等）
 AiProvider _providerOfModels({
@@ -34,20 +33,19 @@ AiProvider _providerOfModels({
   required List<AiProviderModel> models,
   bool isDefault = false,
   bool enabled = true,
-}) =>
-    AiProvider(
-      id: id,
-      vendorId: 'custom',
-      name: name,
-      providerType: 'openai',
-      baseUrl: 'https://example.com/v1',
-      apiKeys: const ['sk-test'],
-      models: models,
-      isDefault: isDefault,
-      enabled: enabled,
-      createdAt: DateTime(2026),
-      updatedAt: DateTime(2026),
-    );
+}) => AiProvider(
+  id: id,
+  vendorId: 'custom',
+  name: name,
+  providerType: 'openai',
+  baseUrl: 'https://example.com/v1',
+  apiKeys: const ['sk-test'],
+  models: models,
+  isDefault: isDefault,
+  enabled: enabled,
+  createdAt: DateTime(2026),
+  updatedAt: DateTime(2026),
+);
 
 /// 打开共享模型选择器并点击指定文本，返回弹出结果
 Future<ModelPickerResult?> _openAndTap(
@@ -97,12 +95,7 @@ void main() {
       _provider(id: 'p2', name: '官方 OpenRouter', models: ['model-c']),
     ];
 
-    final result = await _openAndTap(
-      tester,
-      providers: providers,
-      selected: null,
-      tapText: 'model-b',
-    );
+    final result = await _openAndTap(tester, providers: providers, selected: null, tapText: 'model-b');
 
     expect(result, isNotNull);
     expect(result!.ref, const AiModelRef(providerId: 'p1', modelName: 'model-b'));
@@ -126,19 +119,16 @@ void main() {
 
     expect(enabledModelEntries(providers).map((e) => e.model.id), ['model-b']);
 
-    await _openAndTap(
-      tester,
-      providers: providers,
-      selected: null,
-      tapText: 'model-b',
-    );
+    await _openAndTap(tester, providers: providers, selected: null, tapText: 'model-b');
     expect(find.text('已停用厂商'), findsNothing);
     expect(find.text('model-a'), findsNothing);
 
     // 只剩停用厂商时等同于「一个可用模型都没有」
     await _openAndTap(
       tester,
-      providers: [_provider(id: 'p1', name: '已停用厂商', models: ['model-a'], enabled: false)],
+      providers: [
+        _provider(id: 'p1', name: '已停用厂商', models: ['model-a'], enabled: false),
+      ],
       selected: null,
     );
     expect(find.text('还没有可用的 AI 模型'), findsOneWidget);
@@ -186,12 +176,7 @@ void main() {
             body: Center(
               child: TextButton(
                 onPressed: () async {
-                  popped = await showModelPickerSheet(
-                    context,
-                    providers: providers,
-                    groups: groups,
-                    selected: null,
-                  );
+                  popped = await showModelPickerSheet(context, providers: providers, groups: groups, selected: null);
                 },
                 child: const Text('open'),
               ),
@@ -222,9 +207,7 @@ void main() {
       AiRouteGroup(
         id: 'g1',
         name: '失效组',
-        members: const [
-          RouteGroupMember(providerId: 'gone', modelName: 'x'),
-        ],
+        members: const [RouteGroupMember(providerId: 'gone', modelName: 'x')],
         createdAt: DateTime(2026),
         updatedAt: DateTime(2026),
       ),
@@ -239,51 +222,22 @@ void main() {
     final providers = [
       _provider(id: 'p1', name: '我的中转', models: ['model-a']),
     ];
-    final groups = [
-      AiRouteGroup(
-        id: 'g1',
-        name: '主模型池',
-        createdAt: DateTime(2026),
-        updatedAt: DateTime(2026),
-      ),
-    ];
+    final groups = [AiRouteGroup(id: 'g1', name: '主模型池', createdAt: DateTime(2026), updatedAt: DateTime(2026))];
 
+    expect(aiBindingDisplayName(AiModelRef.routeGroup('g1'), providers, groups), '主模型池');
     expect(
-      aiBindingDisplayName(AiModelRef.routeGroup('g1'), providers, groups),
-      '主模型池',
-    );
-    expect(
-      aiBindingDisplayName(
-        const AiModelRef(providerId: 'p1', modelName: 'model-a'),
-        providers,
-        groups,
-      ),
+      aiBindingDisplayName(const AiModelRef(providerId: 'p1', modelName: 'model-a'), providers, groups),
       '我的中转 · model-a',
     );
-    expect(
-      aiBindingDisplayName(AiModelRef.routeGroup('missing'), providers, groups),
-      '未配置模型',
-    );
+    expect(aiBindingDisplayName(AiModelRef.routeGroup('missing'), providers, groups), '未配置模型');
   });
 
   test('aiModelDisplayName 按厂商名 + 模型名展示，缺失时回落裸模型名', () {
     final providers = [
       _provider(id: 'p1', name: '我的中转', models: ['model-a']),
     ];
-    expect(
-      aiModelDisplayName(
-        const AiModelRef(providerId: 'p1', modelName: 'model-a'),
-        providers,
-      ),
-      '我的中转 · model-a',
-    );
-    expect(
-      aiModelDisplayName(
-        const AiModelRef(providerId: 'gone', modelName: 'model-x'),
-        providers,
-      ),
-      'model-x',
-    );
+    expect(aiModelDisplayName(const AiModelRef(providerId: 'p1', modelName: 'model-a'), providers), '我的中转 · model-a');
+    expect(aiModelDisplayName(const AiModelRef(providerId: 'gone', modelName: 'model-x'), providers), 'model-x');
     expect(aiModelDisplayName(null, providers), '未配置模型');
   });
 
@@ -293,16 +247,8 @@ void main() {
         id: 'pLoomy',
         name: 'Loomy',
         models: [
-          AiProviderModel.of(
-            'deepseek-v4.1-flash',
-            name: 'DeepSeek V4.1 Flash',
-            supportsImageGeneration: false,
-          ),
-          AiProviderModel.of(
-            'qwen-image-3.0-pro',
-            name: 'qwen image 3.0 pro',
-            supportsImageGeneration: true,
-          ),
+          AiProviderModel.of('deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', supportsImageGeneration: false),
+          AiProviderModel.of('qwen-image-3.0-pro', name: 'qwen image 3.0 pro', supportsImageGeneration: true),
           AiProviderModel.of('auto', name: '自动 · 均衡'),
         ],
       ),
@@ -349,12 +295,7 @@ void main() {
       _provider(id: 'p1', name: '我的中转', models: ['my-custom-model']),
     ];
 
-    await _openAndTap(
-      tester,
-      providers: providers,
-      selected: null,
-      imageGeneration: true,
-    );
+    await _openAndTap(tester, providers: providers, selected: null, imageGeneration: true);
 
     expect(find.text('未识别到生图模型'), findsOneWidget);
     expect(find.text('my-custom-model'), findsNothing);
@@ -389,10 +330,7 @@ void main() {
                   popped = await showModelPickerSheet(
                     context,
                     providers: providers,
-                    selected: const AiModelRef(
-                      providerId: 'p1',
-                      modelName: 'custom-drawer',
-                    ),
+                    selected: const AiModelRef(providerId: 'p1', modelName: 'custom-drawer'),
                     imageGeneration: true,
                   );
                 },

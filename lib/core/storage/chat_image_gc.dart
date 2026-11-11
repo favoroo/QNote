@@ -32,12 +32,7 @@ class AiImageInventory {
   final int orphanCount;
   final int orphanBytes;
 
-  const AiImageInventory({
-    this.fileCount = 0,
-    this.totalBytes = 0,
-    this.orphanCount = 0,
-    this.orphanBytes = 0,
-  });
+  const AiImageInventory({this.fileCount = 0, this.totalBytes = 0, this.orphanCount = 0, this.orphanBytes = 0});
 
   static const AiImageInventory empty = AiImageInventory();
 }
@@ -93,17 +88,12 @@ class ChatImageGc {
   ///   引用的是同一个 `images/ai/` 路径；
   /// - `app_configs.value`：记忆与自定义技能是 markdown，正文里可能内联生成图路径，
   ///   一旦被删后续写回笔记就会指向空文件。
-  Future<Set<String>> collectReferencedImageKeys({
-    Set<String>? excludeSessionIds,
-  }) async {
+  Future<Set<String>> collectReferencedImageKeys({Set<String>? excludeSessionIds}) async {
     final keys = <String>{};
     try {
       final db = await _dbHelper.database;
 
-      final sessions = await db.query(
-        'chat_sessions',
-        columns: ['id', 'messages'],
-      );
+      final sessions = await db.query('chat_sessions', columns: ['id', 'messages']);
       for (final row in sessions) {
         final id = row['id']?.toString() ?? '';
         if (excludeSessionIds != null && excludeSessionIds.contains(id)) {
@@ -112,10 +102,7 @@ class ChatImageGc {
         keys.addAll(extractChatAiImageKeys(row['messages'] as String?));
       }
 
-      final textRows = await db.query(
-        'diary_records',
-        columns: ['photos'],
-      );
+      final textRows = await db.query('diary_records', columns: ['photos']);
       for (final row in textRows) {
         keys.addAll(extractChatAiImageKeys(row['photos'] as String?));
       }
@@ -136,11 +123,7 @@ class ChatImageGc {
       }
     } catch (error) {
       // 读不到保护集时**不能**当作「无人引用」继续删，交由调用方拿到空集后自然放弃回收
-      LoggerService.instance.logDatabase(
-        '统计生成图片引用失败，本轮跳过图片回收',
-        details: error.toString(),
-        level: LogLevel.error,
-      );
+      LoggerService.instance.logDatabase('统计生成图片引用失败，本轮跳过图片回收', details: error.toString(), level: LogLevel.error);
       return <String>{};
     }
     return keys;
@@ -156,11 +139,7 @@ class ChatImageGc {
     try {
       dir = await resolveAiImagesDir();
     } catch (error) {
-      LoggerService.instance.logDatabase(
-        '定位生成图片目录失败，本轮跳过图片处理',
-        details: error.toString(),
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logDatabase('定位生成图片目录失败，本轮跳过图片处理', details: error.toString(), level: LogLevel.warning);
       return const {};
     }
     if (dir == null || !await dir.exists()) {
@@ -175,11 +154,7 @@ class ChatImageGc {
         }
       }
     } catch (error) {
-      LoggerService.instance.logDatabase(
-        '扫描生成图片目录失败',
-        details: '${dir.path}: $error',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logDatabase('扫描生成图片目录失败', details: '${dir.path}: $error', level: LogLevel.warning);
     }
     return result;
   }
@@ -241,10 +216,7 @@ class ChatImageGc {
   }
 
   /// 按实际目录列表删除文件：只有列出来的文件才可能被删，天然杜绝路径拼接越权。
-  Future<AiImageCleanupResult> _deleteFromListing(
-    Set<String> wantedKeys, {
-    Map<String, File>? listing,
-  }) async {
+  Future<AiImageCleanupResult> _deleteFromListing(Set<String> wantedKeys, {Map<String, File>? listing}) async {
     if (kIsWeb || wantedKeys.isEmpty) {
       return AiImageCleanupResult.none;
     }
@@ -273,11 +245,6 @@ class ChatImageGc {
         );
       }
     }
-    return AiImageCleanupResult(
-      deletedFiles: deleted,
-      freedBytes: freed,
-      keptFiles: kept,
-      failedPaths: failed,
-    );
+    return AiImageCleanupResult(deletedFiles: deleted, freedBytes: freed, keptFiles: kept, failedPaths: failed);
   }
 }

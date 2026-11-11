@@ -8,12 +8,7 @@ class LinkMetadata {
   final String? imageUrl;
   final String domain;
 
-  LinkMetadata({
-    required this.url,
-    required this.title,
-    this.imageUrl,
-    required this.domain,
-  });
+  LinkMetadata({required this.url, required this.title, this.imageUrl, required this.domain});
 }
 
 class LinkPreviewHelper {
@@ -28,12 +23,7 @@ class LinkPreviewHelper {
     try {
       final uri = Uri.parse(url);
       final domain = uri.host;
-      fallback = LinkMetadata(
-        url: url,
-        title: url,
-        domain: domain,
-        imageUrl: null,
-      );
+      fallback = LinkMetadata(url: url, title: url, domain: domain, imageUrl: null);
     } catch (_) {
       // Ignored
     }
@@ -46,16 +36,15 @@ class LinkPreviewHelper {
         targetUrl = 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
       }
       final dio = Dio();
-      final response = await dio.get<List<int>>(
-        targetUrl,
-        options: Options(
-          responseType: ResponseType.bytes,
-          validateStatus: (status) => true,
-        ),
-      ).timeout(const Duration(seconds: 4));
-      
+      final response = await dio
+          .get<List<int>>(
+            targetUrl,
+            options: Options(responseType: ResponseType.bytes, validateStatus: (status) => true),
+          )
+          .timeout(const Duration(seconds: 4));
+
       final domain = uri.host;
-      
+
       if (response.statusCode != 200 || response.data == null) {
         return fallback;
       }
@@ -76,7 +65,7 @@ class LinkPreviewHelper {
           title = titleMatch.group(1)?.trim();
         }
       }
-      
+
       if (title == null || title.isEmpty) {
         title = domain;
       }
@@ -107,12 +96,7 @@ class LinkPreviewHelper {
         }
       }
 
-      final metadata = LinkMetadata(
-        url: url,
-        title: title,
-        imageUrl: imageUrl,
-        domain: domain,
-      );
+      final metadata = LinkMetadata(url: url, title: title, imageUrl: imageUrl, domain: domain);
 
       _cache[url] = metadata;
       return metadata;

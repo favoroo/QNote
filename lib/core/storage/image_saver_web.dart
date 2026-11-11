@@ -8,9 +8,7 @@ import 'package:web/web.dart' as web;
 /// `http(s)` / `blob:` 来源先转成同源 object URL，绕过 `download` 属性对跨域资源无效的限制。
 Future<void> saveImage(String source, String fileName) async {
   final trimmed = source.trim();
-  final href = trimmed.startsWith('data:')
-      ? trimmed
-      : await _toObjectUrl(trimmed);
+  final href = trimmed.startsWith('data:') ? trimmed : await _toObjectUrl(trimmed);
   final anchor = web.HTMLAnchorElement()
     ..href = href
     ..download = fileName

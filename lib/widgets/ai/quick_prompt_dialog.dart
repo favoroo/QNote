@@ -8,11 +8,7 @@ import 'package:qnote_flutter/providers/quick_prompt_provider.dart';
 ///
 /// 点击列表项 → 回调 [onSelected] 覆盖填充输入框并关闭弹窗；
 /// 弹窗内同时支持新增、编辑、删除提示词（含默认项）。
-Future<void> showQuickPromptDialog(
-  BuildContext context,
-  WidgetRef ref,
-  void Function(String text) onSelected,
-) async {
+Future<void> showQuickPromptDialog(BuildContext context, WidgetRef ref, void Function(String text) onSelected) async {
   await showDialog<void>(
     context: context,
     builder: (dialogContext) => _QuickPromptDialog(onSelected: onSelected),
@@ -44,11 +40,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
             // 标题行
             Row(
               children: [
-                Icon(
-                  Icons.bolt_rounded,
-                  size: 20,
-                  color: theme.colorScheme.primary,
-                ),
+                Icon(Icons.bolt_rounded, size: 20, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
                 Text('常用提示词', style: theme.textTheme.titleMedium),
                 const Spacer(),
@@ -66,38 +58,25 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (e, _) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text('加载失败：$e'),
-              ),
+              error: (e, _) => Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Text('加载失败：$e')),
               data: (prompts) {
                 if (prompts.isEmpty) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Text(
                       '暂无提示词，点右上角添加',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                   );
                 }
                 return ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.4,
-                  ),
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
                   child: ListView.builder(
                     shrinkWrap: true,
                     itemCount: prompts.length,
                     padding: const EdgeInsets.only(bottom: 4),
                     itemBuilder: (context, index) {
-                      return _buildPromptRow(
-                        context,
-                        ref,
-                        theme,
-                        index,
-                        prompts[index],
-                      );
+                      return _buildPromptRow(context, ref, theme, index, prompts[index]);
                     },
                   ),
                 );
@@ -106,10 +85,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
             // 关闭按钮
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
-              ),
+              child: TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('关闭')),
             ),
           ],
         ),
@@ -118,13 +94,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
   }
 
   /// 单条提示词行：点击文本选中 → 填充输入框；右侧编辑/删除
-  Widget _buildPromptRow(
-    BuildContext context,
-    WidgetRef ref,
-    ThemeData theme,
-    int index,
-    String text,
-  ) {
+  Widget _buildPromptRow(BuildContext context, WidgetRef ref, ThemeData theme, int index, String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -132,11 +102,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: Icon(
-              Icons.circle,
-              size: 6,
-              color: theme.colorScheme.primary.withValues(alpha: 0.6),
-            ),
+            child: Icon(Icons.circle, size: 6, color: theme.colorScheme.primary.withValues(alpha: 0.6)),
           ),
           const SizedBox(width: 10),
           // 点击文本区 → 选中并填充
@@ -158,8 +124,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
             icon: const Icon(Icons.edit_outlined, size: 20),
             color: theme.colorScheme.onSurfaceVariant,
             tooltip: '编辑',
-            onPressed: () =>
-                _showEditDialog(context, ref, _EditTarget(index, text)),
+            onPressed: () => _showEditDialog(context, ref, _EditTarget(index, text)),
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
@@ -174,11 +139,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
   }
 
   /// 新增/编辑提示词弹窗
-  Future<void> _showEditDialog(
-    BuildContext context,
-    WidgetRef ref,
-    _EditTarget? target,
-  ) async {
+  Future<void> _showEditDialog(BuildContext context, WidgetRef ref, _EditTarget? target) async {
     final controller = TextEditingController(text: target?.text ?? '');
     final confirmed = await showDialog<bool>(
       context: context,
@@ -193,14 +154,8 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
           decoration: const InputDecoration(hintText: '输入提示词内容'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('保存'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('保存')),
         ],
       ),
     );
@@ -230,22 +185,14 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
   }
 
   /// 删除提示词（二次确认）
-  Future<void> _confirmDelete(
-    BuildContext context,
-    WidgetRef ref,
-    int index,
-    String text,
-  ) async {
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, int index, String text) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除提示词'),
         content: Text('删除「$text」？'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(dialogContext).colorScheme.error,

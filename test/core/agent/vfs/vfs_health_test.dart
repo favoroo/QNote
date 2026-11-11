@@ -22,13 +22,15 @@ void main() {
 
   group('VFS /health/ 虚拟路径测试', () {
     test('listDir /health 列出 summary.json 及对应日期文件', () async {
-      await healthRepo.upsertDailyMetrics(HealthDailyMetrics(
-        date: '2026-09-15',
-        steps: 8888,
-        distanceMeters: 6200.0,
-        calories: 320.0,
-        updatedAt: DateTime.now(),
-      ));
+      await healthRepo.upsertDailyMetrics(
+        HealthDailyMetrics(
+          date: '2026-09-15',
+          steps: 8888,
+          distanceMeters: 6200.0,
+          calories: 320.0,
+          updatedAt: DateTime.now(),
+        ),
+      );
 
       final rootFiles = await vfs.listDir('/');
       expect(rootFiles, contains('health/'));
@@ -39,18 +41,20 @@ void main() {
     });
 
     test('readFile /health/2026-09-15.json 能够正确读取步数与健康指标', () async {
-      await healthRepo.upsertDailyMetrics(HealthDailyMetrics(
-        date: '2026-09-15',
-        steps: 9500,
-        distanceMeters: 7000.0,
-        calories: 400.0,
-        sleepDurationMinutes: 480,
-        deepSleepMinutes: 120,
-        avgHeartRate: 72,
-        avgSpo2: 98,
-        avgStress: 35,
-        updatedAt: DateTime.now(),
-      ));
+      await healthRepo.upsertDailyMetrics(
+        HealthDailyMetrics(
+          date: '2026-09-15',
+          steps: 9500,
+          distanceMeters: 7000.0,
+          calories: 400.0,
+          sleepDurationMinutes: 480,
+          deepSleepMinutes: 120,
+          avgHeartRate: 72,
+          avgSpo2: 98,
+          avgStress: 35,
+          updatedAt: DateTime.now(),
+        ),
+      );
 
       await healthRepo.upsertSportRecords([
         HealthSportRecord(
@@ -66,7 +70,7 @@ void main() {
           avgPace: 360,
           avgHeartRate: 155,
           createdAt: DateTime.now(),
-        )
+        ),
       ]);
 
       final content = await vfs.readFile('/health/2026-09-15.json');

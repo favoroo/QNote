@@ -22,31 +22,15 @@ class _TabConfig {
   final StatTab tab;
   final String label;
   final IconData icon;
-  const _TabConfig({
-    required this.tab,
-    required this.label,
-    required this.icon,
-  });
+  const _TabConfig({required this.tab, required this.label, required this.icon});
 }
 
 const _tabs = [
   _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights_rounded),
-  _TabConfig(
-    tab: StatTab.healthDevice,
-    label: '运动健康',
-    icon: Icons.favorite_rounded,
-  ),
-  _TabConfig(
-    tab: StatTab.screenTime,
-    label: '屏幕时长',
-    icon: Icons.hourglass_top_rounded,
-  ),
+  _TabConfig(tab: StatTab.healthDevice, label: '运动健康', icon: Icons.favorite_rounded),
+  _TabConfig(tab: StatTab.screenTime, label: '屏幕时长', icon: Icons.hourglass_top_rounded),
   _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant_rounded),
-  _TabConfig(
-    tab: StatTab.finance,
-    label: '记账',
-    icon: Icons.account_balance_wallet_rounded,
-  ),
+  _TabConfig(tab: StatTab.finance, label: '记账', icon: Icons.account_balance_wallet_rounded),
 ];
 
 class StatisticsPage extends ConsumerStatefulWidget {
@@ -110,10 +94,13 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             }
             final (startDate, endDate) = _getDateRange();
             final tagName = _getTagName(_activeTab);
-            context.push('/diary/batch', extra: {
-              'initialTags': tagName.isNotEmpty ? [tagName] : null,
-              'initialDateRange': DateTimeRange(start: startDate, end: endDate),
-            });
+            context.push(
+              '/diary/batch',
+              extra: {
+                'initialTags': tagName.isNotEmpty ? [tagName] : null,
+                'initialDateRange': DateTimeRange(start: startDate, end: endDate),
+              },
+            );
           },
           customBorder: const CircleBorder(),
           child: AnimatedContainer(
@@ -122,10 +109,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: colorScheme.primary.withValues(alpha: 0.2),
-                width: 1,
-              ),
+              border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2), width: 1),
               color: colorScheme.primary.withValues(alpha: 0.05),
             ),
             child: Icon(
@@ -146,27 +130,19 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
-        ),
+        leading: IconButton(icon: const Icon(Icons.menu), onPressed: () => rootScaffoldKey.currentState?.openDrawer()),
         title: const Text('数据统计'),
         centerTitle: true,
       ),
       body: Column(
         children: [
-          _TabSwitcher(
-            tabs: _tabs,
-            activeTab: _activeTab,
-            onTabChanged: _onTabChanged,
-          ),
+          _TabSwitcher(tabs: _tabs, activeTab: _activeTab, onTabChanged: _onTabChanged),
           AnimatedCrossFade(
             duration: AppMotion.duration(context, AppDurations.normal),
             sizeCurve: AppCurves.emphasized,
             firstCurve: AppCurves.exit,
             secondCurve: AppCurves.emphasized,
-            crossFadeState:
-                (_activeTab != StatTab.score && _activeTab != StatTab.screenTime)
+            crossFadeState: (_activeTab != StatTab.score && _activeTab != StatTab.screenTime)
                 ? CrossFadeState.showSecond
                 : CrossFadeState.showFirst,
             alignment: Alignment.topCenter,
@@ -177,14 +153,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                 alignment: Alignment.center,
                 children: [
                   const SizedBox(width: double.infinity),
-                  TimeRangeSelector(
-                    selectedRange: _timeRange,
-                    onRangeChanged: _onTimeRangeChanged,
-                  ),
-                  Positioned(
-                    right: 0,
-                    child: _buildViewDataButton(theme),
-                  ),
+                  TimeRangeSelector(selectedRange: _timeRange, onRangeChanged: _onTimeRangeChanged),
+                  Positioned(right: 0, child: _buildViewDataButton(theme)),
                 ],
               ),
             ),
@@ -201,10 +171,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                 return Stack(
                   alignment: Alignment.topCenter,
                   fit: StackFit.expand,
-                  children: [
-                    ...previousChildren,
-                    ?currentChild,
-                  ],
+                  children: [...previousChildren, ?currentChild],
                 );
               },
               child: KeyedSubtree(
@@ -229,10 +196,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     // healthDevice tab 呈现小米运动健康全量体征监测仪表盘
     if (_activeTab == StatTab.healthDevice) {
       return RepaintBoundary(
-        child: HealthStatsView(
-          startDate: startDate,
-          endDate: endDate,
-        ),
+        child: HealthStatsView(startDate: startDate, endDate: endDate),
       );
     }
     // screenTime tab 呈现手机屏幕使用时长与应用排行榜（复刻系统健康使用手机）
@@ -240,11 +204,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       return const RepaintBoundary(child: ScreenUsageStatsView());
     }
 
-    final query = StatsQuery(
-      start: startDate,
-      end: endDate,
-      tab: _activeTab,
-    );
+    final query = StatsQuery(start: startDate, end: endDate, tab: _activeTab);
     final statsAsync = ref.watch(statsProvider(query));
 
     return AnimatedSwitcher(
@@ -252,60 +212,50 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       switchInCurve: AppCurves.emphasized,
       switchOutCurve: AppCurves.exit,
       child: statsAsync.when(
-        loading: () => const Center(
-          key: ValueKey('stats_loading'),
-          child: CircularProgressIndicator(),
-        ),
-        error: (err, stack) => Center(
-          key: const ValueKey('stats_error'),
-          child: Text('统计失败：$err'),
-        ),
+        loading: () => const Center(key: ValueKey('stats_loading'), child: CircularProgressIndicator()),
+        error: (err, stack) => Center(key: const ValueKey('stats_error'), child: Text('统计失败：$err')),
         data: (stats) {
-        // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
-        final bool isEmpty;
-        switch (_activeTab) {
-          case StatTab.diet:
-            isEmpty = (stats as DietStatistics).totalMeals == 0;
-          case StatTab.finance:
-            isEmpty = (stats as FinanceStatistics).totalRecords == 0;
-          case StatTab.score:
-          case StatTab.healthDevice:
-          case StatTab.screenTime:
-          case StatTab.sleep:
-          case StatTab.mood:
-          case StatTab.activity:
-            isEmpty = true; // 不会执行到这里
-        }
-        if (isEmpty) {
-          return const EmptyStateWidget(
-            key: ValueKey('stats_empty'),
-            icon: Icons.bar_chart,
-            message: '暂无数据',
+          // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
+          final bool isEmpty;
+          switch (_activeTab) {
+            case StatTab.diet:
+              isEmpty = (stats as DietStatistics).totalMeals == 0;
+            case StatTab.finance:
+              isEmpty = (stats as FinanceStatistics).totalRecords == 0;
+            case StatTab.score:
+            case StatTab.healthDevice:
+            case StatTab.screenTime:
+            case StatTab.sleep:
+            case StatTab.mood:
+            case StatTab.activity:
+              isEmpty = true; // 不会执行到这里
+          }
+          if (isEmpty) {
+            return const EmptyStateWidget(key: ValueKey('stats_empty'), icon: Icons.bar_chart, message: '暂无数据');
+          }
+
+          Widget content;
+          switch (_activeTab) {
+            case StatTab.diet:
+              content = DietStatsWidget(stats: stats as DietStatistics);
+            case StatTab.finance:
+              content = FinanceStatsWidget(stats: stats as FinanceStatistics);
+            case StatTab.score:
+            case StatTab.healthDevice:
+            case StatTab.screenTime:
+            case StatTab.sleep:
+            case StatTab.mood:
+            case StatTab.activity:
+              content = const SizedBox.shrink(); // 不会执行到这里
+          }
+
+          // 隔离统计卡片的重绘，fl_chart 动画跑动时不影响外部
+          return SingleChildScrollView(
+            key: const ValueKey('stats_data'),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: RepaintBoundary(child: content),
           );
-        }
-
-        Widget content;
-        switch (_activeTab) {
-          case StatTab.diet:
-            content = DietStatsWidget(stats: stats as DietStatistics);
-          case StatTab.finance:
-            content = FinanceStatsWidget(stats: stats as FinanceStatistics);
-          case StatTab.score:
-          case StatTab.healthDevice:
-          case StatTab.screenTime:
-          case StatTab.sleep:
-          case StatTab.mood:
-          case StatTab.activity:
-            content = const SizedBox.shrink(); // 不会执行到这里
-        }
-
-        // 隔离统计卡片的重绘，fl_chart 动画跑动时不影响外部
-        return SingleChildScrollView(
-          key: const ValueKey('stats_data'),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: RepaintBoundary(child: content),
-        );
-      },
+        },
       ),
     );
   }
@@ -316,11 +266,7 @@ class _TabSwitcher extends StatefulWidget {
   final StatTab activeTab;
   final ValueChanged<StatTab> onTabChanged;
 
-  const _TabSwitcher({
-    required this.tabs,
-    required this.activeTab,
-    required this.onTabChanged,
-  });
+  const _TabSwitcher({required this.tabs, required this.activeTab, required this.onTabChanged});
 
   @override
   State<_TabSwitcher> createState() => _TabSwitcherState();
@@ -374,12 +320,7 @@ class _TabSwitcherState extends State<_TabSwitcher> {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
-            width: 0.5,
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.2), width: 0.5)),
       ),
       child: SingleChildScrollView(
         controller: _scrollController,
@@ -418,14 +359,10 @@ class _TabSwitcherState extends State<_TabSwitcher> {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isActive
-              ? colorScheme.primary
-              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          color: isActive ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(19),
           border: Border.all(
-            color: isActive
-                ? colorScheme.primary
-                : colorScheme.outlineVariant.withValues(alpha: 0.45),
+            color: isActive ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.45),
             width: 1,
           ),
           boxShadow: isActive
@@ -445,9 +382,7 @@ class _TabSwitcherState extends State<_TabSwitcher> {
             Icon(
               config.icon,
               size: 15,
-              color: isActive
-                  ? colorScheme.onPrimary
-                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+              color: isActive ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
             ),
             const SizedBox(width: 5),
             Text(
@@ -459,9 +394,7 @@ class _TabSwitcherState extends State<_TabSwitcher> {
                 fontSize: 13,
                 fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
                 letterSpacing: 0.2,
-                color: isActive
-                    ? colorScheme.onPrimary
-                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+                color: isActive ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
               ),
             ),
           ],

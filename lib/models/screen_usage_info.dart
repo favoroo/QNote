@@ -95,11 +95,7 @@ class TodayScreenUsage {
   final int yesterdayTotalTimeMs;
   final List<AppUsageInfo> appList;
 
-  const TodayScreenUsage({
-    required this.totalTimeMs,
-    required this.yesterdayTotalTimeMs,
-    required this.appList,
-  });
+  const TodayScreenUsage({required this.totalTimeMs, required this.yesterdayTotalTimeMs, required this.appList});
 
   int get totalMinutes => totalTimeMs ~/ 60000;
   int get hours => totalMinutes ~/ 60;

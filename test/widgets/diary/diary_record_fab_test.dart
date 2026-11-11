@@ -11,16 +11,11 @@ DateTime _today() {
   return DateTime(now.year, now.month, now.day);
 }
 
-ProviderContainer _container({
-  TimelineTimeSelectEvent? selection,
-  DiaryComposeDraft? draft,
-}) {
+ProviderContainer _container({TimelineTimeSelectEvent? selection, DiaryComposeDraft? draft}) {
   return ProviderContainer(
     overrides: [
-      if (selection != null)
-        diaryInputTimeProvider.overrideWith((ref) => selection),
-      if (draft != null)
-        diaryComposeDraftProvider.overrideWith(() => _SeedDraftNotifier(draft)),
+      if (selection != null) diaryInputTimeProvider.overrideWith((ref) => selection),
+      if (draft != null) diaryComposeDraftProvider.overrideWith(() => _SeedDraftNotifier(draft)),
     ],
   );
 }
@@ -34,11 +29,7 @@ class _SeedDraftNotifier extends DiaryComposeDraftNotifier {
   DiaryComposeDraft build() => _seed;
 }
 
-Future<void> _pumpFab(
-  WidgetTester tester,
-  ProviderContainer container, {
-  VoidCallback? onTap,
-}) async {
+Future<void> _pumpFab(WidgetTester tester, ProviderContainer container, {VoidCallback? onTap}) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -66,10 +57,7 @@ void main() {
 
   testWidgets('选中时间后加号仍在左侧，时间与 × 长在它右边', (tester) async {
     final container = _container(
-      selection: TimelineTimeSelectEvent(
-        const TimeOfDay(hour: 14, minute: 30),
-        date: _today(),
-      ),
+      selection: TimelineTimeSelectEvent(const TimeOfDay(hour: 14, minute: 30), date: _today()),
     );
     addTearDown(container.dispose);
 
@@ -92,10 +80,7 @@ void main() {
     // 项目主题的 primaryContainer 是带 alpha 的强调色，直接铺底会让时间线上
     // 滚过的文字透上来。所以这里用真实主题跑，而不是 MaterialApp 默认主题。
     final container = _container(
-      selection: TimelineTimeSelectEvent(
-        const TimeOfDay(hour: 14, minute: 30),
-        date: _today(),
-      ),
+      selection: TimelineTimeSelectEvent(const TimeOfDay(hour: 14, minute: 30), date: _today()),
     );
     addTearDown(container.dispose);
 
@@ -104,15 +89,15 @@ void main() {
         container: container,
         child: MaterialApp(
           theme: AppTheme.lightTheme(const Color(0xFF0B57D0)),
-          home: Scaffold(body: Center(child: DiaryRecordFab(onTap: () {}))),
+          home: Scaffold(
+            body: Center(child: DiaryRecordFab(onTap: () {})),
+          ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final fabBox = tester.widget<AnimatedContainer>(
-      find.byType(AnimatedContainer),
-    );
+    final fabBox = tester.widget<AnimatedContainer>(find.byType(AnimatedContainer));
     final decoration = fabBox.decoration! as BoxDecoration;
     expect(decoration.color!.a, 1.0);
   });
@@ -150,10 +135,7 @@ void main() {
   testWidgets('点主体触发记录面板，点 × 只清除时间选择', (tester) async {
     var tapped = false;
     final container = _container(
-      selection: TimelineTimeSelectEvent(
-        const TimeOfDay(hour: 14, minute: 30),
-        date: _today(),
-      ),
+      selection: TimelineTimeSelectEvent(const TimeOfDay(hour: 14, minute: 30), date: _today()),
     );
     addTearDown(container.dispose);
 
@@ -172,10 +154,7 @@ void main() {
 
   testWidgets('展开时宽度随时间增长，点 × 后立刻回缩', (tester) async {
     final container = _container(
-      selection: TimelineTimeSelectEvent(
-        const TimeOfDay(hour: 14, minute: 30),
-        date: _today(),
-      ),
+      selection: TimelineTimeSelectEvent(const TimeOfDay(hour: 14, minute: 30), date: _today()),
     );
     addTearDown(container.dispose);
 
@@ -189,10 +168,7 @@ void main() {
 
     // 退场标签改为绝对定位、不再撑宽度：回缩在点击后的第一批帧就开始了，
     // 不会先等 360ms 的淡出播完再动。
-    expect(
-      tester.getSize(find.byType(AnimatedSize)).width,
-      lessThan(expandedWidth),
-    );
+    expect(tester.getSize(find.byType(AnimatedSize)).width, lessThan(expandedWidth));
 
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byType(AnimatedSize)).width, 44);

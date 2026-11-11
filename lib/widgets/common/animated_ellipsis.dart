@@ -15,28 +15,19 @@ class AnimatedEllipsis extends StatefulWidget {
   /// 圆点颜色，缺省取主题 primary
   final Color? color;
 
-  const AnimatedEllipsis({
-    super.key,
-    this.dotSize = 4,
-    this.dotSpacing = 1.5,
-    this.color,
-  });
+  const AnimatedEllipsis({super.key, this.dotSize = 4, this.dotSpacing = 1.5, this.color});
 
   @override
   State<AnimatedEllipsis> createState() => _AnimatedEllipsisState();
 }
 
-class _AnimatedEllipsisState extends State<AnimatedEllipsis>
-    with SingleTickerProviderStateMixin {
+class _AnimatedEllipsisState extends State<AnimatedEllipsis> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1350),
-    )..repeat();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1350))..repeat();
   }
 
   @override

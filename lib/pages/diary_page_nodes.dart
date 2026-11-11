@@ -63,20 +63,15 @@ class _EmptyTimeNode extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final timeStr =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
     final bool isSingleSelected = isSelected && !isMultiSelect;
 
     final circleColor = isSelected
         ? theme.colorScheme.primary
-        : (isCurrentTime
-              ? distinctColor.withValues(alpha: 0.6)
-              : theme.colorScheme.outlineVariant);
+        : (isCurrentTime ? distinctColor.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant);
 
-    final double circleSize = isSelected
-        ? (isSingleSelected ? 10 : 16)
-        : (isCurrentTime ? 10 : 8);
+    final double circleSize = isSelected ? (isSingleSelected ? 10 : 16) : (isCurrentTime ? 10 : 8);
 
     final labelColor = isSelected ? theme.colorScheme.primary : distinctColor;
 
@@ -86,12 +81,7 @@ class _EmptyTimeNode extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 44.0,
-        margin: const EdgeInsets.only(
-          left: 0.0,
-          right: 4.0,
-          top: 2.0,
-          bottom: 2.0,
-        ),
+        margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
         child: Row(
           children: [
             SizedBox(
@@ -108,9 +98,7 @@ class _EmptyTimeNode extends StatelessWidget {
                     boxShadow: isSelected && !isSingleSelected
                         ? [
                             BoxShadow(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.3,
-                              ),
+                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
                               blurRadius: 8,
                               spreadRadius: 2,
                             ),
@@ -122,10 +110,7 @@ class _EmptyTimeNode extends StatelessWidget {
                           child: Container(
                             width: 6,
                             height: 6,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.onPrimary,
-                              shape: BoxShape.circle,
-                            ),
+                            decoration: BoxDecoration(color: theme.colorScheme.onPrimary, shape: BoxShape.circle),
                           ),
                         )
                       : null,
@@ -138,12 +123,8 @@ class _EmptyTimeNode extends StatelessWidget {
               style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
                 color: isSelected
                     ? theme.colorScheme.primary
-                    : (isCurrentTime
-                          ? distinctColor
-                          : theme.colorScheme.onSurfaceVariant),
-                fontWeight: isSelected || isCurrentTime
-                    ? FontWeight.bold
-                    : FontWeight.w500,
+                    : (isCurrentTime ? distinctColor : theme.colorScheme.onSurfaceVariant),
+                fontWeight: isSelected || isCurrentTime ? FontWeight.bold : FontWeight.w500,
                 fontSize: isSelected ? 13 : 12,
               ),
               child: Text(timeStr),
@@ -176,9 +157,7 @@ class _EmptyTimeNode extends StatelessWidget {
                     ? theme.colorScheme.primary
                     : (isCurrentTime
                           ? distinctColor.withValues(alpha: 0.2)
-                          : theme.colorScheme.outlineVariant.withValues(
-                              alpha: 0.15,
-                            )),
+                          : theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
               ),
             ),
             const SizedBox(width: 16),
@@ -195,22 +174,14 @@ class _SelectedTimeNode extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
 
-  const _SelectedTimeNode({
-    required this.time,
-    this.isCurrentTime = false,
-    required this.onTap,
-    this.onDoubleTap,
-  });
+  const _SelectedTimeNode({required this.time, this.isCurrentTime = false, required this.onTap, this.onDoubleTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final timeStr =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
-    final labelColor = isCurrentTime
-        ? distinctColor
-        : theme.colorScheme.primary;
+    final labelColor = isCurrentTime ? distinctColor : theme.colorScheme.primary;
 
     return GestureDetector(
       onTap: onTap,
@@ -218,12 +189,7 @@ class _SelectedTimeNode extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 44.0,
-        margin: const EdgeInsets.only(
-          left: 0.0,
-          right: 4.0,
-          top: 2.0,
-          bottom: 2.0,
-        ),
+        margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
         child: Row(
           children: [
             SizedBox(
@@ -232,10 +198,7 @@ class _SelectedTimeNode extends StatelessWidget {
                 child: Container(
                   width: 10,
                   height: 10,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
                 ),
               ),
             ),
@@ -270,9 +233,7 @@ class _SelectedTimeNode extends StatelessWidget {
               ),
             ],
             const SizedBox(width: 12),
-            Expanded(
-              child: Container(height: 1, color: theme.colorScheme.primary),
-            ),
+            Expanded(child: Container(height: 1, color: theme.colorScheme.primary)),
             const SizedBox(width: 16),
           ],
         ),
@@ -286,17 +247,12 @@ class _CurrentTimeNode extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
 
-  const _CurrentTimeNode({
-    required this.time,
-    required this.onTap,
-    this.onDoubleTap,
-  });
+  const _CurrentTimeNode({required this.time, required this.onTap, this.onDoubleTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final timeStr =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
 
     return GestureDetector(
@@ -305,12 +261,7 @@ class _CurrentTimeNode extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 44.0,
-        margin: const EdgeInsets.only(
-          left: 0.0,
-          right: 4.0,
-          top: 2.0,
-          bottom: 2.0,
-        ),
+        margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
         child: Row(
           children: [
             SizedBox(
@@ -319,10 +270,7 @@ class _CurrentTimeNode extends StatelessWidget {
                 child: Container(
                   width: 10,
                   height: 10,
-                  decoration: BoxDecoration(
-                    color: distinctColor.withValues(alpha: 0.6),
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: distinctColor.withValues(alpha: 0.6), shape: BoxShape.circle),
                 ),
               ),
             ),
@@ -353,12 +301,7 @@ class _CurrentTimeNode extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: Container(
-                height: 1,
-                color: distinctColor.withValues(alpha: 0.3),
-              ),
-            ),
+            Expanded(child: Container(height: 1, color: distinctColor.withValues(alpha: 0.3))),
             const SizedBox(width: 16),
           ],
         ),
@@ -444,17 +387,13 @@ class _CollapsingItemWrapper extends StatefulWidget {
   final bool isCollapsing;
   final Widget child;
 
-  const _CollapsingItemWrapper({
-    required this.isCollapsing,
-    required this.child,
-  });
+  const _CollapsingItemWrapper({required this.isCollapsing, required this.child});
 
   @override
   State<_CollapsingItemWrapper> createState() => _CollapsingItemWrapperState();
 }
 
-class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper>
-    with SingleTickerProviderStateMixin {
+class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _sizeAnimation;
   late final Animation<double> _fadeAnimation;
@@ -462,19 +401,9 @@ class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: AppDurations.normal,
-      value: 1.0,
-    );
-    _sizeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: AppCurves.standard,
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: AppCurves.exit,
-    );
+    _controller = AnimationController(vsync: this, duration: AppDurations.normal, value: 1.0);
+    _sizeAnimation = CurvedAnimation(parent: _controller, curve: AppCurves.standard);
+    _fadeAnimation = CurvedAnimation(parent: _controller, curve: AppCurves.exit);
   }
 
   @override
@@ -498,10 +427,7 @@ class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper>
     return SizeTransition(
       sizeFactor: _sizeAnimation,
       alignment: Alignment.topCenter,
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: widget.child,
-      ),
+      child: FadeTransition(opacity: _fadeAnimation, child: widget.child),
     );
   }
 }
@@ -519,11 +445,7 @@ class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper>
 /// 辉光画在卡片外层而不是铺一层色块盖在内容上 —— 覆盖式高亮会把卡片文字压暗，
 /// 而新增记录恰恰是用户最需要看清内容的时候。
 class _InsertingItemWrapper extends StatefulWidget {
-  const _InsertingItemWrapper({
-    required this.isInserting,
-    this.animateSize = true,
-    required this.child,
-  });
+  const _InsertingItemWrapper({required this.isInserting, this.animateSize = true, required this.child});
 
   final bool isInserting;
 
@@ -540,8 +462,7 @@ class _InsertingItemWrapper extends StatefulWidget {
 const Duration _kInsertDuration = Duration(milliseconds: 400);
 const Duration _kInsertRevealDelay = Duration(milliseconds: 440);
 
-class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
-    with SingleTickerProviderStateMixin {
+class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _grow;
   late final Animation<double> _fade;
@@ -552,11 +473,7 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
   void initState() {
     super.initState();
     // 用平台无障碍开关而不是 MediaQuery：initState 里依赖 InheritedWidget 是违规的。
-    final reduceMotion = WidgetsBinding
-        .instance
-        .platformDispatcher
-        .accessibilityFeatures
-        .disableAnimations;
+    final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     final shouldPlay = widget.isInserting && !reduceMotion;
 
     _controller = AnimationController(
@@ -588,11 +505,7 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
     // 「弹窗变卡片」落位时卡片已经在位，只补一次辉光：从 0 跑到 1，
     // 但不经过 SizeTransition，高度不会被重新拉一遍。
     if (!oldWidget.isInserting && widget.isInserting && !widget.animateSize) {
-      final reduceMotion = WidgetsBinding
-          .instance
-          .platformDispatcher
-          .accessibilityFeatures
-          .disableAnimations;
+      final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
       if (!reduceMotion) {
         _controller.forward(from: 0);
       }
@@ -645,16 +558,10 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
       child: FadeTransition(
         opacity: _fade,
         child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.05),
-            end: Offset.zero,
-          ).animate(_grow),
+          position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(_grow),
           child: content,
         ),
       ),
     );
   }
 }
-
-
-

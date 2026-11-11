@@ -75,9 +75,7 @@ Iterable<String> _generatedKeysOf(ChatMessage message) {
   if (message.isError == true) {
     return const [];
   }
-  final paths =
-      (message.uiDetails?['paths'] as List?)?.whereType<String>() ??
-      const <String>[];
+  final paths = (message.uiDetails?['paths'] as List?)?.whereType<String>() ?? const <String>[];
   return paths.map(imageKeyOf).where((key) => key.isNotEmpty);
 }
 
@@ -120,9 +118,7 @@ String stripRedundantImageMarkdown(String content, Set<String> generatedKeys) {
   for (final line in content.split('\n')) {
     final stripped = line.replaceAllMapped(_imageMarkdownPattern, (match) {
       final src = match.group(1) ?? '';
-      return isRedundantGeneratedImage(src, generatedKeys)
-          ? ''
-          : match.group(0)!;
+      return isRedundantGeneratedImage(src, generatedKeys) ? '' : match.group(0)!;
     });
     // 整行只有图片语法时剥离后变成空行，直接丢弃；原本的空行保留以维持段落间隔
     if (stripped.trim().isEmpty && line.trim().isNotEmpty) {

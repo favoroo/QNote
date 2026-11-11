@@ -41,9 +41,7 @@ Future<GlobalKey<ScaffoldState>> _pumpDrawer(
   );
 
   await tester.pumpWidget(
-    container == null
-        ? ProviderScope(child: app)
-        : UncontrolledProviderScope(container: container, child: app),
+    container == null ? ProviderScope(child: app) : UncontrolledProviderScope(container: container, child: app),
   );
 
   if (open) {
@@ -67,16 +65,7 @@ void main() {
     testWidgets('8 个入口全部可见，行与行之间以 7 条分隔线区隔', (tester) async {
       await _pumpDrawer(tester);
 
-      for (final label in <String>[
-        '个人信息',
-        '小Q设置',
-        'AI 模型配置',
-        '快捷记录',
-        '数据与同步',
-        '健康数据',
-        '个性化设置',
-        '关于 QNote',
-      ]) {
+      for (final label in <String>['个人信息', '小Q设置', 'AI 模型配置', '快捷记录', '数据与同步', '健康数据', '个性化设置', '关于 QNote']) {
         expect(find.text(label), findsOneWidget, reason: '缺少入口：$label');
       }
       // 已合并的旧入口不再单独出现
@@ -182,10 +171,9 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       // 预置一条早已过期的记忆
-      container.read(drawerNavMemoryProvider).recordClosed(
-            entryId: 'personalization',
-            now: DateTime.now().subtract(kDrawerResumeWindow * 2),
-          );
+      container
+          .read(drawerNavMemoryProvider)
+          .recordClosed(entryId: 'personalization', now: DateTime.now().subtract(kDrawerResumeWindow * 2));
 
       await _pumpDrawer(tester, container: container);
 

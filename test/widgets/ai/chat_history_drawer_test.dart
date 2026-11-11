@@ -52,10 +52,7 @@ ChatSession _session(
     isPinned: pinned,
     createdAt: updatedAt,
     updatedAt: updatedAt,
-    messages: [
-      for (final content in contents)
-        ChatMessage(role: 'user', content: content, timestamp: updatedAt),
-    ],
+    messages: [for (final content in contents) ChatMessage(role: 'user', content: content, timestamp: updatedAt)],
   );
 }
 
@@ -106,22 +103,14 @@ Future<void> _pumpDrawer(
       child: MaterialApp(
         theme: AppTheme.lightTheme(_accent),
         darkTheme: AppTheme.darkTheme(_accent),
-        themeMode: brightness == Brightness.dark
-            ? ThemeMode.dark
-            : ThemeMode.light,
+        themeMode: brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
         // EmptyStateWidget 的呼吸动画与 LoadingRing 都是无限循环，
         // 不关掉动画的话 pumpAndSettle 会一直等到超时
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: true),
-          child: child!,
-        ),
+        builder: (context, child) =>
+            MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!),
         home: Scaffold(
           key: scaffoldKey,
-          endDrawer: ChatHistoryDrawer(
-            sessionsAsync: AsyncValue.data(list),
-            activeId: activeId,
-            now: _now,
-          ),
+          endDrawer: ChatHistoryDrawer(sessionsAsync: AsyncValue.data(list), activeId: activeId, now: _now),
           body: Center(
             child: ElevatedButton(
               onPressed: () => scaffoldKey.currentState!.openEndDrawer(),
@@ -159,11 +148,7 @@ void main() {
       expect(findRowTitle('对话 today'), findsNothing);
       expect(findRowTitle('对话 recent'), findsNothing);
       expect(findRowTitle('对话 mid'), findsOneWidget, reason: '30 天内不受影响');
-      expect(
-        tester.getTopLeft(find.text('7 天内')),
-        before,
-        reason: '折叠只改展开态，绝不移动滚动位置',
-      );
+      expect(tester.getTopLeft(find.text('7 天内')), before, reason: '折叠只改展开态，绝不移动滚动位置');
 
       await tester.tap(find.text('7 天内'));
       await _settle(tester);
@@ -324,11 +309,7 @@ void main() {
         brightness: Brightness.dark,
         size: const Size(360, 640),
         sessions: [
-          _session(
-            'long',
-            _now,
-            title: '这是一条长得必须被省略号截断的会话标题，用来压测窄抽屉下的排版边界情况',
-          ),
+          _session('long', _now, title: '这是一条长得必须被省略号截断的会话标题，用来压测窄抽屉下的排版边界情况'),
           ..._sampleSessions(),
         ],
       );
@@ -340,12 +321,8 @@ void main() {
     testWidgets('当前会话行处于选中态，其余不是', (tester) async {
       await _pumpDrawer(tester, activeId: 'recent');
 
-      ListTile tileOf(String title) => tester.widget<ListTile>(
-        find.ancestor(
-          of: findRowTitle(title),
-          matching: find.byType(ListTile),
-        ),
-      );
+      ListTile tileOf(String title) =>
+          tester.widget<ListTile>(find.ancestor(of: findRowTitle(title), matching: find.byType(ListTile)));
 
       expect(tileOf('对话 recent').selected, isTrue);
       expect(tileOf('对话 today').selected, isFalse);

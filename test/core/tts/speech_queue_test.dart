@@ -12,10 +12,7 @@ void main() {
   group('播放顺序', () {
     test('按入队顺序合成与播放，一段不落', () async {
       final played = <SpeechSegment>[];
-      final queue = SpeechQueue(
-        synthesize: (text) async => _bytes(text),
-        play: (segment) async => played.add(segment),
-      );
+      final queue = SpeechQueue(synthesize: (text) async => _bytes(text), play: (segment) async => played.add(segment));
       unawaited(queue.run());
       queue
         ..add('第一段')
@@ -30,10 +27,7 @@ void main() {
     });
 
     test('未收尾时等待更多片段，收尾后才结束', () async {
-      final queue = SpeechQueue(
-        synthesize: (text) async => _bytes(text),
-        play: (segment) async {},
-      );
+      final queue = SpeechQueue(synthesize: (text) async => _bytes(text), play: (segment) async {});
       var done = false;
       final running = queue.run().whenComplete(() => done = true);
       queue.add('还在生成中');
@@ -46,10 +40,8 @@ void main() {
     });
 
     test('一段都没入队就收尾，直接结束不报错', () async {
-      final queue = SpeechQueue(
-        synthesize: (text) async => _bytes(text),
-        play: (segment) async => fail('不该播放'),
-      )..close();
+      final queue = SpeechQueue(synthesize: (text) async => _bytes(text), play: (segment) async => fail('不该播放'))
+        ..close();
       await queue.run();
     });
   });
@@ -91,8 +83,7 @@ void main() {
     test('合成失败带着 error 交给播放回调，队列继续', () async {
       final played = <SpeechSegment>[];
       final queue = SpeechQueue(
-        synthesize: (text) async =>
-            text == '坏' ? throw StateError('合成炸了') : _bytes(text),
+        synthesize: (text) async => text == '坏' ? throw StateError('合成炸了') : _bytes(text),
         play: (segment) async => played.add(segment),
       );
       unawaited(queue.run());
@@ -109,10 +100,7 @@ void main() {
 
     test('系统语音模式（合成返回 null）不算失败', () async {
       final played = <SpeechSegment>[];
-      final queue = SpeechQueue(
-        synthesize: (text) async => null,
-        play: (segment) async => played.add(segment),
-      );
+      final queue = SpeechQueue(synthesize: (text) async => null, play: (segment) async => played.add(segment));
       unawaited(queue.run());
       queue
         ..add('甲')

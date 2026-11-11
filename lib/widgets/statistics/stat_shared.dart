@@ -14,27 +14,17 @@ class StatCardContainer extends StatelessWidget {
   /// 卡片内容。
   final Widget child;
 
-  const StatCardContainer({
-    super.key,
-    required this.isDark,
-    required this.child,
-  });
+  const StatCardContainer({super.key, required this.isDark, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: AppPalette.border(isDark),
-          width: 0.5,
-        ),
+        side: BorderSide(color: AppPalette.border(isDark), width: 0.5),
       ),
       elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: child,
-      ),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
     );
   }
 }
@@ -50,21 +40,13 @@ class StatIconChip extends StatelessWidget {
   /// 徽标底色。
   final Color backgroundColor;
 
-  const StatIconChip({
-    super.key,
-    required this.icon,
-    required this.color,
-    required this.backgroundColor,
-  });
+  const StatIconChip({super.key, required this.icon, required this.color, required this.backgroundColor});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(8)),
       child: Icon(icon, size: 16, color: color),
     );
   }
@@ -103,27 +85,14 @@ class StatCardShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final titleText = Text(
       title,
-      style: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.bold,
-        color: AppPalette.textPrimary(isDark),
-      ),
+      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppPalette.textPrimary(isDark)),
     );
 
     final Widget header;
     if (leading != null) {
-      header = Row(
-        children: [
-          leading!,
-          const SizedBox(width: 8),
-          titleText,
-        ],
-      );
+      header = Row(children: [leading!, const SizedBox(width: 8), titleText]);
     } else if (trailing != null) {
-      header = Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [titleText, trailing!],
-      );
+      header = Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [titleText, trailing!]);
     } else {
       header = titleText;
     }
@@ -132,11 +101,7 @@ class StatCardShell extends StatelessWidget {
       isDark: isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          header,
-          const SizedBox(height: 16),
-          child,
-        ],
+        children: [header, const SizedBox(height: 16), child],
       ),
     );
   }
@@ -153,12 +118,7 @@ class StatsCardPair extends StatelessWidget {
   /// 两卡之间的水平间距。
   final double gap;
 
-  const StatsCardPair({
-    super.key,
-    required this.left,
-    required this.right,
-    this.gap = 12,
-  });
+  const StatsCardPair({super.key, required this.left, required this.right, this.gap = 12});
 
   @override
   Widget build(BuildContext context) {
@@ -183,12 +143,7 @@ class StatChartBox extends StatelessWidget {
   /// 数据非空时展示的图表。
   final Widget child;
 
-  const StatChartBox({
-    super.key,
-    required this.height,
-    required this.isEmpty,
-    required this.child,
-  });
+  const StatChartBox({super.key, required this.height, required this.isEmpty, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -216,12 +171,7 @@ class StatPieChart extends StatelessWidget {
   /// 分类颜色解析器，参数依次为分类名称、分类序号。
   final Color Function(String label, int index) colorOf;
 
-  const StatPieChart({
-    super.key,
-    required this.isDark,
-    required this.data,
-    required this.colorOf,
-  });
+  const StatPieChart({super.key, required this.isDark, required this.data, required this.colorOf});
 
   @override
   Widget build(BuildContext context) {
@@ -238,11 +188,7 @@ class StatPieChart extends StatelessWidget {
                   color: color,
                   radius: 60,
                   title: '${e.value.value}',
-                  titleStyle: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+                  titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                 );
               }).toList(),
               sectionsSpace: 2,
@@ -268,11 +214,7 @@ class StatPieChart extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   '${e.value.key} (${e.value.value})',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppPalette.textSecondary(isDark),
-                  ),
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppPalette.textSecondary(isDark)),
                 ),
               ],
             );

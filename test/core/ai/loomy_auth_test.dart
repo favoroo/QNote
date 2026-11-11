@@ -75,11 +75,7 @@ void main() {
     ];
 
     final challenge = await auth.sendLoginCode('pLoomy', '13800138000');
-    final result = await auth.verifyLoginCode(
-      'pLoomy',
-      challenge,
-      '123456',
-    );
+    final result = await auth.verifyLoginCode('pLoomy', challenge, '123456');
 
     expect(result.kind, AiAccount.kindLoomy);
     expect(result.accessToken, 'session-xyz');
@@ -93,9 +89,7 @@ void main() {
     expect(remaining.inDays, 13);
     expect(saved.single.id, result.id);
 
-    final checkBody = adapter.calls
-        .firstWhere((call) => call.path.contains('checkCode'))
-        .body;
+    final checkBody = adapter.calls.firstWhere((call) => call.path.contains('checkCode')).body;
     expect(checkBody['param']['mcode'], '123456');
     expect(checkBody['param']['msgid'], 'msg-1');
     expect(checkBody['param']['phone'], '13800138000');
@@ -103,33 +97,22 @@ void main() {
     expect(checkBody['base']['appid'], 'GM3LOOMY');
 
     // 账号域必须带 HMAC-SHA1 签名头，且 Content-MD5 与实际发出的字节一致
-    final sendCall = adapter.calls.firstWhere(
-      (call) => call.path.contains('sendMsgCode'),
-    );
+    final sendCall = adapter.calls.firstWhere((call) => call.path.contains('sendMsgCode'));
     expect(sendCall.headers['Authorization'], startsWith('account '));
     expect(sendCall.headers['Nonce'], isNotEmpty);
     expect(sendCall.headers['Date'], endsWith('GMT'));
     expect(sendCall.bodyString, isNotEmpty);
-    expect(
-      sendCall.headers['Content-MD5'],
-      base64Encode(md5.convert(utf8.encode(sendCall.bodyString)).bytes),
-    );
+    expect(sendCall.headers['Content-MD5'], base64Encode(md5.convert(utf8.encode(sendCall.bodyString)).bytes));
   });
 
   test('手机号格式不对时直接报错，不发请求', () async {
-    await expectLater(
-      auth.sendLoginCode('pLoomy', '12345'),
-      throwsA(isA<FormatException>()),
-    );
+    await expectLater(auth.sendLoginCode('pLoomy', '12345'), throwsA(isA<FormatException>()));
     expect(adapter.calls, isEmpty);
   });
 
   test('验证码不是 6 位时直接报错，不发请求', () async {
     const challenge = AccountSmsChallenge(phone: '13800138000', ticket: 'm1');
-    await expectLater(
-      auth.verifyLoginCode('pLoomy', challenge, '12345'),
-      throwsA(isA<FormatException>()),
-    );
+    await expectLater(auth.verifyLoginCode('pLoomy', challenge, '12345'), throwsA(isA<FormatException>()));
     expect(adapter.calls, isEmpty);
   });
 
@@ -140,12 +123,7 @@ void main() {
         {
           'code': '000000',
           'data': {
-            'data': {
-              'balance': 300,
-              'dailyBalance': 40,
-              'dailyLimitPoints': 100,
-              'dailyRemainingPoints': 40,
-            },
+            'data': {'balance': 300, 'dailyBalance': 40, 'dailyLimitPoints': 100, 'dailyRemainingPoints': 40},
           },
         },
       ),
@@ -169,21 +147,32 @@ void main() {
         200,
         {
           'code': '000000',
-          'data': {'data': {'records': <dynamic>[]}},
+          'data': {
+            'data': {'records': <dynamic>[]},
+          },
         },
       ),
     ];
 
-    await expectLater(
-      auth.fetchQuota(account()),
-      throwsA(isA<FormatException>()),
-    );
+    await expectLater(auth.fetchQuota(account()), throwsA(isA<FormatException>()));
   });
 
   test('签到：每日余额上涨算领到，返回本次到账积分', () async {
     adapter.scripts['/api/v2/points/records'] = [
-      (200, {'code': '000000', 'data': {'dailyBalance': 40}}),
-      (200, {'code': '000000', 'data': {'dailyBalance': 65}}),
+      (
+        200,
+        {
+          'code': '000000',
+          'data': {'dailyBalance': 40},
+        },
+      ),
+      (
+        200,
+        {
+          'code': '000000',
+          'data': {'dailyBalance': 65},
+        },
+      ),
     ];
     adapter.scripts['/api/v1/points/first-login'] = [
       (200, {'code': '000000', 'data': <String, dynamic>{}}),
@@ -195,16 +184,26 @@ void main() {
     expect(result.credit, 25);
     expect(result.message, contains('+25'));
     // 签到接口按天幂等，body 必须是空对象
-    final call = adapter.calls.firstWhere(
-      (call) => call.path.contains('first-login'),
-    );
+    final call = adapter.calls.firstWhere((call) => call.path.contains('first-login'));
     expect(call.body, isEmpty);
   });
 
   test('签到：余额没变算「今日已领取」，不虚报奖励', () async {
     adapter.scripts['/api/v2/points/records'] = [
-      (200, {'code': '000000', 'data': {'dailyBalance': 40}}),
-      (200, {'code': '000000', 'data': {'dailyBalance': 40}}),
+      (
+        200,
+        {
+          'code': '000000',
+          'data': {'dailyBalance': 40},
+        },
+      ),
+      (
+        200,
+        {
+          'code': '000000',
+          'data': {'dailyBalance': 40},
+        },
+      ),
     ];
     adapter.scripts['/api/v1/points/first-login'] = [
       (200, {'code': '000000', 'data': <String, dynamic>{}}),
@@ -222,10 +221,7 @@ void main() {
       (200, {'code': '020002', 'desc': 'token invalid'}),
     ];
 
-    await expectLater(
-      auth.fetchQuota(account()),
-      throwsA(isA<AccountAuthRequiredException>()),
-    );
+    await expectLater(auth.fetchQuota(account()), throwsA(isA<AccountAuthRequiredException>()));
   });
 
   test('HTTP 401 也算登录失效', () async {
@@ -233,10 +229,7 @@ void main() {
       (401, {'code': '000000', 'desc': 'unauthorized'}),
     ];
 
-    await expectLater(
-      auth.fetchQuota(account()),
-      throwsA(isA<AccountAuthRequiredException>()),
-    );
+    await expectLater(auth.fetchQuota(account()), throwsA(isA<AccountAuthRequiredException>()));
   });
 
   test('session 临期时直接判失效并标记过期（没有续期接口）', () async {
@@ -362,10 +355,7 @@ void main() {
     final content = (body['messages'] as List).first['content'] as List;
     expect(content.length, 1);
     expect(content.first['type'], 'text');
-    expect(
-      content.first['text'],
-      '看图\n<image_base64>data:image/png;base64,AAAA</image_base64>',
-    );
+    expect(content.first['text'], '看图\n<image_base64>data:image/png;base64,AAAA</image_base64>');
   });
 
   test('DeepSeek-V4.1-Flash 收 image_url，不做标记改写', () {
@@ -390,12 +380,7 @@ class _Call {
   final String bodyString;
   final Map<String, String> headers;
 
-  const _Call({
-    required this.path,
-    required this.body,
-    required this.bodyString,
-    required this.headers,
-  });
+  const _Call({required this.path, required this.body, required this.bodyString, required this.headers});
 }
 
 class _LoomyAdapter implements HttpClientAdapter {
@@ -412,9 +397,7 @@ class _LoomyAdapter implements HttpClientAdapter {
     final data = options.data;
     // 登录链路按「实际发出的字节」签名，发的是已序列化的字符串
     final bodyString = data is String ? data : (data == null ? '' : jsonEncode(data));
-    final body = bodyString.isEmpty
-        ? <String, dynamic>{}
-        : Map<String, dynamic>.from(jsonDecode(bodyString) as Map);
+    final body = bodyString.isEmpty ? <String, dynamic>{} : Map<String, dynamic>.from(jsonDecode(bodyString) as Map);
     calls.add(
       _Call(
         path: path,
@@ -427,9 +410,7 @@ class _LoomyAdapter implements HttpClientAdapter {
       ),
     );
     final script = scripts.entries
-        .where(
-          (entry) => path.endsWith(entry.key) || path.startsWith(entry.key),
-        )
+        .where((entry) => path.endsWith(entry.key) || path.startsWith(entry.key))
         .map((entry) => entry.value)
         .firstOrNull;
     if (script == null) {
@@ -443,12 +424,11 @@ class _LoomyAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 
-  static ResponseBody _json(int status, Map<String, dynamic> body) =>
-      ResponseBody.fromString(
-        jsonEncode(body),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
+  static ResponseBody _json(int status, Map<String, dynamic> body) => ResponseBody.fromString(
+    jsonEncode(body),
+    status,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
 }

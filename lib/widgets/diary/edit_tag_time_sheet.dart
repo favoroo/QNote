@@ -52,11 +52,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
         color: colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4)),
         ],
       ),
       child: SafeArea(
@@ -76,17 +72,14 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                 ),
               ),
             ),
-            
+
             // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   '编辑「${widget.entry.name}」时间',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 0.5),
                 ),
                 Row(
                   children: [
@@ -94,10 +87,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                       onPressed: () => Navigator.pop(context, {'clear': true}),
                       child: Text(
                         '清除时间',
-                        style: TextStyle(
-                          color: colorScheme.error,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: TextStyle(color: colorScheme.error, fontWeight: FontWeight.bold),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -120,9 +110,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                ),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -163,11 +151,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              Icon(
-                                Icons.edit,
-                                size: 14,
-                                color: colorScheme.primary.withValues(alpha: 0.7),
-                              ),
+                              Icon(Icons.edit, size: 14, color: colorScheme.primary.withValues(alpha: 0.7)),
                             ],
                           ),
                         ),
@@ -190,9 +174,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                     ),
                     selectedColor: colorScheme.primary,
                     checkmarkColor: colorScheme.onPrimary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ],
               ),
@@ -205,9 +187,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                ),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -275,11 +255,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                                   ),
                                 ),
                                 const SizedBox(width: 4),
-                                Icon(
-                                  Icons.edit,
-                                  size: 14,
-                                  color: colorScheme.primary.withValues(alpha: 0.7),
-                                ),
+                                Icon(Icons.edit, size: 14, color: colorScheme.primary.withValues(alpha: 0.7)),
                               ],
                             ),
                           ),
@@ -297,9 +273,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                           _endOffset = 0;
                         });
                       },
-                      style: IconButton.styleFrom(
-                        backgroundColor: colorScheme.error.withValues(alpha: 0.08),
-                      ),
+                      style: IconButton.styleFrom(backgroundColor: colorScheme.error.withValues(alpha: 0.08)),
                     ),
                     const SizedBox(width: 12),
                     ChoiceChip(
@@ -317,9 +291,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                       ),
                       selectedColor: colorScheme.primary,
                       checkmarkColor: colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ],
                 ],
@@ -334,9 +306,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: const Text('取消'),
@@ -356,9 +326,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                       });
                     },
                     style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: const Text('确定'),

@@ -38,12 +38,8 @@ class ModelReasoningCapability {
   /// 二值开关模型（目前是 GLM）：high 档在界面上显示为「开启」
   final bool _binary;
 
-  const ModelReasoningCapability._(
-    this.levels,
-    this._style, {
-    bool binary = false,
-    this.isGeneric = false,
-  }) : _binary = binary;
+  const ModelReasoningCapability._(this.levels, this._style, {bool binary = false, this.isGeneric = false})
+    : _binary = binary;
 
   /// 是否为「能力表未收录」的通用兜底
   ///
@@ -95,8 +91,7 @@ class ModelReasoningCapability {
     switch (_style) {
       case _ReasoningParamStyle.openAiEffort:
         // OpenAI 兼容端点大多没有真正的「关闭」，用 minimal 表达
-        return effort == ReasoningEffort.none ||
-                effort == ReasoningEffort.minimal
+        return effort == ReasoningEffort.none || effort == ReasoningEffort.minimal
             ? 'reasoning_effort: minimal'
             : 'reasoning_effort: ${effort.wireName}';
       case _ReasoningParamStyle.thinkingToggle:
@@ -106,9 +101,7 @@ class ModelReasoningCapability {
             ? 'thinking.type: disabled'
             : 'thinking.type: enabled + reasoning_effort: ${effort.wireName}';
       case _ReasoningParamStyle.qwenThinking:
-        return effort == ReasoningEffort.none
-            ? 'enable_thinking: false'
-            : 'thinking_budget: ${_budgetFor(effort)}';
+        return effort == ReasoningEffort.none ? 'enable_thinking: false' : 'thinking_budget: ${_budgetFor(effort)}';
       case _ReasoningParamStyle.openRouterReasoning:
         return 'reasoning.effort: ${effort.wireName}';
       case _ReasoningParamStyle.geminiThinkingLevel:
@@ -134,12 +127,7 @@ class ModelReasoningCapability {
     if (normalized.isEmpty) {
       return this;
     }
-    return ModelReasoningCapability._(
-      List.unmodifiable(normalized),
-      _style,
-      binary: _binary,
-      isGeneric: isGeneric,
-    );
+    return ModelReasoningCapability._(List.unmodifiable(normalized), _style, binary: _binary, isGeneric: isGeneric);
   }
 
   /// 该档位是否受支持（切换模型后旧选择可能失效，调用方据此回落到「自动」）
@@ -181,10 +169,7 @@ class ModelReasoningCapability {
         ], _ReasoningParamStyle.geminiThinkingBudget);
       }
       if (_gemini25Flash.hasMatch(name)) {
-        return const ModelReasoningCapability._(
-          _defaultLevels,
-          _ReasoningParamStyle.geminiThinkingBudget,
-        );
+        return const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.geminiThinkingBudget);
       }
       return null;
     }
@@ -206,10 +191,7 @@ class ModelReasoningCapability {
       return null;
     }
     if (_gpt5.hasMatch(name)) {
-      return const ModelReasoningCapability._(
-        _defaultLevels,
-        _ReasoningParamStyle.openAiEffort,
-      );
+      return const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.openAiEffort);
     }
     if (_oSeries.hasMatch(name)) {
       return const ModelReasoningCapability._([
@@ -226,19 +208,12 @@ class ModelReasoningCapability {
       ], _ReasoningParamStyle.openAiEffort);
     }
     if (_qwenThinking.hasMatch(name)) {
-      return const ModelReasoningCapability._(
-        _defaultLevels,
-        _ReasoningParamStyle.qwenThinking,
-      );
+      return const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.qwenThinking);
     }
     if (_glmThinking.hasMatch(name)) {
       // 默认就给四档：GLM 的 thinking.type 是开关，但对话面板不该只剩
       // 「开启/关闭」，中间档由 reasoning_effort 尽力表达
-      return const ModelReasoningCapability._(
-        _defaultLevels,
-        _ReasoningParamStyle.thinkingToggle,
-        binary: true,
-      );
+      return const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.thinkingToggle, binary: true);
     }
     return null;
   }
@@ -249,10 +224,7 @@ class ModelReasoningCapability {
   /// 用户看到的「关闭」与实际行为会不一致（请求里什么都没带，模型照常思考）。
   /// OpenAI 兼容协议的 `minimal` 是「尽量少想」，对提取场景已足够；参数不被
   /// 接受时由发信层的 400 降级兜住，不会把请求打挂。
-  static ModelReasoningCapability genericFor({
-    String providerType = 'openai',
-    String? vendorId,
-  }) {
+  static ModelReasoningCapability genericFor({String providerType = 'openai', String? vendorId}) {
     if (providerType == 'gemini') {
       return const ModelReasoningCapability._(
         _defaultLevels,
@@ -268,11 +240,7 @@ class ModelReasoningCapability {
         isGeneric: true,
       );
     }
-    return const ModelReasoningCapability._(
-      _defaultLevels,
-      _ReasoningParamStyle.openAiEffort,
-      isGeneric: true,
-    );
+    return const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.openAiEffort, isGeneric: true);
   }
 
   /// 界面侧解析：能力表未收录时返回通用兜底，保证入口永远可见
@@ -286,11 +254,7 @@ class ModelReasoningCapability {
     List<ReasoningEffort>? customLevels,
   }) {
     final base =
-        resolve(
-          modelName: modelName,
-          providerType: providerType,
-          vendorId: vendorId,
-        ) ??
+        resolve(modelName: modelName, providerType: providerType, vendorId: vendorId) ??
         genericFor(providerType: providerType, vendorId: vendorId);
     return base.withLevels(customLevels);
   }
@@ -304,13 +268,9 @@ class ModelReasoningCapability {
     }
     if (_style == _ReasoningParamStyle.openAiEffort) {
       // OpenAI 的「关闭」叫 minimal；o 系不支持该档，能力表里本来就没给 none
-      body['reasoning_effort'] = effort == ReasoningEffort.none
-          ? 'minimal'
-          : effort.wireName;
+      body['reasoning_effort'] = effort == ReasoningEffort.none ? 'minimal' : effort.wireName;
     } else if (_style == _ReasoningParamStyle.thinkingToggle) {
-      body['thinking'] = {
-        'type': effort == ReasoningEffort.none ? 'disabled' : 'enabled',
-      };
+      body['thinking'] = {'type': effort == ReasoningEffort.none ? 'disabled' : 'enabled'};
       // 开关本身只有两态，附带 effort 让支持该字段的网关能表达中间档；
       // 不支持的网关会忽略或 400，后者由降级重发兜住
       if (effort != ReasoningEffort.none) {
@@ -339,11 +299,7 @@ class ModelReasoningCapability {
       return {'thinkingLevel': _geminiIsHigh(effort) ? 'high' : 'low'};
     }
     if (_style == _ReasoningParamStyle.geminiThinkingBudget) {
-      return {
-        'thinkingBudget': effort == ReasoningEffort.none
-            ? 0
-            : _budgetFor(effort),
-      };
+      return {'thinkingBudget': effort == ReasoningEffort.none ? 0 : _budgetFor(effort)};
     }
     return null;
   }
@@ -397,9 +353,7 @@ class ModelReasoningCapability {
   static final RegExp _gptOss = RegExp(r'gpt-oss');
 
   /// Qwen3 与通义最新商业线；qwen2.5 等老模型没有思考开关
-  static final RegExp _qwenThinking = RegExp(
-    r'qwen3|qwen-(?:plus|max|turbo|flash)',
-  );
+  static final RegExp _qwenThinking = RegExp(r'qwen3|qwen-(?:plus|max|turbo|flash)');
 
   /// 智谱 GLM-4.5 起支持 thinking.type 开关
   static final RegExp _glmThinking = RegExp(r'glm-(?:4\.[5-9]|5(?:\.\d+)?)');
@@ -408,9 +362,7 @@ class ModelReasoningCapability {
 
   static final RegExp _gemini25Pro = RegExp(r'gemini-2\.5-pro');
 
-  static final RegExp _gemini25Flash = RegExp(
-    r'gemini-2\.5-(?:flash|flash-lite)',
-  );
+  static final RegExp _gemini25Flash = RegExp(r'gemini-2\.5-(?:flash|flash-lite)');
 
   /// OpenRouter 上确认支持 reasoning.effort 的推理模型族
   static final RegExp _openRouterReasoningModels = RegExp(

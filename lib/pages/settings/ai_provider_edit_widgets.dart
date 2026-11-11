@@ -38,17 +38,9 @@ class _VendorPickerSheet extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    '选择厂商',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('选择厂商', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop()),
               ],
             ),
           ),
@@ -58,24 +50,12 @@ class _VendorPickerSheet extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 16),
               children: [
                 if (accountVendors.isNotEmpty) ...[
-                  _vendorSectionHeader(
-                    theme,
-                    title: '账号登录',
-                    subtitle: '登录账号即可使用，Token 由账号额度提供',
-                  ),
-                  ...accountVendors.map(
-                    (spec) => _vendorTile(context, theme, spec),
-                  ),
+                  _vendorSectionHeader(theme, title: '账号登录', subtitle: '登录账号即可使用，Token 由账号额度提供'),
+                  ...accountVendors.map((spec) => _vendorTile(context, theme, spec)),
                 ],
                 if (apiKeyVendors.isNotEmpty) ...[
-                  _vendorSectionHeader(
-                    theme,
-                    title: 'API Key',
-                    subtitle: '填写地址与密钥，多把自动轮询',
-                  ),
-                  ...apiKeyVendors.map(
-                    (spec) => _vendorTile(context, theme, spec),
-                  ),
+                  _vendorSectionHeader(theme, title: 'API Key', subtitle: '填写地址与密钥，多把自动轮询'),
+                  ...apiKeyVendors.map((spec) => _vendorTile(context, theme, spec)),
                 ],
               ],
             ),
@@ -85,62 +65,37 @@ class _VendorPickerSheet extends StatelessWidget {
     );
   }
 
-  Widget _vendorSectionHeader(
-    ThemeData theme, {
-    required String title,
-    required String subtitle,
-  }) {
+  Widget _vendorSectionHeader(ThemeData theme, {required String title, required String subtitle}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
   }
 
-  Widget _vendorTile(
-    BuildContext context,
-    ThemeData theme,
-    AiProviderConfig spec,
-  ) {
+  Widget _vendorTile(BuildContext context, ThemeData theme, AiProviderConfig spec) {
     final selected = spec.id == selectedId;
     return ListTile(
       leading: Icon(
         selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-        color: selected
-            ? theme.colorScheme.primary
-            : theme.colorScheme.onSurfaceVariant,
+        color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
         size: 20,
       ),
       title: Text(
         spec.name,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: selected ? theme.colorScheme.primary : null,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w600, color: selected ? theme.colorScheme.primary : null),
       ),
       subtitle: Text(
         spec.defaultBaseUrl.isEmpty ? '需要自己填写地址' : spec.defaultBaseUrl,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),
       onTap: () => Navigator.of(context).pop(spec.id),
     );

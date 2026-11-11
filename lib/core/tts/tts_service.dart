@@ -2,8 +2,7 @@ import 'dart:typed_data';
 
 import 'package:qnote_flutter/core/tts/tts_engine.dart';
 
-export 'package:qnote_flutter/core/tts/tts_engine.dart'
-    show TtsException, kOnlineSynthesisSupported;
+export 'package:qnote_flutter/core/tts/tts_engine.dart' show TtsException, kOnlineSynthesisSupported;
 
 /// 小Q「语音回复」的统一合成服务：文本清洗、音色目录与在线/系统双通道入口。
 ///
@@ -41,22 +40,14 @@ class TtsService {
   }
 
   /// 在线合成：返回 mp3 音频字节。仅原生端支持，Web 端抛 [TtsException]。
-  static Future<Uint8List> synthesize({
-    required String text,
-    required String voice,
-    required double rate,
-  }) {
+  static Future<Uint8List> synthesize({required String text, required String voice, required double rate}) {
     return synthesizeOnline(text, voice: voice, rate: rate);
   }
 
   /// 系统语音朗读（阻塞至完成）。原生端走 flutter_tts，Web 端走浏览器语音。
   ///
   /// [resetQueue] 只在本场朗读的第一段传 true，段间传 false 才不会打断前一段。
-  static Future<void> speakNative({
-    required String text,
-    required double rate,
-    bool resetQueue = true,
-  }) {
+  static Future<void> speakNative({required String text, required double rate, bool resetQueue = true}) {
     return systemSpeak(text, rate: rate, resetQueue: resetQueue);
   }
 
@@ -92,23 +83,14 @@ class TtsService {
     // 图片标记整体剔除
     text = text.replaceAll(RegExp(r'!\[[^\]]*\]\([^)]*\)'), ' ');
     // 链接仅保留文字
-    text = text.replaceAllMapped(
-      RegExp(r'\[([^\]]*)\]\([^)]*\)'),
-      (m) => m.group(1)!,
-    );
+    text = text.replaceAllMapped(RegExp(r'\[([^\]]*)\]\([^)]*\)'), (m) => m.group(1)!);
     // 裸 URL 剔除
     text = text.replaceAll(RegExp(r'https?://\S+'), ' ');
     // 表格：剔除分隔行，单元格竖线换为空格
-    text = text.replaceAllMapped(
-      RegExp(r'^\s*\|?[\s:|-]+\|[\s:|-]*$', multiLine: true),
-      (_) => ' ',
-    );
+    text = text.replaceAllMapped(RegExp(r'^\s*\|?[\s:|-]+\|[\s:|-]*$', multiLine: true), (_) => ' ');
     text = text.replaceAll('|', ' ');
     // 标题/引用/列表前缀符号剥离（保留正文内容）
-    text = text.replaceAll(
-      RegExp(r'^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+', multiLine: true),
-      '',
-    );
+    text = text.replaceAll(RegExp(r'^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+', multiLine: true), '');
     // 加粗/斜体/删除线标记
     text = text.replaceAllMapped(RegExp(r'\*\*([^*]*)\*\*'), (m) => m.group(1)!);
     text = text.replaceAllMapped(RegExp(r'\*([^*]+)\*'), (m) => m.group(1)!);
@@ -117,10 +99,7 @@ class TtsService {
     text = text.replaceAll(RegExp(r'<[^>]+>'), ' ');
     // emoji 及杂类符号（朗读时会念出奇怪的描述或被跳过打顿）
     text = text.replaceAll(
-      RegExp(
-        r'[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]',
-        unicode: true,
-      ),
+      RegExp(r'[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]', unicode: true),
       ' ',
     );
     // 颜文字：只有「括号内符号数 ≥ 2 且占满一半以上」才整体剔除，
@@ -128,18 +107,13 @@ class TtsService {
     text = text.replaceAllMapped(_bracketedRun, (m) {
       final bracketed = m.group(0)!;
       final symbolCount = _kaomojiSymbol.allMatches(bracketed).length;
-      return symbolCount >= 2 && symbolCount * 2 >= bracketed.runes.length
-          ? ' '
-          : bracketed;
+      return symbolCount >= 2 && symbolCount * 2 >= bracketed.runes.length ? ' ' : bracketed;
     });
     // markdown 转义符与多余空白
     text = text.replaceAll('\\', ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     // 符号剔除/替换留下的空格会落在标点前，读起来有停顿异味，回收之
-    text = text.replaceAllMapped(
-      RegExp(r'\s+([，。！？、；：,.!?;:])'),
-      (m) => m.group(1)!,
-    );
+    text = text.replaceAllMapped(RegExp(r'\s+([，。！？、；：,.!?;:])'), (m) => m.group(1)!);
     if (maxChars == null || text.length <= maxChars) return text;
     // 句子边界截断：回退到最后一个句读符号，避免断在半截
     final window = text.substring(0, maxChars);

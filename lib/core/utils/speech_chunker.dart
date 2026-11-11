@@ -14,11 +14,8 @@ import 'dart:math' show min;
 /// 输出的片段仍是原始 markdown，去标记与折行由调用方（`TtsService.cleanSpeechText`）
 /// 负责，本类保持零依赖以便直接单测。
 class SpeechChunker {
-  SpeechChunker({
-    this.minChars = defaultMinChars,
-    this.maxChars = defaultMaxChars,
-    this.hardLimit = defaultHardLimit,
-  }) : subsequentMinChars = (minChars ~/ 3).clamp(8, 24);
+  SpeechChunker({this.minChars = defaultMinChars, this.maxChars = defaultMaxChars, this.hardLimit = defaultHardLimit})
+    : subsequentMinChars = (minChars ~/ 3).clamp(8, 24);
 
   /// 首段起播门槛（可朗读字数）：够念十来个字的连续语音，又不必等整段写完
   static const int defaultMinChars = 40;
@@ -141,9 +138,7 @@ class SpeechChunker {
   /// 一个可用切点都没有（长串无标点、或标记未闭合）时，只有文本已长过
   /// [hardLimit] 才降级到子句标点或定长硬切 —— 再等下去首声就没有意义了。
   int? _findSplit(String text) {
-    final endings = [
-      for (final m in _sentenceEnd.allMatches(text)) m.end,
-    ];
+    final endings = [for (final m in _sentenceEnd.allMatches(text)) m.end];
     final threshold = _gateCleared ? subsequentMinChars : minChars;
     if (endings.isEmpty) {
       if (text.length < hardLimit) return null;
@@ -238,10 +233,6 @@ class SpeechChunker {
   static int _speechLength(String text) {
     final stripped = text.replaceAll(_markupNoise, '');
     // emoji 与杂类符号不会被念出来，不计入门槛
-    return stripped.runes
-        .where(
-          (r) => !(r >= 0x1F000 && r <= 0x1FAFF) && !(r >= 0x2600 && r <= 0x27BF),
-        )
-        .length;
+    return stripped.runes.where((r) => !(r >= 0x1F000 && r <= 0x1FAFF) && !(r >= 0x2600 && r <= 0x27BF)).length;
   }
 }

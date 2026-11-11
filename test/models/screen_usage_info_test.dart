@@ -55,10 +55,7 @@ void main() {
     });
 
     test('缺失昨日字段时降级为 0 而不抛异常', () {
-      final usage = TodayScreenUsage.fromMap({
-        'totalTime': 3600 * 1000,
-        'appList': <dynamic>[],
-      });
+      final usage = TodayScreenUsage.fromMap({'totalTime': 3600 * 1000, 'appList': <dynamic>[]});
 
       expect(usage.yesterdayTotalTimeMs, 0);
     });
@@ -80,20 +77,12 @@ void main() {
     });
 
     test('不足一小时只显示分钟', () {
-      const usage = TodayScreenUsage(
-        totalTimeMs: 42 * 60 * 1000,
-        yesterdayTotalTimeMs: 0,
-        appList: [],
-      );
+      const usage = TodayScreenUsage(totalTimeMs: 42 * 60 * 1000, yesterdayTotalTimeMs: 0, appList: []);
       expect(usage.formattedTotalTime, '42分钟');
     });
 
     test('不足一分钟显示秒', () {
-      const usage = TodayScreenUsage(
-        totalTimeMs: 35 * 1000,
-        yesterdayTotalTimeMs: 0,
-        appList: [],
-      );
+      const usage = TodayScreenUsage(totalTimeMs: 35 * 1000, yesterdayTotalTimeMs: 0, appList: []);
       expect(usage.formattedTotalTime, '35秒');
     });
   });

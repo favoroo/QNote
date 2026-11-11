@@ -44,9 +44,7 @@ Set<String> extractChatAiImageKeys(String? messagesJson) {
 
 /// 会话内引用了的生成图片文件名（基于已反序列化的消息对象）。
 Set<String> sessionAiImageKeys(ChatSession session) {
-  return extractChatAiImageKeys(
-    jsonEncode(session.messages.map((m) => m.toMap()).toList()),
-  );
+  return extractChatAiImageKeys(jsonEncode(session.messages.map((m) => m.toMap()).toList()));
 }
 
 /// markdown 图片语法：`![alt](<路径或 data URI>)`
@@ -65,8 +63,7 @@ Iterable<String> messageImageSources(ChatMessage message) sync* {
   }
   final details = message.uiDetails;
   if (details != null) {
-    final paths =
-        (details['paths'] as List?)?.whereType<String>() ?? const <String>[];
+    final paths = (details['paths'] as List?)?.whereType<String>() ?? const <String>[];
     for (final path in paths) {
       yield path;
     }
@@ -127,14 +124,8 @@ int countImageRefsInMessages(List<ChatMessage> messages) {
     if (decoded is! List) {
       return (messageCount: 0, imageRefCount: 0);
     }
-    final messages = decoded
-        .whereType<Map<String, dynamic>>()
-        .map((m) => ChatMessage.fromMap(m))
-        .toList();
-    return (
-      messageCount: messages.length,
-      imageRefCount: countImageRefsInMessages(messages),
-    );
+    final messages = decoded.whereType<Map<String, dynamic>>().map((m) => ChatMessage.fromMap(m)).toList();
+    return (messageCount: messages.length, imageRefCount: countImageRefsInMessages(messages));
   } catch (_) {
     return (messageCount: 0, imageRefCount: 0);
   }

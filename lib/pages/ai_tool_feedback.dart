@@ -9,18 +9,13 @@ class _GenericToolFeedbackWidget extends StatefulWidget {
   final ChatMessage message;
   final ThemeData theme;
 
-  const _GenericToolFeedbackWidget({
-    required this.message,
-    required this.theme,
-  });
+  const _GenericToolFeedbackWidget({required this.message, required this.theme});
 
   @override
-  State<_GenericToolFeedbackWidget> createState() =>
-      _GenericToolFeedbackWidgetState();
+  State<_GenericToolFeedbackWidget> createState() => _GenericToolFeedbackWidgetState();
 }
 
-class _GenericToolFeedbackWidgetState
-    extends State<_GenericToolFeedbackWidget> {
+class _GenericToolFeedbackWidgetState extends State<_GenericToolFeedbackWidget> {
   bool _isExpanded = false;
 
   @override
@@ -29,35 +24,13 @@ class _GenericToolFeedbackWidgetState
     final message = widget.message;
     final isError = message.isError == true;
     final hasBody = message.content.trim().isNotEmpty;
-    final label = AgentToolLabels.resultLabel(
-      message.toolName ?? '',
-      message.uiDetails,
-    );
+    final label = AgentToolLabels.resultLabel(message.toolName ?? '', message.uiDetails);
 
     final markdownSheet = MarkdownStyleSheet(
-      p: TextStyle(
-        color: theme.colorScheme.onSurface,
-        fontSize: 14,
-        height: 1.5,
-      ),
-      h1: TextStyle(
-        color: theme.colorScheme.onSurface,
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        height: 1.6,
-      ),
-      h2: TextStyle(
-        color: theme.colorScheme.onSurface,
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-        height: 1.5,
-      ),
-      h3: TextStyle(
-        color: theme.colorScheme.onSurface,
-        fontSize: 14,
-        fontWeight: FontWeight.bold,
-        height: 1.4,
-      ),
+      p: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14, height: 1.5),
+      h1: TextStyle(color: theme.colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.bold, height: 1.6),
+      h2: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold, height: 1.5),
+      h3: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.bold, height: 1.4),
       code: TextStyle(
         fontFamily: 'monospace',
         fontSize: 13,
@@ -67,32 +40,21 @@ class _GenericToolFeedbackWidgetState
       codeblockDecoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       blockquoteDecoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
-        border: Border(
-          left: BorderSide(color: theme.colorScheme.primary, width: 4),
-        ),
+        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 4)),
         borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
       ),
-      blockquotePadding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 8,
-      ),
+      blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       listBullet: TextStyle(color: theme.colorScheme.onSurface),
     );
 
     Widget buildBody() => ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 220),
       child: SingleChildScrollView(
-        child: MarkdownBody(
-          data: message.content,
-          selectable: false,
-          styleSheet: markdownSheet,
-        ),
+        child: MarkdownBody(data: message.content, selectable: false, styleSheet: markdownSheet),
       ),
     );
 
@@ -112,19 +74,11 @@ class _GenericToolFeedbackWidgetState
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 14,
-                  color: theme.colorScheme.error,
-                ),
+                Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
                 const SizedBox(width: 4),
                 Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.error,
-                  ),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.error),
                 ),
               ],
             ),
@@ -139,9 +93,7 @@ class _GenericToolFeedbackWidgetState
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,20 +101,14 @@ class _GenericToolFeedbackWidgetState
         children: [
           // 头部折叠条：工具标签 + 关键信息摘要，点击展开/收起正文
           InkWell(
-            onTap: hasBody
-                ? () => setState(() => _isExpanded = !_isExpanded)
-                : null,
+            onTap: hasBody ? () => setState(() => _isExpanded = !_isExpanded) : null,
             borderRadius: BorderRadius.circular(10),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.check_circle_outline,
-                    size: 15,
-                    color: theme.colorScheme.primary,
-                  ),
+                  Icon(Icons.check_circle_outline, size: 15, color: theme.colorScheme.primary),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -172,9 +118,7 @@ class _GenericToolFeedbackWidgetState
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.85,
-                        ),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                       ),
                     ),
                   ),
@@ -182,10 +126,7 @@ class _GenericToolFeedbackWidgetState
                     const SizedBox(width: 4),
                     AnimatedRotation(
                       turns: _isExpanded ? 0.5 : 0,
-                      duration: AppMotion.duration(
-                        context,
-                        AppDurations.normal,
-                      ),
+                      duration: AppMotion.duration(context, AppDurations.normal),
                       curve: AppCurves.emphasized,
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
@@ -202,10 +143,8 @@ class _GenericToolFeedbackWidgetState
           _CollapsibleToolBody(
             expanded: _isExpanded,
             hasBody: hasBody,
-            bodyBuilder: (context) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: buildBody(),
-            ),
+            bodyBuilder: (context) =>
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: buildBody()),
           ),
         ],
       ),
@@ -220,8 +159,7 @@ class _DirectoryFeedbackWidget extends StatefulWidget {
   const _DirectoryFeedbackWidget({required this.message, required this.theme});
 
   @override
-  State<_DirectoryFeedbackWidget> createState() =>
-      _DirectoryFeedbackWidgetState();
+  State<_DirectoryFeedbackWidget> createState() => _DirectoryFeedbackWidgetState();
 }
 
 class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
@@ -235,9 +173,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
     final uiDetails = message.uiDetails;
     final path = uiDetails?['path'] as String? ?? '';
     final rawItems = uiDetails?['items'];
-    final items = rawItems is List
-        ? rawItems.map((e) => e.toString()).toList()
-        : null;
+    final items = rawItems is List ? rawItems.map((e) => e.toString()).toList() : null;
 
     if (isError) {
       return Container(
@@ -246,9 +182,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
         decoration: BoxDecoration(
           color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.colorScheme.error.withValues(alpha: 0.3),
-          ),
+          border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.3)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -257,9 +191,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                message.content.trim().isNotEmpty
-                    ? message.content.trim()
-                    : '查看目录失败',
+                message.content.trim().isNotEmpty ? message.content.trim() : '查看目录失败',
                 style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
               ),
             ),
@@ -268,12 +200,8 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
       );
     }
 
-    final totalCount =
-        items?.length ??
-        message.content.split('\n').where((l) => l.trim().isNotEmpty).length;
-    final displayList =
-        items ??
-        message.content.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final totalCount = items?.length ?? message.content.split('\n').where((l) => l.trim().isNotEmpty).length;
+    final displayList = items ?? message.content.split('\n').where((l) => l.trim().isNotEmpty).toList();
 
     final pathHint = path.isNotEmpty ? path : '/';
 
@@ -282,9 +210,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,34 +218,24 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
         children: [
           // 头部胶囊：目录路径 + 条目总数 + 展开/收起按钮
           InkWell(
-            onTap: totalCount == 0
-                ? null
-                : () => setState(() => _isExpanded = !_isExpanded),
+            onTap: totalCount == 0 ? null : () => setState(() => _isExpanded = !_isExpanded),
             borderRadius: BorderRadius.circular(10),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.folder_open_outlined,
-                    size: 15,
-                    color: theme.colorScheme.primary,
-                  ),
+                  Icon(Icons.folder_open_outlined, size: 15, color: theme.colorScheme.primary),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      totalCount == 0
-                          ? '已查看目录 $pathHint（空）'
-                          : '已查看目录 $pathHint（$totalCount 项）',
+                      totalCount == 0 ? '已查看目录 $pathHint（空）' : '已查看目录 $pathHint（$totalCount 项）',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.85,
-                        ),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                       ),
                     ),
                   ),
@@ -327,10 +243,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                     const SizedBox(width: 4),
                     AnimatedRotation(
                       turns: _isExpanded ? 0.5 : 0,
-                      duration: AppMotion.duration(
-                        context,
-                        AppDurations.normal,
-                      ),
+                      duration: AppMotion.duration(context, AppDurations.normal),
                       curve: AppCurves.emphasized,
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
@@ -360,13 +273,9 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                       child: Row(
                         children: [
                           Icon(
-                            isDir
-                                ? Icons.folder_outlined
-                                : Icons.insert_drive_file_outlined,
+                            isDir ? Icons.folder_outlined : Icons.insert_drive_file_outlined,
                             size: 13,
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.7,
-                            ),
+                            color: theme.colorScheme.primary.withValues(alpha: 0.7),
                           ),
                           const SizedBox(width: 6),
                           Expanded(
@@ -377,9 +286,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontFamily: 'monospace',
-                                color: theme.colorScheme.onSurface.withValues(
-                                  alpha: 0.8,
-                                ),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                               ),
                             ),
                           ),
@@ -427,9 +334,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
         decoration: BoxDecoration(
           color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.colorScheme.error.withValues(alpha: 0.3),
-          ),
+          border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.3)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -438,9 +343,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                message.content.trim().isNotEmpty
-                    ? message.content.trim()
-                    : '搜索失败',
+                message.content.trim().isNotEmpty ? message.content.trim() : '搜索失败',
                 style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
               ),
             ),
@@ -456,43 +359,31 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(
-            onTap: total == 0
-                ? null
-                : () => setState(() => _isExpanded = !_isExpanded),
+            onTap: total == 0 ? null : () => setState(() => _isExpanded = !_isExpanded),
             borderRadius: BorderRadius.circular(10),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.search_rounded,
-                    size: 15,
-                    color: theme.colorScheme.primary,
-                  ),
+                  Icon(Icons.search_rounded, size: 15, color: theme.colorScheme.primary),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      total == 0
-                          ? '搜索笔记 $queryHint（未找到）'
-                          : '搜索笔记 $queryHint（$total 条）',
+                      total == 0 ? '搜索笔记 $queryHint（未找到）' : '搜索笔记 $queryHint（$total 条）',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.85,
-                        ),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                       ),
                     ),
                   ),
@@ -500,10 +391,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
                     const SizedBox(width: 4),
                     AnimatedRotation(
                       turns: _isExpanded ? 0.5 : 0,
-                      duration: AppMotion.duration(
-                        context,
-                        AppDurations.normal,
-                      ),
+                      duration: AppMotion.duration(context, AppDurations.normal),
                       curve: AppCurves.emphasized,
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
@@ -522,9 +410,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
             bodyBuilder: (context) => Container(
               constraints: const BoxConstraints(maxHeight: 200),
               padding: const EdgeInsets.all(10),
-              child: SingleChildScrollView(
-                child: MarkdownBody(data: message.content, selectable: true),
-              ),
+              child: SingleChildScrollView(child: MarkdownBody(data: message.content, selectable: true)),
             ),
           ),
         ],
@@ -540,11 +426,7 @@ class ToolChainGroupWidget extends StatefulWidget {
   final List<ChatMessage> toolMessages;
   final ThemeData theme;
 
-  const ToolChainGroupWidget({
-    super.key,
-    required this.toolMessages,
-    required this.theme,
-  });
+  const ToolChainGroupWidget({super.key, required this.toolMessages, required this.theme});
 
   @override
   State<ToolChainGroupWidget> createState() => _ToolChainGroupWidgetState();
@@ -603,9 +485,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                   Icon(
                     hasError ? Icons.error_outline : Icons.task_alt_rounded,
                     size: 15,
-                    color: hasError
-                        ? theme.colorScheme.error
-                        : theme.colorScheme.primary,
+                    color: hasError ? theme.colorScheme.error : theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -616,11 +496,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: hasError
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.onSurface.withValues(
-                                alpha: 0.9,
-                              ),
+                        color: hasError ? theme.colorScheme.error : theme.colorScheme.onSurface.withValues(alpha: 0.9),
                       ),
                     ),
                   ),
@@ -629,11 +505,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                     turns: _isExpanded ? 0.5 : 0,
                     duration: AppMotion.duration(context, AppDurations.normal),
                     curve: AppCurves.emphasized,
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -663,9 +535,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                                 width: 16,
                                 height: 16,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withValues(
-                                    alpha: 0.12,
-                                  ),
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Center(
@@ -680,13 +550,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                                 ),
                               ),
                             ),
-                            Expanded(
-                              child: ChatBubble.buildToolFeedback(
-                                context,
-                                messages[i],
-                                theme,
-                              ),
-                            ),
+                            Expanded(child: ChatBubble.buildToolFeedback(context, messages[i], theme)),
                           ],
                         ),
                       ),
@@ -712,11 +576,7 @@ class _CollapsibleToolBody extends StatelessWidget {
   final bool hasBody;
   final WidgetBuilder bodyBuilder;
 
-  const _CollapsibleToolBody({
-    required this.expanded,
-    required this.hasBody,
-    required this.bodyBuilder,
-  });
+  const _CollapsibleToolBody({required this.expanded, required this.hasBody, required this.bodyBuilder});
 
   @override
   Widget build(BuildContext context) {
@@ -727,10 +587,7 @@ class _CollapsibleToolBody extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [const Divider(height: 1), bodyBuilder(context)],
           )
-        : const SizedBox(
-            key: ValueKey('tool_body_empty'),
-            width: double.infinity,
-          );
+        : const SizedBox(key: ValueKey('tool_body_empty'), width: double.infinity);
 
     return AnimatedSize(
       duration: AppMotion.duration(context, AppDurations.normal),
@@ -741,10 +598,7 @@ class _CollapsibleToolBody extends StatelessWidget {
         switchInCurve: AppCurves.emphasized,
         switchOutCurve: AppCurves.exit,
         layoutBuilder: (currentChild, previousChildren) {
-          return Stack(
-            alignment: Alignment.topCenter,
-            children: [...previousChildren, ?currentChild],
-          );
+          return Stack(alignment: Alignment.topCenter, children: [...previousChildren, ?currentChild]);
         },
         child: child,
       ),

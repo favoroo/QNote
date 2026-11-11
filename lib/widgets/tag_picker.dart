@@ -7,10 +7,7 @@ Future<List<String>?> showTagPickerDialog({
 }) {
   return showDialog<List<String>>(
     context: context,
-    builder: (context) => _TagPickerDialog(
-      availableTags: availableTags,
-      selectedTags: selectedTags,
-    ),
+    builder: (context) => _TagPickerDialog(availableTags: availableTags, selectedTags: selectedTags),
   );
 }
 
@@ -18,10 +15,7 @@ class _TagPickerDialog extends StatefulWidget {
   final List<String> availableTags;
   final List<String> selectedTags;
 
-  const _TagPickerDialog({
-    required this.availableTags,
-    required this.selectedTags,
-  });
+  const _TagPickerDialog({required this.availableTags, required this.selectedTags});
 
   @override
   State<_TagPickerDialog> createState() => _TagPickerDialogState();
@@ -60,10 +54,7 @@ class _TagPickerDialogState extends State<_TagPickerDialog> {
         children: [
           Text('选择标签', style: theme.textTheme.titleLarge),
           const Spacer(),
-          TextButton(
-            onPressed: _clearAll,
-            child: const Text('清除'),
-          ),
+          TextButton(onPressed: _clearAll, child: const Text('清除')),
         ],
       ),
       content: SizedBox(
@@ -85,14 +76,8 @@ class _TagPickerDialogState extends State<_TagPickerDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(null),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_selected),
-          child: const Text('确定'),
-        ),
+        TextButton(onPressed: () => Navigator.of(context).pop(null), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.of(context).pop(_selected), child: const Text('确定')),
       ],
     );
   }

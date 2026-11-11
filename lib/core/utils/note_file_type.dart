@@ -45,9 +45,7 @@ class NoteFileTypeHelper {
       case 'json':
         return NoteFileType.json;
       default:
-        return _codeExtensions.contains(ext)
-            ? NoteFileType.code
-            : NoteFileType.markdown;
+        return _codeExtensions.contains(ext) ? NoteFileType.code : NoteFileType.markdown;
     }
   }
 

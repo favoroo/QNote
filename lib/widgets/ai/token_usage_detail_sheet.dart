@@ -28,8 +28,7 @@ class TokenUsageDetailSheet extends ConsumerStatefulWidget {
   const TokenUsageDetailSheet({super.key});
 
   @override
-  ConsumerState<TokenUsageDetailSheet> createState() =>
-      _TokenUsageDetailSheetState();
+  ConsumerState<TokenUsageDetailSheet> createState() => _TokenUsageDetailSheetState();
 }
 
 class _TokenUsageDetailSheetState extends ConsumerState<TokenUsageDetailSheet> {
@@ -40,8 +39,7 @@ class _TokenUsageDetailSheetState extends ConsumerState<TokenUsageDetailSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final detailAsync = ref.watch(aiTokenUsageDetailProvider(_period));
-    final providers =
-        ref.watch(aiProviderListProvider).valueOrNull ?? const <AiProvider>[];
+    final providers = ref.watch(aiProviderListProvider).valueOrNull ?? const <AiProvider>[];
 
     return DraggableScrollableSheet(
       expand: false,
@@ -61,21 +59,12 @@ class _TokenUsageDetailSheetState extends ConsumerState<TokenUsageDetailSheet> {
                   loading: () => const Padding(
                     padding: EdgeInsets.symmetric(vertical: 56),
                     child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                     ),
                   ),
-                  error: (error, stackTrace) => _ErrorState(
-                    onRetry: () =>
-                        ref.invalidate(aiTokenUsageDetailProvider(_period)),
-                  ),
-                  data: (detail) => TokenUsageDetailView(
-                    detail: detail,
-                    providers: providers,
-                  ),
+                  error: (error, stackTrace) =>
+                      _ErrorState(onRetry: () => ref.invalidate(aiTokenUsageDetailProvider(_period))),
+                  data: (detail) => TokenUsageDetailView(detail: detail, providers: providers),
                 ),
               ),
             ),
@@ -127,19 +116,9 @@ class _SheetHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Token 消耗明细',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text('Token 消耗明细', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 2),
-                Text(
-                  '仅统计服务端上报用量',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                Text('仅统计服务端上报用量', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -159,11 +138,7 @@ class TokenUsageDetailView extends StatelessWidget {
   final AiTokenUsageDetail detail;
   final List<AiProvider> providers;
 
-  const TokenUsageDetailView({
-    super.key,
-    required this.detail,
-    this.providers = const [],
-  });
+  const TokenUsageDetailView({super.key, required this.detail, this.providers = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -172,9 +147,7 @@ class TokenUsageDetailView extends StatelessWidget {
       return _EmptyState(period: detail.period);
     }
 
-    final providerById = {
-      for (final provider in providers) provider.id: provider,
-    };
+    final providerById = {for (final provider in providers) provider.id: provider};
     final total = detail.summary.totalTokens;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -209,9 +182,7 @@ class TokenUsageDetailView extends StatelessWidget {
         const SizedBox(height: 16),
         Text(
           '本机数据不参与云同步；仅统计服务端返回的 usage。',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -227,9 +198,7 @@ class TokenUsageDetailView extends StatelessWidget {
   /// 模型展示名：优先取厂商条目里的自定义名，删掉后回退到模型 ID
   String _modelName(Map<String, AiProvider> byId, AiTokenUsageBreakdown item) {
     final provider = byId[item.providerId];
-    final model = provider?.models
-        .where((model) => model.id == item.modelName)
-        .firstOrNull;
+    final model = provider?.models.where((model) => model.id == item.modelName).firstOrNull;
     final name = model?.name.trim() ?? '';
     if (name.isNotEmpty) return name;
     return item.modelName.trim().isEmpty ? '未知模型' : item.modelName;
@@ -259,12 +228,7 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '总消耗',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text('总消耗', style: theme.textTheme.labelMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
           const SizedBox(height: 2),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -274,25 +238,15 @@ class _SummaryCard extends StatelessWidget {
                 message: '${formatTokenCountExact(summary.totalTokens)} tokens',
                 child: Text(
                   formatTokenCount(summary.totalTokens),
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
-                  ),
+                  style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.5),
                 ),
               ),
               const SizedBox(width: 4),
-              Text(
-                'tokens',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
+              Text('tokens', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
               const Spacer(),
               Text(
                 '${summary.requestCount} 次请求',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -304,17 +258,11 @@ class _SummaryCard extends StatelessWidget {
               ),
               _verticalDivider(theme),
               Expanded(
-                child: _SummaryMetric(
-                  label: '输出',
-                  value: summary.completionTokens,
-                ),
+                child: _SummaryMetric(label: '输出', value: summary.completionTokens),
               ),
               _verticalDivider(theme),
               Expanded(
-                child: _SummaryMetric(
-                  label: '平均/次',
-                  value: detail.averagePerRequest,
-                ),
+                child: _SummaryMetric(label: '平均/次', value: detail.averagePerRequest),
               ),
             ],
           ),
@@ -348,19 +296,9 @@ class _SummaryMetric extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            formatTokenCount(value),
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text(formatTokenCount(value), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 1),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -380,19 +318,9 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          child: Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
         ),
-        Text(
-          '$count 项',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
+        Text('$count 项', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
       ],
     );
   }
@@ -448,9 +376,7 @@ class _RankRow extends StatelessWidget {
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -461,9 +387,7 @@ class _RankRow extends StatelessWidget {
                           '输出 ${formatTokenCountExact(item.completionTokens)}',
                       child: Text(
                         formatTokenCount(item.totalTokens),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
                   ],
@@ -475,9 +399,7 @@ class _RankRow extends StatelessWidget {
                     value: share.clamp(0.0, 1.0),
                     minHeight: 6,
                     backgroundColor: colorScheme.surfaceContainerHighest,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      colorScheme.primary,
-                    ),
+                    valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -488,18 +410,11 @@ class _RankRow extends StatelessWidget {
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      _percentText(share),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: colorScheme.outline,
-                      ),
-                    ),
+                    Text(_percentText(share), style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline)),
                   ],
                 ),
               ],
@@ -527,28 +442,19 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final label = period == AiTokenUsagePeriod.all
-        ? '暂无消耗记录'
-        : '${period.label}暂无消耗记录';
+    final label = period == AiTokenUsagePeriod.all ? '暂无消耗记录' : '${period.label}暂无消耗记录';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 8),
       child: Column(
         children: [
           Icon(Icons.data_usage_rounded, size: 34, color: colorScheme.outline),
           const SizedBox(height: 10),
-          Text(
-            label,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text(label, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(
             '仅统计服务端返回的 usage，不支持上报的厂商不计入。',
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -572,12 +478,7 @@ class _ErrorState extends StatelessWidget {
         children: [
           Icon(Icons.error_outline_rounded, size: 32, color: colorScheme.error),
           const SizedBox(height: 8),
-          Text(
-            '读取消耗明细失败',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text('读取消耗明细失败', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           TextButton(onPressed: onRetry, child: const Text('重试')),
         ],

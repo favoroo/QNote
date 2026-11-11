@@ -60,20 +60,16 @@ class ModelEffortLevelsSheet extends StatefulWidget {
 
 class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
   /// 自动识别的能力（决定参数形态、候选档位与「恢复」的目标）
-  late final ModelReasoningCapability _autoCapability =
-      ModelReasoningCapability.forUi(
-        modelName: widget.modelName,
-        providerType: widget.providerType,
-        vendorId: widget.vendorId,
-      );
+  late final ModelReasoningCapability _autoCapability = ModelReasoningCapability.forUi(
+    modelName: widget.modelName,
+    providerType: widget.providerType,
+    vendorId: widget.vendorId,
+  );
 
-  late final Set<ReasoningEffort> _selected = {
-    ..._autoCapability.withLevels(widget.customLevels).levels,
-  };
+  late final Set<ReasoningEffort> _selected = {..._autoCapability.withLevels(widget.customLevels).levels};
 
   bool get _isAuto =>
-      _selected.length == _autoCapability.levels.length &&
-      _selected.containsAll(_autoCapability.levels);
+      _selected.length == _autoCapability.levels.length && _selected.containsAll(_autoCapability.levels);
 
   /// 当前配置来源：自动识别 / 通用兜底 / 自定义
   String get _sourceLabel {
@@ -119,9 +115,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
         if (_selected.contains(effort)) effort,
     ];
     // 勾选结果与自动识别一致时存 null，扫描/升级后仍能跟着能力表走
-    final isAuto =
-        levels.length == _autoCapability.levels.length &&
-        levels.toSet().containsAll(_autoCapability.levels);
+    final isAuto = levels.length == _autoCapability.levels.length && levels.toSet().containsAll(_autoCapability.levels);
     final selection = ModelEffortLevelsSelection(isAuto ? null : levels);
     Navigator.of(context).pop(selection);
   }
@@ -145,8 +139,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
               children: [
                 _buildIntro(theme),
                 _buildQuickActions(theme),
-                for (final effort in _autoCapability.configurableLevels)
-                  _buildLevelTile(theme, effort),
+                for (final effort in _autoCapability.configurableLevels) _buildLevelTile(theme, effort),
               ],
             ),
           ),
@@ -159,9 +152,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
   Widget _buildHeader(ThemeData theme) {
     final colorScheme = theme.colorScheme;
     // 自动识别用中性底，自定义用主色底，扫一眼就能分清是不是动过
-    final badgeColor = _isAuto
-        ? colorScheme.surfaceContainerHighest
-        : colorScheme.primaryContainer;
+    final badgeColor = _isAuto ? colorScheme.surfaceContainerHighest : colorScheme.primaryContainer;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 12, 4),
       child: Row(
@@ -172,18 +163,10 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      '思考档位',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text('思考档位', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 1,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(
                         color: badgeColor.withValues(alpha: 0.8),
                         borderRadius: BorderRadius.circular(4),
@@ -191,9 +174,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
                       child: Text(
                         _sourceLabel,
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: _isAuto
-                              ? colorScheme.onSurfaceVariant
-                              : colorScheme.onPrimaryContainer,
+                          color: _isAuto ? colorScheme.onSurfaceVariant : colorScheme.onPrimaryContainer,
                         ),
                       ),
                     ),
@@ -204,9 +185,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
                   widget.modelName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -223,12 +202,8 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
 
   Widget _buildIntro(ThemeData theme) {
     final colorScheme = theme.colorScheme;
-    final autoLabels = _autoCapability.levels
-        .map(_autoCapability.labelFor)
-        .join(' / ');
-    final autoLine = _autoCapability.isGeneric
-        ? '通用兜底档位：$autoLabels'
-        : '自动识别为 $autoLabels';
+    final autoLabels = _autoCapability.levels.map(_autoCapability.labelFor).join(' / ');
+    final autoLine = _autoCapability.isGeneric ? '通用兜底档位：$autoLabels' : '自动识别为 $autoLabels';
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 4, 20, 4),
       padding: const EdgeInsets.all(12),
@@ -241,39 +216,29 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
         children: [
           Text(
             '勾选对话界面能选的档位；当前使用哪一档，在对话的模型面板里设置。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 6),
           Text(
             '所有档位都能勾选，协议不能单独表达的档位会按下方「实际发送」折叠。',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.outline,
-            ),
+            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
           ),
           const SizedBox(height: 2),
           Text(
             '$_autoCapability.paramStyleLabel；$autoLine',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.outline,
-            ),
+            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
           ),
           if (_autoCapability.isGeneric) ...[
             const SizedBox(height: 4),
             Text(
               '未收录该模型，参数按通用字段发送，不支持的档位会被端点忽略。',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.outline,
-              ),
+              style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
             ),
           ],
           const SizedBox(height: 4),
           Text(
             '取消当前正在使用的档位会先回到「自动」，不会继续发失效参数。',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.outline,
-            ),
+            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
           ),
         ],
       ),
@@ -289,10 +254,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
         children: [
           Text(
             '可选档位',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.outline,
-              fontWeight: FontWeight.bold,
-            ),
+            style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.outline, fontWeight: FontWeight.bold),
           ),
           const Spacer(),
           TextButton(
@@ -329,9 +291,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
           Text(description),
           Text(
             _autoCapability.wireValueFor(effort),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.outline,
-            ),
+            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
           ),
         ],
       ),
@@ -343,11 +303,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-          ),
-        ),
+        border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
       ),
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
       child: SafeArea(
@@ -358,24 +314,13 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
             if (_selected.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
-                  '至少保留一个档位，或恢复自动识别',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.error,
-                  ),
-                ),
+                child: Text('至少保留一个档位，或恢复自动识别', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error)),
               ),
             Row(
               children: [
-                TextButton(
-                  onPressed: _isAuto ? null : _resetToAuto,
-                  child: const Text('恢复自动识别'),
-                ),
+                TextButton(onPressed: _isAuto ? null : _resetToAuto, child: const Text('恢复自动识别')),
                 const Spacer(),
-                FilledButton(
-                  onPressed: _selected.isEmpty ? null : _save,
-                  child: const Text('完成'),
-                ),
+                FilledButton(onPressed: _selected.isEmpty ? null : _save, child: const Text('完成')),
               ],
             ),
           ],

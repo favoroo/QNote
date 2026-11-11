@@ -16,11 +16,7 @@ class HealthStatsView extends ConsumerStatefulWidget {
   final DateTime startDate;
   final DateTime endDate;
 
-  const HealthStatsView({
-    super.key,
-    required this.startDate,
-    required this.endDate,
-  });
+  const HealthStatsView({super.key, required this.startDate, required this.endDate});
 
   @override
   ConsumerState<HealthStatsView> createState() => _HealthStatsViewState();
@@ -100,17 +96,11 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
               child: Icon(Icons.favorite_rounded, size: 40, color: colorScheme.primary),
             ),
             const SizedBox(height: 20),
-            Text(
-              '开启健康监测',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
+            Text('开启健康监测', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             Text(
               '授权后可汇总步数、心率、睡眠、血氧、压力与运动记录，支持小Q每日健康复盘。',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 28),
@@ -128,10 +118,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const EmptyStateWidget(
-            icon: Icons.monitor_heart_outlined,
-            message: '该时间段暂无健康数据',
-          ),
+          const EmptyStateWidget(icon: Icons.monitor_heart_outlined, message: '该时间段暂无健康数据'),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             icon: const Icon(Icons.sync),
@@ -204,23 +191,12 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           const SizedBox(height: 16),
 
           // 3. 生理体征指标汇总 (心率/血氧/压力/睡眠)
-          _buildVitalsGrid(
-            context,
-            avgSleepMin: avgSleepMin,
-            avgHr: avgHr,
-            avgSpo2: avgSpo2,
-            avgStress: avgStress,
-          ),
+          _buildVitalsGrid(context, avgSleepMin: avgSleepMin, avgHr: avgHr, avgSpo2: avgSpo2, avgStress: avgStress),
           const SizedBox(height: 16),
 
           // 4. 最近单次运动记录
           if (_sportRecords.isNotEmpty) ...[
-            Text(
-              '运动记录',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            Text('运动记录', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             ListView.separated(
               shrinkWrap: true,
@@ -263,10 +239,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '活动概览',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('活动概览', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
@@ -345,27 +318,14 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           children: [
             Icon(icon, size: 16, color: color),
             const SizedBox(width: 4),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
+            Text(label, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
           ],
         ),
         const SizedBox(height: 6),
-        Text(
-          value,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        Text(value, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
         Text(
           unit,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: colorScheme.outline,
-            fontSize: AppTypography.caption,
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline, fontSize: AppTypography.caption),
         ),
       ],
     );
@@ -380,17 +340,9 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
         stepsByDay[DateTime(day.year, day.month, day.day)] = m.steps;
       }
     }
-    final trend = buildStepTrend(
-      startDate: widget.startDate,
-      endDate: widget.endDate,
-      stepsByDay: stepsByDay,
-    );
+    final trend = buildStepTrend(startDate: widget.startDate, endDate: widget.endDate, stepsByDay: stepsByDay);
 
-    return StepsTrendChart(
-      buckets: trend.buckets,
-      caption: trend.caption,
-      dailyTarget: _stepTarget,
-    );
+    return StepsTrendChart(buckets: trend.buckets, caption: trend.caption, dailyTarget: _stepTarget);
   }
 
   Widget _buildVitalsGrid(
@@ -485,18 +437,10 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                 ),
               ],
             ),
-            Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            Text(value, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
             Text(
               subText,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: AppTypography.caption,
-                color: colorScheme.outline,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: AppTypography.caption, color: colorScheme.outline),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -525,27 +469,15 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _getSportIcon(r.category),
-              color: colorScheme.primary,
-              size: 20,
-            ),
+            decoration: BoxDecoration(color: colorScheme.primaryContainer, shape: BoxShape.circle),
+            child: Icon(_getSportIcon(r.category), color: colorScheme.primary, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  r.title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text(r.title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 2),
                 Text(
                   [

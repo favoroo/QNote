@@ -31,21 +31,13 @@ void main() {
     test('单链接（Markdown 语法）保留标题', () {
       final segments = parseNoteSegments('见[某站](https://example.com/a)吧');
 
-      expect(_shape(segments), [
-        't:见',
-        'l:某站|https://example.com/a',
-        't:吧',
-      ]);
+      expect(_shape(segments), ['t:见', 'l:某站|https://example.com/a', 't:吧']);
     });
 
     test('裸链接按 URL 切出独立链接段', () {
       final segments = parseNoteSegments('看 https://example.com/x 了');
 
-      expect(_shape(segments), [
-        't:看 ',
-        'l:https://example.com/x',
-        't: 了',
-      ]);
+      expect(_shape(segments), ['t:看 ', 'l:https://example.com/x', 't: 了']);
     });
 
     test('图片与链接混排', () {
@@ -72,32 +64,19 @@ void main() {
     test('连续两个 URL 之间保留空格文本段', () {
       final segments = parseNoteSegments('https://a.com https://b.com');
 
-      expect(_shape(segments), [
-        'l:https://a.com',
-        't: ',
-        'l:https://b.com',
-        't:',
-      ]);
+      expect(_shape(segments), ['l:https://a.com', 't: ', 'l:https://b.com', 't:']);
     });
 
     test('URL 紧贴中文：中文不被吞进链接', () {
       final segments = parseNoteSegments('看这个https://a.com很好');
 
-      expect(_shape(segments), [
-        't:看这个',
-        'l:https://a.com',
-        't:很好',
-      ]);
+      expect(_shape(segments), ['t:看这个', 'l:https://a.com', 't:很好']);
     });
 
     test('URL 后带标点：标点切为独立文本段', () {
       final segments = parseNoteSegments('见 https://a.com/path.');
 
-      expect(_shape(segments), [
-        't:见 ',
-        'l:https://a.com/path',
-        't:.',
-      ]);
+      expect(_shape(segments), ['t:见 ', 'l:https://a.com/path', 't:.']);
     });
 
     test('URL 尾部多个标点一起剥离，标点段即末段', () {
@@ -110,10 +89,7 @@ void main() {
     test('Markdown 链接的 URL 不剥离尾部标点（括号外标点单独成段）', () {
       final segments = parseNoteSegments('[标题](https://a.com).');
 
-      expect(_shape(segments), [
-        'l:标题|https://a.com',
-        't:.',
-      ]);
+      expect(_shape(segments), ['l:标题|https://a.com', 't:.']);
     });
 
     test('splitNoteTextByLinks 的 lastMatchIndex 指向匹配产出的最后一段', () {
@@ -153,10 +129,7 @@ void main() {
 
     test('以链接结尾时补一个空文本段', () {
       expect(_shape(parseNoteSegments('https://a.com')), ['l:https://a.com', 't:']);
-      expect(_shape(parseNoteSegments('[a](https://b.com)')), [
-        'l:a|https://b.com',
-        't:',
-      ]);
+      expect(_shape(parseNoteSegments('[a](https://b.com)')), ['l:a|https://b.com', 't:']);
     });
 
     test('plainCode 模式整体作为单段，不解析图片与链接', () {
@@ -202,10 +175,7 @@ void main() {
       // 这里锁住实际输出，避免重构时无意改变存储格式
       final segments = parseNoteSegments('[站点](https://a.com)\nhttps://b.com');
 
-      expect(
-        serializeNoteSegments(segments),
-        '[站点](https://a.com)\n\n\nhttps://b.com\n',
-      );
+      expect(serializeNoteSegments(segments), '[站点](https://a.com)\n\n\nhttps://b.com\n');
     });
 
     test('图片两侧空行按现有规则折叠，二次序列化稳定', () {
@@ -223,10 +193,7 @@ void main() {
     });
 
     test('链接无标题时输出裸 URL', () {
-      final segments = [
-        const NoteSegmentData.text('看 '),
-        const NoteSegmentData.link(url: 'https://a.com'),
-      ];
+      final segments = [const NoteSegmentData.text('看 '), const NoteSegmentData.link(url: 'https://a.com')];
 
       // 非末段文本会补一个换行，链接本身也带尾换行
       expect(serializeNoteSegments(segments), '看 \nhttps://a.com\n');
@@ -235,9 +202,7 @@ void main() {
 
   group('extractImagePaths', () {
     test('按出现顺序提取，且不去重', () {
-      final segments = parseNoteSegments(
-        '![image](a.png)\n![image](b.png)\n![image](a.png)',
-      );
+      final segments = parseNoteSegments('![image](a.png)\n![image](b.png)\n![image](a.png)');
 
       expect(extractImagePaths(segments), ['a.png', 'b.png', 'a.png']);
     });
@@ -287,13 +252,7 @@ void main() {
         ),
         isFalse,
       );
-      expect(
-        noteSegmentsEqual(
-          [const NoteSegmentData.image('a.png')],
-          [const NoteSegmentData.text('a.png')],
-        ),
-        isFalse,
-      );
+      expect(noteSegmentsEqual([const NoteSegmentData.image('a.png')], [const NoteSegmentData.text('a.png')]), isFalse);
     });
 
     test('stringListsEqual 顺序敏感', () {

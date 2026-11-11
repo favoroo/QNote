@@ -21,12 +21,7 @@ class ScreenUsagePage extends ConsumerStatefulWidget {
   /// 嵌入模式下向外层顶栏同步「是否正在刷新」；独立打开时为 null。
   final ValueNotifier<bool>? refreshingNotifier;
 
-  const ScreenUsagePage({
-    super.key,
-    this.initialDate,
-    this.embedded = false,
-    this.refreshingNotifier,
-  });
+  const ScreenUsagePage({super.key, this.initialDate, this.embedded = false, this.refreshingNotifier});
 
   @override
   ConsumerState<ScreenUsagePage> createState() => ScreenUsagePageState();
@@ -48,11 +43,7 @@ class ScreenUsagePageState extends ConsumerState<ScreenUsagePage> {
         if (!mounted) {
           return;
         }
-        ref.read(selectedDateProvider.notifier).state = DateTime(
-          initDate.year,
-          initDate.month,
-          initDate.day,
-        );
+        ref.read(selectedDateProvider.notifier).state = DateTime(initDate.year, initDate.month, initDate.day);
       });
     }
   }
@@ -107,18 +98,10 @@ class ScreenUsagePageState extends ConsumerState<ScreenUsagePage> {
           if (_isRefreshing)
             const Padding(
               padding: EdgeInsets.all(14),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
             )
           else
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '更新数据',
-              onPressed: _handleRefresh,
-            ),
+            IconButton(icon: const Icon(Icons.refresh_rounded), tooltip: '更新数据', onPressed: _handleRefresh),
         ],
       ),
       body: body,

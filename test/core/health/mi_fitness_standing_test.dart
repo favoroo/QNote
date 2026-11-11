@@ -61,25 +61,16 @@ void main() {
       // 场景：原生 valid_stand 列表中只包含 update_time 和简单 value 或无 count 字段
       final data = [
         // 8点：仅有 update_time，value 为 "1"
-        {
-          'update_time': DateTime(2026, 9, 16, 8, 20).millisecondsSinceEpoch ~/ 1000,
-          'value': '1',
-        },
+        {'update_time': DateTime(2026, 9, 16, 8, 20).millisecondsSinceEpoch ~/ 1000, 'value': '1'},
         // 10点：value 为 {"val": 1}
         {
           'time': DateTime(2026, 9, 16, 10, 15).millisecondsSinceEpoch ~/ 1000,
           'value': json.encode({'val': 1}),
         },
         // 13点：value 为 true
-        {
-          'timestamp': DateTime(2026, 9, 16, 13, 0).millisecondsSinceEpoch ~/ 1000,
-          'value': true,
-        },
+        {'timestamp': DateTime(2026, 9, 16, 13, 0).millisecondsSinceEpoch ~/ 1000, 'value': true},
         // 14点：毫秒级时间戳，value 为空对象（但记录本身即代表站立打点）
-        {
-          'time': DateTime(2026, 9, 16, 14, 50).millisecondsSinceEpoch,
-          'value': '{}',
-        },
+        {'time': DateTime(2026, 9, 16, 14, 50).millisecondsSinceEpoch, 'value': '{}'},
         // 15点：明确显式未达标/未站立（应过滤）
         {
           'time': DateTime(2026, 9, 16, 15, 10).millisecondsSinceEpoch ~/ 1000,
@@ -94,19 +85,10 @@ void main() {
     test('跨天数据过滤：只统计属于所选日期的站立小时', () {
       final data = [
         // 昨天的打点
-        {
-          'time': DateTime(2026, 9, 15, 23, 50).millisecondsSinceEpoch ~/ 1000,
-          'value': '1',
-        },
+        {'time': DateTime(2026, 9, 15, 23, 50).millisecondsSinceEpoch ~/ 1000, 'value': '1'},
         // 今天的打点（8点、9点）
-        {
-          'time': DateTime(2026, 9, 16, 8, 10).millisecondsSinceEpoch ~/ 1000,
-          'value': '1',
-        },
-        {
-          'time': DateTime(2026, 9, 16, 9, 10).millisecondsSinceEpoch ~/ 1000,
-          'value': '1',
-        },
+        {'time': DateTime(2026, 9, 16, 8, 10).millisecondsSinceEpoch ~/ 1000, 'value': '1'},
+        {'time': DateTime(2026, 9, 16, 9, 10).millisecondsSinceEpoch ~/ 1000, 'value': '1'},
       ];
       final res = MiFitnessApiClient.parseStandingCount(data, testDate);
       expect(res, 2);

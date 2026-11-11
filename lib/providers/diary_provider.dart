@@ -18,7 +18,8 @@ class TimelineTimeSelectEvent {
   final DateTime date;
   final DateTime? endDate;
   final int timestamp;
-  TimelineTimeSelectEvent(this.time, {this.endTime, required this.date, this.endDate}) : timestamp = DateTime.now().millisecondsSinceEpoch;
+  TimelineTimeSelectEvent(this.time, {this.endTime, required this.date, this.endDate})
+    : timestamp = DateTime.now().millisecondsSinceEpoch;
 }
 
 final diaryRepositoryProvider = Provider<DiaryRepository>((ref) {
@@ -69,8 +70,7 @@ class DiaryComposeDraft {
   }
 
   /// 是否是一份「什么都没填」的空草稿（决定按钮要不要亮圆点、保存按钮要不要禁用）
-  bool get isEmpty =>
-      inputText.trim().isEmpty && tagEntries.isEmpty && selectedPhotos.isEmpty;
+  bool get isEmpty => inputText.trim().isEmpty && tagEntries.isEmpty && selectedPhotos.isEmpty;
 
   DiaryComposeDraft copyWith({
     String? id,
@@ -97,10 +97,7 @@ class DiaryComposeDraft {
     );
   }
 
-  DiaryComposeDraft updateTagEntryFields(
-    String tagId,
-    Map<String, dynamic> fields,
-  ) {
+  DiaryComposeDraft updateTagEntryFields(String tagId, Map<String, dynamic> fields) {
     final newEntries = tagEntries.map((e) {
       if (e.id == tagId) return e.copyWith(fields: fields);
       return e;
@@ -110,10 +107,9 @@ class DiaryComposeDraft {
 }
 
 /// 记录面板草稿。面板卸载后草稿仍在，重新打开时接着填。
-final diaryComposeDraftProvider =
-    NotifierProvider<DiaryComposeDraftNotifier, DiaryComposeDraft>(
-      DiaryComposeDraftNotifier.new,
-    );
+final diaryComposeDraftProvider = NotifierProvider<DiaryComposeDraftNotifier, DiaryComposeDraft>(
+  DiaryComposeDraftNotifier.new,
+);
 
 class DiaryComposeDraftNotifier extends Notifier<DiaryComposeDraft> {
   @override
@@ -125,12 +121,7 @@ class DiaryComposeDraftNotifier extends Notifier<DiaryComposeDraft> {
   void reset() => state = DiaryComposeDraft(id: const Uuid().v4());
 }
 
-enum WidgetAction {
-  input,
-  photo,
-  camera,
-  send,
-}
+enum WidgetAction { input, photo, camera, send }
 
 final pendingWidgetActionProvider = StateProvider<WidgetAction?>((ref) => null);
 
@@ -149,10 +140,9 @@ final diaryScrollToTimeProvider = StateProvider<DateTime?>((ref) => null);
 /// 页面消费一次即清空。
 final diaryJustInsertedProvider = StateProvider<List<String>>((ref) => const []);
 
-final diaryListProvider =
-    AsyncNotifierProvider<DiaryListNotifier, List<DiaryRecord>>(() {
-      return DiaryListNotifier();
-    });
+final diaryListProvider = AsyncNotifierProvider<DiaryListNotifier, List<DiaryRecord>>(() {
+  return DiaryListNotifier();
+});
 
 class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
   DiaryRecord? _lastDeleted;
@@ -169,9 +159,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
   Future<List<DiaryRecord>> build() async {
     // addListener 内部按引用去重，build 重复执行不会重复注册
     WorkspaceEventBus.instance.addListener(_onWorkspaceChange);
-    ref.onDispose(
-      () => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange),
-    );
+    ref.onDispose(() => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange));
     final repo = ref.read(diaryRepositoryProvider);
     return repo.getAll();
   }
@@ -243,11 +231,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     final repo = ref.read(diaryRepositoryProvider);
     await repo.update(record);
     // 内存替换目标项
-    state = AsyncData(
-      (state.valueOrNull ?? [])
-          .map((r) => r.id == record.id ? record : r)
-          .toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).map((r) => r.id == record.id ? record : r).toList());
     if (updateWidgets) {
       WidgetUtils.updateHomeWidgets();
     }
@@ -259,19 +243,14 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     _lastDeleted = currentList.where((r) => r.id == id).firstOrNull;
     await repo.softDelete(id);
     // 内存移除（软删除后不再展示）
-    state = AsyncData(
-      (state.valueOrNull ?? []).where((r) => r.id != id).toList(),
-    );
+    state = AsyncData((state.valueOrNull ?? []).where((r) => r.id != id).toList());
     WidgetUtils.updateHomeWidgets();
   }
 
   Future<void> undoDelete() async {
     if (_lastDeleted == null) return;
     final repo = ref.read(diaryRepositoryProvider);
-    final restored = _lastDeleted!.copyWith(
-      isDeleted: false,
-      updatedAt: DateTime.now(),
-    );
+    final restored = _lastDeleted!.copyWith(isDeleted: false, updatedAt: DateTime.now());
     await repo.update(restored);
     _lastDeleted = null;
     // 内存加回（恢复）
@@ -286,16 +265,12 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
 
   void removeDraft(String id) {
     final drafts = ref.read(diaryDraftsProvider);
-    ref.read(diaryDraftsProvider.notifier).state = drafts
-        .where((d) => d.id != id)
-        .toList();
+    ref.read(diaryDraftsProvider.notifier).state = drafts.where((d) => d.id != id).toList();
   }
 
   void updateDraft(DiaryRecord draft) {
     final drafts = ref.read(diaryDraftsProvider);
-    ref.read(diaryDraftsProvider.notifier).state = drafts
-        .map((d) => d.id == draft.id ? draft : d)
-        .toList();
+    ref.read(diaryDraftsProvider.notifier).state = drafts.map((d) => d.id == draft.id ? draft : d).toList();
   }
 
   Future<void> searchDiary(String keyword) async {
@@ -308,18 +283,17 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
   }
 }
 
-final diaryDetailProvider = FutureProvider.family<DiaryRecord?, String>((
-  ref,
-  id,
-) async {
+final diaryDetailProvider = FutureProvider.family<DiaryRecord?, String>((ref, id) async {
   final repo = ref.read(diaryRepositoryProvider);
   return repo.getById(id);
 });
 
 /// 按时间范围拉取日记记录（statistics_page 专用，避免全量加载）
 /// 自动响应 diaryListProvider 变更（增删改后 invalidate）
-final diaryListByDateRangeProvider = FutureProvider.family<
-    List<DiaryRecord>, ({DateTime start, DateTime end})>((ref, range) async {
+final diaryListByDateRangeProvider = FutureProvider.family<List<DiaryRecord>, ({DateTime start, DateTime end})>((
+  ref,
+  range,
+) async {
   // 监听 diaryListProvider：用户增删改日记后，本 provider 自动失效重算
   ref.watch(diaryListProvider);
   final repo = ref.read(diaryRepositoryProvider);
@@ -369,7 +343,6 @@ class DiaryColorMarkNotifier extends AsyncNotifier<List<DateColorMark>> {
   }
 }
 
-final diaryColorMarkProvider =
-    AsyncNotifierProvider<DiaryColorMarkNotifier, List<DateColorMark>>(() {
-      return DiaryColorMarkNotifier();
-    });
+final diaryColorMarkProvider = AsyncNotifierProvider<DiaryColorMarkNotifier, List<DateColorMark>>(() {
+  return DiaryColorMarkNotifier();
+});

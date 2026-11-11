@@ -85,35 +85,32 @@ class GenerateImageTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'prompt': {
-            'type': 'string',
-            'description': '图片描述提示词。写具体、有画面感的描述（主体 + 场景 + 风格 + 光线等），'
-                '中文英文均可，建议 20~200 字。',
-          },
-          'size': {
-            'type': 'string',
-            'description': '图片尺寸，格式 "宽x高"，默认 "1024x1024"。'
-                '常用值：1024x1024（方形）、1536x1024（横版）、1024x1536（竖版）；'
-                '具体支持的尺寸取决于所配生图模型。',
-          },
-        },
-        'required': ['prompt'],
-      };
+    'type': 'object',
+    'properties': {
+      'prompt': {
+        'type': 'string',
+        'description':
+            '图片描述提示词。写具体、有画面感的描述（主体 + 场景 + 风格 + 光线等），'
+            '中文英文均可，建议 20~200 字。',
+      },
+      'size': {
+        'type': 'string',
+        'description':
+            '图片尺寸，格式 "宽x高"，默认 "1024x1024"。'
+            '常用值：1024x1024（方形）、1536x1024（横版）、1024x1536（竖版）；'
+            '具体支持的尺寸取决于所配生图模型。',
+      },
+    },
+    'required': ['prompt'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final prompt = (arguments['prompt']?.toString() ?? '').trim();
     if (prompt.isEmpty) {
       return ToolResult.error('prompt 不能为空，请提供图片的文字描述');
     }
-    final effectivePrompt = prompt.length > _promptMaxLength
-        ? prompt.substring(0, _promptMaxLength)
-        : prompt;
+    final effectivePrompt = prompt.length > _promptMaxLength ? prompt.substring(0, _promptMaxLength) : prompt;
     final size = (arguments['size']?.toString() ?? '').trim();
 
     final AiConfig? config;
@@ -139,7 +136,8 @@ class GenerateImageTool extends AgentTool {
       onProgress?.call('图片生成完成');
       LoggerService.instance.logAI(
         '小Q生图成功',
-        details: 'model=${config.modelName}, count=${attempt.saved.length}, '
+        details:
+            'model=${config.modelName}, count=${attempt.saved.length}, '
             'shapes=${attempt.shapes.join('|')}, 耗时=${_fmtDuration(totalSw.elapsed)}',
       );
       return _successResult(attempt, effectivePrompt);
@@ -147,7 +145,8 @@ class GenerateImageTool extends AgentTool {
 
     LoggerService.instance.logAI(
       '小Q生图失败',
-      details: 'model=${config.modelName}, 分类=${attempt.failureKind.label}, '
+      details:
+          'model=${config.modelName}, 分类=${attempt.failureKind.label}, '
           '耗时=${_fmtDuration(totalSw.elapsed)}, ${attempt.detail}',
       level: LogLevel.warning,
     );
@@ -169,7 +168,8 @@ class GenerateImageTool extends AgentTool {
 
     LoggerService.instance.logAI(
       '小Q生图工具发起请求',
-      details: 'model=${config.modelName}, baseUrl=${config.baseUrl}, '
+      details:
+          'model=${config.modelName}, baseUrl=${config.baseUrl}, '
           'prompt=${prompt.length}字, receive_timeout=${_receiveTimeout.inSeconds}s',
     );
 
@@ -181,7 +181,8 @@ class GenerateImageTool extends AgentTool {
         final kind = classifyParseResult(outcome);
         LoggerService.instance.logAI(
           '小Q生图响应中未解析到图片',
-          details: 'model=${config.modelName}, 分类=${kind.label}, '
+          details:
+              'model=${config.modelName}, 分类=${kind.label}, '
               '耗时=${_fmtDuration(sw.elapsed)}, 响应摘要=${outcome.summary}',
           level: LogLevel.warning,
         );
@@ -189,9 +190,7 @@ class GenerateImageTool extends AgentTool {
           config,
           kind,
           sw.elapsed,
-          detail: outcome.sawImageLikeField
-              ? '响应含疑似图片字段但格式未识别，已记录脱敏摘要'
-              : '服务接受了请求但未产出图片，通常为模型不支持生图、权限或配额问题',
+          detail: outcome.sawImageLikeField ? '响应含疑似图片字段但格式未识别，已记录脱敏摘要' : '服务接受了请求但未产出图片，通常为模型不支持生图、权限或配额问题',
         );
       }
 
@@ -215,15 +214,13 @@ class GenerateImageTool extends AgentTool {
     } on DioException catch (e) {
       final kind =
           (e.type == DioExceptionType.receiveTimeout ||
-                  e.type == DioExceptionType.connectionTimeout ||
-                  e.type == DioExceptionType.sendTimeout)
-              ? ImageFailureKind.timeout
-              : ImageFailureKind.httpError;
-      return ImageAttempt.failure(config, kind, sw.elapsed,
-          detail: _describeDioError(e));
+              e.type == DioExceptionType.connectionTimeout ||
+              e.type == DioExceptionType.sendTimeout)
+          ? ImageFailureKind.timeout
+          : ImageFailureKind.httpError;
+      return ImageAttempt.failure(config, kind, sw.elapsed, detail: _describeDioError(e));
     } catch (e) {
-      return ImageAttempt.failure(config, ImageFailureKind.unknown, sw.elapsed,
-          detail: e.toString());
+      return ImageAttempt.failure(config, ImageFailureKind.unknown, sw.elapsed, detail: e.toString());
     }
   }
 
@@ -254,11 +251,7 @@ class GenerateImageTool extends AgentTool {
   /// 选中 SenseNova 厂商模板、自定义地址填 `sensenova.cn`、模型名含 `sensenova`
   /// （经中转访问的情况）。
   @visibleForTesting
-  static Map<String, dynamic> buildGenerationRequestBody(
-    AiConfig config,
-    String prompt,
-    String size,
-  ) {
+  static Map<String, dynamic> buildGenerationRequestBody(AiConfig config, String prompt, String size) {
     return {
       'model': config.modelName,
       'prompt': prompt,
@@ -289,12 +282,7 @@ class GenerateImageTool extends AgentTool {
   /// 与文本链路共用同一套发信策略：**每次尝试现取一把 Key**（多 Key 厂商按池轮询），
   /// Key 级故障（429/鉴权/配额）视池内是否还有可用 Key 决定「换 Key 重试」还是直接上抛；
   /// 接收超时不重试 —— 慢请求换 Key 无意义，只会把耗时翻倍。
-  Future<ImageParseOutcome> _requestImagesGenerations(
-    Dio dio,
-    AiConfig config,
-    String prompt,
-    String size,
-  ) async {
+  Future<ImageParseOutcome> _requestImagesGenerations(Dio dio, AiConfig config, String prompt, String size) async {
     // 账号型厂商（Loomy）用登录 token 而不是密钥池，单独一条路径
     if (config.usesAccountAuth) {
       return _requestAccountImagesGenerations(dio, config, prompt, size);
@@ -312,14 +300,11 @@ class GenerateImageTool extends AgentTool {
     // 避免去水印参数在未知网关上把每次生图都打成 400（400 不会产生费用）
     var canStripWatermark = requestBody.containsKey('watermark');
     final maxAttempts =
-        (pooled ? keys.length.clamp(2, ApiKeyPool.maxRotationAttempts) : 1) +
-            (canStripWatermark ? 1 : 0);
+        (pooled ? keys.length.clamp(2, ApiKeyPool.maxRotationAttempts) : 1) + (canStripWatermark ? 1 : 0);
 
     Object? lastError;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
-      final sentKey = pooled
-          ? (pool.acquireNext(providerId, keys) ?? config.apiKey)
-          : config.apiKey;
+      final sentKey = pooled ? (pool.acquireNext(providerId, keys) ?? config.apiKey) : config.apiKey;
       final startedAt = DateTime.now();
       try {
         final response = await dio.post<Map<String, dynamic>>(
@@ -334,8 +319,7 @@ class GenerateImageTool extends AgentTool {
             details: 'status=${response.statusCode}, body=null',
             level: LogLevel.warning,
           );
-          return const ImageParseOutcome.empty(
-              summary: 'body=null（HTTP 响应体无法解析为 JSON）');
+          return const ImageParseOutcome.empty(summary: 'body=null（HTTP 响应体无法解析为 JSON）');
         }
         // 生图网关多数只回 usage（prompt 计费），同样计入本机累计消耗
         final usage = AiTokenUsage.fromResponse(body);
@@ -366,20 +350,16 @@ class GenerateImageTool extends AgentTool {
         final keyScoped = ApiKeyPool.isKeyScopedError(e);
         // 389/401/403 这类 Key 级故障：冷却本次这把，池里还有别的就直接换
         if (keyScoped && pooled) {
-          pool.markLimited(
-            providerId,
-            sentKey,
-            cooldown: pool.cooldownFromError(e),
-          );
+          pool.markLimited(providerId, sentKey, cooldown: pool.cooldownFromError(e));
         }
         // 接收超时单独排除：慢请求换 Key 无意义（见方法文档）
-        final retriable = e.type != DioExceptionType.receiveTimeout &&
-            ApiKeyPool.isRecoverableError(e);
+        final retriable = e.type != DioExceptionType.receiveTimeout && ApiKeyPool.isRecoverableError(e);
         final couldRotate = keyScoped && pooled && attempt < maxAttempts - 1;
         final couldBackoff = !keyScoped && retriable && attempt < maxAttempts - 1;
         LoggerService.instance.logAI(
           '生图请求失败（第 ${attempt + 1}/$maxAttempts 次）',
-          details: 'Key=${ApiKeyPool.maskKey(sentKey)}, ${e.message}, '
+          details:
+              'Key=${ApiKeyPool.maskKey(sentKey)}, ${e.message}, '
               '可换Key重试=$couldRotate, 可退避重试=$couldBackoff, '
               '耗时=${_fmtDuration(DateTime.now().difference(startedAt))}',
           level: LogLevel.warning,
@@ -415,10 +395,7 @@ class GenerateImageTool extends AgentTool {
       options: Options(
         headers: {
           'Accept': 'application/json',
-          ...service.requestHeaders(
-            session.accessToken,
-            model: config.modelName,
-          ),
+          ...service.requestHeaders(session.accessToken, model: config.modelName),
         },
       ),
     );
@@ -429,9 +406,7 @@ class GenerateImageTool extends AgentTool {
         details: 'status=${response.statusCode}, body=null',
         level: LogLevel.warning,
       );
-      return const ImageParseOutcome.empty(
-        summary: 'body=null（HTTP 响应体无法解析为 JSON）',
-      );
+      return const ImageParseOutcome.empty(summary: 'body=null（HTTP 响应体无法解析为 JSON）');
     }
     // 生图网关多数只回 usage（prompt 计费），同样计入本机累计消耗
     final usage = AiTokenUsage.fromResponse(body);
@@ -457,14 +432,9 @@ class GenerateImageTool extends AgentTool {
   Future<List<String>> _readProviderKeys(String providerId) async {
     try {
       final provider = await AiProviderRepository.instance.getById(providerId);
-      return (provider?.apiKeys ?? const <String>[])
-          .where((key) => key.trim().isNotEmpty)
-          .toList();
+      return (provider?.apiKeys ?? const <String>[]).where((key) => key.trim().isNotEmpty).toList();
     } catch (e) {
-      LoggerService.instance.logAI(
-        '读取生图厂商密钥池失败: $e',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('读取生图厂商密钥池失败: $e', level: LogLevel.warning);
       return const [];
     }
   }
@@ -485,21 +455,27 @@ class GenerateImageTool extends AgentTool {
     final buffer = StringBuffer('本次生图失败：');
     for (var i = 0; i < attempts.length; i++) {
       final attempt = attempts[i];
-      buffer.write('${i == 0 ? '' : '；'}${attempt.config.modelName}=${attempt.failureKind.label}'
-          '（${attempt.detail}，耗时 ${_fmtDuration(attempt.elapsed)}）');
+      buffer.write(
+        '${i == 0 ? '' : '；'}${attempt.config.modelName}=${attempt.failureKind.label}'
+        '（${attempt.detail}，耗时 ${_fmtDuration(attempt.elapsed)}）',
+      );
     }
     buffer.write('。请如实向用户说明原因：');
     switch (attempts.last.failureKind) {
       case ImageFailureKind.upstreamEmpty:
-        buffer.write('服务接受了请求但没有产出图片，多为该模型不支持生图、账号权限、配额或临时故障；'
-            '建议用户确认「生图模型」绑定的是生图模型（如 gpt-image-1、dall-e-3），或稍后重试。');
+        buffer.write(
+          '服务接受了请求但没有产出图片，多为该模型不支持生图、账号权限、配额或临时故障；'
+          '建议用户确认「生图模型」绑定的是生图模型（如 gpt-image-1、dall-e-3），或稍后重试。',
+        );
       case ImageFailureKind.unknownFormat:
         buffer.write('服务返回了响应但图片无法解析，App 日志已留下脱敏摘要；建议用户稍后重试或反馈日志。');
       case ImageFailureKind.timeout:
         buffer.write('生图等待已超出上限（高峰期服务排队较久），建议稍后重试。');
       case ImageFailureKind.httpError:
-        buffer.write('生图服务返回错误（鉴权失效、限速或服务故障），建议稍后重试，'
-            '或在「AI 模型配置」里检查该厂商的 API 密钥。');
+        buffer.write(
+          '生图服务返回错误（鉴权失效、限速或服务故障），建议稍后重试，'
+          '或在「AI 模型配置」里检查该厂商的 API 密钥。',
+        );
       case ImageFailureKind.saveFailed:
         buffer.write('图片已生成但保存到本地失败，请检查存储空间与权限。');
       case ImageFailureKind.unknown:
@@ -510,14 +486,10 @@ class GenerateImageTool extends AgentTool {
   }
 
   /// 秒级耗时文本（保留一位小数，便于和服务日志对齐）
-  static String _fmtDuration(Duration d) =>
-      (d.inMilliseconds / 1000).toStringAsFixed(1);
+  static String _fmtDuration(Duration d) => (d.inMilliseconds / 1000).toStringAsFixed(1);
 
   /// 把图片引用（base64 或 http URL）统一保存，返回本地路径（Web 端返回 data URI）
-  Future<List<String>> _saveImages(
-    List<String> refs,
-    void Function(String progress)? onProgress,
-  ) async {
+  Future<List<String>> _saveImages(List<String> refs, void Function(String progress)? onProgress) async {
     final saved = <String>[];
     for (final ref in refs) {
       try {
@@ -527,10 +499,7 @@ class GenerateImageTool extends AgentTool {
           final dio = Dio()
             ..options.connectTimeout = _downloadConnectTimeout
             ..options.receiveTimeout = _downloadReceiveTimeout;
-          final resp = await dio.get<List<int>>(
-            ref,
-            options: Options(responseType: ResponseType.bytes),
-          );
+          final resp = await dio.get<List<int>>(ref, options: Options(responseType: ResponseType.bytes));
           final bytes = resp.data;
           if (bytes == null || bytes.isEmpty) continue;
           base64Data = base64Encode(bytes);
@@ -557,11 +526,7 @@ class GenerateImageTool extends AgentTool {
         final path = await _imageRepo.saveBase64Image(base64Data, subfolder: _subfolder);
         saved.add(path);
       } catch (e) {
-        LoggerService.instance.logAI(
-          '生图结果保存失败，跳过该张图片',
-          details: e.toString(),
-          level: LogLevel.warning,
-        );
+        LoggerService.instance.logAI('生图结果保存失败，跳过该张图片', details: e.toString(), level: LogLevel.warning);
       }
     }
     return saved;
@@ -584,8 +549,7 @@ class GenerateImageTool extends AgentTool {
   /// 兼容结构见 [parseChatImagesDetailed]：网关扩展的 `choices[].message.images[].image_url.url`、
   /// OpenAI 多模态 `content` parts 数组、正文 Markdown 图片、Google 原生 `inlineData`，
   /// 以及 `data[].url` / `data[].b64_json` 的 images/generations 形态。
-  static List<String> parseChatImages(Map<String, dynamic> responseBody) =>
-      parseChatImagesDetailed(responseBody).refs;
+  static List<String> parseChatImages(Map<String, dynamic> responseBody) => parseChatImagesDetailed(responseBody).refs;
 
   /// [parseChatImages] 的详细版本：额外返回命中形态、是否见过疑似图片字段、脱敏响应摘要
   ///
@@ -661,9 +625,7 @@ class GenerateImageTool extends AgentTool {
         refs.add(url);
         shapes.add(shapeContentParts);
         sawImageLike = true;
-      } else if (part['image_url'] != null ||
-          part['imageUrl'] != null ||
-          part['type'] == 'image_url') {
+      } else if (part['image_url'] != null || part['imageUrl'] != null || part['type'] == 'image_url') {
         // 图片节点存在但拿不出合法 url：属于格式不认识，不能当成上游空结果
         sawImageLike = true;
       }
@@ -783,10 +745,7 @@ class GenerateImageTool extends AgentTool {
   /// 只读取定位需要的字段（顶层键、choices 结构、finish_reason、usage、错误信息、正文片段），
   /// base64 载荷一律换成 `<BASE64≈N KB>` 占位，密钥打码，总长度硬截断，
   /// 既不会写爆日志，也不会把图片原文或 API Key 落进日志文件。
-  static String summarizeImageResponse(
-    Map<String, dynamic> body, {
-    int textPreviewChars = 200,
-  }) {
+  static String summarizeImageResponse(Map<String, dynamic> body, {int textPreviewChars = 200}) {
     final parts = <String>['keys=${body.keys.take(8).join('/')}'];
 
     final choices = body['choices'];
@@ -794,8 +753,7 @@ class GenerateImageTool extends AgentTool {
       parts.add('choices=${choices.length}');
       final first = choices.isNotEmpty ? choices.first : null;
       if (first is Map) {
-        parts.add(
-            'finish=${first['finish_reason'] ?? first['native_finish_reason'] ?? '-'}');
+        parts.add('finish=${first['finish_reason'] ?? first['native_finish_reason'] ?? '-'}');
         final message = first['message'] ?? first['delta'];
         if (message is Map) {
           parts.add('msg_keys=${message.keys.take(8).join('/')}');
@@ -819,9 +777,7 @@ class GenerateImageTool extends AgentTool {
     if (error != null) parts.add('error=${_preview(_maskSecret('$error'), 160)}');
 
     final summary = parts.join(', ');
-    return summary.length <= _summaryMaxChars
-        ? summary
-        : '${summary.substring(0, _summaryMaxChars)}…';
+    return summary.length <= _summaryMaxChars ? summary : '${summary.substring(0, _summaryMaxChars)}…';
   }
 
   /// 取节点里的纯文本（字符串直接返回，parts 数组拼接各自 text）
@@ -926,13 +882,13 @@ enum ImageFailureKind {
   unknown;
 
   String get label => switch (this) {
-        ImageFailureKind.upstreamEmpty => '上游返回空结果',
-        ImageFailureKind.unknownFormat => '响应格式未识别',
-        ImageFailureKind.timeout => '请求超时',
-        ImageFailureKind.httpError => '服务返回错误',
-        ImageFailureKind.saveFailed => '图片保存失败',
-        ImageFailureKind.unknown => '未知异常',
-      };
+    ImageFailureKind.upstreamEmpty => '上游返回空结果',
+    ImageFailureKind.unknownFormat => '响应格式未识别',
+    ImageFailureKind.timeout => '请求超时',
+    ImageFailureKind.httpError => '服务返回错误',
+    ImageFailureKind.saveFailed => '图片保存失败',
+    ImageFailureKind.unknown => '未知异常',
+  };
 }
 
 /// 响应图片解析结果（纯数据，便于单测直接断言形态与摘要）
@@ -946,9 +902,9 @@ class ImageParseOutcome {
 
   /// 无图片的空结果（如响应体无法解析为 JSON）
   const ImageParseOutcome.empty({this.summary = 'body=empty'})
-      : refs = const [],
-        shapes = const {},
-        sawImageLikeField = false;
+    : refs = const [],
+      shapes = const {},
+      sawImageLikeField = false;
 
   /// 图片引用（data URI / 裸 base64 / http URL），按出现顺序去重
   final List<String> refs;
@@ -967,30 +923,14 @@ class ImageParseOutcome {
 
 /// 单次生图尝试（请求 → 解析 → 落盘）结果
 class ImageAttempt {
-  const ImageAttempt._(
-    this.config,
-    this.saved,
-    this.kind,
-    this.detail,
-    this.elapsed,
-    this.shapes,
-  );
+  const ImageAttempt._(this.config, this.saved, this.kind, this.detail, this.elapsed, this.shapes);
 
   /// 成功：[saved] 为已落盘路径（Web 端为 data URI）
-  factory ImageAttempt.success(
-    AiConfig config,
-    List<String> saved,
-    Duration elapsed,
-  ) =>
+  factory ImageAttempt.success(AiConfig config, List<String> saved, Duration elapsed) =>
       ImageAttempt._(config, saved, null, '', elapsed, const {});
 
   /// 失败：[kind] 为分类，[detail] 为面向模型的补充说明
-  factory ImageAttempt.failure(
-    AiConfig config,
-    ImageFailureKind kind,
-    Duration elapsed, {
-    String detail = '',
-  }) =>
+  factory ImageAttempt.failure(AiConfig config, ImageFailureKind kind, Duration elapsed, {String detail = ''}) =>
       ImageAttempt._(config, const [], kind, detail, elapsed, const {});
 
   final AiConfig config;
@@ -1007,6 +947,5 @@ class ImageAttempt {
   ImageFailureKind get failureKind => kind ?? ImageFailureKind.unknown;
 
   /// 附带形态标签（日志用），保持 [ImageAttempt] 不可变
-  ImageAttempt withShapes(Set<String> shapes) =>
-      ImageAttempt._(config, saved, kind, detail, elapsed, shapes);
+  ImageAttempt withShapes(Set<String> shapes) => ImageAttempt._(config, saved, kind, detail, elapsed, shapes);
 }

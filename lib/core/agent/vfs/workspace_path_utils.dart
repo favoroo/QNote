@@ -27,8 +27,7 @@ String formatWorkspaceDate(DateTime date) {
 }
 
 /// 评分端点里的日期归一化为 `YYYY-MM-DD`
-String workspaceStatsDateKey(DateTime date) =>
-    date.toIso8601String().split('T').first;
+String workspaceStatsDateKey(DateTime date) => date.toIso8601String().split('T').first;
 
 /// 每日日记的固定虚拟路径（月份/日期补零，年份按原值输出）
 String journalWorkspacePath(DateTime date) {
@@ -56,25 +55,15 @@ DateTime parseWorkspaceStatsDate(dynamic raw, String label) {
 /// 与读取端共用同一条锚定规则（仅匹配行首数字+制表符），避免误伤正文里
 /// 本身含制表符的内容。
 String stripWorkspaceLineNumbers(String text) {
-  return text
-      .split('\n')
-      .map((l) => l.replaceFirst(RegExp(r'^\d+\t'), ''))
-      .join('\n');
+  return text.split('\n').map((l) => l.replaceFirst(RegExp(r'^\d+\t'), '')).join('\n');
 }
 
 /// 空态占位文案特征串：由读取端在「无数据/未编写」时生成，并非用户真实内容，
 /// 追加写入时必须整段丢弃，否则占位提示会被固化成正文
-const List<String> kWorkspacePlaceholderMarkers = [
-  '暂无流水事件打卡',
-  '尚未开始编写这天的深度反思日记',
-  '暂无记忆条目',
-  '当天暂无生活评分记录',
-  '暂无常用提示词',
-];
+const List<String> kWorkspacePlaceholderMarkers = ['暂无流水事件打卡', '尚未开始编写这天的深度反思日记', '暂无记忆条目', '当天暂无生活评分记录', '暂无常用提示词'];
 
 /// 判断读取结果是否为空态占位文案（无真实内容的端点）
-bool isWorkspacePlaceholderText(String content) =>
-    kWorkspacePlaceholderMarkers.any(content.contains);
+bool isWorkspacePlaceholderText(String content) => kWorkspacePlaceholderMarkers.any(content.contains);
 
 final RegExp _uuidPathSegmentPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
@@ -89,17 +78,14 @@ bool isUuidPathSegment(String segment) => _uuidPathSegmentPattern.hasMatch(segme
 String removeMarkdownExtension(String value) => value.replaceAll('.md', '');
 
 /// 去掉待办标题的勾选前缀（`[ ] ` / `[x] `）
-String stripTodoTitlePrefix(String title) =>
-    title.replaceAll(RegExp(r'^\[[ x]\]\s*'), '').trim();
+String stripTodoTitlePrefix(String title) => title.replaceAll(RegExp(r'^\[[ x]\]\s*'), '').trim();
 
 /// 从 `/todos/<分类>/<标题>.md` 路径解析标题（分类段之后的全部内容）
 ///
 /// 只做路径文本解析，不访问待办实体；兼容单段路径（`/todos/<标题>.md`）。
 String todoTitleFromPath(String path) {
   final segments = path.substring('/todos/'.length).split('/');
-  final titleWithExt = segments.length >= 2
-      ? segments.sublist(1).join('/')
-      : segments[0];
+  final titleWithExt = segments.length >= 2 ? segments.sublist(1).join('/') : segments[0];
   return stripTodoTitlePrefix(removeMarkdownExtension(titleWithExt));
 }
 
@@ -232,9 +218,7 @@ String buildWorkspaceGrepSnippet(String content, RegExp reg) {
   if (text.isEmpty) return '';
   final match = reg.firstMatch(text);
   if (match == null) {
-    return text.length > kWorkspaceGrepMatchMaxLength
-        ? '${text.substring(0, kWorkspaceGrepMatchMaxLength)}…'
-        : text;
+    return text.length > kWorkspaceGrepMatchMaxLength ? '${text.substring(0, kWorkspaceGrepMatchMaxLength)}…' : text;
   }
   final start = (match.start - 30).clamp(0, text.length);
   final end = (match.end + 50).clamp(0, text.length);

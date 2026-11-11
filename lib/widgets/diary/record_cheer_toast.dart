@@ -12,12 +12,7 @@ import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 /// [id] 自增，用于区分连续两次内容完全相同的记录，避免动画被当成
 /// 「无变化」吞掉。
 class CheerEvent {
-  const CheerEvent({
-    required this.id,
-    required this.title,
-    this.sub,
-    required this.level,
-  });
+  const CheerEvent({required this.id, required this.title, this.sub, required this.level});
 
   final int id;
   final String title;
@@ -35,12 +30,7 @@ class CheerEvent {
 /// 额外挂一圈流光描边和一次底色呼吸。退场由 [leaving] 驱动，播完通过
 /// [onDismissed] 交回调用方移除，避免动画还没走完就被硬切掉。
 class RecordCheerToast extends StatefulWidget {
-  const RecordCheerToast({
-    super.key,
-    required this.event,
-    this.leaving = false,
-    this.onDismissed,
-  });
+  const RecordCheerToast({super.key, required this.event, this.leaving = false, this.onDismissed});
 
   final CheerEvent event;
 
@@ -69,11 +59,8 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: _entryDuration,
-      reverseDuration: _exitDuration,
-    )..addStatusListener(_onStatusChanged);
+    _controller = AnimationController(vsync: this, duration: _entryDuration, reverseDuration: _exitDuration)
+      ..addStatusListener(_onStatusChanged);
     if (widget.leaving) {
       _controller.value = 1;
       _startExit();
@@ -124,9 +111,7 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
       animation: _controller,
       builder: (context, child) {
         // 入场走弹性曲线（末端会轻微过冲再落定），退场只按普通加速淡出。
-        final curved = _leaving || reduceMotion
-            ? _controller.value
-            : AppCurves.spring.transform(_controller.value);
+        final curved = _leaving || reduceMotion ? _controller.value : AppCurves.spring.transform(_controller.value);
         final glow = _leaving || reduceMotion ? 0.0 : math.sin(_controller.value * math.pi);
 
         return Opacity(
@@ -153,13 +138,7 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
     return AppCurves.spring.transform(t.clamp(0.0, 1.0));
   }
 
-  Widget _capsule(
-    ThemeData theme,
-    ColorScheme scheme,
-    CheerEvent event,
-    double iconT,
-    bool reduceMotion,
-  ) {
+  Widget _capsule(ThemeData theme, ColorScheme scheme, CheerEvent event, double iconT, bool reduceMotion) {
     return AnimatedGradientBorder(
       isAnimating: event.isCheer && !reduceMotion && !_leaving,
       borderRadius: 20,
@@ -169,10 +148,7 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
         color: scheme.inverseSurface,
         borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: event.isCheer ? 16 : 14,
-            vertical: event.isCheer ? 10 : 8,
-          ),
+          padding: EdgeInsets.symmetric(horizontal: event.isCheer ? 16 : 14, vertical: event.isCheer ? 10 : 8),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

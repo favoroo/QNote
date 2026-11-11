@@ -19,33 +19,18 @@ class EditFileTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'path': {
-            'type': 'string',
-            'description': '要修改的文件绝对路径（如 "/todos/今日/拿快递.md"）',
-          },
-          'old_text': {
-            'type': 'string',
-            'description': '待替换的现有原文（须在原文件中精确匹配；带不带行号前缀都可以）',
-          },
-          'new_text': {
-            'type': 'string',
-            'description': '替换后的新文本',
-          },
-          'replace_all': {
-            'type': 'boolean',
-            'description': '是否替换所有匹配项（默认 false，仅替换第一处）',
-          },
-        },
-        'required': ['path', 'old_text', 'new_text'],
-      };
+    'type': 'object',
+    'properties': {
+      'path': {'type': 'string', 'description': '要修改的文件绝对路径（如 "/todos/今日/拿快递.md"）'},
+      'old_text': {'type': 'string', 'description': '待替换的现有原文（须在原文件中精确匹配；带不带行号前缀都可以）'},
+      'new_text': {'type': 'string', 'description': '替换后的新文本'},
+      'replace_all': {'type': 'boolean', 'description': '是否替换所有匹配项（默认 false，仅替换第一处）'},
+    },
+    'required': ['path', 'old_text', 'new_text'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final path = arguments['path'] as String? ?? '';
     final oldText = arguments['old_text'] as String? ?? '';
     final newText = arguments['new_text'] as String? ?? '';
@@ -62,12 +47,7 @@ class EditFileTool extends AgentTool {
       final res = await _vfs.editFile(path, oldText, newText, replaceAll: replaceAll);
       return ToolResult.success(
         '已成功编辑文件 [$path]',
-        uiDetails: {
-          'path': path,
-          'old_text': oldText,
-          'new_text': newText,
-          ...res,
-        },
+        uiDetails: {'path': path, 'old_text': oldText, 'new_text': newText, ...res},
       );
     } catch (e) {
       return ToolResult.error('编辑文件失败: $e');

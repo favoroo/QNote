@@ -76,22 +76,9 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
           label: session.isPinned ? '取消置顶' : '置顶',
           onTap: () => _guardBusy(isRunning, widget.onTogglePin),
         ),
-        ActionMenuItem(
-          icon: Icons.edit_outlined,
-          label: '重命名',
-          onTap: () => _guardBusy(isRunning, widget.onRename),
-        ),
-        ActionMenuItem(
-          icon: Icons.select_all_outlined,
-          label: '批量选择',
-          onTap: widget.onEnterBatchMode,
-        ),
-        ActionMenuItem(
-          icon: Icons.delete_outline,
-          label: '删除',
-          isDestructive: true,
-          onTap: _deleteFromTrailingButton,
-        ),
+        ActionMenuItem(icon: Icons.edit_outlined, label: '重命名', onTap: () => _guardBusy(isRunning, widget.onRename)),
+        ActionMenuItem(icon: Icons.select_all_outlined, label: '批量选择', onTap: widget.onEnterBatchMode),
+        ActionMenuItem(icon: Icons.delete_outline, label: '删除', isDestructive: true, onTap: _deleteFromTrailingButton),
       ],
     );
   }
@@ -122,11 +109,7 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
       if (mounted) {
         Toast.error(context, '删除失败');
       }
-      LoggerService.instance.logAI(
-        scene,
-        details: 'session=${widget.session.id}, $error',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI(scene, details: 'session=${widget.session.id}, $error', level: LogLevel.warning);
     }
   }
 
@@ -135,22 +118,11 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
   Widget _buildLeading(ThemeData theme, {required bool isRunning}) {
     final scheme = theme.colorScheme;
     if (widget.isBatchMode) {
-      return Checkbox(
-        value: widget.isChecked,
-        onChanged: (_) => widget.onToggleCheck(),
-      );
+      return Checkbox(value: widget.isChecked, onChanged: (_) => widget.onToggleCheck());
     }
     final Widget icon = isRunning
-        ? LoadingRing(
-            size: 16,
-            strokeWidth: 1.8,
-            color: widget.isActive ? scheme.primary : scheme.onSurfaceVariant,
-          )
-        : Icon(
-            Icons.chat_bubble_outline,
-            size: 16,
-            color: widget.isActive ? scheme.primary : theme.disabledColor,
-          );
+        ? LoadingRing(size: 16, strokeWidth: 1.8, color: widget.isActive ? scheme.primary : scheme.onSurfaceVariant)
+        : Icon(Icons.chat_bubble_outline, size: 16, color: widget.isActive ? scheme.primary : theme.disabledColor);
     if (!widget.session.isPinned) {
       return icon;
     }
@@ -158,11 +130,7 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
       clipBehavior: Clip.none,
       children: [
         icon,
-        Positioned(
-          right: -5,
-          top: -4,
-          child: Icon(Icons.push_pin, size: 9, color: scheme.onSurfaceVariant),
-        ),
+        Positioned(right: -5, top: -4, child: Icon(Icons.push_pin, size: 9, color: scheme.onSurfaceVariant)),
       ],
     );
   }
@@ -172,9 +140,7 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
     final theme = Theme.of(context);
     final session = widget.session;
     // 该会话的小Q任务是否正在生成：列表项转圈 + 「生成中」副标题提示
-    final isRunning = ref.watch(
-      agentRunningSessionsProvider.select((s) => s.contains(session.id)),
-    );
+    final isRunning = ref.watch(agentRunningSessionsProvider.select((s) => s.contains(session.id)));
     final titleStyle = TextStyle(
       fontWeight: FontWeight.w500,
       color: widget.isActive ? theme.colorScheme.primary : null,
@@ -201,29 +167,15 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
       child: ListTile(
         key: _tileKey,
         leading: _buildLeading(theme, isRunning: isRunning),
-        title: highlightSearchMatch(
-          session.title,
-          widget.searchQuery,
-          theme,
-          baseStyle: titleStyle,
-        ),
+        title: highlightSearchMatch(session.title, widget.searchQuery, theme, baseStyle: titleStyle),
         subtitle: Text(
-          isRunning && !widget.isBatchMode
-              ? '小Q生成中…'
-              : DateFormat('MM/dd HH:mm').format(session.updatedAt),
-          style: TextStyle(
-            fontSize: 10,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          isRunning && !widget.isBatchMode ? '小Q生成中…' : DateFormat('MM/dd HH:mm').format(session.updatedAt),
+          style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
         ),
         trailing: widget.isBatchMode
             ? null
             : IconButton(
-                icon: Icon(
-                  Icons.more_horiz,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                icon: Icon(Icons.more_horiz, size: 18, color: theme.colorScheme.onSurfaceVariant),
                 tooltip: '更多操作',
                 onPressed: () => _showRowMenu(isRunning: isRunning),
               ),

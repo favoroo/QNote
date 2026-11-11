@@ -67,11 +67,7 @@ class _StreamingElapsedTextState extends State<StreamingElapsedText> {
     if (startedAt == null) return const SizedBox.shrink();
     final elapsed = DateTime.now().difference(startedAt);
     if (elapsed.inSeconds < 3) return const SizedBox.shrink();
-    final style = widget.style ??
-        TextStyle(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontSize: 12,
-        );
+    final style = widget.style ?? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12);
     return Text('· ${_format(elapsed)}', style: style);
   }
 }

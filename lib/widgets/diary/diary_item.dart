@@ -20,6 +20,7 @@ class DiaryItem extends StatefulWidget {
   final void Function(DiaryRecord)? onDelete;
   final VoidCallback? onAiExtract;
   final VoidCallback? onAiExtractLongPress;
+
   /// 「给小Q」引用该条记录（非 null 时操作菜单与卡片长按展示该入口）
   final void Function(DiaryRecord)? onQuoteToQ;
   final bool isExtracting;
@@ -121,15 +122,21 @@ class _DiaryItemState extends State<DiaryItem> {
     final cardDate = dateStr != null ? DateTime.tryParse(dateStr) : record.time;
     final targetDate = cardDate ?? record.time;
 
-    service.hasPermission().then((authed) {
-      if (!authed || !mounted) return;
-      service.getUsageForDate(targetDate, limit: 5).then((usage) {
-        if (!mounted || usage == null || usage.totalTimeMs <= 0) return;
-        setState(() {
-          _liveScreenUsage = usage;
-        });
-      }).catchError((_) {});
-    }).catchError((_) {});
+    service
+        .hasPermission()
+        .then((authed) {
+          if (!authed || !mounted) return;
+          service
+              .getUsageForDate(targetDate, limit: 5)
+              .then((usage) {
+                if (!mounted || usage == null || usage.totalTimeMs <= 0) return;
+                setState(() {
+                  _liveScreenUsage = usage;
+                });
+              })
+              .catchError((_) {});
+        })
+        .catchError((_) {});
   }
 
   /// 卡片操作菜单：通过长按卡片触发；
@@ -142,19 +149,12 @@ class _DiaryItemState extends State<DiaryItem> {
       items: [
         if (onQuoteToQ != null)
           ActionMenuItem(
-            iconWidget: QIcon(
-              size: 20,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+            iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.primary),
             label: '给小Q',
             onTap: () => onQuoteToQ?.call(record),
           ),
         if (!_isHealthDailySummary) ...[
-          ActionMenuItem(
-            icon: Icons.edit,
-            label: '编辑',
-            onTap: () => onEdit?.call(record),
-          ),
+          ActionMenuItem(icon: Icons.edit, label: '编辑', onTap: () => onEdit?.call(record)),
           ActionMenuItem(
             icon: Icons.delete_outline,
             label: '删除',
@@ -226,15 +226,7 @@ class _DiaryItemState extends State<DiaryItem> {
       if (ratingVal != null && ratingVal.toString().isNotEmpty) {
         tags.add(ratingVal.toString());
       }
-      handledKeys.addAll([
-        'type',
-        'item',
-        '种类',
-        '类别',
-        'rating',
-        'health',
-        '评价',
-      ]);
+      handledKeys.addAll(['type', 'item', '种类', '类别', 'rating', 'health', '评价']);
     } else if (entry.name == '活动') {
       final typeVal = _getVal(bs, ['type', 'item', '项目', '类型']);
       final subTypeVal = _getVal(bs, ['sub_type', 'subtype', '子类型', 'sport_type', '运动项目']);
@@ -322,14 +314,7 @@ class _DiaryItemState extends State<DiaryItem> {
       if (medicationVal != null && medicationVal.toString().isNotEmpty) {
         tags.add('💊 ${medicationVal.toString()}');
       }
-      handledKeys.addAll([
-        'symptom',
-        '症状',
-        'severity',
-        '严重程度',
-        'medication',
-        '用药',
-      ]);
+      handledKeys.addAll(['symptom', '症状', 'severity', '严重程度', 'medication', '用药']);
     } else if (entry.name == '记账') {
       final categoryVal = _getVal(bs, ['_category', 'category', '收支类型', '收支']);
       String? direction;
@@ -349,14 +334,7 @@ class _DiaryItemState extends State<DiaryItem> {
         }
       }
       if (direction != null) tags.add(direction);
-      final typeVal = _getVal(bs, [
-        'type',
-        'incomeType',
-        '支出类型',
-        '收入类型',
-        '分类',
-        '类型',
-      ]);
+      final typeVal = _getVal(bs, ['type', 'incomeType', '支出类型', '收入类型', '分类', '类型']);
       if (typeVal != null && typeVal.toString().isNotEmpty) {
         tags.add(typeVal.toString());
       }
@@ -411,11 +389,7 @@ class _DiaryItemState extends State<DiaryItem> {
     return null;
   }
 
-  String _getFieldLabel(
-    String tagName,
-    String key,
-    Map<String, dynamic> fields,
-  ) {
+  String _getFieldLabel(String tagName, String key, Map<String, dynamic> fields) {
     final lowerKey = key.trim().toLowerCase();
     switch (lowerKey) {
       case 'duration':
@@ -433,9 +407,7 @@ class _DiaryItemState extends State<DiaryItem> {
         if (tagName == '活动') return '类型';
         if (tagName == '记账') {
           final isIncome =
-              fields['_category'] == 'income' ||
-              fields.containsKey('incomeType') ||
-              fields.containsKey('收入类型');
+              fields['_category'] == 'income' || fields.containsKey('incomeType') || fields.containsKey('收入类型');
           return isIncome ? '收入类型' : '支出类型';
         }
         return '类型';
@@ -488,9 +460,7 @@ class _DiaryItemState extends State<DiaryItem> {
       }
     }
     if (tagName == '记账' && lowerKey == 'amount') {
-      if (!valStr.contains('元') &&
-          !valStr.contains('￥') &&
-          !valStr.contains(r'$')) {
+      if (!valStr.contains('元') && !valStr.contains('￥') && !valStr.contains(r'$')) {
         return '$valStr元';
       }
     }
@@ -520,296 +490,249 @@ class _DiaryItemState extends State<DiaryItem> {
 
     return IntrinsicHeight(
       child: Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 48,
-          child: Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              Positioned(
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: 2,
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 48,
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  child: Container(width: 2, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
                 ),
-              ),
-              Positioned(
-                top: 0,
-                child: Semantics(
-                  label: '长按拖动调整时间',
-                  child: SizedBox(
-                    key: widget.timeDragHandleKey,
-                    width: 48,
-                    height: 48,
-                    child: Stack(
-                      alignment: Alignment.topCenter,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: AnimatedScale(
-                            scale: isTimeDragging ? 1.12 : 1,
-                            duration: const Duration(milliseconds: 140),
-                            curve: Curves.easeOut,
-                            child: AnimatedContainer(
+                Positioned(
+                  top: 0,
+                  child: Semantics(
+                    label: '长按拖动调整时间',
+                    child: SizedBox(
+                      key: widget.timeDragHandleKey,
+                      width: 48,
+                      height: 48,
+                      child: Stack(
+                        alignment: Alignment.topCenter,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: AnimatedScale(
+                              scale: isTimeDragging ? 1.12 : 1,
                               duration: const Duration(milliseconds: 140),
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surface,
-                                shape: BoxShape.circle,
-                                border: isTimeDragging
-                                    ? Border.all(
-                                        color: tagColor.withValues(alpha: 0.55),
-                                        width: 1.5,
-                                      )
-                                    : null,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isTimeDragging
-                                        ? tagColor.withValues(alpha: 0.28)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                    blurRadius: isTimeDragging ? 10 : 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: tagColor.withValues(alpha: 0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    _tagIcon(record.displayTag),
-                                    size: 14,
-                                    color: tagColor,
+                              curve: Curves.easeOut,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 140),
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface,
+                                  shape: BoxShape.circle,
+                                  border: isTimeDragging
+                                      ? Border.all(color: tagColor.withValues(alpha: 0.55), width: 1.5)
+                                      : null,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: isTimeDragging
+                                          ? tagColor.withValues(alpha: 0.28)
+                                          : Colors.black.withValues(alpha: 0.05),
+                                      blurRadius: isTimeDragging ? 10 : 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: tagColor.withValues(alpha: 0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(_tagIcon(record.displayTag), size: 14, color: tagColor),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 16, right: 12),
-            child: GestureDetector(
-              onTap: onTap,
-              // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q」，普通卡片含「给小Q/编辑/删除」）
-              onLongPress: _showActionMenu,
-              behavior: HitTestBehavior.opaque,
-              child: AnimatedOpacity(
-                opacity: isTimeDragging ? 0.24 : 1,
-                duration: const Duration(milliseconds: 140),
-                child: AnimatedScale(
-                  scale: isTimeDragging ? 0.97 : 1,
-                  duration: const Duration(milliseconds: 140),
-                  curve: Curves.easeOut,
-                  child: AnimatedGradientBorder(
-                    isAnimating: isExtracting,
-                    borderRadius: 16,
-                    strokeWidth: 2,
-                    child: Container(
-                      key: _effectiveCardKey,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isExtracting
-                              ? Colors.transparent
-                              : tagColor.withValues(alpha: 0.15),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: tagColor.withValues(alpha: 0.03),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.01),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
                           ),
                         ],
                       ),
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          SingleChildScrollView(
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildHeader(
-                                  theme,
-                                  tagColor,
-                                  categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
-                                      ? record.displayTag
-                                      : null,
-                                ),
-                                if (_isHealthDailySummary)
-                                  _buildHealthDailySummaryCard(theme, tagColor)
-                                else if (hasMultipleTags)
-                                  _buildMultiTagSections(theme)
-                                else ...[
-                                  _buildTagAndFieldsRow(theme, tagColor),
-                                  _buildSingleTagContent(theme, tagColor),
-                                ],
-                                if (record.photos.isNotEmpty)
-                                  Builder(
-                                    builder: (context) {
-                                      final screenWidth = MediaQuery.of(
-                                        context,
-                                      ).size.width;
-                                      final maxWidth =
-                                          screenWidth - 132 - _contentIndent;
-                                      const spacing = 6.0;
-                                      final itemWidth =
-                                          ((maxWidth - spacing * 2 - 2.0) / 3)
-                                              .clamp(50.0, 70.0);
-                                      return Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: _contentIndent,
-                                          top: 4,
-                                        ),
-                                        child: Wrap(
-                                          spacing: spacing,
-                                          runSpacing: spacing,
-                                          children: record.photos.asMap().entries.map((entry) {
-                                            final index = entry.key;
-                                            final photo = entry.value;
-                                            return GestureDetector(
-                                              behavior: HitTestBehavior.opaque,
-                                              onTap: () {
-                                                Navigator.of(context).push(
-                                                  MaterialPageRoute(
-                                                    builder: (_) => FullScreenImageGallery(
-                                                      images: record.photos,
-                                                      initialIndex: index,
-                                                    ),
-                                                  ),
-                                                );
-                                              },
-                                              child: UnifiedImage(
-                                                imagePath: photo,
-                                                width: itemWidth,
-                                                height: itemWidth,
-                                                borderRadius: BorderRadius.circular(
-                                                  8,
-                                                ),
-                                              ),
-                                            );
-                                          }).toList(),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16, right: 12),
+              child: GestureDetector(
+                onTap: onTap,
+                // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q」，普通卡片含「给小Q/编辑/删除」）
+                onLongPress: _showActionMenu,
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedOpacity(
+                  opacity: isTimeDragging ? 0.24 : 1,
+                  duration: const Duration(milliseconds: 140),
+                  child: AnimatedScale(
+                    scale: isTimeDragging ? 0.97 : 1,
+                    duration: const Duration(milliseconds: 140),
+                    curve: Curves.easeOut,
+                    child: AnimatedGradientBorder(
+                      isAnimating: isExtracting,
+                      borderRadius: 16,
+                      strokeWidth: 2,
+                      child: Container(
+                        key: _effectiveCardKey,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isExtracting ? Colors.transparent : tagColor.withValues(alpha: 0.15),
                           ),
-                          if (onAiExtract != null && !_isHealthDailySummary)
-                            Positioned(
-                              bottom: -22,
-                              right: -24,
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: isUndoable ? onUndo : onAiExtract,
-                                onLongPress: isUndoable
-                                    ? null
-                                    : (isExtracting
-                                          ? null
-                                          : onAiExtractLongPress),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.surface,
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: (isUndoable
-                                                  ? theme.colorScheme.error
-                                                  : tagColor)
-                                              .withValues(alpha: 0.2),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
+                          boxShadow: [
+                            BoxShadow(
+                              color: tagColor.withValues(alpha: 0.03),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.01),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            SingleChildScrollView(
+                              physics: const NeverScrollableScrollPhysics(),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildHeader(
+                                    theme,
+                                    tagColor,
+                                    categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
+                                        ? record.displayTag
+                                        : null,
+                                  ),
+                                  if (_isHealthDailySummary)
+                                    _buildHealthDailySummaryCard(theme, tagColor)
+                                  else if (hasMultipleTags)
+                                    _buildMultiTagSections(theme)
+                                  else ...[
+                                    _buildTagAndFieldsRow(theme, tagColor),
+                                    _buildSingleTagContent(theme, tagColor),
+                                  ],
+                                  if (record.photos.isNotEmpty)
+                                    Builder(
+                                      builder: (context) {
+                                        final screenWidth = MediaQuery.of(context).size.width;
+                                        final maxWidth = screenWidth - 132 - _contentIndent;
+                                        const spacing = 6.0;
+                                        final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
+                                        return Padding(
+                                          padding: const EdgeInsets.only(left: _contentIndent, top: 4),
+                                          child: Wrap(
+                                            spacing: spacing,
+                                            runSpacing: spacing,
+                                            children: record.photos.asMap().entries.map((entry) {
+                                              final index = entry.key;
+                                              final photo = entry.value;
+                                              return GestureDetector(
+                                                behavior: HitTestBehavior.opaque,
+                                                onTap: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (_) => FullScreenImageGallery(
+                                                        images: record.photos,
+                                                        initialIndex: index,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                child: UnifiedImage(
+                                                  imagePath: photo,
+                                                  width: itemWidth,
+                                                  height: itemWidth,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
+                                        );
+                                      },
                                     ),
-                                    child: isUndoable
-                                        ? (undoAnimation != null
-                                              ? AnimatedBuilder(
-                                                  animation: undoAnimation!,
-                                                  builder: (context, child) {
-                                                    return Stack(
-                                                      alignment: Alignment.center,
-                                                      children: [
-                                                        SizedBox(
-                                                          width: 28,
-                                                          height: 28,
-                                                          child: CustomPaint(
-                                                            painter:
-                                                                _UndoCountdownPainter(
-                                                              progress:
-                                                                  undoAnimation!
-                                                                      .value,
-                                                              color: theme
-                                                                  .colorScheme
-                                                                  .error,
+                                ],
+                              ),
+                            ),
+                            if (onAiExtract != null && !_isHealthDailySummary)
+                              Positioned(
+                                bottom: -22,
+                                right: -24,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: isUndoable ? onUndo : onAiExtract,
+                                  onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.surface,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: (isUndoable ? theme.colorScheme.error : tagColor).withValues(
+                                              alpha: 0.2,
+                                            ),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: isUndoable
+                                          ? (undoAnimation != null
+                                                ? AnimatedBuilder(
+                                                    animation: undoAnimation!,
+                                                    builder: (context, child) {
+                                                      return Stack(
+                                                        alignment: Alignment.center,
+                                                        children: [
+                                                          SizedBox(
+                                                            width: 28,
+                                                            height: 28,
+                                                            child: CustomPaint(
+                                                              painter: _UndoCountdownPainter(
+                                                                progress: undoAnimation!.value,
+                                                                color: theme.colorScheme.error,
+                                                              ),
                                                             ),
                                                           ),
-                                                        ),
-                                                        child!,
-                                                      ],
-                                                    );
-                                                  },
-                                                  child: Icon(
-                                                    Icons.undo,
-                                                    size: 14,
-                                                    color:
-                                                        theme.colorScheme.error,
-                                                  ),
-                                                )
-                                              : Icon(
-                                                  Icons.undo,
-                                                  size: 14,
-                                                  color: theme.colorScheme.error,
-                                                ))
-                                        : isExtracting
-                                        ? Center(
-                                            child: SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2.0,
-                                                color: tagColor,
+                                                          child!,
+                                                        ],
+                                                      );
+                                                    },
+                                                    child: Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
+                                                  )
+                                                : Icon(Icons.undo, size: 14, color: theme.colorScheme.error))
+                                          : isExtracting
+                                          ? Center(
+                                              child: SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(strokeWidth: 2.0, color: tagColor),
                                               ),
-                                            ),
-                                          )
-                                        : Icon(
-                                            Icons.auto_awesome,
-                                            size: 16,
-                                            color: tagColor,
-                                          ),
+                                            )
+                                          : Icon(Icons.auto_awesome, size: 16, color: tagColor),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -817,8 +740,7 @@ class _DiaryItemState extends State<DiaryItem> {
               ),
             ),
           ),
-        ),
-      ],
+        ],
       ),
     );
   }
@@ -846,11 +768,7 @@ class _DiaryItemState extends State<DiaryItem> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.access_time_filled,
-                        size: 13,
-                        color: primaryTagColor,
-                      ),
+                      Icon(Icons.access_time_filled, size: 13, color: primaryTagColor),
                       const SizedBox(width: 4),
                       Text(
                         _formatTimeRangeWithDate(),
@@ -876,19 +794,12 @@ class _DiaryItemState extends State<DiaryItem> {
               color: primaryTagColor,
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
-                BoxShadow(
-                  color: primaryTagColor.withValues(alpha: 0.22),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1.5),
-                ),
+                BoxShadow(color: primaryTagColor.withValues(alpha: 0.22), blurRadius: 4, offset: const Offset(0, 1.5)),
               ],
             ),
             child: Text(
               categoryTag,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -909,10 +820,7 @@ class _DiaryItemState extends State<DiaryItem> {
           rowItems.add(
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
               child: Text(
                 tagText,
                 style: theme.textTheme.labelSmall?.copyWith(
@@ -925,18 +833,14 @@ class _DiaryItemState extends State<DiaryItem> {
         }
 
         final showTime = entry.displayTime ?? entry.time;
-        if (showTime != null &&
-            showTime.isNotEmpty &&
-            !_isTagTimeDuplicate(entry)) {
+        if (showTime != null && showTime.isNotEmpty && !_isTagTimeDuplicate(entry)) {
           rowItems.add(
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
               child: Text(
                 showTime,
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.7,
-                  ),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -967,12 +871,7 @@ class _DiaryItemState extends State<DiaryItem> {
     );
   }
 
-  Widget _buildTagEntryPills(
-    ThemeData theme,
-    TagEntry entry, {
-    bool showIcon = false,
-    String? showTime,
-  }) {
+  Widget _buildTagEntryPills(ThemeData theme, TagEntry entry, {bool showIcon = false, String? showTime}) {
     final color = _tagColor(entry.name);
     final icon = _tagIcon(entry.name);
 
@@ -985,27 +884,15 @@ class _DiaryItemState extends State<DiaryItem> {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.25),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 4, offset: const Offset(0, 2))],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showIcon) ...[
-              Icon(icon, size: 12, color: Colors.white),
-              const SizedBox(width: 4),
-            ],
+            if (showIcon) ...[Icon(icon, size: 12, color: Colors.white), const SizedBox(width: 4)],
             Text(
               entry.name,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -1018,10 +905,7 @@ class _DiaryItemState extends State<DiaryItem> {
       rowItems.add(
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
           child: Text(
             tagText,
             style: theme.textTheme.labelSmall?.copyWith(
@@ -1034,9 +918,7 @@ class _DiaryItemState extends State<DiaryItem> {
     }
 
     // 3. Optional time display
-    if (showTime != null &&
-        showTime.isNotEmpty &&
-        !_isTagTimeDuplicate(entry)) {
+    if (showTime != null && showTime.isNotEmpty && !_isTagTimeDuplicate(entry)) {
       rowItems.add(
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -1051,12 +933,7 @@ class _DiaryItemState extends State<DiaryItem> {
       );
     }
 
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: rowItems,
-    );
+    return Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: rowItems);
   }
 
   Widget _buildMultiTagSections(ThemeData theme) {
@@ -1069,22 +946,12 @@ class _DiaryItemState extends State<DiaryItem> {
         sections.add(
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Divider(
-              height: 1,
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            ),
+            child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
           ),
         );
       }
 
-      sections.add(
-        _buildTagEntryPills(
-          theme,
-          entry,
-          showIcon: true,
-          showTime: entry.displayTime ?? entry.time,
-        ),
-      );
+      sections.add(_buildTagEntryPills(theme, entry, showIcon: true, showTime: entry.displayTime ?? entry.time));
     }
 
     final richContent = _buildRichContent(
@@ -1099,10 +966,7 @@ class _DiaryItemState extends State<DiaryItem> {
       sections.add(
         Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
+          child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
         ),
       );
       sections.add(richContent);
@@ -1110,10 +974,7 @@ class _DiaryItemState extends State<DiaryItem> {
 
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: sections,
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections),
     );
   }
 
@@ -1126,13 +987,7 @@ class _DiaryItemState extends State<DiaryItem> {
       leftPadding: _contentIndent,
     );
     if (richContent == null) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8),
-        richContent,
-      ],
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 8), richContent]);
   }
 
   Widget? _buildRichContent({
@@ -1193,10 +1048,7 @@ class _DiaryItemState extends State<DiaryItem> {
     };
 
     String normalizeKey(String key) {
-      return key.trim().toLowerCase().replaceAll(
-        RegExp(r'[\s\(_\)（）\-:]+'),
-        '',
-      );
+      return key.trim().toLowerCase().replaceAll(RegExp(r'[\s\(_\)（）\-:]+'), '');
     }
 
     for (final entry in record.tagEntries) {
@@ -1256,8 +1108,7 @@ class _DiaryItemState extends State<DiaryItem> {
 
         bool shouldSkip = false;
         for (final skipKey in keysToSkip) {
-          if (normKey == skipKey ||
-              (normKey.length <= 4 && normKey.contains(skipKey))) {
+          if (normKey == skipKey || (normKey.length <= 4 && normKey.contains(skipKey))) {
             shouldSkip = true;
             break;
           }
@@ -1278,10 +1129,7 @@ class _DiaryItemState extends State<DiaryItem> {
       }
 
       if (lastIndex < trimmedLine.length) {
-        final suffix = trimmedLine
-            .substring(lastIndex)
-            .trim()
-            .replaceAll(RegExp(r'^[，,;；|｜\s]+|[，,;；|｜\s]+$'), '');
+        final suffix = trimmedLine.substring(lastIndex).trim().replaceAll(RegExp(r'^[，,;；|｜\s]+|[，,;；|｜\s]+$'), '');
         if (suffix.isNotEmpty) {
           final normSuffix = normalizeKey(suffix);
           bool suffixShouldSkip = false;
@@ -1340,10 +1188,7 @@ class _DiaryItemState extends State<DiaryItem> {
 
     return Padding(
       padding: EdgeInsets.only(left: leftPadding, top: 4, bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: elements,
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: elements),
     );
   }
 
@@ -1360,10 +1205,7 @@ class _DiaryItemState extends State<DiaryItem> {
       final end = record.endTime!;
       final endStr = DateFormat.Hm().format(end);
 
-      final isCrossDate =
-          start.year != end.year ||
-          start.month != end.month ||
-          start.day != end.day;
+      final isCrossDate = start.year != end.year || start.month != end.month || start.day != end.day;
 
       if (isCrossDate) {
         final endDateStr = DateFormat('MM-dd').format(end);
@@ -1388,16 +1230,13 @@ class _DiaryItemState extends State<DiaryItem> {
     if (entry.startHour == null || entry.startMinute == null) {
       // 容错：如果 startHour 没解析出来但 entry.time 与起始时间字符串相同，也判定为重复
       final startHm = DateFormat.Hm().format(recordStart);
-      if (entry.time != null &&
-          (entry.time == startHm || entry.time!.startsWith(startHm))) {
+      if (entry.time != null && (entry.time == startHm || entry.time!.startsWith(startHm))) {
         return true;
       }
       return false;
     }
 
-    final isStartSame =
-        entry.startHour == recordStartHour &&
-        entry.startMinute == recordStartMinute;
+    final isStartSame = entry.startHour == recordStartHour && entry.startMinute == recordStartMinute;
     if (!isStartSame) return false;
 
     // 当起始时分与记录起始时分一致时：
@@ -1413,8 +1252,7 @@ class _DiaryItemState extends State<DiaryItem> {
 
       final recordEndHour = record.endTime!.hour;
       final recordEndMinute = record.endTime!.minute;
-      return entry.endHour == recordEndHour &&
-          entry.endMinute == recordEndMinute;
+      return entry.endHour == recordEndHour && entry.endMinute == recordEndMinute;
     }
   }
 
@@ -1447,21 +1285,19 @@ class _DiaryItemState extends State<DiaryItem> {
     // 解析完整 ISO8601 时间戳，兼容旧数据 HH:mm 格式
     final sleepStartDt = sleepStartRaw != null ? DateTime.tryParse(sleepStartRaw) : null;
     final sleepEndDt = sleepEndRaw != null ? DateTime.tryParse(sleepEndRaw) : null;
-    String? fmtHm(DateTime dt) =>
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    String? fmtHm(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     // 跨午夜睡眠展示「昨晚 HH:mm ~ 今早 HH:mm」，同天/旧数据展示「HH:mm ~ HH:mm」
     final String? sleepTimeDisplay;
     if (sleepStartDt != null && sleepEndDt != null) {
-      final crossMidnight = sleepStartDt.day != sleepEndDt.day ||
+      final crossMidnight =
+          sleepStartDt.day != sleepEndDt.day ||
           sleepStartDt.month != sleepEndDt.month ||
           sleepStartDt.year != sleepEndDt.year;
       sleepTimeDisplay = crossMidnight
           ? '昨晚 ${fmtHm(sleepStartDt)} ~ 今早 ${fmtHm(sleepEndDt)}'
           : '${fmtHm(sleepStartDt)} ~ ${fmtHm(sleepEndDt)}';
     } else {
-      sleepTimeDisplay = (sleepStartRaw != null && sleepEndRaw != null)
-          ? '$sleepStartRaw ~ $sleepEndRaw'
-          : null;
+      sleepTimeDisplay = (sleepStartRaw != null && sleepEndRaw != null) ? '$sleepStartRaw ~ $sleepEndRaw' : null;
     }
 
     final restingHr = (bs['resting_heart_rate'] as num?)?.toInt();
@@ -1479,7 +1315,8 @@ class _DiaryItemState extends State<DiaryItem> {
 
     // 屏幕使用时长（优先使用持久化数据，若无则使用当日异步检测补全数据）
     final screenMs = (bs['screen_time_ms'] as num?)?.toInt() ?? _liveScreenUsage?.totalTimeMs ?? 0;
-    final screenYesterdayMs = (bs['screen_yesterday_time_ms'] as num?)?.toInt() ?? _liveScreenUsage?.yesterdayTotalTimeMs;
+    final screenYesterdayMs =
+        (bs['screen_yesterday_time_ms'] as num?)?.toInt() ?? _liveScreenUsage?.yesterdayTotalTimeMs;
     final screenTopAppsRaw = bs['screen_top_apps'] as List<dynamic>?;
     final List<Map<String, dynamic>> topApps = [];
     if (screenTopAppsRaw != null && screenTopAppsRaw.isNotEmpty) {
@@ -1490,11 +1327,7 @@ class _DiaryItemState extends State<DiaryItem> {
       }
     } else if (_liveScreenUsage != null && _liveScreenUsage!.appList.isNotEmpty) {
       for (final a in _liveScreenUsage!.appList.take(4)) {
-        topApps.add({
-          'name': a.appName,
-          'package': a.packageName,
-          'formatted': a.formattedDuration,
-        });
+        topApps.add({'name': a.appName, 'package': a.packageName, 'formatted': a.formattedDuration});
       }
     }
 
@@ -1535,10 +1368,7 @@ class _DiaryItemState extends State<DiaryItem> {
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: brandGreen.withValues(alpha: 0.18),
-                width: 0.8,
-              ),
+              border: Border.all(color: brandGreen.withValues(alpha: 0.18), width: 0.8),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1567,8 +1397,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                       decoration: BoxDecoration(
-                        color: (isTargetReached ? brandGreen : colorScheme.primary)
-                            .withValues(alpha: 0.12),
+                        color: (isTargetReached ? brandGreen : colorScheme.primary).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -1663,10 +1492,7 @@ class _DiaryItemState extends State<DiaryItem> {
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: sleepPurple.withValues(alpha: 0.18),
-                  width: 0.8,
-                ),
+                border: Border.all(color: sleepPurple.withValues(alpha: 0.18), width: 0.8),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1675,12 +1501,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     children: [
                       const Icon(Icons.nightlight_round, size: 16, color: sleepPurple),
                       const SizedBox(width: 6),
-                      Text(
-                        '睡眠',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      Text('睡眠', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                       const Spacer(),
                       Flexible(
                         child: Row(
@@ -1729,14 +1550,11 @@ class _DiaryItemState extends State<DiaryItem> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      if (deepSleep > 0)
-                        _buildSleepLegend('深睡', '$deepSleep分', const Color(0xFF6366F1)),
+                      if (deepSleep > 0) _buildSleepLegend('深睡', '$deepSleep分', const Color(0xFF6366F1)),
                       if (deepSleep > 0) const SizedBox(width: 10),
-                      if (lightSleep > 0)
-                        _buildSleepLegend('浅睡', '$lightSleep分', const Color(0xFFA855F7)),
+                      if (lightSleep > 0) _buildSleepLegend('浅睡', '$lightSleep分', const Color(0xFFA855F7)),
                       if (lightSleep > 0) const SizedBox(width: 10),
-                      if (remSleep > 0)
-                        _buildSleepLegend('REM', '$remSleep分', const Color(0xFF38BDF8)),
+                      if (remSleep > 0) _buildSleepLegend('REM', '$remSleep分', const Color(0xFF38BDF8)),
                       const Spacer(),
                       if (sleepTimeDisplay != null)
                         Flexible(
@@ -1774,10 +1592,7 @@ class _DiaryItemState extends State<DiaryItem> {
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: screenBlue.withValues(alpha: 0.18),
-                      width: 0.8,
-                    ),
+                    border: Border.all(color: screenBlue.withValues(alpha: 0.18), width: 0.8),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1788,20 +1603,14 @@ class _DiaryItemState extends State<DiaryItem> {
                           Expanded(
                             child: Row(
                               children: [
-                                const Icon(
-                                  Icons.phone_android_rounded,
-                                  size: 16,
-                                  color: screenBlue,
-                                ),
+                                const Icon(Icons.phone_android_rounded, size: 16, color: screenBlue),
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
                                     '屏幕使用',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                                   ),
                                 ),
                               ],
@@ -1950,9 +1759,7 @@ class _DiaryItemState extends State<DiaryItem> {
                 const SizedBox(width: 4),
                 Text(
                   '今日运动 ${sportsRaw.length} 项',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -2179,10 +1986,7 @@ class _DiaryItemState extends State<DiaryItem> {
           Container(
             width: 28,
             height: 28,
-            decoration: BoxDecoration(
-              color: TagColors.health.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: TagColors.health.withValues(alpha: 0.12), shape: BoxShape.circle),
             child: Icon(sportIcon, size: 15, color: TagColors.health),
           ),
           const SizedBox(width: 10),

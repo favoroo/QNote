@@ -13,10 +13,7 @@ class FixedEventRepository {
   /// 获取所有模板
   Future<List<FixedEventTemplate>> getAll() async {
     final db = await DatabaseHelper.instance.database;
-    final maps = await db.query(
-      'fixed_event_templates',
-      orderBy: 'sort_order ASC',
-    );
+    final maps = await db.query('fixed_event_templates', orderBy: 'sort_order ASC');
     return maps.map((m) => FixedEventTemplate.fromMap(m)).toList();
   }
 
@@ -35,12 +32,7 @@ class FixedEventRepository {
   /// 根据 ID 获取单个模板
   Future<FixedEventTemplate?> getById(String id) async {
     final db = await DatabaseHelper.instance.database;
-    final maps = await db.query(
-      'fixed_event_templates',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
+    final maps = await db.query('fixed_event_templates', where: 'id = ?', whereArgs: [id], limit: 1);
     if (maps.isEmpty) return null;
     return FixedEventTemplate.fromMap(maps.first);
   }
@@ -48,10 +40,7 @@ class FixedEventRepository {
   /// 新增模板
   Future<void> insert(FixedEventTemplate template) async {
     final db = await DatabaseHelper.instance.database;
-    await db.insert(
-      'fixed_event_templates',
-      template.toMap(),
-    );
+    await db.insert('fixed_event_templates', template.toMap());
     await _syncLog.logChange(
       tableName: 'fixed_event_templates',
       recordId: template.id,
@@ -63,12 +52,7 @@ class FixedEventRepository {
   /// 更新模板
   Future<void> update(FixedEventTemplate template) async {
     final db = await DatabaseHelper.instance.database;
-    await db.update(
-      'fixed_event_templates',
-      template.toMap(),
-      where: 'id = ?',
-      whereArgs: [template.id],
-    );
+    await db.update('fixed_event_templates', template.toMap(), where: 'id = ?', whereArgs: [template.id]);
     await _syncLog.logChange(
       tableName: 'fixed_event_templates',
       recordId: template.id,
@@ -80,16 +64,8 @@ class FixedEventRepository {
   /// 删除模板
   Future<void> delete(String id) async {
     final db = await DatabaseHelper.instance.database;
-    await db.delete(
-      'fixed_event_templates',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    await _syncLog.logChange(
-      tableName: 'fixed_event_templates',
-      recordId: id,
-      operation: 'delete',
-    );
+    await db.delete('fixed_event_templates', where: 'id = ?', whereArgs: [id]);
+    await _syncLog.logChange(tableName: 'fixed_event_templates', recordId: id, operation: 'delete');
   }
 
   /// 清空所有模板
@@ -99,11 +75,7 @@ class FixedEventRepository {
     final existing = await db.query('fixed_event_templates');
     await db.delete('fixed_event_templates');
     for (final row in existing) {
-      await _syncLog.logChange(
-        tableName: 'fixed_event_templates',
-        recordId: row['id'] as String,
-        operation: 'delete',
-      );
+      await _syncLog.logChange(tableName: 'fixed_event_templates', recordId: row['id'] as String, operation: 'delete');
     }
   }
 }

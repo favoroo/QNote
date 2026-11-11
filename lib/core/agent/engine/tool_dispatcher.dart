@@ -34,16 +34,10 @@ class ToolDispatcher {
   /// 当工具返回图片（如 view_image）时，图片以 data URI 挂在返回消息的 [ChatMessage.images]
   /// 上，仅作为内存中的临时通道供 AgentLoop 提取；AgentLoop 会剥离图片后把消息
   /// 加入上下文与 UI 事件流，因此落库的消息永远不携带 base64 图片数据。
-  Future<ChatMessage> dispatch(
-    ToolCall call, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ChatMessage> dispatch(ToolCall call, {void Function(String progress)? onProgress}) async {
     final tool = _tools[call.name];
     if (tool == null) {
-      LoggerService.instance.logAI(
-        '执行工具失败: 未知工具 "${call.name}"',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('执行工具失败: 未知工具 "${call.name}"', level: LogLevel.warning);
       return ChatMessage(
         role: 'tool',
         content: '错误: 找不到工具 "${call.name}"',
@@ -55,10 +49,7 @@ class ToolDispatcher {
     }
 
     try {
-      LoggerService.instance.logAI(
-        '调度执行工具 [${call.name}]',
-        details: '参数: ${call.arguments}',
-      );
+      LoggerService.instance.logAI('调度执行工具 [${call.name}]', details: '参数: ${call.arguments}');
       final result = await tool.execute(call.arguments, onProgress: onProgress);
       return ChatMessage(
         role: 'tool',

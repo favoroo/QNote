@@ -47,9 +47,7 @@ class WebdavConfig {
       remotePath: map['remote_path'] as String? ?? 'QNote',
       autoSync: (map['auto_sync'] as int? ?? 0) == 1,
       syncInterval: map['sync_interval'] as int? ?? 30,
-      lastSyncTime: map['last_sync_time'] != null
-          ? DateTime.parse(map['last_sync_time'] as String)
-          : null,
+      lastSyncTime: map['last_sync_time'] != null ? DateTime.parse(map['last_sync_time'] as String) : null,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
     );

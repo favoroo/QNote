@@ -14,18 +14,10 @@ class WorkspaceUndoEntry {
   /// 修改前的旧内容（已剥离行号前缀，可直接作为 writeFile 输入完成恢复）
   final String? beforeContent;
 
-  const WorkspaceUndoEntry({
-    required this.path,
-    required this.existedBefore,
-    this.beforeContent,
-  });
+  const WorkspaceUndoEntry({required this.path, required this.existedBefore, this.beforeContent});
 
   Map<String, dynamic> toMap() {
-    return {
-      'path': path,
-      'existed_before': existedBefore,
-      if (beforeContent != null) 'before_content': beforeContent,
-    };
+    return {'path': path, 'existed_before': existedBefore, if (beforeContent != null) 'before_content': beforeContent};
   }
 
   factory WorkspaceUndoEntry.fromMap(Map<String, dynamic> map) {
@@ -49,10 +41,7 @@ class WorkspaceUndoEntry {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return [];
-      return decoded
-          .whereType<Map<String, dynamic>>()
-          .map(WorkspaceUndoEntry.fromMap)
-          .toList();
+      return decoded.whereType<Map<String, dynamic>>().map(WorkspaceUndoEntry.fromMap).toList();
     } catch (_) {
       return [];
     }

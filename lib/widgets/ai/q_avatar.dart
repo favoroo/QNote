@@ -130,20 +130,11 @@ class QAvatar extends StatelessWidget {
     // 当 withBackground = true 时，默认采用用户最青睐的「白净通透机身」视觉：
     // 底座为实心 primary 主色，机身为纯白 onPrimary，屏幕为 primary，内圈与眼睛为 onPrimary 纯白；
     // 这样头像在列表与气泡中具备极高辨识度与现代质感。
-    final effectiveColor = color ??
-        (withBackground
-            ? theme.colorScheme.onPrimary
-            : primary);
+    final effectiveColor = color ?? (withBackground ? theme.colorScheme.onPrimary : primary);
 
-    final effectiveScreenColor = screenColor ??
-        (withBackground
-            ? (backgroundColor ?? primary)
-            : primary);
+    final effectiveScreenColor = screenColor ?? (withBackground ? (backgroundColor ?? primary) : primary);
 
-    final effectiveEyeColor = eyeColor ??
-        (withBackground
-            ? theme.colorScheme.onPrimary
-            : theme.colorScheme.surface);
+    final effectiveEyeColor = eyeColor ?? (withBackground ? theme.colorScheme.onPrimary : theme.colorScheme.surface);
 
     final iconWidget = SizedBox(
       width: size,
@@ -172,13 +163,7 @@ class QAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         color: effectiveBg,
         shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: effectiveBg.withValues(alpha: 0.35),
-            blurRadius: 6,
-            offset: const Offset(0, 1.5),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: effectiveBg.withValues(alpha: 0.35), blurRadius: 6, offset: const Offset(0, 1.5))],
       ),
       child: Center(
         child: SizedBox(
@@ -335,29 +320,18 @@ class _QRobotPainter extends CustomPainter {
     canvas.drawCircle(const Offset(101.5, 15.5), 16.5, bodyPaint);
 
     // 2. 天线立杆
-    canvas.drawRect(
-      const Rect.fromLTRB(95.0, 30.0, 108.0, 60.0),
-      bodyPaint,
-    );
+    canvas.drawRect(const Rect.fromLTRB(95.0, 30.0, 108.0, 60.0), bodyPaint);
 
     // 3. 外层机身圆角矩形
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTRB(0.0, 58.0, 203.0, 205.0),
-        const Radius.circular(38.0),
-      ),
+      RRect.fromRectAndRadius(const Rect.fromLTRB(0.0, 58.0, 203.0, 205.0), const Radius.circular(38.0)),
       bodyPaint,
     );
 
     // 4. 内衬高亮环框（浅色或背景色）
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTRB(
-          innerInset,
-          58.0 + innerInset,
-          203.0 - innerInset,
-          205.0 - innerInset,
-        ),
+        const Rect.fromLTRB(innerInset, 58.0 + innerInset, 203.0 - innerInset, 205.0 - innerInset),
         const Radius.circular(8.0),
       ),
       innerPaint,
@@ -392,11 +366,7 @@ class _QRobotPainter extends CustomPainter {
     for (final dx in <double>[-eyeGap / 2, eyeGap / 2]) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: Offset(101.5 + dx, _eyeCenterY),
-            width: eyeWidth,
-            height: currentEyeHeight,
-          ),
+          Rect.fromCenter(center: Offset(101.5 + dx, _eyeCenterY), width: eyeWidth, height: currentEyeHeight),
           currentRadius,
         ),
         innerPaint,
@@ -424,15 +394,7 @@ class _QRobotPainter extends CustomPainter {
     canvas.drawCircle(_outlinedBallCenter, _outlinedBallRadius, fillPaint);
 
     // 2. 天线立杆：宽度与描边一致，自球心垂直落入机身顶边
-    canvas.drawRect(
-      Rect.fromLTRB(
-        101.5 - half,
-        _outlinedBallCenter.dy,
-        101.5 + half,
-        58.0 + half,
-      ),
-      fillPaint,
-    );
+    canvas.drawRect(Rect.fromLTRB(101.5 - half, _outlinedBallCenter.dy, 101.5 + half, 58.0 + half), fillPaint);
 
     // 3. 机身轮廓：路径按线宽内缩一半，使描边外缘与母版机身边缘对齐
     canvas.drawRRect(
@@ -447,10 +409,7 @@ class _QRobotPainter extends CustomPainter {
     const eyeCenter = Offset(101.5, 131.5);
     final clampedOpenness = eyeOpenness.clamp(0.0, 1.0);
     const minOutlinedEyeHeight = _outlinedEyeWidth * 0.18;
-    final currentOutlinedEyeHeight = math.max(
-      minOutlinedEyeHeight,
-      _outlinedEyeHeight * clampedOpenness,
-    );
+    final currentOutlinedEyeHeight = math.max(minOutlinedEyeHeight, _outlinedEyeHeight * clampedOpenness);
     final currentOutlinedRadius = Radius.circular(currentOutlinedEyeHeight / 2);
 
     for (final dx in <double>[-_outlinedEyeGap / 2, _outlinedEyeGap / 2]) {

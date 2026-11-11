@@ -18,27 +18,22 @@ void main() {
   late AiService service;
 
   AiProvider raccoonProvider() => AiProvider(
-        id: 'pRaccoon',
-        vendorId: 'raccoon',
-        name: '商汤小浣熊',
-        providerType: 'openai',
-        baseUrl: 'https://xiaohuanxiong.com/api/web/llm/v2',
-        authMode: AiProvider.authModeRaccoon,
-        apiKeys: const [],
-        models: const [
-          AiProviderModel(id: 'raccoon-chat-ml-5-5', name: 'Raccoon Chat'),
-        ],
-        createdAt: now,
-        updatedAt: now,
-      );
+    id: 'pRaccoon',
+    vendorId: 'raccoon',
+    name: '商汤小浣熊',
+    providerType: 'openai',
+    baseUrl: 'https://xiaohuanxiong.com/api/web/llm/v2',
+    authMode: AiProvider.authModeRaccoon,
+    apiKeys: const [],
+    models: const [AiProviderModel(id: 'raccoon-chat-ml-5-5', name: 'Raccoon Chat')],
+    createdAt: now,
+    updatedAt: now,
+  );
 
-  List<ChatMessage> messages() => [
-        ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now()),
-      ];
+  List<ChatMessage> messages() => [ChatMessage(role: 'user', content: 'hi', timestamp: DateTime.now())];
 
   setUp(() {
-    RaccoonAuthService.accessTokenLoaderForTest =
-        (_) async => 'jwt-test-token';
+    RaccoonAuthService.accessTokenLoaderForTest = (_) async => 'jwt-test-token';
     adapter = _RecordingAdapter();
     service = AiService();
     service.httpClientAdapterForTest = adapter;
@@ -50,17 +45,12 @@ void main() {
 
   test('账号型厂商：token 逐请求注入，打到小浣熊的 OpenAI 兼容端点', () async {
     final provider = raccoonProvider();
-    service.updateConfig(
-      AiConfig.fromProvider(provider, 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(provider, 'raccoon-chat-ml-5-5'));
 
     final reply = await service.chatResponse(messages());
 
     expect(reply.content, 'ok');
-    expect(
-      adapter.uris.single,
-      'https://xiaohuanxiong.com/api/web/llm/v2/chat/completions',
-    );
+    expect(adapter.uris.single, 'https://xiaohuanxiong.com/api/web/llm/v2/chat/completions');
     expect(adapter.authHeaders.single, 'Bearer jwt-test-token');
     expect(adapter.models.single, 'raccoon-chat-ml-5-5');
   });
@@ -68,14 +58,9 @@ void main() {
   test('未登录时发信前就报「请重新登录」，不会发出空凭证请求', () async {
     RaccoonAuthService.accessTokenLoaderForTest = (_) async => null;
     final provider = raccoonProvider();
-    service.updateConfig(
-      AiConfig.fromProvider(provider, 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(provider, 'raccoon-chat-ml-5-5'));
 
-    await expectLater(
-      service.chatResponse(messages()),
-      throwsA(isA<RaccoonAuthRequiredException>()),
-    );
+    await expectLater(service.chatResponse(messages()), throwsA(isA<RaccoonAuthRequiredException>()));
     expect(adapter.uris, isEmpty);
   });
 }

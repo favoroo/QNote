@@ -4,10 +4,7 @@ import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 
 void main() {
   // 模拟手机窄屏（360x640），验证菜单项放不下时会换行而不是折叠进 ⋮
-  Widget buildToolbar({
-    required Size surface,
-    required List<ContextMenuButtonItem> items,
-  }) {
+  Widget buildToolbar({required Size surface, required List<ContextMenuButtonItem> items}) {
     return MediaQuery(
       data: MediaQueryData(size: surface),
       child: MaterialApp(
@@ -15,9 +12,7 @@ void main() {
           body: Align(
             alignment: Alignment.topLeft,
             child: QTextSelectionToolbar(
-              anchors: const TextSelectionToolbarAnchors(
-                primaryAnchor: Offset(180, 300),
-              ),
+              anchors: const TextSelectionToolbarAnchors(primaryAnchor: Offset(180, 300)),
               buttonItems: items,
             ),
           ),
@@ -49,13 +44,15 @@ void main() {
 
   testWidgets('点击「给小Q」触发回调', (tester) async {
     var pressed = false;
-    await tester.pumpWidget(buildToolbar(
-      surface: const Size(360, 640),
-      items: [
-        const ContextMenuButtonItem(label: '复制', onPressed: null, type: ContextMenuButtonType.copy),
-        ContextMenuButtonItem(label: '给小Q', onPressed: () => pressed = true),
-      ],
-    ));
+    await tester.pumpWidget(
+      buildToolbar(
+        surface: const Size(360, 640),
+        items: [
+          const ContextMenuButtonItem(label: '复制', onPressed: null, type: ContextMenuButtonType.copy),
+          ContextMenuButtonItem(label: '给小Q', onPressed: () => pressed = true),
+        ],
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('给小Q'));
@@ -63,13 +60,15 @@ void main() {
   });
 
   testWidgets('自定义项按传入 label 渲染并用主题色高亮', (tester) async {
-    await tester.pumpWidget(buildToolbar(
-      surface: const Size(360, 640),
-      items: [
-        const ContextMenuButtonItem(label: '复制', onPressed: null, type: ContextMenuButtonType.copy),
-        const ContextMenuButtonItem(label: '给小Q', onPressed: null, type: ContextMenuButtonType.custom),
-      ],
-    ));
+    await tester.pumpWidget(
+      buildToolbar(
+        surface: const Size(360, 640),
+        items: [
+          const ContextMenuButtonItem(label: '复制', onPressed: null, type: ContextMenuButtonType.copy),
+          const ContextMenuButtonItem(label: '给小Q', onPressed: null, type: ContextMenuButtonType.custom),
+        ],
+      ),
+    );
     await tester.pumpAndSettle();
 
     final context = tester.element(find.text('给小Q'));

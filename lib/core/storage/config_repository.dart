@@ -26,21 +26,14 @@ class ConfigRepository {
 
   Future<String?> getAppConfig(String key) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'app_configs',
-      where: 'key = ?',
-      whereArgs: [key],
-    );
+    final maps = await db.query('app_configs', where: 'key = ?', whereArgs: [key]);
     if (maps.isEmpty) return null;
     return maps.first['value'] as String;
   }
 
   Future<void> setAppConfig(String key, String value) async {
     final db = await _dbHelper.database;
-    await db.insert('app_configs', {
-      'key': key,
-      'value': value,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('app_configs', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
     await _syncLog.logChange(
       tableName: 'app_configs',
       recordId: key,
@@ -52,24 +45,14 @@ class ConfigRepository {
   Future<void> deleteAppConfig(String key) async {
     final db = await _dbHelper.database;
     await db.delete('app_configs', where: 'key = ?', whereArgs: [key]);
-    await _syncLog.logChange(
-      tableName: 'app_configs',
-      recordId: key,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: 'app_configs', recordId: key, operation: 'delete');
   }
 
   /// 按前缀批量读取 app_configs 键值（用于小Q用户技能等动态数量的配置）
   Future<Map<String, String>> getAppConfigsByPrefix(String prefix) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'app_configs',
-      where: 'key LIKE ?',
-      whereArgs: ['$prefix%'],
-    );
-    return {
-      for (final m in maps) m['key'] as String: m['value'] as String,
-    };
+    final maps = await db.query('app_configs', where: 'key LIKE ?', whereArgs: ['$prefix%']);
+    return {for (final m in maps) m['key'] as String: m['value'] as String};
   }
 
   Future<List<ShortcutConfig>> getAllShortcutConfigs() async {
@@ -95,12 +78,7 @@ class ConfigRepository {
   Future<ShortcutConfig> updateShortcutConfig(ShortcutConfig config) async {
     final db = await _dbHelper.database;
     final updated = config.copyWith(updatedAt: DateTime.now());
-    await db.update(
-      'shortcut_configs',
-      updated.toMap(),
-      where: 'id = ?',
-      whereArgs: [config.id],
-    );
+    await db.update('shortcut_configs', updated.toMap(), where: 'id = ?', whereArgs: [config.id]);
     await _syncLog.logChange(
       tableName: 'shortcut_configs',
       recordId: config.id,
@@ -113,11 +91,7 @@ class ConfigRepository {
   Future<void> deleteShortcutConfig(String id) async {
     final db = await _dbHelper.database;
     await db.delete('shortcut_configs', where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: 'shortcut_configs',
-      recordId: id,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: 'shortcut_configs', recordId: id, operation: 'delete');
   }
 
   Future<UserProfile?> getUserProfile() async {
@@ -130,11 +104,7 @@ class ConfigRepository {
   Future<UserProfile> upsertUserProfile(UserProfile profile) async {
     final db = await _dbHelper.database;
     final updated = profile.copyWith(updatedAt: DateTime.now());
-    await db.insert(
-      'user_profiles',
-      updated.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('user_profiles', updated.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
     await _syncLog.logChange(
       tableName: 'user_profile',
       recordId: updated.id,
@@ -144,8 +114,7 @@ class ConfigRepository {
     return updated;
   }
 
-  Future<UserProfile> saveUserProfile(UserProfile profile) =>
-      upsertUserProfile(profile);
+  Future<UserProfile> saveUserProfile(UserProfile profile) => upsertUserProfile(profile);
 
   Future<WebdavConfig?> getWebdavConfig() async {
     final db = await _dbHelper.database;
@@ -157,11 +126,7 @@ class ConfigRepository {
   Future<WebdavConfig> upsertWebdavConfig(WebdavConfig config) async {
     final db = await _dbHelper.database;
     final updated = config.copyWith(updatedAt: DateTime.now());
-    await db.insert(
-      'webdav_configs',
-      updated.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('webdav_configs', updated.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
     return updated;
   }
 
@@ -170,9 +135,7 @@ class ConfigRepository {
     await db.delete('webdav_configs', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<List<ChatSession>> getAllChatSessions({
-    bool includeDeleted = false,
-  }) async {
+  Future<List<ChatSession>> getAllChatSessions({bool includeDeleted = false}) async {
     final db = await _dbHelper.database;
     final maps = await db.query(
       'chat_sessions',
@@ -184,11 +147,7 @@ class ConfigRepository {
 
   Future<ChatSession?> getChatSession(String id) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'chat_sessions',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final maps = await db.query('chat_sessions', where: 'id = ?', whereArgs: [id]);
     if (maps.isEmpty) return null;
     return ChatSession.fromMap(maps.first);
   }
@@ -208,12 +167,7 @@ class ConfigRepository {
   Future<ChatSession> updateChatSession(ChatSession session) async {
     final db = await _dbHelper.database;
     final updated = session.copyWith(updatedAt: DateTime.now());
-    await db.update(
-      'chat_sessions',
-      updated.toMap(),
-      where: 'id = ?',
-      whereArgs: [session.id],
-    );
+    await db.update('chat_sessions', updated.toMap(), where: 'id = ?', whereArgs: [session.id]);
     await _syncLog.logChange(
       tableName: 'chat_sessions',
       recordId: session.id,
@@ -239,12 +193,7 @@ class ConfigRepository {
     if (existing == null) {
       return;
     }
-    await db.update(
-      'chat_sessions',
-      {'is_pinned': isPinned ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await db.update('chat_sessions', {'is_pinned': isPinned ? 1 : 0}, where: 'id = ?', whereArgs: [id]);
     await _syncLog.logChange(
       tableName: 'chat_sessions',
       recordId: id,
@@ -265,22 +214,9 @@ class ConfigRepository {
     if (existing == null) return;
 
     final nowStr = DateTime.now().toIso8601String();
-    await db.update(
-      'chat_sessions',
-      {'is_deleted': 1, 'updated_at': nowStr},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final updated = existing.copyWith(
-      isDeleted: true,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'chat_sessions',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('chat_sessions', {'is_deleted': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+    final updated = existing.copyWith(isDeleted: true, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'chat_sessions', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   /// 物理删除会话：真正释放这条对话占用的消息记录与独占生成图片。
@@ -297,9 +233,7 @@ class ConfigRepository {
   ///    仍需转发给 C 端」的链路不断（旧实现 `if (existing == null) return;` 正是断点）；
   /// 3. 事务回调内只用 `txn`：复用 `_syncLog.logChange` 会走 `Database` 对象，其写操作
   ///    排在事务之后，既有死锁风险又会让墓碑漏在事务外。
-  Future<ChatSessionDeleteReport> hardDeleteChatSessions(
-    List<String> ids,
-  ) async {
+  Future<ChatSessionDeleteReport> hardDeleteChatSessions(List<String> ids) async {
     final targets = ids.where((id) => id.trim().isNotEmpty).toSet();
     if (targets.isEmpty) {
       return ChatSessionDeleteReport.empty;
@@ -312,11 +246,7 @@ class ConfigRepository {
     // 事务前只读：先量出这条对话占多大，删掉之后就没有原始行可查了
     final rows = await db.query(
       'chat_sessions',
-      columns: [
-        'id',
-        'messages',
-        'LENGTH(CAST(messages AS BLOB)) AS msg_bytes',
-      ],
+      columns: ['id', 'messages', 'LENGTH(CAST(messages AS BLOB)) AS msg_bytes'],
       where: 'id IN ($placeholders)',
       whereArgs: idList,
     );
@@ -377,11 +307,7 @@ class ConfigRepository {
   /// 回收旧版本软删除留下的墓碑行（数据其实还躺在库里，是历史欠账）。
   Future<ChatSessionDeleteReport> purgeTombstonedChatSessions() async {
     final db = await _dbHelper.database;
-    final rows = await db.query(
-      'chat_sessions',
-      columns: ['id'],
-      where: 'is_deleted = 1',
-    );
+    final rows = await db.query('chat_sessions', columns: ['id'], where: 'is_deleted = 1');
     final ids = rows.map((row) => row['id']?.toString() ?? '').toList();
     return hardDeleteChatSessions(ids);
   }
@@ -403,11 +329,7 @@ class ConfigRepository {
       tombstoneBytes = tomb.$2;
       databaseBytes = await _estimateDatabaseBytes(db);
     } catch (error) {
-      LoggerService.instance.logDatabase(
-        '统计对话存储占用失败',
-        details: error.toString(),
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logDatabase('统计对话存储占用失败', details: error.toString(), level: LogLevel.warning);
     }
     final inventory = await ChatImageGc.instance.inventoryAiImages();
     return ChatStorageUsage(
@@ -452,10 +374,7 @@ class ConfigRepository {
   ///
   /// 必须 `CAST(messages AS BLOB)` 再取 `LENGTH`：`LENGTH(text)` 返回**字符数**，
   /// 中文内容会低估 2~3 倍。
-  Future<(int, int)> _sumMessagesStorage(
-    DatabaseExecutor db, {
-    required String where,
-  }) async {
+  Future<(int, int)> _sumMessagesStorage(DatabaseExecutor db, {required String where}) async {
     final rows = await db.rawQuery(
       'SELECT COUNT(*) AS c, '
       'IFNULL(SUM(LENGTH(CAST(messages AS BLOB))), 0) AS b '
@@ -464,10 +383,7 @@ class ConfigRepository {
     if (rows.isEmpty) {
       return (0, 0);
     }
-    return (
-      (rows.first['c'] as int?) ?? 0,
-      (rows.first['b'] as int?) ?? 0,
-    );
+    return ((rows.first['c'] as int?) ?? 0, (rows.first['b'] as int?) ?? 0);
   }
 
   /// 数据库文件体积（page_size × page_count）；个别平台（如 Web WASM）不支持该 PRAGMA，
@@ -537,9 +453,7 @@ class ConfigRepository {
 
   /// 读取全部小Q用户技能（app_configs 键前缀 `agent_skill_`）；损坏数据跳过
   Future<List<AgentSkill>> getUserSkills() async {
-    final entries = await getAppConfigsByPrefix(
-      ConfigRepository.userSkillKeyPrefix,
-    );
+    final entries = await getAppConfigsByPrefix(ConfigRepository.userSkillKeyPrefix);
     final skills = <AgentSkill>[];
     for (final entry in entries.entries) {
       try {
@@ -554,10 +468,7 @@ class ConfigRepository {
 
   /// 保存一个小Q用户技能（经 setAppConfig 自动写入同步日志，参与 WebDAV 云同步）
   Future<void> saveUserSkill(AgentSkill skill) async {
-    await setAppConfig(
-      '${ConfigRepository.userSkillKeyPrefix}${skill.name}',
-      skill.toJson(),
-    );
+    await setAppConfig('${ConfigRepository.userSkillKeyPrefix}${skill.name}', skill.toJson());
   }
 
   /// 删除一个小Q用户技能
@@ -577,10 +488,7 @@ class ConfigRepository {
   Future<void> saveWeightHistory(List<WeightRecord> records) async {
     final profile = await getUserProfile();
     if (profile == null) return;
-    final updated = profile.copyWith(
-      weightHistory: records,
-      updatedAt: DateTime.now(),
-    );
+    final updated = profile.copyWith(weightHistory: records, updatedAt: DateTime.now());
     await upsertUserProfile(updated);
   }
 
@@ -601,10 +509,7 @@ class ConfigRepository {
         final needsRatingUpgrade = ratingField == null || !ratingField.options.contains('过于放纵');
         if (hasOldType || needsRatingUpgrade) {
           final defaultDiet = defaultShortcutConfigs.firstWhere((c) => c.id == 'diet');
-          final updated = config.copyWith(
-            fields: defaultDiet.fields,
-            updatedAt: DateTime.now(),
-          );
+          final updated = config.copyWith(fields: defaultDiet.fields, updatedAt: DateTime.now());
           await updateShortcutConfig(updated);
         }
         break;
@@ -619,5 +524,4 @@ class ConfigRepository {
       await insertShortcutConfig(config);
     }
   }
-
 }

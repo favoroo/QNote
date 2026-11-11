@@ -43,9 +43,7 @@ class DateNavigationHeader extends StatelessWidget {
 
   bool get _isTodaySelected {
     final today = _today;
-    return selectedDate.year == today.year &&
-        selectedDate.month == today.month &&
-        selectedDate.day == today.day;
+    return selectedDate.year == today.year && selectedDate.month == today.month && selectedDate.day == today.day;
   }
 
   void _shift(int days) {
@@ -92,19 +90,13 @@ class DateNavigationHeader extends StatelessWidget {
           color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: BorderSide(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+            side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: Row(
               children: [
-                DateNavArrow(
-                  icon: Icons.chevron_left,
-                  tooltip: '前一天',
-                  onPressed: previousAction,
-                ),
+                DateNavArrow(icon: Icons.chevron_left, tooltip: '前一天', onPressed: previousAction),
                 Expanded(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -114,11 +106,7 @@ class DateNavigationHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                DateNavArrow(
-                  icon: Icons.chevron_right,
-                  tooltip: '后一天',
-                  onPressed: nextAction,
-                ),
+                DateNavArrow(icon: Icons.chevron_right, tooltip: '后一天', onPressed: nextAction),
               ],
             ),
           ),
@@ -162,7 +150,6 @@ class DateNavigationHeader extends StatelessWidget {
       ),
     );
   }
-
 }
 
 /// 日期导航条的「今天」胶囊：非今天时贴在日期标签右侧，一步回到今天。
@@ -187,10 +174,7 @@ class DateTodayPill extends StatelessWidget {
         onTap: onPressed,
         child: Ink(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: colorScheme.secondaryContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(color: colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(8)),
           child: Text(
             '今天',
             key: const ValueKey('date_nav_today_text'),
@@ -213,12 +197,7 @@ class DateNavArrow extends StatelessWidget {
   final String tooltip;
   final VoidCallback? onPressed;
 
-  const DateNavArrow({
-    super.key,
-    required this.icon,
-    required this.tooltip,
-    this.onPressed,
-  });
+  const DateNavArrow({super.key, required this.icon, required this.tooltip, this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -237,5 +216,7 @@ class DateNavArrow extends StatelessWidget {
       ),
     );
   }
-}/// 用 DateFormat 生成 M月d日 形式的短标签，供趋势图轴标签复用
+}
+
+/// 用 DateFormat 生成 M月d日 形式的短标签，供趋势图轴标签复用
 String shortDayLabel(DateTime dt) => DateFormat('M月d日').format(dt);

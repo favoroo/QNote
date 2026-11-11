@@ -23,9 +23,7 @@ class AiRequestScope {
   const AiRequestScope({required this.sessionKey, required this.turnKey});
 
   /// 非对话类调用（无会话概念）的兜底作用域
-  const AiRequestScope.scene(String scene)
-      : sessionKey = scene,
-        turnKey = scene;
+  const AiRequestScope.scene(String scene) : sessionKey = scene, turnKey = scene;
 }
 
 /// 单个账号的进程内健康度（智能策略打分用）
@@ -162,9 +160,7 @@ class RaccoonAccountRouter {
     //    必须让位，否则整条对话会跟着它一起卡死。
     if (affinity != AccountAffinity.off) {
       final stuck = _stuckAccount(providerId, affinity, scope, candidates, now);
-      if (stuck != null &&
-          !_isCooling(stuck.id, now) &&
-          !triedAccountIds.contains(stuck.id)) {
+      if (stuck != null && !_isCooling(stuck.id, now) && !triedAccountIds.contains(stuck.id)) {
         return AccountSelection(account: stuck, keptByAffinity: true);
       }
     }
@@ -200,11 +196,7 @@ class RaccoonAccountRouter {
   ///
   /// 清亲和是必须的：否则冷却结束后（或 strict 之外的策略下）会立刻回到
   /// 刚刚失败的账号上，用户看到的还是同一条报错。
-  void markFailed(
-    AiAccount account,
-    Object error, {
-    AccountAffinity affinity = AccountAffinity.session,
-  }) {
+  void markFailed(AiAccount account, Object error, {AccountAffinity affinity = AccountAffinity.session}) {
     _health.putIfAbsent(account.id, _AccountHealth.new).recordFailure();
     final cooldown = cooldownFor(error);
     _cooldownUntil[account.id] = DateTime.now().add(cooldown);
@@ -346,13 +338,7 @@ class RaccoonAccountRouter {
     return null;
   }
 
-  void _remember(
-    String providerId,
-    AccountAffinity affinity,
-    AiRequestScope? scope,
-    String accountId,
-    DateTime now,
-  ) {
+  void _remember(String providerId, AccountAffinity affinity, AiRequestScope? scope, String accountId, DateTime now) {
     if (affinity == AccountAffinity.off) return;
     final key = _affinityKey(providerId, affinity, scope);
     if (key == null) return;
@@ -360,24 +346,14 @@ class RaccoonAccountRouter {
   }
 
   /// 亲和记忆的 key：会话亲和按 sessionKey，每轮轮换按 turnKey
-  String? _affinityKey(
-    String providerId,
-    AccountAffinity affinity,
-    AiRequestScope? scope,
-  ) {
+  String? _affinityKey(String providerId, AccountAffinity affinity, AiRequestScope? scope) {
     if (scope == null) return null;
-    final part = affinity == AccountAffinity.session
-        ? scope.sessionKey
-        : scope.turnKey;
+    final part = affinity == AccountAffinity.session ? scope.sessionKey : scope.turnKey;
     if (part.trim().isEmpty) return null;
     return '$providerId|$part';
   }
 
-  AiAccount _rotate(
-    String providerId,
-    List<AiAccount> selectable, {
-    required bool advance,
-  }) {
+  AiAccount _rotate(String providerId, List<AiAccount> selectable, {required bool advance}) {
     final cursor = _cursor[providerId] ?? 0;
     final index = cursor % selectable.length;
     if (advance) _cursor[providerId] = (index + 1) % selectable.length;
@@ -391,9 +367,7 @@ class RaccoonAccountRouter {
   AiAccount _smart(List<AiAccount> selectable) {
     AiAccount best = selectable.first;
     var bestScore = double.negativeInfinity;
-    final maxUses = selectable
-        .map((a) => _health[a.id]?.uses ?? 0)
-        .fold<int>(0, (a, b) => a > b ? a : b);
+    final maxUses = selectable.map((a) => _health[a.id]?.uses ?? 0).fold<int>(0, (a, b) => a > b ? a : b);
     for (final account in selectable) {
       final health = _health[account.id];
       final successRate = health?.successRate ?? 1.0;
@@ -427,6 +401,7 @@ class RaccoonAccountRouter {
   @visibleForTesting
   void resetForTest() => clearAll();
 }
+
 class _AffinityStick {
   final String accountId;
   final DateTime at;

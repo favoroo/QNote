@@ -70,11 +70,7 @@ void main() {
     );
 
     // AI 按 Schema 输出 _category，规范化后必须保留，否则统计无法判定收支方向
-    final normalized = normalizeExtractedFields({
-      '_category': 'expense',
-      'type': '数码',
-      'amount': 10,
-    }, consumption);
+    final normalized = normalizeExtractedFields({'_category': 'expense', 'type': '数码', 'amount': 10}, consumption);
 
     expect(normalized['_category'], 'expense');
     expect(normalized['type'], '数码');

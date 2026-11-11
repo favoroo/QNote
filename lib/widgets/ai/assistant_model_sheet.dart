@@ -16,11 +16,7 @@ typedef ReasoningEffortTarget = ({AiProvider provider, AiProviderModel model});
 ///
 /// 具体模型就是它自己；路由组展开为组内全部启用成员——组内档位本来就可以不
 /// 一致，发信层会对不支持的成员静默跳过。厂商或模型已被删除时返回空列表。
-List<ReasoningEffortTarget> reasoningTargetsOf(
-  AiModelRef? ref,
-  List<AiProvider> providers,
-  List<AiRouteGroup> groups,
-) {
+List<ReasoningEffortTarget> reasoningTargetsOf(AiModelRef? ref, List<AiProvider> providers, List<AiRouteGroup> groups) {
   if (ref == null) return const [];
   if (!ref.isRouteGroup) {
     final target = _targetOf(providers, ref.providerId, ref.modelName);
@@ -38,11 +34,7 @@ List<ReasoningEffortTarget> reasoningTargetsOf(
 }
 
 /// 厂商条目 + 模型 id → 目标；厂商或模型已被删除时返回 null
-ReasoningEffortTarget? _targetOf(
-  List<AiProvider> providers,
-  String providerId,
-  String modelName,
-) {
+ReasoningEffortTarget? _targetOf(List<AiProvider> providers, String providerId, String modelName) {
   final provider = providers.where((p) => p.id == providerId).firstOrNull;
   final model = provider?.models.where((m) => m.id == modelName).firstOrNull;
   if (provider == null || model == null) return null;
@@ -65,13 +57,7 @@ class RecentBindingEntry {
 
   final bool isGroup;
 
-  const RecentBindingEntry({
-    required this.ref,
-    required this.name,
-    this.providerName,
-    this.meta,
-    this.isGroup = false,
-  });
+  const RecentBindingEntry({required this.ref, required this.name, this.providerName, this.meta, this.isGroup = false});
 }
 
 /// 最近使用 → 可展示条目
@@ -90,12 +76,7 @@ List<RecentBindingEntry> recentBindingEntries(
       if (group == null || group.enabledMembers.isEmpty) continue;
       final live = routeGroupLiveMemberCount(group, providers);
       entries.add(
-        RecentBindingEntry(
-          ref: ref,
-          name: group.name,
-          meta: '$live 个模型 · ${group.strategy.label}',
-          isGroup: true,
-        ),
+        RecentBindingEntry(ref: ref, name: group.name, meta: '$live 个模型 · ${group.strategy.label}', isGroup: true),
       );
       continue;
     }
@@ -127,18 +108,11 @@ class ReasoningEffortState {
   /// 档位集合是否来自模型配置里的自定义勾选
   final bool customized;
 
-  const ReasoningEffortState({
-    required this.capability,
-    this.effort,
-    this.mixed = false,
-    this.customized = false,
-  });
+  const ReasoningEffortState({required this.capability, this.effort, this.mixed = false, this.customized = false});
 }
 
 /// 目标集合 → 状态；空集合返回 null（没有可调对象，界面只给提示）
-ReasoningEffortState? reasoningEffortStateOf(
-  List<ReasoningEffortTarget> targets,
-) {
+ReasoningEffortState? reasoningEffortStateOf(List<ReasoningEffortTarget> targets) {
   if (targets.isEmpty) return null;
   final first = targets.first;
   final capability = ModelReasoningCapability.forUi(
@@ -180,17 +154,9 @@ Future<void> showAssistantModelSheet(
   required List<AiRouteGroup> groups,
   required AiModelRef? selected,
   required Future<bool> Function(AiModelRef ref) onSelectBinding,
-  required Future<bool> Function(
-    List<ReasoningEffortTarget> targets,
-    ReasoningEffort? effort,
-  )
-  onEffortChanged,
+  required Future<bool> Function(List<ReasoningEffortTarget> targets, ReasoningEffort? effort) onEffortChanged,
   // 调整某个模型的可选档位集合；不传则不显示「管理思考档位」入口
-  Future<bool> Function(
-    ReasoningEffortTarget target,
-    List<ReasoningEffort>? levels,
-  )?
-  onLevelsChanged,
+  Future<bool> Function(ReasoningEffortTarget target, List<ReasoningEffort>? levels)? onLevelsChanged,
   // 最近使用的绑定（最新在前），由调用方从本地偏好读出后传入
   List<AiModelRef> recentModels = const [],
   VoidCallback? onManageModels,
@@ -249,18 +215,10 @@ class AssistantModelSheet extends StatefulWidget {
   final Future<bool> Function(AiModelRef ref) onSelectBinding;
 
   /// 调整思考强度：写库成功返回 true
-  final Future<bool> Function(
-    List<ReasoningEffortTarget> targets,
-    ReasoningEffort? effort,
-  )
-  onEffortChanged;
+  final Future<bool> Function(List<ReasoningEffortTarget> targets, ReasoningEffort? effort) onEffortChanged;
 
   /// 调整某个模型的可选档位集合：写库成功返回 true
-  final Future<bool> Function(
-    ReasoningEffortTarget target,
-    List<ReasoningEffort>? levels,
-  )?
-  onLevelsChanged;
+  final Future<bool> Function(ReasoningEffortTarget target, List<ReasoningEffort>? levels)? onLevelsChanged;
 
   /// 面板底部的「管理模型」入口
   final VoidCallback? onManageModels;
@@ -314,21 +272,15 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     super.dispose();
   }
 
-  String _effortKey(String providerId, String modelName) =>
-      '$providerId::$modelName';
+  String _effortKey(String providerId, String modelName) => '$providerId::$modelName';
 
-  bool _matches(String text) =>
-      _query.isEmpty || text.toLowerCase().contains(_query.toLowerCase());
+  bool _matches(String text) => _query.isEmpty || text.toLowerCase().contains(_query.toLowerCase());
 
   bool _matchesModel(AiProvider provider, AiProviderModel model) =>
-      _matches(model.name) ||
-      _matches(model.id) ||
-      _matches(provider.name);
+      _matches(model.name) || _matches(model.id) || _matches(provider.name);
 
   /// 应用本地档位覆盖：思考强度区块读这一份，才和面板上的操作一致
-  List<ReasoningEffortTarget> _withOverride(
-    List<ReasoningEffortTarget> targets,
-  ) {
+  List<ReasoningEffortTarget> _withOverride(List<ReasoningEffortTarget> targets) {
     if (_effortOverride.isEmpty && _levelsOverride.isEmpty) return targets;
     return [for (final target in targets) _applyOverride(target)];
   }
@@ -354,25 +306,15 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   List<ReasoningEffortTarget> _effortTargets() {
     switch (_level) {
       case _SheetLevel.group:
-        return _withOverride(
-          reasoningTargetsOf(
-            AiModelRef.routeGroup(_scopeId!),
-            widget.providers,
-            widget.groups,
-          ),
-        );
+        return _withOverride(reasoningTargetsOf(AiModelRef.routeGroup(_scopeId!), widget.providers, widget.groups));
       case _SheetLevel.provider:
         final binding = _binding;
         if (binding == null || binding.isRouteGroup) return const [];
         if (binding.providerId != _scopeId) return const [];
-        return _withOverride(
-          reasoningTargetsOf(binding, widget.providers, widget.groups),
-        );
+        return _withOverride(reasoningTargetsOf(binding, widget.providers, widget.groups));
       case _SheetLevel.root:
       case _SheetLevel.providers:
-        return _withOverride(
-          reasoningTargetsOf(_binding, widget.providers, widget.groups),
-        );
+        return _withOverride(reasoningTargetsOf(_binding, widget.providers, widget.groups));
     }
   }
 
@@ -387,10 +329,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     });
   }
 
-  Future<void> _applyEffort(
-    List<ReasoningEffortTarget> targets,
-    ReasoningEffort? effort,
-  ) async {
+  Future<void> _applyEffort(List<ReasoningEffortTarget> targets, ReasoningEffort? effort) async {
     if (_busy) return;
     // 点已选中的档位不做无意义的写库
     if (targets.every((t) => t.model.reasoningEffort == effort)) return;
@@ -401,8 +340,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       _busy = false;
       if (!ok) return;
       for (final target in targets) {
-        _effortOverride[_effortKey(target.provider.id, target.model.id)] =
-            effort;
+        _effortOverride[_effortKey(target.provider.id, target.model.id)] = effort;
       }
     });
   }
@@ -438,9 +376,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         vendorId: target.provider.vendorId,
         customLevels: levels,
       );
-      final effort = _effortOverride.containsKey(key)
-          ? _effortOverride[key]
-          : current.reasoningEffort;
+      final effort = _effortOverride.containsKey(key) ? _effortOverride[key] : current.reasoningEffort;
       if (effort != null && !capability.supports(effort)) {
         _effortOverride[key] = null;
       }
@@ -464,10 +400,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   }
 
   /// 路由组成员 → 配置目标的二级选择浮层
-  Widget _buildTargetPicker(
-    BuildContext context,
-    List<ReasoningEffortTarget> targets,
-  ) {
+  Widget _buildTargetPicker(BuildContext context, List<ReasoningEffortTarget> targets) {
     final theme = Theme.of(context);
     return SafeArea(
       child: ConstrainedBox(
@@ -479,12 +412,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  '选择要配置档位的模型',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: Text('选择要配置档位的模型', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
               ),
             ),
             Flexible(
@@ -499,9 +427,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
                         '${target.provider.name} · ${_levelsSummary(target)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                       ),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => Navigator.of(context).pop(target),
@@ -614,11 +540,9 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   int _searchableCount() {
     switch (_level) {
       case _SheetLevel.root:
-        return enabledModelEntries(widget.providers).length +
-            widget.groups.length;
+        return enabledModelEntries(widget.providers).length + widget.groups.length;
       case _SheetLevel.providers:
-        return widget.providers.where((p) => p.enabled && p.models.isNotEmpty)
-            .length;
+        return widget.providers.where((p) => p.enabled && p.models.isNotEmpty).length;
       case _SheetLevel.provider:
         final provider = _providerById(_scopeId);
         return provider?.models.length ?? 0;
@@ -628,11 +552,9 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     }
   }
 
-  AiProvider? _providerById(String? id) =>
-      widget.providers.where((p) => p.id == id).firstOrNull;
+  AiProvider? _providerById(String? id) => widget.providers.where((p) => p.id == id).firstOrNull;
 
-  AiRouteGroup? _groupById(String? id) =>
-      widget.groups.where((g) => g.id == id).firstOrNull;
+  AiRouteGroup? _groupById(String? id) => widget.groups.where((g) => g.id == id).firstOrNull;
 
   /// 面板头部：一级是标题，二三级带「上一步」与当前范围名
   Widget _buildHeader(ThemeData theme) {
@@ -642,12 +564,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                '选择小Q模型',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: Text('选择小Q模型', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             ),
             IconButton(
               tooltip: '关闭',
@@ -672,9 +589,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       case _SheetLevel.group:
         final group = _groupById(_scopeId);
         title = group?.name ?? '已失效';
-        subtitle = group == null
-            ? null
-            : '${group.enabledMembers.length} 个成员 · ${group.strategy.label}';
+        subtitle = group == null ? null : '${group.enabledMembers.length} 个成员 · ${group.strategy.label}';
       case _SheetLevel.root:
         title = '';
         subtitle = null;
@@ -710,18 +625,11 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
               if (subtitle != null)
-                Text(
-                  subtitle,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
-                ),
+                Text(subtitle, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
             ],
           ),
         ),
@@ -747,10 +655,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   Widget _buildRootList(ScrollController controller, ThemeData theme) {
     final colorScheme = theme.colorScheme;
     // 没有成员的组绑上也是坏体验，这里直接不出现
-    final groups = widget.groups
-        .where((g) => g.enabledMembers.isNotEmpty)
-        .where((g) => _matches(g.name))
-        .toList();
+    final groups = widget.groups.where((g) => g.enabledMembers.isNotEmpty).where((g) => _matches(g.name)).toList();
     final models = [
       for (final entry in enabledModelEntries(widget.providers))
         if (_matchesModel(entry.provider, entry.model)) entry,
@@ -764,29 +669,19 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     final recentRefs = {for (final entry in recent) entry.ref};
     final otherModels = [
       for (final entry in models)
-        if (!recentRefs.contains(
-          AiModelRef(providerId: entry.provider.id, modelName: entry.model.id),
-        ))
-          entry,
+        if (!recentRefs.contains(AiModelRef(providerId: entry.provider.id, modelName: entry.model.id))) entry,
     ];
     final otherGroups = [
       for (final group in groups)
         if (!recentRefs.contains(AiModelRef.routeGroup(group.id))) group,
     ];
-    final providerCount = widget.providers
-        .where((p) => p.enabled && p.models.isNotEmpty)
-        .length;
+    final providerCount = widget.providers.where((p) => p.enabled && p.models.isNotEmpty).length;
 
     if (models.isEmpty && groups.isEmpty && recent.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Text(
-            '没有匹配的模型或厂商',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
+          child: Text('没有匹配的模型或厂商', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
         ),
       );
     }
@@ -811,15 +706,12 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
             action: providerCount > 0
                 ? TextButton(
                     onPressed: () => _goTo(_SheetLevel.providers),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                     child: Text('按厂商浏览（$providerCount）'),
                   )
                 : null,
           ),
-          for (final entry in otherModels)
-            _buildModelTile(theme, entry.provider, entry.model, dense: true),
+          for (final entry in otherModels) _buildModelTile(theme, entry.provider, entry.model, dense: true),
         ],
         if (widget.onManageModels != null) ...[
           const Divider(height: 24, indent: 16, endIndent: 16),
@@ -839,16 +731,12 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   }
 
   bool _matchesRecent(RecentBindingEntry entry) =>
-      _matches(entry.name) ||
-      _matches(entry.providerName ?? '') ||
-      _matches(entry.ref.modelName);
+      _matches(entry.name) || _matches(entry.providerName ?? '') || _matches(entry.ref.modelName);
 
   Widget _buildRecentTile(ThemeData theme, RecentBindingEntry entry) {
     final colorScheme = theme.colorScheme;
     final isSelected = entry.ref == _binding;
-    final subtitle = [if (entry.providerName != null) entry.providerName, entry.meta]
-        .whereType<String>()
-        .join(' · ');
+    final subtitle = [if (entry.providerName != null) entry.providerName, entry.meta].whereType<String>().join(' · ');
     return ListTile(
       dense: true,
       leading: Icon(
@@ -860,10 +748,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         entry.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: isSelected ? colorScheme.primary : null,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
       ),
       subtitle: subtitle.isEmpty
           ? null
@@ -871,16 +756,10 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
-      trailing: isSelected
-          ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary)
-          : null,
-      onTap: entry.isGroup
-          ? () => _openGroupById(entry.ref.providerId)
-          : () => _selectBinding(entry.ref),
+      trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary) : null,
+      onTap: entry.isGroup ? () => _openGroupById(entry.ref.providerId) : () => _selectBinding(entry.ref),
     );
   }
 
@@ -896,24 +775,14 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     final isSelected = ref == _binding;
     final live = routeGroupLiveMemberCount(group, widget.providers);
     return ListTile(
-      leading: Icon(
-        Icons.alt_route_rounded,
-        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-      ),
+      leading: Icon(Icons.alt_route_rounded, color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant),
       title: Text(
         group.name,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: isSelected ? colorScheme.primary : null,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
       ),
       subtitle: Text(
-        live == 0
-            ? '${group.strategy.label} · 模型均已停用'
-            : '$live 个模型 · ${group.strategy.label}',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: live == 0 ? colorScheme.error : colorScheme.onSurfaceVariant,
-        ),
+        live == 0 ? '${group.strategy.label} · 模型均已停用' : '$live 个模型 · ${group.strategy.label}',
+        style: theme.textTheme.bodySmall?.copyWith(color: live == 0 ? colorScheme.error : colorScheme.onSurfaceVariant),
       ),
       trailing: isSelected
           ? Icon(Icons.check_rounded, color: colorScheme.primary)
@@ -932,69 +801,42 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         .toList();
     if (providers.isEmpty) {
       return Center(
-        child: Text(
-          '没有匹配的厂商',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
+        child: Text('没有匹配的厂商', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
       );
     }
     return ListView(
       controller: controller,
       padding: const EdgeInsets.only(bottom: 16),
-      children: [
-        for (final provider in providers) _buildProviderTile(theme, provider),
-      ],
+      children: [for (final provider in providers) _buildProviderTile(theme, provider)],
     );
   }
 
   bool _matchesProvider(AiProvider provider) =>
-      _matches(provider.name) ||
-      provider.models.any((m) => _matches(m.id) || _matches(m.name));
+      _matches(provider.name) || provider.models.any((m) => _matches(m.id) || _matches(m.name));
 
   Widget _buildProviderTile(ThemeData theme, AiProvider provider) {
     final colorScheme = theme.colorScheme;
     final binding = _binding;
-    final inProvider =
-        binding != null &&
-        !binding.isRouteGroup &&
-        binding.providerId == provider.id;
-    final current = inProvider
-        ? provider.models.where((m) => m.id == binding.modelName).firstOrNull
-        : null;
+    final inProvider = binding != null && !binding.isRouteGroup && binding.providerId == provider.id;
+    final current = inProvider ? provider.models.where((m) => m.id == binding.modelName).firstOrNull : null;
     // 有当前选择时先说清「这家现在用的是谁」，没有就报该厂商的模型规模
     final subtitle = [
-      if (current != null)
-        '当前 ${current.name}'
-      else
-        '${provider.models.length} 个模型',
+      if (current != null) '当前 ${current.name}' else '${provider.models.length} 个模型',
       if (provider.isDefault) '默认',
     ].join(' · ');
     return ListTile(
-      leading: Icon(
-        Icons.memory_rounded,
-        color: inProvider ? colorScheme.primary : colorScheme.onSurfaceVariant,
-      ),
+      leading: Icon(Icons.memory_rounded, color: inProvider ? colorScheme.primary : colorScheme.onSurfaceVariant),
       title: Text(
         provider.name,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: inProvider ? colorScheme.primary : null,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w600, color: inProvider ? colorScheme.primary : null),
       ),
       subtitle: Text(
         subtitle,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-        ),
+        style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
-      trailing: Icon(
-        Icons.chevron_right_rounded,
-        color: inProvider ? colorScheme.primary : colorScheme.outline,
-      ),
+      trailing: Icon(Icons.chevron_right_rounded, color: inProvider ? colorScheme.primary : colorScheme.outline),
       onTap: () => _goTo(_SheetLevel.provider, scopeId: provider.id),
     );
   }
@@ -1006,60 +848,35 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     if (provider == null) {
       return Padding(
         padding: const EdgeInsets.all(20),
-        child: Text(
-          '这个绑定已经失效，请重新选择',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.error,
-          ),
-        ),
+        child: Text('这个绑定已经失效，请重新选择', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error)),
       );
     }
-    final models = provider.models
-        .where((m) => _matches(m.id) || _matches(m.name))
-        .toList();
+    final models = provider.models.where((m) => _matches(m.id) || _matches(m.name)).toList();
     if (models.isEmpty) {
       return Center(
-        child: Text(
-          '没有匹配的模型',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
+        child: Text('没有匹配的模型', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
       );
     }
     return ListView(
       controller: controller,
       padding: const EdgeInsets.only(bottom: 16),
-      children: [
-        for (final model in models) _buildModelTile(theme, provider, model),
-      ],
+      children: [for (final model in models) _buildModelTile(theme, provider, model)],
     );
   }
 
-  Widget _buildModelTile(
-    ThemeData theme,
-    AiProvider provider,
-    AiProviderModel model, {
-    bool dense = false,
-  }) {
+  Widget _buildModelTile(ThemeData theme, AiProvider provider, AiProviderModel model, {bool dense = false}) {
     final colorScheme = theme.colorScheme;
     final ref = AiModelRef(providerId: provider.id, modelName: model.id);
     final isSelected = ref == _binding;
     // 一级是跨厂商平铺，副标题必须带厂商名才分得清同名模型
-    final subtitle = [
-      if (dense) provider.name,
-      ?modelMetaLine(model),
-    ].join(' · ');
+    final subtitle = [if (dense) provider.name, ?modelMetaLine(model)].join(' · ');
     return ListTile(
       dense: dense,
       title: Text(
         model.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: isSelected ? colorScheme.primary : null,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
       ),
       subtitle: subtitle.isEmpty
           ? null
@@ -1067,13 +884,9 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
-      trailing: isSelected
-          ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary)
-          : null,
+      trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary) : null,
       onTap: () => _selectBinding(ref),
     );
   }
@@ -1086,40 +899,23 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     if (group == null) {
       return Padding(
         padding: const EdgeInsets.all(20),
-        child: Text(
-          '这个绑定已经失效，请重新选择',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.error,
-          ),
-        ),
+        child: Text('这个绑定已经失效，请重新选择', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.error)),
       );
     }
     return ListView(
       controller: controller,
       padding: const EdgeInsets.only(bottom: 16),
       children: [
-        _sectionHeader(
-          theme,
-          '组内模型',
-          trailing: '按「${group.strategy.label}」自动选择',
-        ),
+        _sectionHeader(theme, '组内模型', trailing: '按「${group.strategy.label}」自动选择'),
         for (final member in group.members) _buildMemberTile(theme, group, member),
       ],
     );
   }
 
   /// 成员行是只读的：选了路由组就是选整组，成员由路由策略自动挑
-  Widget _buildMemberTile(
-    ThemeData theme,
-    AiRouteGroup group,
-    RouteGroupMember member,
-  ) {
+  Widget _buildMemberTile(ThemeData theme, AiRouteGroup group, RouteGroupMember member) {
     final colorScheme = theme.colorScheme;
-    final target = _targetOf(
-      widget.providers,
-      member.providerId,
-      member.modelName,
-    );
+    final target = _targetOf(widget.providers, member.providerId, member.modelName);
     final provider = target?.provider;
     final model = target?.model;
     final broken = provider == null || model == null;
@@ -1131,31 +927,16 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       if (disabled) '组内已停用',
       if (group.strategy == RouteStrategy.weight) '权重 ${member.weight}',
     ].join(' · ');
-    final color = broken || disabled
-        ? colorScheme.error
-        : colorScheme.onSurfaceVariant;
+    final color = broken || disabled ? colorScheme.error : colorScheme.onSurfaceVariant;
     return ListTile(
       dense: true,
-      title: Text(
-        model?.name ?? member.modelName,
-        style: TextStyle(color: broken || disabled ? color : null),
-      ),
-      subtitle: subtitle.isEmpty
-          ? null
-          : Text(
-              subtitle,
-              style: theme.textTheme.bodySmall?.copyWith(color: color),
-            ),
+      title: Text(model?.name ?? member.modelName, style: TextStyle(color: broken || disabled ? color : null)),
+      subtitle: subtitle.isEmpty ? null : Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: color)),
     );
   }
 
   /// 分区标题；[action] 用于放一个内联操作（如「按厂商浏览」）
-  Widget _sectionHeader(
-    ThemeData theme,
-    String title, {
-    String? trailing,
-    Widget? action,
-  }) {
+  Widget _sectionHeader(ThemeData theme, String title, {String? trailing, Widget? action}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 12, 2),
       child: Row(
@@ -1169,13 +950,10 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               ),
             ),
           ),
-          if (action != null) action else if (trailing != null)
-            Text(
-              trailing,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-            ),
+          if (action != null)
+            action
+          else if (trailing != null)
+            Text(trailing, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
         ],
       ),
     );
@@ -1197,18 +975,13 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
             customLevels: first.model.reasoningEfforts,
           );
     final hint = state == null ? '' : _effortHint(state, options);
-    final showBinding = _level == _SheetLevel.root ||
-        _level == _SheetLevel.providers;
+    final showBinding = _level == _SheetLevel.root || _level == _SheetLevel.providers;
 
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-          ),
-        ),
+        border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
       ),
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
       child: SafeArea(
@@ -1223,12 +996,8 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               Text(
                 _level == _SheetLevel.provider
                     ? '选中模型后即可调整它的思考强度'
-                    : (_level == _SheetLevel.group
-                          ? '组内没有可用模型'
-                          : '当前没有可调整的模型'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                    : (_level == _SheetLevel.group ? '组内没有可用模型' : '当前没有可调整的模型'),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ] else ...[
               const SizedBox(height: 8),
@@ -1241,20 +1010,13 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
                       label: Text(option.label),
                       selected: !state.mixed && option.effort == state.effort,
                       visualDensity: VisualDensity.compact,
-                      onSelected: _busy
-                          ? null
-                          : (_) => _applyEffort(targets, option.effort),
+                      onSelected: _busy ? null : (_) => _applyEffort(targets, option.effort),
                     ),
                 ],
               ),
               if (hint.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text(
-                  hint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                Text(hint, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
               ],
               // 对话里也能改这个模型的档位集合，不用退回设置页
               if (widget.onLevelsChanged != null) ...[
@@ -1264,11 +1026,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
                   child: TextButton.icon(
                     onPressed: _busy ? null : () => _manageLevels(targets),
                     icon: const Icon(Icons.tune_rounded, size: 18),
-                    label: Text(
-                      targets.length > 1
-                          ? '管理思考档位（${targets.length} 个模型）'
-                          : '管理思考档位',
-                    ),
+                    label: Text(targets.length > 1 ? '管理思考档位（${targets.length} 个模型）' : '管理思考档位'),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1287,11 +1045,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   ///
   /// 一级显示「当前模型/当前路由组 + 绑定名」，二三级只写「思考强度」：
   /// 一级列表本身不说明当前绑的是哪个模型，这一行必须把名字带上。
-  Widget _buildEffortTitleRow(
-    ThemeData theme,
-    ReasoningEffortState? state, {
-    required bool showBinding,
-  }) {
+  Widget _buildEffortTitleRow(ThemeData theme, ReasoningEffortState? state, {required bool showBinding}) {
     final colorScheme = theme.colorScheme;
     final bindingName = showBinding ? _bindingDisplayName() : null;
     final isGroup = _binding?.isRouteGroup ?? false;
@@ -1299,9 +1053,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       children: [
         Text(
           showBinding ? (isGroup ? '当前路由组' : '当前模型') : '思考强度',
-          style: theme.textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
         if (showBinding) ...[
           const SizedBox(width: 8),
@@ -1310,9 +1062,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               bindingName ?? '未选择',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
           ),
         ] else
@@ -1320,10 +1070,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         if (state != null)
           Text(
             state.mixed ? '混合' : state.capability.labelFor(state.effort),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.w600),
           ),
       ],
     );
@@ -1334,32 +1081,19 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     final binding = _binding;
     if (binding == null) return null;
     if (binding.isRouteGroup) {
-      return widget.groups
-          .where((g) => g.id == binding.providerId)
-          .firstOrNull
-          ?.name;
+      return widget.groups.where((g) => g.id == binding.providerId).firstOrNull?.name;
     }
-    final target = _targetOf(
-      widget.providers,
-      binding.providerId,
-      binding.modelName,
-    );
+    final target = _targetOf(widget.providers, binding.providerId, binding.modelName);
     return target?.model.name ?? binding.modelName;
   }
 
   /// 档位说明：与单独弹层共用一套文案，再补充混合/通用参数的提醒
-  String _effortHint(
-    ReasoningEffortState state,
-    List<ReasoningEffortOption> options,
-  ) {
+  String _effortHint(ReasoningEffortState state, List<ReasoningEffortOption> options) {
     final parts = <String>[];
     if (state.mixed) {
       parts.add('组内档位不一致，选择后统一写入全部启用成员');
     } else {
-      final description = options
-          .where((o) => o.effort == state.effort)
-          .map((o) => o.description)
-          .firstOrNull;
+      final description = options.where((o) => o.effort == state.effort).map((o) => o.description).firstOrNull;
       if (description != null) parts.add(description);
     }
     if (state.capability.isGeneric) {

@@ -28,10 +28,7 @@ void main() {
     });
 
     test('Markdown 与无后缀标题保持默认类型', () {
-      expect(
-        NoteFileTypeHelper.fromTitle('网页版自我介绍说明.md'),
-        NoteFileType.markdown,
-      );
+      expect(NoteFileTypeHelper.fromTitle('网页版自我介绍说明.md'), NoteFileType.markdown);
       expect(NoteFileTypeHelper.fromTitle('无标题'), NoteFileType.markdown);
       expect(NoteFileTypeHelper.fromTitle('2026-09-12 记录'), NoteFileType.markdown);
     });

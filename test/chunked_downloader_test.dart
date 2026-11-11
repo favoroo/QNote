@@ -16,14 +16,7 @@ void main() {
       for (int i = 0; i < 3; i++) {
         final start = i * chunkSize;
         final end = (i == 2) ? totalBytes - 1 : (start + chunkSize - 1);
-        chunks.add(
-          DownloadChunk(
-            index: i,
-            start: start,
-            end: end,
-            tempFilePath: '$targetPath.part_$i',
-          ),
-        );
+        chunks.add(DownloadChunk(index: i, start: start, end: end, tempFilePath: '$targetPath.part_$i'));
       }
 
       expect(chunks.length, 3);
@@ -56,14 +49,7 @@ void main() {
       for (int i = 0; i < 3; i++) {
         final start = i * chunkSize;
         final end = (i == 2) ? totalBytes - 1 : (start + chunkSize - 1);
-        chunks.add(
-          DownloadChunk(
-            index: i,
-            start: start,
-            end: end,
-            tempFilePath: '$targetPath.part_$i',
-          ),
-        );
+        chunks.add(DownloadChunk(index: i, start: start, end: end, tempFilePath: '$targetPath.part_$i'));
       }
 
       expect(chunks.length, 3);

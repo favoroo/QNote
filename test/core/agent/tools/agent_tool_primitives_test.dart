@@ -11,10 +11,7 @@ void main() {
   group('VFS 文本原语', () {
     test('stripLineNumbers 还原读取回显里的真实文本', () {
       const echoed = '1\t---\n2\tstatus: pending\n\n4\t正文';
-      expect(
-        VirtualWorkspaceService.stripLineNumbers(echoed),
-        '---\nstatus: pending\n\n正文',
-      );
+      expect(VirtualWorkspaceService.stripLineNumbers(echoed), '---\nstatus: pending\n\n正文');
       // 不带行号的文本原样返回
       expect(VirtualWorkspaceService.stripLineNumbers('普通文本'), '普通文本');
     });
@@ -72,11 +69,7 @@ void main() {
     test('章节未命中时回传章节菜单而非整篇手册', () async {
       final result = await SkillTool().execute({'name': 'todo-manager', 'section': '99'});
       expect(result.modelOutput, contains('可用章节'));
-      expect(
-        result.modelOutput.length,
-        lessThan(1000),
-        reason: '只回章节菜单，不整篇回灌（整篇手册 2000 字以上）',
-      );
+      expect(result.modelOutput.length, lessThan(1000), reason: '只回章节菜单，不整篇回灌（整篇手册 2000 字以上）');
     });
   });
 
@@ -121,11 +114,7 @@ void main() {
     });
 
     test('路径或原文本为空时报错', () async {
-      final result = await EditFileTool().execute({
-        'path': '/todos/今日/某待办.md',
-        'old_text': '',
-        'new_text': 'x',
-      });
+      final result = await EditFileTool().execute({'path': '/todos/今日/某待办.md', 'old_text': '', 'new_text': 'x'});
       expect(result.isError, isTrue);
     });
   });

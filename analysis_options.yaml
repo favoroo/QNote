@@ -9,6 +9,12 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# 格式化配置：与 AGENTS.md「行宽 ≤ 120」一致。
+# 加在配置里之后，`dart format` 与 IDE 保存时都会按 120 列排版，
+# 不再依赖各人本地参数。
+formatter:
+  page_width: 120
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

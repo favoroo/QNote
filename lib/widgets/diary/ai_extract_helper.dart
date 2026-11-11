@@ -59,10 +59,7 @@ Future<AiExtractResult?> extractExistingRecord({
   try {
     // 未配置模型：静默返回，由用户触发的入口负责弹「去添加模型」引导
     if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
-      LoggerService.instance.logAI(
-        '时间线提取跳过：尚未配置可用的 AI 模型',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('时间线提取跳过：尚未配置可用的 AI 模型', level: LogLevel.warning);
       return null;
     }
     final aiService = ref.read(aiServiceProvider);
@@ -76,11 +73,7 @@ Future<AiExtractResult?> extractExistingRecord({
     if (shouldSendImage && !await VisionCapabilityProbe.ensure(roleConfig)) {
       throw VisionUnsupportedException(roleConfig.modelName);
     }
-    aiService.updateConfig(
-      roleConfig,
-      temperature: roleSettings.temperature,
-      maxTokens: roleSettings.maxTokens,
-    );
+    aiService.updateConfig(roleConfig, temperature: roleSettings.temperature, maxTokens: roleSettings.maxTokens);
 
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
     final visibleShortcuts = shortcuts.where((s) => s.isVisible).toList();
@@ -182,18 +175,20 @@ Future<AiExtractResult?> extractExistingRecord({
         }
         // 查找不到时，回退到 'other' 快捷标签的名称
         final fallbackShortcut = findShortcutById('other', shortcuts);
-        tagEntriesList.add(TagEntry(
-          id: foundShortcut?.id ?? shortcutId ?? 'other',
-          name: foundShortcut?.name ?? fallbackShortcut?.name ?? '其他',
-          fields: fields,
-          time: timeStr,
-          startHour: startHour,
-          startMinute: startMinute,
-          startOffset: startOffset,
-          endHour: endHour,
-          endMinute: endMinute,
-          endOffset: endOffset,
-        ));
+        tagEntriesList.add(
+          TagEntry(
+            id: foundShortcut?.id ?? shortcutId ?? 'other',
+            name: foundShortcut?.name ?? fallbackShortcut?.name ?? '其他',
+            fields: fields,
+            time: timeStr,
+            startHour: startHour,
+            startMinute: startMinute,
+            startOffset: startOffset,
+            endHour: endHour,
+            endMinute: endMinute,
+            endOffset: endOffset,
+          ),
+        );
       }
 
       // 合并 AI 返回的完全重复标签（相同 shortcut + 相同字段值），避免同一类型出现多次

@@ -4,10 +4,7 @@ import 'package:qnote_flutter/core/utils/diary_timeline_layout.dart';
 void main() {
   group('diaryDateOnly', () {
     test('归一到当天零点，忽略时分秒', () {
-      expect(
-        diaryDateOnly(DateTime(2026, 11, 11, 23, 59, 58)),
-        DateTime(2026, 11, 11),
-      );
+      expect(diaryDateOnly(DateTime(2026, 11, 11, 23, 59, 58)), DateTime(2026, 11, 11));
       expect(diaryDateOnly(DateTime(2026, 11, 11)), DateTime(2026, 11, 11));
     });
   });
@@ -58,10 +55,7 @@ void main() {
 
   group('diaryDateForDayOffset', () {
     test('偏移 0 返回窗口起点当天零点', () {
-      expect(
-        diaryDateForDayOffset(DateTime(2026, 1, 31, 15), 0),
-        DateTime(2026, 1, 31),
-      );
+      expect(diaryDateForDayOffset(DateTime(2026, 1, 31, 15), 0), DateTime(2026, 1, 31));
     });
 
     test('跨月推进', () {
@@ -71,39 +65,24 @@ void main() {
     });
 
     test('跨年推进', () {
-      expect(
-        diaryDateForDayOffset(DateTime(2025, 12, 31), 1),
-        DateTime(2026, 1, 1),
-      );
+      expect(diaryDateForDayOffset(DateTime(2025, 12, 31), 1), DateTime(2026, 1, 1));
     });
 
     test('闰年 2 月 29 日不会被跳过', () {
       final start = DateTime(2024, 2, 28);
       expect(diaryDateForDayOffset(start, 1), DateTime(2024, 2, 29));
       expect(diaryDateForDayOffset(start, 2), DateTime(2024, 3, 1));
-      expect(
-        diaryDateForDayOffset(DateTime(2023, 2, 28), 1),
-        DateTime(2023, 3, 1),
-      );
+      expect(diaryDateForDayOffset(DateTime(2023, 2, 28), 1), DateTime(2023, 3, 1));
     });
 
     test('负偏移回到窗口起点之前', () {
-      expect(
-        diaryDateForDayOffset(DateTime(2026, 3, 1), -1),
-        DateTime(2026, 2, 28),
-      );
+      expect(diaryDateForDayOffset(DateTime(2026, 3, 1), -1), DateTime(2026, 2, 28));
     });
   });
 
   group('isSameCalendarDay / isTodayDate', () {
     test('同一天不同时刻判等', () {
-      expect(
-        isSameCalendarDay(
-          DateTime(2026, 11, 11, 0, 1),
-          DateTime(2026, 11, 11, 23, 59),
-        ),
-        isTrue,
-      );
+      expect(isSameCalendarDay(DateTime(2026, 11, 11, 0, 1), DateTime(2026, 11, 11, 23, 59)), isTrue);
     });
 
     test('不同日、月、年都不相等', () {
@@ -124,56 +103,26 @@ void main() {
   group('isDiaryDateExpandedByDefault', () {
     test('昨天、今天、明天默认展开', () {
       final today = DateTime(2026, 11, 11, 9);
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 11, 10), today),
-        isTrue,
-      );
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 11, 11), today),
-        isTrue,
-      );
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 11, 12), today),
-        isTrue,
-      );
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 11, 10), today), isTrue);
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 11, 11), today), isTrue);
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 11, 12), today), isTrue);
     });
 
     test('更早或更晚的日期默认折叠', () {
       final today = DateTime(2026, 11, 11);
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 11, 9), today),
-        isFalse,
-      );
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 11, 13), today),
-        isFalse,
-      );
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2025, 11, 11), today),
-        isFalse,
-      );
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 11, 9), today), isFalse);
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 11, 13), today), isFalse);
+      expect(isDiaryDateExpandedByDefault(DateTime(2025, 11, 11), today), isFalse);
     });
 
     test('跨月、跨年边界仍以日历日为准', () {
       final monthStart = DateTime(2026, 3, 1);
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 2, 28), monthStart),
-        isTrue,
-      );
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 3, 2), monthStart),
-        isTrue,
-      );
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 2, 28), monthStart), isTrue);
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 3, 2), monthStart), isTrue);
 
       final yearStart = DateTime(2026, 1, 1);
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2025, 12, 31), yearStart),
-        isTrue,
-      );
-      expect(
-        isDiaryDateExpandedByDefault(DateTime(2026, 1, 2), yearStart),
-        isTrue,
-      );
+      expect(isDiaryDateExpandedByDefault(DateTime(2025, 12, 31), yearStart), isTrue);
+      expect(isDiaryDateExpandedByDefault(DateTime(2026, 1, 2), yearStart), isTrue);
     });
   });
 
@@ -214,72 +163,38 @@ void main() {
 
   group('diaryDragPreviewText', () {
     test('优先展示裁剪后的正文', () {
-      expect(
-        diaryDragPreviewText(content: '  正文内容  ', title: '标题', photoCount: 2),
-        '正文内容',
-      );
+      expect(diaryDragPreviewText(content: '  正文内容  ', title: '标题', photoCount: 2), '正文内容');
     });
 
     test('正文为空时退回标题', () {
-      expect(
-        diaryDragPreviewText(content: '   ', title: ' 标题 ', photoCount: 0),
-        '标题',
-      );
+      expect(diaryDragPreviewText(content: '   ', title: ' 标题 ', photoCount: 0), '标题');
     });
 
     test('正文和标题都为空时按图片数量展示', () {
-      expect(
-        diaryDragPreviewText(content: '', title: '', photoCount: 3),
-        '3 张图片',
-      );
+      expect(diaryDragPreviewText(content: '', title: '', photoCount: 3), '3 张图片');
     });
 
     test('没有任何内容时展示兜底文案', () {
-      expect(
-        diaryDragPreviewText(content: '', title: '', photoCount: 0),
-        '一条记录',
-      );
+      expect(diaryDragPreviewText(content: '', title: '', photoCount: 0), '一条记录');
     });
   });
 
   group('calculateDiaryDaysHeight', () {
     test('0 天或负数天返回 0', () {
-      expect(
-        calculateDiaryDaysHeight(
-          startDate: DateTime(2026, 11, 11),
-          daysCount: 0,
-          isExpanded: (_) => true,
-        ),
-        0,
-      );
-      expect(
-        calculateDiaryDaysHeight(
-          startDate: DateTime(2026, 11, 11),
-          daysCount: -3,
-          isExpanded: (_) => true,
-        ),
-        0,
-      );
+      expect(calculateDiaryDaysHeight(startDate: DateTime(2026, 11, 11), daysCount: 0, isExpanded: (_) => true), 0);
+      expect(calculateDiaryDaysHeight(startDate: DateTime(2026, 11, 11), daysCount: -3, isExpanded: (_) => true), 0);
     });
 
     test('单天折叠只计算分割栏', () {
       expect(
-        calculateDiaryDaysHeight(
-          startDate: DateTime(2026, 11, 11),
-          daysCount: 1,
-          isExpanded: (_) => false,
-        ),
+        calculateDiaryDaysHeight(startDate: DateTime(2026, 11, 11), daysCount: 1, isExpanded: (_) => false),
         kDiaryTimelineDividerHeight,
       );
     });
 
     test('单天展开计算分割栏与 48 个节点', () {
       expect(
-        calculateDiaryDaysHeight(
-          startDate: DateTime(2026, 11, 11),
-          daysCount: 1,
-          isExpanded: (_) => true,
-        ),
+        calculateDiaryDaysHeight(startDate: DateTime(2026, 11, 11), daysCount: 1, isExpanded: (_) => true),
         80 + 48 * 48,
       );
     });
@@ -299,11 +214,7 @@ void main() {
 
     test('记录数回调为空时按 0 条处理', () {
       expect(
-        calculateDiaryDaysHeight(
-          startDate: DateTime(2026, 11, 11),
-          daysCount: 1,
-          isExpanded: (_) => true,
-        ),
+        calculateDiaryDaysHeight(startDate: DateTime(2026, 11, 11), daysCount: 1, isExpanded: (_) => true),
         80 + 48 * 48,
       );
     });

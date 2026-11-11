@@ -45,11 +45,7 @@ class VitalsDetail extends StatelessWidget {
               const SizedBox(height: 2),
               HealthStatRow(
                 children: [
-                  HealthStatTile(
-                    label: '平均',
-                    value: metrics.avgSpo2?.toString() ?? '--',
-                    unit: '%',
-                  ),
+                  HealthStatTile(label: '平均', value: metrics.avgSpo2?.toString() ?? '--', unit: '%'),
                   HealthStatTile(
                     label: '最低',
                     value: metrics.minSpo2?.toString() ?? '--',
@@ -60,12 +56,7 @@ class VitalsDetail extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              HealthDayLineChart(
-                samples: spo2Samples,
-                color: Colors.teal,
-                unit: '%',
-                emptyHint: '暂无血氧测量',
-              ),
+              HealthDayLineChart(samples: spo2Samples, color: Colors.teal, unit: '%', emptyHint: '暂无血氧测量'),
               const SizedBox(height: 12),
               _zoneDistribution(context, spo2Values, _spo2Zones),
             ],
@@ -81,31 +72,18 @@ class VitalsDetail extends StatelessWidget {
               const SizedBox(height: 2),
               HealthStatRow(
                 children: [
-                  HealthStatTile(
-                    label: '平均',
-                    value: metrics.avgStress?.toString() ?? '--',
-                    unit: '指数',
-                  ),
+                  HealthStatTile(label: '平均', value: metrics.avgStress?.toString() ?? '--', unit: '指数'),
                   HealthStatTile(
                     label: '最高',
                     value: metrics.maxStress?.toString() ?? '--',
                     unit: '指数',
                     valueColor: (metrics.maxStress != null && metrics.maxStress! >= 80) ? Colors.orange : null,
                   ),
-                  HealthStatTile(
-                    label: '放松时段',
-                    value: '${stressValues.where((v) => v <= 29).length}',
-                    unit: '点',
-                  ),
+                  HealthStatTile(label: '放松时段', value: '${stressValues.where((v) => v <= 29).length}', unit: '点'),
                 ],
               ),
               const SizedBox(height: 14),
-              HealthDayLineChart(
-                samples: stressSamples,
-                color: Colors.indigo,
-                unit: '',
-                emptyHint: '暂无压力采样',
-              ),
+              HealthDayLineChart(samples: stressSamples, color: Colors.indigo, unit: '', emptyHint: '暂无压力采样'),
               const SizedBox(height: 12),
               _zoneDistribution(context, stressValues, _stressZones),
             ],
@@ -136,9 +114,7 @@ class VitalsDetail extends StatelessWidget {
           segments: [for (final z in zones) (label: z.label, value: countOf(z).toDouble(), color: z.color)],
         ),
         const SizedBox(height: 10),
-        HealthRatioLegend(
-          segments: [for (final z in zones) (label: z.label, text: '${countOf(z)}', color: z.color)],
-        ),
+        HealthRatioLegend(segments: [for (final z in zones) (label: z.label, text: '${countOf(z)}', color: z.color)]),
       ],
     );
   }

@@ -20,20 +20,12 @@ class HealthMetricRepository {
   Future<void> upsertDailyMetrics(HealthDailyMetrics metrics) async {
     final db = await _db;
     try {
-      await db.insert(
-        'health_daily_metrics',
-        metrics.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('health_daily_metrics', metrics.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (e) {
       // 容错自愈：若老表缺失列（如 standing_count），自动 ALTER TABLE 补齐并重试
       if (e.toString().contains('no column named')) {
         await _ensureColumns(db);
-        await db.insert(
-          'health_daily_metrics',
-          metrics.toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await db.insert('health_daily_metrics', metrics.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
       } else {
         rethrow;
       }
@@ -54,12 +46,7 @@ class HealthMetricRepository {
   /// 获取指定日期的汇总数据 (YYYY-MM-DD)
   Future<HealthDailyMetrics?> getDailyMetrics(String date) async {
     final db = await _db;
-    final rows = await db.query(
-      'health_daily_metrics',
-      where: 'date = ?',
-      whereArgs: [date],
-      limit: 1,
-    );
+    final rows = await db.query('health_daily_metrics', where: 'date = ?', whereArgs: [date], limit: 1);
     if (rows.isEmpty) return null;
     return HealthDailyMetrics.fromMap(rows.first);
   }
@@ -79,21 +66,14 @@ class HealthMetricRepository {
   /// 获取最近 N 天的数据
   Future<List<HealthDailyMetrics>> getRecentDailyMetrics({int limit = 30}) async {
     final db = await _db;
-    final rows = await db.query(
-      'health_daily_metrics',
-      orderBy: 'date DESC',
-      limit: limit,
-    );
+    final rows = await db.query('health_daily_metrics', orderBy: 'date DESC', limit: limit);
     return rows.map((r) => HealthDailyMetrics.fromMap(r)).toList();
   }
 
   /// 检查某条运动记录 sid 是否已存在
   Future<bool> hasSportRecordBySid(String sid) async {
     final db = await _db;
-    final result = await db.rawQuery(
-      'SELECT 1 FROM health_sport_records WHERE sid = ? LIMIT 1',
-      [sid],
-    );
+    final result = await db.rawQuery('SELECT 1 FROM health_sport_records WHERE sid = ? LIMIT 1', [sid]);
     return result.isNotEmpty;
   }
 
@@ -103,11 +83,7 @@ class HealthMetricRepository {
     final db = await _db;
     final batch = db.batch();
     for (final r in records) {
-      batch.insert(
-        'health_sport_records',
-        r.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.insert('health_sport_records', r.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
   }
@@ -127,12 +103,7 @@ class HealthMetricRepository {
   /// 分页获取单次运动记录
   Future<List<HealthSportRecord>> getSportRecords({int limit = 50, int offset = 0}) async {
     final db = await _db;
-    final rows = await db.query(
-      'health_sport_records',
-      orderBy: 'start_time DESC',
-      limit: limit,
-      offset: offset,
-    );
+    final rows = await db.query('health_sport_records', orderBy: 'start_time DESC', limit: limit, offset: offset);
     return rows.map((r) => HealthSportRecord.fromMap(r)).toList();
   }
 }

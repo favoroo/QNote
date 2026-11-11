@@ -27,12 +27,8 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.skill?.name ?? '');
-    _descriptionController = TextEditingController(
-      text: widget.skill?.description ?? '',
-    );
-    _contentController = TextEditingController(
-      text: widget.skill?.content ?? '',
-    );
+    _descriptionController = TextEditingController(text: widget.skill?.description ?? '');
+    _contentController = TextEditingController(text: widget.skill?.content ?? '');
   }
 
   @override
@@ -49,10 +45,7 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
     final isEditingExisting = widget.skill != null;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isEditingExisting ? '编辑技能' : '新建技能'),
-        centerTitle: false,
-      ),
+      appBar: AppBar(title: Text(isEditingExisting ? '编辑技能' : '新建技能'), centerTitle: false),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -61,27 +54,19 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
             controller: _nameController,
             readOnly: isEditingExisting,
             enabled: !isEditingExisting,
-            decoration: const InputDecoration(
-              labelText: '技能名称（/skills/<名称>.md）',
-              hintText: '例如：投资复盘',
-            ),
+            decoration: const InputDecoration(labelText: '技能名称（/skills/<名称>.md）', hintText: '例如：投资复盘'),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _descriptionController,
-            decoration: const InputDecoration(
-              labelText: '一句话描述',
-              hintText: '手册适用场景，会显示在技能索引中',
-            ),
+            decoration: const InputDecoration(labelText: '一句话描述', hintText: '手册适用场景，会显示在技能索引中'),
           ),
           const SizedBox(height: 16),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
               '手册正文（Markdown）',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
           const SizedBox(height: 8),
@@ -97,17 +82,11 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
             ),
           ),
           const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('保存技能'),
-          ),
+          FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save_outlined), label: const Text('保存技能')),
           if (isEditingExisting) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
-              ),
+              style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
               onPressed: _confirmDelete,
               icon: const Icon(Icons.delete_outline_rounded),
               label: const Text('删除该技能'),
@@ -165,10 +144,7 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
         title: const Text('删除技能'),
         content: Text('删除技能「${skill.name}」？小Q将无法再查阅。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(dialogContext).colorScheme.error,
@@ -183,9 +159,7 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
     if (confirmed != true) return;
 
     try {
-      await ref
-          .read(agentSkillListProvider.notifier)
-          .deleteUserSkill(skill.name);
+      await ref.read(agentSkillListProvider.notifier).deleteUserSkill(skill.name);
       if (!mounted) return;
       Toast.success(context, '已删除技能「${skill.name}」');
       Navigator.of(context).pop();

@@ -24,11 +24,8 @@ class AccountAuthRequiredException implements Exception {
 
 /// 商汤小浣熊的登录态异常（保留原名，现有调用方与测试无需改动）
 class RaccoonAuthRequiredException extends AccountAuthRequiredException {
-  const RaccoonAuthRequiredException(
-    super.providerId, {
-    super.message =
-        '小浣熊账号未登录或已过期，请到「设置 → AI 模型配置」重新登录',
-  }) : super(kind: AiAccount.kindRaccoon);
+  const RaccoonAuthRequiredException(super.providerId, {super.message = '小浣熊账号未登录或已过期，请到「设置 → AI 模型配置」重新登录'})
+    : super(kind: AiAccount.kindRaccoon);
 }
 
 /// 一次发信要用的账号与凭证
@@ -82,10 +79,7 @@ abstract class AccountAuthService {
   /// 刷新后仍被拒绝时的「登录失效」异常（文案带厂商名）
   AccountAuthRequiredException authExpired(String providerId);
 
-  Future<List<AiAccount>> accountsFor(
-    String providerId, {
-    bool forceReload = false,
-  });
+  Future<List<AiAccount>> accountsFor(String providerId, {bool forceReload = false});
 
   Future<AccountSession?> sessionForRequest(
     String providerId, {
@@ -108,11 +102,7 @@ abstract class AccountAuthService {
 
   AiAccount? accountFromCache(String accountId);
 
-  void markAccountFailed(
-    AiAccount account,
-    Object error, {
-    String affinity = 'session',
-  });
+  void markAccountFailed(AiAccount account, Object error, {String affinity = 'session'});
 
   void markAccountSucceeded(AiAccount account);
 
@@ -134,16 +124,9 @@ abstract class AccountAuthService {
 
   Future<void> logoutProvider(String providerId);
 
-  Future<AiAccount> updateAccount(
-    AiAccount account, {
-    String? alias,
-    bool? enabled,
-  });
+  Future<AiAccount> updateAccount(AiAccount account, {String? alias, bool? enabled});
 
-  Future<List<AiAccount>> reorderAccounts(
-    String providerId,
-    List<String> orderedIds,
-  );
+  Future<List<AiAccount>> reorderAccounts(String providerId, List<String> orderedIds);
 
   /// 数据管理页清空全部数据后清掉进程内缓存（账号、选号游标、冷却表）
   void clearCache();

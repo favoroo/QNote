@@ -76,10 +76,7 @@ class AppErrorState extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               action,
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+              style: theme.textTheme.titleSmall?.copyWith(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),

@@ -24,13 +24,7 @@ const String _idPrefix = 'svc-';
 DailyScore _seed({
   required DateTime date,
   int total = 88,
-  Map<String, int> dims = const {
-    'sleep': 90,
-    'diet': 70,
-    'activity': 65,
-    'health': 80,
-    'screen': 55,
-  },
+  Map<String, int> dims = const {'sleep': 90, 'diet': 70, 'activity': 65, 'health': 80, 'screen': 55},
   String summary = '作息规律',
 }) {
   final now = DateTime(2026, 9, 1, 8);
@@ -56,9 +50,7 @@ void main() {
     databaseFactory = databaseFactoryFfi;
     // 独占库目录：flutter test 并发跑多个文件却共用同一个 qnote.db，
     // 清表与全表计数会互相看到对方的行（虚拟工作区用例就在写同一张表）
-    await databaseFactoryFfi.setDatabasesPath(
-      Directory.systemTemp.createTempSync('qnote_daily_scores_svc').path,
-    );
+    await databaseFactoryFfi.setDatabasesPath(Directory.systemTemp.createTempSync('qnote_daily_scores_svc').path);
   });
 
   final service = DailyScoreService.instance;
@@ -76,47 +68,30 @@ void main() {
     return rows.first['c'] as int;
   }
 
-  Future<List<Map<String, Object?>>> scoreLogs() =>
-      db.query('sync_log', where: "table_name = 'daily_scores'");
+  Future<List<Map<String, Object?>>> scoreLogs() => db.query('sync_log', where: "table_name = 'daily_scores'");
 
   group('upsertFromPayload 部分更新', () {
     test('只改饮食分时其余四维与总分全部保留', () async {
       await repository.upsertByDate(_seed(date: _ago(31)));
 
-      final result = await service.upsertFromPayload(
-        date: _ago(31),
-        dimensionScores: {'diet': 40},
-      );
+      final result = await service.upsertFromPayload(date: _ago(31), dimensionScores: {'diet': 40});
 
       expect(result.created, isFalse);
       expect(result.saved.totalScore, 88, reason: '未传 totalScore 时总分不能被重置');
-      expect(result.saved.dimensionScores, {
-        'sleep': 90,
-        'diet': 40,
-        'activity': 65,
-        'health': 80,
-        'screen': 55,
-      });
+      expect(result.saved.dimensionScores, {'sleep': 90, 'diet': 40, 'activity': 65, 'health': 80, 'screen': 55});
       expect(result.saved.summary, '作息规律');
       expect(result.saved.recordCount, 5);
     });
 
     test('空字符串 summary 不覆盖原有评语', () async {
       await repository.upsertByDate(_seed(date: _ago(32)));
-      final result = await service.upsertFromPayload(
-        date: _ago(32),
-        totalScore: 70,
-        summary: '   ',
-      );
+      final result = await service.upsertFromPayload(date: _ago(32), totalScore: 70, summary: '   ');
       expect(result.saved.summary, '作息规律');
       expect(result.saved.totalScore, 70);
     });
 
     test('新建时补齐五维并用基线分兜底缺失总分', () async {
-      final result = await service.upsertFromPayload(
-        date: _ago(33),
-        dimensionScores: {'diet': 66},
-      );
+      final result = await service.upsertFromPayload(date: _ago(33), dimensionScores: {'diet': 66});
       expect(result.created, isTrue);
       expect(result.saved.totalScore, DailyScoreService.kBaselineScore);
       expect(result.saved.dimensionScores.length, 5);
@@ -126,17 +101,9 @@ void main() {
 
     test('越界分值被钳位且当天仍只有一行', () async {
       await repository.upsertByDate(_seed(date: _ago(34)));
-      await service.upsertFromPayload(
-        date: _ago(34),
-        totalScore: 170,
-        dimensionScores: {'screen': -20},
-      );
+      await service.upsertFromPayload(date: _ago(34), totalScore: 170, dimensionScores: {'screen': -20});
 
-      final rows = await db.query(
-        'daily_scores',
-        where: 'date = ?',
-        whereArgs: [_agoKey(34)],
-      );
+      final rows = await db.query('daily_scores', where: 'date = ?', whereArgs: [_agoKey(34)]);
       expect(rows.length, 1);
       final read = await repository.getByDate(_ago(34));
       expect(read!.totalScore, 100);
@@ -150,10 +117,7 @@ void main() {
       await service.upsertFromPayload(date: _ago(35), totalScore: 75);
       WorkspaceEventBus.instance.removeListener(listener);
 
-      expect(paths, [
-        '/stats/scores/${_agoKey(35)}.json',
-        '/stats/daily_scores.json',
-      ]);
+      expect(paths, ['/stats/scores/${_agoKey(35)}.json', '/stats/daily_scores.json']);
     });
   });
 
@@ -194,11 +158,7 @@ void main() {
       expect(read.summary, '作息规律');
       expect(read.suggestions, '保持');
       expect(read.recordCount, 5);
-      expect(
-        read.id.startsWith(_idPrefix),
-        isTrue,
-        reason: '批量调整必须原地更新，不换主键',
-      );
+      expect(read.id.startsWith(_idPrefix), isTrue, reason: '批量调整必须原地更新，不换主键');
     });
 
     test('触上下限的天数被统计出来', () async {

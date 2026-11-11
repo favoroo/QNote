@@ -15,18 +15,8 @@ void main() {
     name: '饮食',
     hasPopup: true,
     fields: [
-      ShortcutField(
-        id: 'type',
-        label: '种类',
-        type: 'select',
-        options: ['自制', '外卖', '堂食'],
-      ),
-      ShortcutField(
-        id: 'rating',
-        label: '评价',
-        type: 'select',
-        options: ['健康', '一般'],
-      ),
+      ShortcutField(id: 'type', label: '种类', type: 'select', options: ['自制', '外卖', '堂食']),
+      ShortcutField(id: 'rating', label: '评价', type: 'select', options: ['健康', '一般']),
     ],
     sortOrder: 1,
     createdAt: DateTime(2026, 1, 1),
@@ -62,22 +52,20 @@ void main() {
 
   final shortcuts = [dietShortcut, sportShortcut, noteShortcut];
 
-  TagEntry dietEntry([Map<String, dynamic> fields = const {}]) =>
-      TagEntry(id: 'diet', name: '饮食', fields: fields);
+  TagEntry dietEntry([Map<String, dynamic> fields = const {}]) => TagEntry(id: 'diet', name: '饮食', fields: fields);
 
   group('字段摘要生成 buildDiaryPopupDetails', () {
     test('单字段只输出该字段', () {
-      final details = buildDiaryPopupDetails([dietEntry({'type': '自制'})], shortcuts);
+      final details = buildDiaryPopupDetails([
+        dietEntry({'type': '自制'}),
+      ], shortcuts);
       expect(details, equals('种类：自制'));
     });
 
     test('多字段用「，」连接，字段顺序以配置为准', () {
-      final details = buildDiaryPopupDetails(
-        [
-          dietEntry({'rating': '健康', 'type': '自制'}),
-        ],
-        shortcuts,
-      );
+      final details = buildDiaryPopupDetails([
+        dietEntry({'rating': '健康', 'type': '自制'}),
+      ], shortcuts);
       expect(details, equals('种类：自制，评价：健康'));
     });
 
@@ -108,45 +96,32 @@ void main() {
     });
 
     test('特殊字符（中文标点/英文逗号）与空串值原样拼接，不做转义', () {
-      final details = buildDiaryPopupDetails(
-        [
-          dietEntry({'type': '外卖, 堂食', 'rating': ''}),
-        ],
-        shortcuts,
-      );
+      final details = buildDiaryPopupDetails([
+        dietEntry({'type': '外卖, 堂食', 'rating': ''}),
+      ], shortcuts);
       expect(details, equals('种类：外卖, 堂食，评价：'));
     });
 
     test('列表值用「、」连接', () {
-      final details = buildDiaryPopupDetails(
-        [
-          TagEntry(
-            id: 'sport',
-            name: '运动',
-            fields: {
-              '_category': 'run',
-              'distance': 5,
-              'tags': ['畅快', '腿酸'],
-            },
-          ),
-        ],
-        shortcuts,
-      );
+      final details = buildDiaryPopupDetails([
+        TagEntry(
+          id: 'sport',
+          name: '运动',
+          fields: {
+            '_category': 'run',
+            'distance': 5,
+            'tags': ['畅快', '腿酸'],
+          },
+        ),
+      ], shortcuts);
       expect(details, equals('跑步 - 距离：5，感受：畅快、腿酸'));
     });
 
     test('多个标签之间用「；」连接', () {
-      final details = buildDiaryPopupDetails(
-        [
-          dietEntry({'type': '自制'}),
-          TagEntry(
-            id: 'sport',
-            name: '运动',
-            fields: {'_category': 'run', 'distance': 1},
-          ),
-        ],
-        shortcuts,
-      );
+      final details = buildDiaryPopupDetails([
+        dietEntry({'type': '自制'}),
+        TagEntry(id: 'sport', name: '运动', fields: {'_category': 'run', 'distance': 1}),
+      ], shortcuts);
       expect(details, equals('种类：自制；跑步 - 距离：1'));
     });
   });
@@ -154,33 +129,27 @@ void main() {
   group('纯字段摘要判定 isDiaryFieldSummaryOnly', () {
     test('纯字段摘要为 true', () {
       expect(
-        isDiaryFieldSummaryOnly(
-          '种类：自制，评价：健康',
-          [dietEntry({'type': '自制', 'rating': '健康'})],
-          shortcuts,
-        ),
+        isDiaryFieldSummaryOnly('种类：自制，评价：健康', [
+          dietEntry({'type': '自制', 'rating': '健康'}),
+        ], shortcuts),
         isTrue,
       );
     });
 
     test('摘要 + 用户备注为 false', () {
       expect(
-        isDiaryFieldSummaryOnly(
-          '种类：自制，评价：健康\n备注：很好吃',
-          [dietEntry({'type': '自制', 'rating': '健康'})],
-          shortcuts,
-        ),
+        isDiaryFieldSummaryOnly('种类：自制，评价：健康\n备注：很好吃', [
+          dietEntry({'type': '自制', 'rating': '健康'}),
+        ], shortcuts),
         isFalse,
       );
     });
 
     test('纯用户正文为 false（含冒号、图：也不例外）', () {
       expect(
-        isDiaryFieldSummaryOnly(
-          '清蒸鲈鱼\n图：清蒸鲈鱼，凉拌猪耳',
-          [dietEntry({'type': '自制'})],
-          shortcuts,
-        ),
+        isDiaryFieldSummaryOnly('清蒸鲈鱼\n图：清蒸鲈鱼，凉拌猪耳', [
+          dietEntry({'type': '自制'}),
+        ], shortcuts),
         isFalse,
       );
     });
@@ -191,15 +160,14 @@ void main() {
     });
 
     test('没有已知字段名时一律 false（不误判自由正文）', () {
-      expect(
-        isDiaryFieldSummaryOnly('随便写点什么', [], shortcuts),
-        isFalse,
-      );
+      expect(isDiaryFieldSummaryOnly('随便写点什么', [], shortcuts), isFalse);
     });
 
     test('无冒号片段命中字段值或字段名为 true', () {
       expect(
-        isDiaryFieldSummaryOnly('自制', [dietEntry({'type': '自制'})], shortcuts),
+        isDiaryFieldSummaryOnly('自制', [
+          dietEntry({'type': '自制'}),
+        ], shortcuts),
         isTrue,
       );
       expect(isDiaryFieldSummaryOnly('type', [dietEntry()], shortcuts), isTrue);
@@ -210,52 +178,38 @@ void main() {
     test('「\\n备注：」前缀能还原手写正文', () {
       const content = '种类：自制，评价：健康\n备注：今天做的清蒸鲈鱼非常鲜美';
       expect(
-        parseDiaryUserRemarks(
-          content,
-          [dietEntry({'type': '自制', 'rating': '健康'})],
-          shortcuts,
-        ),
+        parseDiaryUserRemarks(content, [
+          dietEntry({'type': '自制', 'rating': '健康'}),
+        ], shortcuts),
         equals('今天做的清蒸鲈鱼非常鲜美'),
       );
     });
 
     test('半角「\\n备注:」与前缀形式同样能剥离', () {
       expect(
-        parseDiaryUserRemarks(
-          '种类：自制\n备注:睡得很好',
-          [dietEntry({'type': '自制'})],
-          shortcuts,
-        ),
+        parseDiaryUserRemarks('种类：自制\n备注:睡得很好', [
+          dietEntry({'type': '自制'}),
+        ], shortcuts),
         equals('睡得很好'),
       );
-      expect(
-        parseDiaryUserRemarks('备注：只写备注', [dietEntry()], shortcuts),
-        equals('只写备注'),
-      );
-      expect(
-        parseDiaryUserRemarks('备注: 半角前缀', [dietEntry()], shortcuts),
-        equals('半角前缀'),
-      );
+      expect(parseDiaryUserRemarks('备注：只写备注', [dietEntry()], shortcuts), equals('只写备注'));
+      expect(parseDiaryUserRemarks('备注: 半角前缀', [dietEntry()], shortcuts), equals('半角前缀'));
     });
 
     test('纯摘要返回空串', () {
       expect(
-        parseDiaryUserRemarks(
-          '种类：自制，评价：健康',
-          [dietEntry({'type': '自制', 'rating': '健康'})],
-          shortcuts,
-        ),
+        parseDiaryUserRemarks('种类：自制，评价：健康', [
+          dietEntry({'type': '自制', 'rating': '健康'}),
+        ], shortcuts),
         equals(''),
       );
     });
 
     test('摘要后直接跟正文时去掉分隔符后还原', () {
       expect(
-        parseDiaryUserRemarks(
-          '种类：自制； 加了个蛋',
-          [dietEntry({'type': '自制'})],
-          shortcuts,
-        ),
+        parseDiaryUserRemarks('种类：自制； 加了个蛋', [
+          dietEntry({'type': '自制'}),
+        ], shortcuts),
         equals('加了个蛋'),
       );
     });
@@ -263,21 +217,22 @@ void main() {
     test('自由正文（AI 提取/小Q 编辑）原样返回，不被清空', () {
       const content = '清蒸鲈鱼、凉拌猪耳、肉沫酸豆角\n图：清蒸鲈鱼，凉拌猪耳';
       expect(
-        parseDiaryUserRemarks(content, [dietEntry({'type': '自制'})], shortcuts),
+        parseDiaryUserRemarks(content, [
+          dietEntry({'type': '自制'}),
+        ], shortcuts),
         equals(content),
       );
     });
 
     test('无弹窗字段时原样返回（含空正文）', () {
-      expect(
-        parseDiaryUserRemarks('随手记的内容', [], shortcuts),
-        equals('随手记的内容'),
-      );
+      expect(parseDiaryUserRemarks('随手记的内容', [], shortcuts), equals('随手记的内容'));
       expect(parseDiaryUserRemarks('   ', [], shortcuts), equals(''));
     });
 
     test('保存格式往返：拼出的「摘要 + 备注」能还原出原手写内容', () {
-      final tagEntries = [dietEntry({'type': '自制', 'rating': '健康'})];
+      final tagEntries = [
+        dietEntry({'type': '自制', 'rating': '健康'}),
+      ];
       final allDetails = buildDiaryPopupDetails(tagEntries, shortcuts);
       const remarks = '今天做的清蒸鲈鱼非常鲜美';
       final saved = '$allDetails\n备注：$remarks';
@@ -331,42 +286,24 @@ void main() {
     });
 
     test('两者都有时用换行追加备注', () {
-      expect(
-        mergeDiaryNotesWithContent('图：另外一张图', '清蒸鲈鱼'),
-        equals('清蒸鲈鱼\n图：另外一张图'),
-      );
+      expect(mergeDiaryNotesWithContent('图：另外一张图', '清蒸鲈鱼'), equals('清蒸鲈鱼\n图：另外一张图'));
     });
 
     test('正文已包含该备注时不重复追加', () {
       const original = '清蒸鲈鱼\n图：清蒸鲈鱼，凉拌猪耳';
-      expect(
-        mergeDiaryNotesWithContent('图：清蒸鲈鱼，凉拌猪耳', original),
-        equals(original),
-      );
+      expect(mergeDiaryNotesWithContent('图：清蒸鲈鱼，凉拌猪耳', original), equals(original));
     });
   });
 
   group('时间格式化 formatDiaryEditorDateTime', () {
     test('同一天的不同时间共享日期前缀', () {
-      expect(
-        formatDiaryEditorDateTime(DateTime(2026, 9, 19, 10, 30)),
-        equals('09-19 10:30'),
-      );
-      expect(
-        formatDiaryEditorDateTime(DateTime(2026, 9, 19, 23, 5)),
-        equals('09-19 23:05'),
-      );
+      expect(formatDiaryEditorDateTime(DateTime(2026, 9, 19, 10, 30)), equals('09-19 10:30'));
+      expect(formatDiaryEditorDateTime(DateTime(2026, 9, 19, 23, 5)), equals('09-19 23:05'));
     });
 
     test('跨天与跨年通过日期部分区分，凌晨补零', () {
-      expect(
-        formatDiaryEditorDateTime(DateTime(2026, 9, 20, 0, 5)),
-        equals('09-20 00:05'),
-      );
-      expect(
-        formatDiaryEditorDateTime(DateTime(2027, 1, 1, 0, 0)),
-        equals('01-01 00:00'),
-      );
+      expect(formatDiaryEditorDateTime(DateTime(2026, 9, 20, 0, 5)), equals('09-20 00:05'));
+      expect(formatDiaryEditorDateTime(DateTime(2027, 1, 1, 0, 0)), equals('01-01 00:00'));
     });
   });
 
@@ -399,10 +336,7 @@ void main() {
     });
 
     test('正文或标签变化会改变指纹', () {
-      expect(
-        diaryEditSignature(snapshot(content: '正文')),
-        isNot(equals(diaryEditSignature(snapshot(content: '正文2')))),
-      );
+      expect(diaryEditSignature(snapshot(content: '正文')), isNot(equals(diaryEditSignature(snapshot(content: '正文2')))));
       expect(
         diaryEditSignature(snapshot(tags: const ['饮食'])),
         isNot(equals(diaryEditSignature(snapshot(tags: const ['运动'])))),

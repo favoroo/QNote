@@ -19,12 +19,7 @@ class StepsTrendChart extends StatelessWidget {
   final String caption;
   final int dailyTarget;
 
-  const StepsTrendChart({
-    super.key,
-    required this.buckets,
-    required this.caption,
-    required this.dailyTarget,
-  });
+  const StepsTrendChart({super.key, required this.buckets, required this.caption, required this.dailyTarget});
 
   @override
   Widget build(BuildContext context) {
@@ -49,20 +44,14 @@ class StepsTrendChart extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(
-                  '步数趋势',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('步数趋势', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
                     caption,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 10,
-                      color: colorScheme.outline,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 10, color: colorScheme.outline),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -81,8 +70,7 @@ class StepsTrendChart extends StatelessWidget {
                 final labelInterval = stepAxisLabelInterval(
                   bucketCount: buckets.length,
                   plotWidth: plotWidth,
-                  minLabelWidth:
-                      buckets.isEmpty ? 30 : buckets.map((b) => b.labelWidth).reduce(math.max),
+                  minLabelWidth: buckets.isEmpty ? 30 : buckets.map((b) => b.labelWidth).reduce(math.max),
                 );
                 return SizedBox(
                   height: 180,
@@ -103,17 +91,14 @@ class StepsTrendChart extends StatelessWidget {
                                     : (maxY * _emptyStubRatio).clamp(0.0, maxY),
                                 color: _rodColor(buckets[i], colorScheme),
                                 width: barWidth,
-                                borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(buckets[i].hasData ? 4 : 2),
-                                ),
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(buckets[i].hasData ? 4 : 2)),
                               ),
                             ],
                           ),
                       ],
                       barTouchData: BarTouchData(
                         touchTooltipData: BarTouchTooltipData(
-                          getTooltipColor: (_) =>
-                              isDark ? const Color(0xFF2C2C2E) : colorScheme.surfaceContainerHigh,
+                          getTooltipColor: (_) => isDark ? const Color(0xFF2C2C2E) : colorScheme.surfaceContainerHigh,
                           getTooltipItem: (group, groupIndex, rod, rodIndex) {
                             if (groupIndex < 0 || groupIndex >= buckets.length) {
                               return null;
@@ -122,7 +107,7 @@ class StepsTrendChart extends StatelessWidget {
                             final body = !bucket.hasData
                                 ? '无记录'
                                 : '${bucket.unit == StepTrendUnit.day ? '' : '日均 '}'
-                                    '${NumberFormat('#,###').format(bucket.value.round())} 步';
+                                      '${NumberFormat('#,###').format(bucket.value.round())} 步';
                             return BarTooltipItem(
                               '${bucket.rangeLabel}\n$body',
                               TextStyle(
@@ -149,10 +134,7 @@ class StepsTrendChart extends StatelessWidget {
                               }
                               return Text(
                                 '${(val / 1000).toStringAsFixed(0)}k',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
+                                style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
                               );
                             },
                           ),
@@ -170,10 +152,7 @@ class StepsTrendChart extends StatelessWidget {
                                 padding: const EdgeInsets.only(top: 4),
                                 child: Text(
                                   buckets[idx].axisLabel,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
+                                  style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
                                 ),
                               );
                             },
@@ -185,9 +164,7 @@ class StepsTrendChart extends StatelessWidget {
                         drawVerticalLine: false,
                         horizontalInterval: maxY / 2,
                         getDrawingHorizontalLine: (value) => FlLine(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.black.withValues(alpha: 0.06),
+                          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
                           strokeWidth: 1,
                           dashArray: const [4, 4],
                         ),

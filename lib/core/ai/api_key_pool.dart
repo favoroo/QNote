@@ -44,8 +44,7 @@ class ApiKeyPool {
     }
     final cooldowns = _cooldownUntil[providerId];
     if (cooldowns != null) {
-      cooldowns.removeWhere((key, until) =>
-          !keySet.contains(key) || !until.isAfter(DateTime.now()));
+      cooldowns.removeWhere((key, until) => !keySet.contains(key) || !until.isAfter(DateTime.now()));
       if (cooldowns.isEmpty) _cooldownUntil.remove(providerId);
     }
   }
@@ -82,11 +81,7 @@ class ApiKeyPool {
   }
 
   /// 记录一次「这把 Key 撞墙了」，进入冷却
-  void markLimited(
-    String providerId,
-    String key, {
-    Duration cooldown = defaultCooldown,
-  }) {
+  void markLimited(String providerId, String key, {Duration cooldown = defaultCooldown}) {
     if (key.trim().isEmpty) return;
     final effective = cooldown > maxCooldown ? maxCooldown : cooldown;
     final cooldowns = _cooldownUntil.putIfAbsent(providerId, () => {});
@@ -174,8 +169,7 @@ class ApiKeyPool {
   /// 判定是否属于连接层瞬时故障（TLS 握手中断、TCP/TLS 建连失败）
   static bool isConnectionClassError(dynamic error) {
     if (error is! DioException) return false;
-    if (error.type == DioExceptionType.connectionTimeout ||
-        error.type == DioExceptionType.connectionError) {
+    if (error.type == DioExceptionType.connectionTimeout || error.type == DioExceptionType.connectionError) {
       return true;
     }
     // Dio 未映射的底层异常被包成 unknown，用 runtimeType 名称判断

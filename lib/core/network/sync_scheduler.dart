@@ -61,10 +61,7 @@ class SyncScheduler {
   void _setupPeriodicSync(int intervalMinutes) {
     _periodicTimer?.cancel();
     if (intervalMinutes <= 0) return;
-    _periodicTimer = Timer.periodic(
-      Duration(minutes: intervalMinutes),
-      (_) => performSync(),
-    );
+    _periodicTimer = Timer.periodic(Duration(minutes: intervalMinutes), (_) => performSync());
   }
 
   Future<void> performSync() async {
@@ -86,9 +83,7 @@ class SyncScheduler {
       _lastSyncWasFull = result.wasFullSync;
       _lastSyncSizeBytes = result.uploadSizeBytes;
 
-      final updatedConfig = config.copyWith(
-        lastSyncTime: _lastSyncTime,
-      );
+      final updatedConfig = config.copyWith(lastSyncTime: _lastSyncTime);
       await _configRepo.upsertWebdavConfig(updatedConfig);
 
       final syncImagesEnabled = await _configRepo.getAppConfig('webdav_sync_images') == 'true';
@@ -133,9 +128,7 @@ class SyncScheduler {
       _lastSyncWasFull = true;
       _lastSyncSizeBytes = result.uploadSizeBytes;
 
-      final updatedConfig = config.copyWith(
-        lastSyncTime: _lastSyncTime,
-      );
+      final updatedConfig = config.copyWith(lastSyncTime: _lastSyncTime);
       await _configRepo.upsertWebdavConfig(updatedConfig);
 
       final syncImagesEnabled = await _configRepo.getAppConfig('webdav_sync_images') == 'true';

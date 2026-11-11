@@ -36,10 +36,7 @@ class GradientBorderPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final deflatedRect = rect.deflate(strokeWidth / 2);
-    final rrect = RRect.fromRectAndRadius(
-      deflatedRect,
-      Radius.circular(math.max(0, borderRadius - strokeWidth / 2)),
-    );
+    final rrect = RRect.fromRectAndRadius(deflatedRect, Radius.circular(math.max(0, borderRadius - strokeWidth / 2)));
 
     final shader = SweepGradient(
       colors: gradientColors,
@@ -99,17 +96,13 @@ class AnimatedGradientBorder extends StatefulWidget {
   State<AnimatedGradientBorder> createState() => _AnimatedGradientBorderState();
 }
 
-class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
-    with SingleTickerProviderStateMixin {
+class _AnimatedGradientBorderState extends State<AnimatedGradientBorder> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    );
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000));
     if (widget.isAnimating) {
       _controller.repeat();
     }
@@ -155,7 +148,8 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
     final tailFade = primary.withValues(alpha: isDark ? 0.20 : 0.14);
 
     // 双流星对称追逐流光：两道主题色灵动流星环绕旋转，兼顾动感、平衡与简约美感
-    final colors = widget.customColors ??
+    final colors =
+        widget.customColors ??
         [
           baseColor,
           sparkWhite,
@@ -174,24 +168,9 @@ class _AnimatedGradientBorderState extends State<AnimatedGradientBorder>
           baseColor,
         ];
 
-    final stops = widget.customStops ??
-        const [
-          0.00,
-          0.04,
-          0.08,
-          0.16,
-          0.28,
-          0.38,
-          0.46,
-          0.50,
-          0.54,
-          0.58,
-          0.66,
-          0.78,
-          0.88,
-          0.96,
-          1.00,
-        ];
+    final stops =
+        widget.customStops ??
+        const [0.00, 0.04, 0.08, 0.16, 0.28, 0.38, 0.46, 0.50, 0.54, 0.58, 0.66, 0.78, 0.88, 0.96, 1.00];
 
     // 隔离流光动画的重绘层，避免每帧触发父级重绘
     return RepaintBoundary(

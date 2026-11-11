@@ -3,14 +3,7 @@ import 'package:qnote_flutter/core/utils/diary_progress.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 
 DiaryRecord _record(String id, DateTime time, {bool deleted = false}) {
-  return DiaryRecord(
-    id: id,
-    title: '记录$id',
-    time: time,
-    createdAt: time,
-    updatedAt: time,
-    isDeleted: deleted,
-  );
+  return DiaryRecord(id: id, title: '记录$id', time: time, createdAt: time, updatedAt: time, isDeleted: deleted);
 }
 
 void main() {
@@ -25,10 +18,7 @@ void main() {
 
     test('今天2条：计数正确、未满环、还差1条', () {
       final now = DateTime(2026, 9, 25, 12);
-      final records = [
-        _record('1', DateTime(2026, 9, 25, 8)),
-        _record('2', DateTime(2026, 9, 25, 12)),
-      ];
+      final records = [_record('1', DateTime(2026, 9, 25, 8)), _record('2', DateTime(2026, 9, 25, 12))];
       final p = computeDiaryProgress(records, now);
       expect(p.todayCount, 2);
       expect(p.isFull, isFalse);
@@ -37,10 +27,7 @@ void main() {
 
     test('今天3条即满环，超目标后ratio封顶为1', () {
       final now = DateTime(2026, 9, 25, 12);
-      final records = List.generate(
-        5,
-        (i) => _record('$i', DateTime(2026, 9, 25, 8, i)),
-      );
+      final records = List.generate(5, (i) => _record('$i', DateTime(2026, 9, 25, 8, i)));
       final p = computeDiaryProgress(records, now);
       expect(p.todayCount, 5);
       expect(p.isFull, isTrue);
@@ -50,19 +37,14 @@ void main() {
 
     test('补记旧日期不计入今天', () {
       final now = DateTime(2026, 9, 25, 12);
-      final records = [
-        _record('1', DateTime(2026, 9, 20, 8)),
-      ];
+      final records = [_record('1', DateTime(2026, 9, 20, 8))];
       final p = computeDiaryProgress(records, now);
       expect(p.todayCount, 0);
     });
 
     test('已删除记录不计入', () {
       final now = DateTime(2026, 9, 25, 12);
-      final records = [
-        _record('1', DateTime(2026, 9, 25, 8), deleted: true),
-        _record('2', DateTime(2026, 9, 25, 9)),
-      ];
+      final records = [_record('1', DateTime(2026, 9, 25, 8), deleted: true), _record('2', DateTime(2026, 9, 25, 9))];
       final p = computeDiaryProgress(records, now);
       expect(p.todayCount, 1);
     });

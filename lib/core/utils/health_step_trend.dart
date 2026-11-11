@@ -140,11 +140,7 @@ StepTrend buildStepTrend({
 }
 
 /// 计算 X 轴标签的抽稀间隔：每 [interval] 个桶出一个标签，避免标签互相压字。
-int stepAxisLabelInterval({
-  required int bucketCount,
-  required double plotWidth,
-  required double minLabelWidth,
-}) {
+int stepAxisLabelInterval({required int bucketCount, required double plotWidth, required double minLabelWidth}) {
   if (bucketCount <= 1 || plotWidth <= 0 || minLabelWidth <= 0) {
     return 1;
   }

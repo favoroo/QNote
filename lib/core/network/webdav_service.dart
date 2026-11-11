@@ -17,9 +17,7 @@ import 'package:qnote_flutter/core/storage/database_helper.dart';
 /// 必须是顶层函数（不能是闭包或实例方法），否则 isolate 无法访问。
 /// 适用于大快照（MB 级）的序列化，避免主线程卡顿。
 Uint8List _encodeJsonToBytes(Map<String, dynamic> data) {
-  return Uint8List.fromList(
-    utf8.encode(const JsonEncoder.withIndent('  ').convert(data)),
-  );
+  return Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent('  ').convert(data)));
 }
 
 class SyncResult {
@@ -29,13 +27,7 @@ class SyncResult {
   final String? error;
   final int? uploadSizeBytes;
 
-  SyncResult({
-    required this.success,
-    this.wasFullSync = false,
-    this.changeCount = 0,
-    this.error,
-    this.uploadSizeBytes,
-  });
+  SyncResult({required this.success, this.wasFullSync = false, this.changeCount = 0, this.error, this.uploadSizeBytes});
 }
 
 class WebdavService {
@@ -73,19 +65,13 @@ class WebdavService {
       remotePath = '$remotePath/';
     }
 
-    _config = config.copyWith(
-      serverUrl: serverUrl,
-      remotePath: remotePath,
-    );
+    _config = config.copyWith(serverUrl: serverUrl, remotePath: remotePath);
 
     _dio.options.baseUrl = serverUrl;
     _dio.options.headers['Authorization'] =
         'Basic ${base64Encode(utf8.encode('${config.username}:${config.password}'))}';
 
-    LoggerService.instance.logNetwork(
-      '更新WebDAV配置',
-      details: '服务器=$serverUrl, 路径=$remotePath',
-    );
+    LoggerService.instance.logNetwork('更新WebDAV配置', details: '服务器=$serverUrl, 路径=$remotePath');
   }
 
   Future<bool> testConnection() async {
@@ -108,11 +94,7 @@ class WebdavService {
 
       return success;
     } catch (e, stackTrace) {
-      LoggerService.instance.logNetwork(
-        'WebDAV连接测试异常: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logNetwork('WebDAV连接测试异常: $e', level: LogLevel.error, details: stackTrace.toString());
       return false;
     }
   }
@@ -123,11 +105,7 @@ class WebdavService {
     try {
       final file = File(localPath);
       if (!await file.exists()) {
-        LoggerService.instance.logNetwork(
-          '上传失败: 本地文件不存在',
-          level: LogLevel.warning,
-          details: localPath,
-        );
+        LoggerService.instance.logNetwork('上传失败: 本地文件不存在', level: LogLevel.warning, details: localPath);
         return false;
       }
 
@@ -144,11 +122,7 @@ class WebdavService {
       LoggerService.instance.logNetwork('文件上传成功', details: remoteName);
       return true;
     } catch (e, stackTrace) {
-      LoggerService.instance.logNetwork(
-        '文件上传失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logNetwork('文件上传失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return false;
     }
   }
@@ -159,15 +133,9 @@ class WebdavService {
     try {
       final remotePath = '${_config!.remotePath}$remoteName';
 
-      LoggerService.instance.logNetwork(
-        '开始下载文件',
-        details: '$remoteName -> $localPath',
-      );
+      LoggerService.instance.logNetwork('开始下载文件', details: '$remoteName -> $localPath');
 
-      final response = await _dio.get<List<int>>(
-        remotePath,
-        options: Options(responseType: ResponseType.bytes),
-      );
+      final response = await _dio.get<List<int>>(remotePath, options: Options(responseType: ResponseType.bytes));
       final file = File(localPath);
       await file.parent.create(recursive: true);
       await file.writeAsBytes(response.data!);
@@ -178,11 +146,7 @@ class WebdavService {
       );
       return true;
     } catch (e, stackTrace) {
-      LoggerService.instance.logNetwork(
-        '文件下载失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logNetwork('文件下载失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return false;
     }
   }
@@ -197,32 +161,19 @@ class WebdavService {
             '<propfind xmlns="DAV:">'
             '<prop><resourcetype/></prop>'
             '</propfind>',
-        options: Options(
-          method: 'PROPFIND',
-          headers: {'Depth': '1', 'Content-Type': 'application/xml'},
-        ),
+        options: Options(method: 'PROPFIND', headers: {'Depth': '1', 'Content-Type': 'application/xml'}),
       );
       if (response.statusCode != 207) return [];
       final body = response.data as String;
       final hrefRegex = RegExp(r'<href>([^<]+)</href>');
       final matches = hrefRegex.allMatches(body);
-      final files = matches
-          .map((m) => m.group(1)!)
-          .where((h) => h != _config!.remotePath)
-          .toList();
+      final files = matches.map((m) => m.group(1)!).where((h) => h != _config!.remotePath).toList();
 
-      LoggerService.instance.logNetwork(
-        '列出远程文件完成',
-        details: '找到 ${files.length} 个文件',
-      );
+      LoggerService.instance.logNetwork('列出远程文件完成', details: '找到 ${files.length} 个文件');
 
       return files;
     } catch (e, stackTrace) {
-      LoggerService.instance.logNetwork(
-        '列出远程文件失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logNetwork('列出远程文件失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return [];
     }
   }
@@ -243,11 +194,7 @@ class WebdavService {
         LoggerService.instance.logNetwork('远程文件不存在(404)', details: remoteName);
         return true;
       }
-      LoggerService.instance.logNetwork(
-        '删除远程文件失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logNetwork('删除远程文件失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return false;
     }
   }
@@ -257,19 +204,12 @@ class WebdavService {
     try {
       LoggerService.instance.logNetwork('创建远程目录', details: _config!.remotePath);
 
-      await _dio.request(
-        _config!.remotePath,
-        options: Options(method: 'MKCOL'),
-      );
+      await _dio.request(_config!.remotePath, options: Options(method: 'MKCOL'));
 
       LoggerService.instance.logNetwork('远程目录创建成功');
       return true;
     } catch (e, stackTrace) {
-      LoggerService.instance.logNetwork(
-        '创建远程目录失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logNetwork('创建远程目录失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return false;
     }
   }
@@ -284,23 +224,14 @@ class WebdavService {
             '<propfind xmlns="DAV:">'
             '<prop><resourcetype/><getlastmodified/></prop>'
             '</propfind>',
-        options: Options(
-          method: 'PROPFIND',
-          headers: {'Depth': '1', 'Content-Type': 'application/xml'},
-        ),
+        options: Options(method: 'PROPFIND', headers: {'Depth': '1', 'Content-Type': 'application/xml'}),
       );
       if (response.statusCode != 207) return [];
       final body = response.data as String;
-      final hrefRegex = RegExp(
-        r'<D:href[^>]*>([^<]+)</D:href>',
-        caseSensitive: false,
-      );
+      final hrefRegex = RegExp(r'<D:href[^>]*>([^<]+)</D:href>', caseSensitive: false);
       var matches = hrefRegex.allMatches(body);
       if (matches.isEmpty) {
-        final plainHrefRegex = RegExp(
-          r'<href[^>]*>([^<]+)</href>',
-          caseSensitive: false,
-        );
+        final plainHrefRegex = RegExp(r'<href[^>]*>([^<]+)</href>', caseSensitive: false);
         matches = plainHrefRegex.allMatches(body);
       }
       return matches.map((m) => m.group(1)!).where((h) {
@@ -317,11 +248,7 @@ class WebdavService {
   /// P1-13: 新增 `useIsolate` 参数，对大快照（MB 级）走 compute 在 isolate 中
   /// 完成 JSON 序列化 + UTF8 编码，避免阻塞 UI 线程。manifest/delta 通常很小，
   /// 默认走主线程避免 isolate 启动开销（~150ms）。
-  Future<int> _uploadJsonData(
-    Map<String, dynamic> data,
-    String filename, {
-    bool useIsolate = false,
-  }) async {
+  Future<int> _uploadJsonData(Map<String, dynamic> data, String filename, {bool useIsolate = false}) async {
     if (_config == null) return -1;
     try {
       // P1-13: 大快照走 isolate 编码，小数据走主线程
@@ -335,7 +262,8 @@ class WebdavService {
 
       LoggerService.instance.logSync(
         '上传JSON数据',
-        details: '文件=$filename, 大小≈${(bytes.length / 1024).toStringAsFixed(1)}KB'
+        details:
+            '文件=$filename, 大小≈${(bytes.length / 1024).toStringAsFixed(1)}KB'
             '${useIsolate ? ' (isolate)' : ''}',
       );
 
@@ -348,11 +276,7 @@ class WebdavService {
       LoggerService.instance.logSync('JSON数据上传成功', details: filename);
       return bytes.length;
     } catch (e, stackTrace) {
-      LoggerService.instance.logSync(
-        'JSON数据上传失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logSync('JSON数据上传失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return -1;
     }
   }
@@ -364,10 +288,7 @@ class WebdavService {
 
       LoggerService.instance.logSync('下载JSON数据', details: filename);
 
-      final response = await _dio.get<String>(
-        remotePath,
-        options: Options(responseType: ResponseType.plain),
-      );
+      final response = await _dio.get<String>(remotePath, options: Options(responseType: ResponseType.plain));
       if (response.data == null) return null;
       return jsonDecode(response.data!) as Map<String, dynamic>;
     } catch (e) {
@@ -375,10 +296,7 @@ class WebdavService {
         LoggerService.instance.logSync('JSON数据不存在(404)', details: filename);
         return null;
       }
-      LoggerService.instance.logSync(
-        '下载JSON数据失败: $filename, $e',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logSync('下载JSON数据失败: $filename, $e', level: LogLevel.warning);
       return null;
     }
   }
@@ -391,16 +309,13 @@ class WebdavService {
   Future<Map<String, dynamic>?> downloadSnapshot() => _downloadJsonData(_snapshotFile);
 
   /// P1-13: 快照通常 MB 级，序列化走 isolate 避免阻塞 UI
-  Future<int> uploadSnapshotSized(Map<String, dynamic> data) =>
-      _uploadJsonData(data, _snapshotFile, useIsolate: true);
+  Future<int> uploadSnapshotSized(Map<String, dynamic> data) => _uploadJsonData(data, _snapshotFile, useIsolate: true);
 
-  Future<bool> uploadSnapshot(Map<String, dynamic> data) async =>
-      (await uploadSnapshotSized(data)) >= 0;
+  Future<bool> uploadSnapshot(Map<String, dynamic> data) async => (await uploadSnapshotSized(data)) >= 0;
 
   Future<Map<String, dynamic>?> downloadDelta() => _downloadJsonData(_deltaFile);
 
-  Future<bool> uploadDelta(Map<String, dynamic> delta) async =>
-      (await _uploadJsonData(delta, _deltaFile)) >= 0;
+  Future<bool> uploadDelta(Map<String, dynamic> delta) async => (await _uploadJsonData(delta, _deltaFile)) >= 0;
 
   Future<Map<String, dynamic>?> getLatestBackup() async {
     if (_config == null) return null;
@@ -427,18 +342,11 @@ class WebdavService {
 
       LoggerService.instance.logSync('使用旧格式备份恢复', details: filename);
 
-      final response = await _dio.get<String>(
-        remotePath,
-        options: Options(responseType: ResponseType.plain),
-      );
+      final response = await _dio.get<String>(remotePath, options: Options(responseType: ResponseType.plain));
       if (response.data == null) return null;
       return jsonDecode(response.data!) as Map<String, dynamic>;
     } catch (e, stackTrace) {
-      LoggerService.instance.logSync(
-        '获取最新备份失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logSync('获取最新备份失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return null;
     }
   }
@@ -474,11 +382,7 @@ class WebdavService {
         return await _performDeltaUpload(syncLog, configRepo, deltaCount);
       }
     } catch (e, stackTrace) {
-      LoggerService.instance.logSync(
-        '同步上传失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logSync('同步上传失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return SyncResult(success: false, error: e.toString());
     }
   }
@@ -522,10 +426,7 @@ class WebdavService {
     // 否则用户看到同步成功，而云端快照版本还停留在旧值、本地变更也无从重放。
     final manifestUploaded = await uploadManifest(manifest);
     if (!manifestUploaded) {
-      LoggerService.instance.logSync(
-        '全量快照已上传，但 manifest 写入失败',
-        level: LogLevel.error,
-      );
+      LoggerService.instance.logSync('全量快照已上传，但 manifest 写入失败', level: LogLevel.error);
       return SyncResult(
         success: false,
         wasFullSync: true,
@@ -544,12 +445,7 @@ class WebdavService {
       details: '版本=$snapshotVersion, 大小≈${(uploadSize / 1024).toStringAsFixed(1)}KB',
     );
 
-    return SyncResult(
-      success: true,
-      wasFullSync: true,
-      changeCount: 0,
-      uploadSizeBytes: uploadSize,
-    );
+    return SyncResult(success: true, wasFullSync: true, changeCount: 0, uploadSizeBytes: uploadSize);
   }
 
   Future<SyncResult> _performDeltaUpload(
@@ -579,7 +475,7 @@ class WebdavService {
     if (hasDelta) {
       existingDelta = await downloadDelta();
     }
-    
+
     if (existingDelta != null) {
       delta = _mergeDeltas(existingDelta, delta);
     }
@@ -602,10 +498,7 @@ class WebdavService {
     };
     final manifestUploaded = await uploadManifest(manifest);
     if (!manifestUploaded) {
-      LoggerService.instance.logSync(
-        '增量数据已上传，但 manifest 写入失败',
-        level: LogLevel.error,
-      );
+      LoggerService.instance.logSync('增量数据已上传，但 manifest 写入失败', level: LogLevel.error);
       // 注意：此时增量文件已上云，但清单未更新。保留本地变更日志是安全的——
       // 下次同步会重新上传同一批 upserts（幂等），最终由清单追平。
       return SyncResult(
@@ -622,8 +515,7 @@ class WebdavService {
 
     // clearAll 之后统计恒为 0，这里用本次实际上传的变更数回报。
     final changeCount = delta['changes'] is Map
-        ? (delta['changes'] as Map).values
-            .fold<int>(0, (sum, v) => sum + _countDeltaRecords(v))
+        ? (delta['changes'] as Map).values.fold<int>(0, (sum, v) => sum + _countDeltaRecords(v))
         : 0;
 
     LoggerService.instance.logSync(
@@ -631,12 +523,7 @@ class WebdavService {
       details: '变更=$changeCount, 大小≈${(uploadSize / 1024).toStringAsFixed(1)}KB, 增量次数=$newDeltaCount',
     );
 
-    return SyncResult(
-      success: true,
-      wasFullSync: false,
-      changeCount: changeCount,
-      uploadSizeBytes: uploadSize,
-    );
+    return SyncResult(success: true, wasFullSync: false, changeCount: changeCount, uploadSizeBytes: uploadSize);
   }
 
   /// 统计单张表的增量记录数（upserts + deletes），供同步结果回报。
@@ -644,14 +531,10 @@ class WebdavService {
     if (tableChanges is! Map) return 0;
     final upserts = tableChanges['upserts'];
     final deletes = tableChanges['deletes'];
-    return (upserts is List ? upserts.length : 0) +
-        (deletes is List ? deletes.length : 0);
+    return (upserts is List ? upserts.length : 0) + (deletes is List ? deletes.length : 0);
   }
 
-  Map<String, dynamic> _mergeDeltas(
-    Map<String, dynamic> existing,
-    Map<String, dynamic> incoming,
-  ) {
+  Map<String, dynamic> _mergeDeltas(Map<String, dynamic> existing, Map<String, dynamic> incoming) {
     final merged = Map<String, dynamic>.from(existing);
     final existingChanges = Map<String, dynamic>.from(merged['changes'] as Map? ?? {});
     final incomingChanges = Map<String, dynamic>.from(incoming['changes'] as Map? ?? {});
@@ -684,10 +567,7 @@ class WebdavService {
         final deleteSet = <String>{...existingDeletes, ...incomingDeletes};
         upsertMap.removeWhere((id, _) => deleteSet.contains(id));
 
-        existingChanges[tableName] = {
-          'upserts': upsertMap.values.toList(),
-          'deletes': deleteSet.toList(),
-        };
+        existingChanges[tableName] = {'upserts': upsertMap.values.toList(), 'deletes': deleteSet.toList()};
       } else {
         existingChanges[tableName] = incomingTable;
       }
@@ -709,10 +589,7 @@ class WebdavService {
     };
     addedImages.removeAll(deletedImages);
 
-    merged['image_changes'] = {
-      'added': addedImages.toList(),
-      'deleted': deletedImages.toList(),
-    };
+    merged['image_changes'] = {'added': addedImages.toList(), 'deleted': deletedImages.toList()};
 
     return merged;
   }
@@ -720,10 +597,7 @@ class WebdavService {
   Future<bool> downloadDatabase({bool merge = false}) async {
     if (_config == null) return false;
     try {
-      LoggerService.instance.logSync(
-        '开始下载数据库备份',
-        details: merge ? '合并模式' : '覆盖模式',
-      );
+      LoggerService.instance.logSync('开始下载数据库备份', details: merge ? '合并模式' : '覆盖模式');
 
       final manifest = await downloadManifest();
       final exportService = ExportService();
@@ -735,10 +609,7 @@ class WebdavService {
           return false;
         }
 
-        await exportService.importFromJsonString(
-          jsonEncode(snapshot),
-          overwrite: !merge,
-        );
+        await exportService.importFromJsonString(jsonEncode(snapshot), overwrite: !merge);
 
         final hasDelta = manifest['has_delta'] == true;
         if (hasDelta) {
@@ -754,10 +625,7 @@ class WebdavService {
           LoggerService.instance.logSync('未找到任何备份数据', level: LogLevel.warning);
           return false;
         }
-        await exportService.importFromJsonString(
-          jsonEncode(backup),
-          overwrite: !merge,
-        );
+        await exportService.importFromJsonString(jsonEncode(backup), overwrite: !merge);
       }
 
       final syncLog = SyncLogRepository.instance;
@@ -767,11 +635,7 @@ class WebdavService {
       LoggerService.instance.logSync('数据库备份恢复成功');
       return true;
     } catch (e, stackTrace) {
-      LoggerService.instance.logSync(
-        '数据库备份恢复失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logSync('数据库备份恢复失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return false;
     }
   }
@@ -792,18 +656,11 @@ class WebdavService {
         if (success) deletedCount++;
       }
 
-      LoggerService.instance.logSync(
-        '清理旧备份文件完成',
-        details: '删除 $deletedCount/${oldBackupFiles.length} 个文件',
-      );
+      LoggerService.instance.logSync('清理旧备份文件完成', details: '删除 $deletedCount/${oldBackupFiles.length} 个文件');
 
       return deletedCount;
     } catch (e, stackTrace) {
-      LoggerService.instance.logSync(
-        '清理旧备份文件失败: $e',
-        level: LogLevel.error,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.logSync('清理旧备份文件失败: $e', level: LogLevel.error, details: stackTrace.toString());
       return 0;
     }
   }
@@ -899,7 +756,7 @@ class WebdavService {
 
       // 1. 获取本地数据库中所有被引用的“活动图片”
       final activeImages = await _getActiveImagesFromDb();
-      
+
       // 2. 获取本地磁盘上 images/ 目录下所有物理存在的图片
       final appDir = await getApplicationDocumentsDirectory();
       final localImagesDir = Directory(p.join(appDir.path, 'images'));
@@ -921,15 +778,12 @@ class WebdavService {
         await _dio.request(remoteImagesBase, options: Options(method: 'MKCOL'));
       } catch (e) {
         // 目录已存在时服务端常返回 405，不阻断后续上传，但失败需留痕
-        LoggerService.instance.logSync(
-          '确保云端 images 目录存在失败: $e',
-          level: LogLevel.warning,
-        );
+        LoggerService.instance.logSync('确保云端 images 目录存在失败: $e', level: LogLevel.warning);
       }
 
       // 获取云端所有的图片相对路径
       final remoteImages = <String>{};
-      
+
       // 递归获取云端 images 文件夹下的所有文件
       final subfolders = ['diary', 'notes', 'avatar'];
       for (final sub in subfolders) {
@@ -937,11 +791,7 @@ class WebdavService {
         try {
           await _dio.request(remoteSubDir, options: Options(method: 'MKCOL'));
         } catch (e) {
-          LoggerService.instance.logSync(
-            '确保云端图片子目录存在失败: $e',
-            level: LogLevel.warning,
-            details: '子目录=images/$sub',
-          );
+          LoggerService.instance.logSync('确保云端图片子目录存在失败: $e', level: LogLevel.warning, details: '子目录=images/$sub');
         }
 
         final filesInSub = await propFind(remoteSubDir);
@@ -954,7 +804,9 @@ class WebdavService {
         }
       }
 
-      LoggerService.instance.logSync('图片扫描结果: 本地引用=${activeImages.length}, 本地磁盘=${localPhysicalImages.length}, 云端=${remoteImages.length}');
+      LoggerService.instance.logSync(
+        '图片扫描结果: 本地引用=${activeImages.length}, 本地磁盘=${localPhysicalImages.length}, 云端=${remoteImages.length}',
+      );
 
       // 4. 上传逻辑：本地物理存在且被数据库引用，且云端不存在 -> 上传
       final uploadTargets = activeImages.intersection(localPhysicalImages).difference(remoteImages);
@@ -963,7 +815,7 @@ class WebdavService {
         onProgress?.call('上传图片 ${uploadCount + 1}/${uploadTargets.length}');
         final localPath = p.join(appDir.path, 'images', rel);
         final remoteName = 'images/$rel';
-        
+
         // 确保云端子文件夹存在
         final parentDir = p.dirname(rel);
         if (parentDir != '.') {
@@ -1032,7 +884,9 @@ class WebdavService {
         }
       }
 
-      LoggerService.instance.logSync('图片同步完成! 上传=$uploadCount, 下载=$downloadCount, 清理本地=${localCleanupTargets.length}, 云端未引用=$remoteOrphans.length');
+      LoggerService.instance.logSync(
+        '图片同步完成! 上传=$uploadCount, 下载=$downloadCount, 清理本地=${localCleanupTargets.length}, 云端未引用=$remoteOrphans.length',
+      );
       return true;
     } catch (e, stackTrace) {
       LoggerService.instance.logSync('图片同步失败: $e', level: LogLevel.error, details: stackTrace.toString());

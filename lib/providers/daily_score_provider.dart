@@ -89,11 +89,7 @@ class DailyScoreNotifier extends AsyncNotifier<DailyScore?> {
     final aiService = ref.read(aiServiceProvider);
     final config = await AiRoleService.instance.getEffectiveConfigForRole('assistant');
     final settings = await AiRoleService.instance.getSettingsForRole('assistant');
-    aiService.updateConfig(
-      config,
-      temperature: settings.temperature,
-      maxTokens: settings.maxTokens,
-    );
+    aiService.updateConfig(config, temperature: settings.temperature, maxTokens: settings.maxTokens);
 
     final score = await aiService.analyzeDailyScore(
       records: records,

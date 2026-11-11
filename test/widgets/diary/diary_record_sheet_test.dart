@@ -87,9 +87,7 @@ ShortcutConfig _sleepShortcut() {
     id: 'sleep',
     name: '睡眠',
     hasPopup: true,
-    fields: [
-      ShortcutField(id: 'fallAsleepTime', label: '入睡时间', type: 'time'),
-    ],
+    fields: [ShortcutField(id: 'fallAsleepTime', label: '入睡时间', type: 'time')],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
   );
@@ -107,10 +105,8 @@ List<Override> _overrides({
     fixedEventListProvider.overrideWith((ref) async => fixedEvents),
     aiTemperaturesProvider.overrideWith((ref) async => null),
     diaryListProvider.overrideWith(diaryList),
-    if (draft != null)
-      diaryComposeDraftProvider.overrideWith(() => _SeedDraftNotifier(draft)),
-    if (selection != null)
-      diaryInputTimeProvider.overrideWith((ref) => selection),
+    if (draft != null) diaryComposeDraftProvider.overrideWith(() => _SeedDraftNotifier(draft)),
+    if (selection != null) diaryInputTimeProvider.overrideWith((ref) => selection),
   ];
 }
 
@@ -123,12 +119,7 @@ Future<void> _pumpSheet(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: _overrides(
-        shortcuts: shortcuts,
-        fixedEvents: fixedEvents,
-        draft: draft,
-        selection: selection,
-      ),
+      overrides: _overrides(shortcuts: shortcuts, fixedEvents: fixedEvents, draft: draft, selection: selection),
       child: const MaterialApp(home: Scaffold(body: DiaryRecordSheet())),
     ),
   );
@@ -197,18 +188,17 @@ void main() {
   testWidgets('空草稿时发送键禁用', (tester) async {
     await _pumpSheet(tester);
 
-    final button = tester.widget<FilledButton>(
-      find.byKey(const ValueKey('record-send')),
-    );
+    final button = tester.widget<FilledButton>(find.byKey(const ValueKey('record-send')));
     expect(button.onPressed, isNull);
   });
 
   testWidgets('有内容时发送键可用，草稿回填到输入框', (tester) async {
-    await _pumpSheet(tester, draft: DiaryComposeDraft(id: 'd1', inputText: '喝了杯咖啡'));
-
-    final button = tester.widget<FilledButton>(
-      find.byKey(const ValueKey('record-send')),
+    await _pumpSheet(
+      tester,
+      draft: DiaryComposeDraft(id: 'd1', inputText: '喝了杯咖啡'),
     );
+
+    final button = tester.widget<FilledButton>(find.byKey(const ValueKey('record-send')));
     expect(button.onPressed, isNotNull);
     expect(find.text('喝了杯咖啡'), findsOneWidget, reason: '草稿要回填到输入框');
   });
@@ -218,14 +208,8 @@ void main() {
     // 打开时必须对齐，否则头部显示旧时间，和左下角胶囊上刚看到的时间对不上。
     await _pumpSheet(
       tester,
-      draft: DiaryComposeDraft(
-        id: 'd1',
-        startTime: const TimeOfDay(hour: 12, minute: 0),
-      ),
-      selection: TimelineTimeSelectEvent(
-        const TimeOfDay(hour: 14, minute: 30),
-        date: DateTime.now(),
-      ),
+      draft: DiaryComposeDraft(id: 'd1', startTime: const TimeOfDay(hour: 12, minute: 0)),
+      selection: TimelineTimeSelectEvent(const TimeOfDay(hour: 14, minute: 30), date: DateTime.now()),
     );
 
     expect(find.textContaining('14:30'), findsOneWidget);
@@ -239,10 +223,8 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => DiaryRecordSheet.show(context),
-                child: const Text('打开记录'),
-              ),
+              builder: (context) =>
+                  TextButton(onPressed: () => DiaryRecordSheet.show(context), child: const Text('打开记录')),
             ),
           ),
         ),

@@ -21,12 +21,8 @@ HealthDailyMetrics _metrics({
   List<(int, int)> stress = const [],
 }) {
   List<Map<String, dynamic>> encode(List<(int, int)> points) => [
-        for (final p in points)
-          {
-            't': DateTime(2026, 9, 20, p.$1).millisecondsSinceEpoch ~/ 1000,
-            'v': p.$2,
-          },
-      ];
+    for (final p in points) {'t': DateTime(2026, 9, 20, p.$1).millisecondsSinceEpoch ~/ 1000, 'v': p.$2},
+  ];
 
   return HealthDailyMetrics(
     date: '2026-09-20',
@@ -85,24 +81,10 @@ void main() {
     });
 
     testWidgets('心率无采样时给出占位而不是空白页', (tester) async {
-      await _pumpPage(
-        tester,
-        const HealthDetailArgs(
-          kind: HealthMetricKind.heartRate,
-          title: '心率健康',
-          metrics: null,
-        ),
-      );
+      await _pumpPage(tester, const HealthDetailArgs(kind: HealthMetricKind.heartRate, title: '心率健康', metrics: null));
       expect(find.text('这一天没有可展示的健康数据'), findsOneWidget);
 
-      await _pumpPage(
-        tester,
-        HealthDetailArgs(
-          kind: HealthMetricKind.heartRate,
-          title: '心率健康',
-          metrics: _metrics(),
-        ),
-      );
+      await _pumpPage(tester, HealthDetailArgs(kind: HealthMetricKind.heartRate, title: '心率健康', metrics: _metrics()));
       expect(tester.takeException(), isNull);
       expect(find.text('暂无心率采样'), findsOneWidget);
       expect(find.text('无心率采样，可能设备未佩戴或未同步'), findsOneWidget);
@@ -172,10 +154,7 @@ void main() {
         createdAt: DateTime(2026, 9, 19, 19, 30),
       );
 
-      await _pumpPage(
-        tester,
-        HealthDetailArgs(kind: HealthMetricKind.sport, title: '力量训练', sport: record),
-      );
+      await _pumpPage(tester, HealthDetailArgs(kind: HealthMetricKind.sport, title: '力量训练', sport: record));
 
       expect(tester.takeException(), isNull);
       expect(find.text('概览'), findsOneWidget);
@@ -200,10 +179,7 @@ void main() {
         createdAt: DateTime(2026, 9, 18, 8),
       );
 
-      await _pumpPage(
-        tester,
-        HealthDetailArgs(kind: HealthMetricKind.sport, title: '跑步训练', sport: record),
-      );
+      await _pumpPage(tester, HealthDetailArgs(kind: HealthMetricKind.sport, title: '跑步训练', sport: record));
 
       expect(tester.takeException(), isNull);
       expect(find.text('心率区间时长'), findsNothing);
@@ -231,10 +207,7 @@ void main() {
         ]),
       );
 
-      await _pumpPage(
-        tester,
-        HealthDetailArgs(kind: HealthMetricKind.sleep, title: '作息睡眠', metrics: m),
-      );
+      await _pumpPage(tester, HealthDetailArgs(kind: HealthMetricKind.sleep, title: '作息睡眠', metrics: m));
 
       expect(tester.takeException(), isNull);
       expect(find.text('作息概览'), findsOneWidget);
@@ -250,14 +223,7 @@ void main() {
     });
 
     testWidgets('睡眠无分期数据时给出佩戴提示', (tester) async {
-      await _pumpPage(
-        tester,
-        HealthDetailArgs(
-          kind: HealthMetricKind.sleep,
-          title: '作息睡眠',
-          metrics: _metrics(),
-        ),
-      );
+      await _pumpPage(tester, HealthDetailArgs(kind: HealthMetricKind.sleep, title: '作息睡眠', metrics: _metrics()));
       expect(tester.takeException(), isNull);
       expect(find.text('无分期数据，多为设备未整夜佩戴'), findsOneWidget);
       expect(find.text('暂无分期数据'), findsOneWidget);

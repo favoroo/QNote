@@ -10,9 +10,7 @@ void main() {
   AiProvider provider({
     String authMode = AiProvider.authModeApiKey,
     List<String> keys = const ['sk-test'],
-    List<AiProviderModel> models = const [
-      AiProviderModel(id: 'm1', name: 'm1'),
-    ],
+    List<AiProviderModel> models = const [AiProviderModel(id: 'm1', name: 'm1')],
   }) {
     return AiProvider(
       id: 'p1',
@@ -29,10 +27,7 @@ void main() {
   }
 
   test('账号型 auth_mode 写入/读出 toMap，且不要求 api_keys', () {
-    final saved = provider(
-      authMode: AiProvider.authModeRaccoon,
-      keys: const [],
-    );
+    final saved = provider(authMode: AiProvider.authModeRaccoon, keys: const []);
     final map = saved.toMap();
     expect(map['auth_mode'], AiProvider.authModeRaccoon);
 
@@ -52,10 +47,7 @@ void main() {
 
   test('api_key 厂商没有密钥时不可用；账号型没有密钥仍可用', () {
     expect(provider(keys: const []).isUsable, isFalse);
-    expect(
-      provider(authMode: AiProvider.authModeRaccoon, keys: const []).isUsable,
-      isTrue,
-    );
+    expect(provider(authMode: AiProvider.authModeRaccoon, keys: const []).isUsable, isTrue);
   });
 
   test('多账号选号策略与亲和写入/读出，缺失时回落默认值', () {
@@ -80,10 +72,7 @@ void main() {
   });
 
   test('AiConfig.fromProvider 带上 authMode', () {
-    final config = AiConfig.fromProvider(
-      provider(authMode: AiProvider.authModeRaccoon, keys: const []),
-      'm1',
-    );
+    final config = AiConfig.fromProvider(provider(authMode: AiProvider.authModeRaccoon, keys: const []), 'm1');
     expect(config.authMode, AiProvider.authModeRaccoon);
     expect(config.usesAccountAuth, isTrue);
     expect(config.apiKey, isEmpty);

@@ -6,9 +6,5 @@ class RaccoonLoopbackLogin {
   final Future<String> code;
   final void Function() cancel;
 
-  const RaccoonLoopbackLogin({
-    required this.url,
-    required this.code,
-    required this.cancel,
-  });
+  const RaccoonLoopbackLogin({required this.url, required this.code, required this.cancel});
 }

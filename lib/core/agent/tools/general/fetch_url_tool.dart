@@ -15,11 +15,7 @@ class FetchedPage {
   /// 提炼后的 Markdown 正文
   final String markdown;
 
-  const FetchedPage({
-    required this.title,
-    this.description,
-    required this.markdown,
-  });
+  const FetchedPage({required this.title, this.description, required this.markdown});
 }
 
 /// 小Q 的网页阅读工具：抓取 URL 并把 HTML 正文提炼为 Markdown 供模型阅读
@@ -37,8 +33,22 @@ class FetchUrlTool extends AgentTool {
 
   /// 与正文无关的噪音标签，提取前整体剔除
   static const List<String> _noiseTags = [
-    'script', 'style', 'noscript', 'template', 'svg', 'iframe', 'canvas',
-    'nav', 'aside', 'form', 'button', 'select', 'input', 'dialog', 'video', 'audio',
+    'script',
+    'style',
+    'noscript',
+    'template',
+    'svg',
+    'iframe',
+    'canvas',
+    'nav',
+    'aside',
+    'form',
+    'button',
+    'select',
+    'input',
+    'dialog',
+    'video',
+    'audio',
   ];
 
   @override
@@ -56,35 +66,23 @@ class FetchUrlTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'url': {
-            'type': 'string',
-            'description': '要读取的网页地址（完整的 http/https URL）',
-          },
-          'offset': {
-            'type': 'integer',
-            'description': '从正文的第几个字符开始读取，默认 0；上次结果提示可继续读取时传入其给出的 offset',
-          },
-        },
-        'required': ['url'],
-      };
+    'type': 'object',
+    'properties': {
+      'url': {'type': 'string', 'description': '要读取的网页地址（完整的 http/https URL）'},
+      'offset': {'type': 'integer', 'description': '从正文的第几个字符开始读取，默认 0；上次结果提示可继续读取时传入其给出的 offset'},
+    },
+    'required': ['url'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final rawUrl = (arguments['url'] as String? ?? '').trim();
     final offsetArg = arguments['offset'] is int
         ? arguments['offset'] as int
         : int.tryParse('${arguments['offset']}') ?? 0;
 
     final uri = Uri.tryParse(rawUrl);
-    if (rawUrl.isEmpty ||
-        uri == null ||
-        !uri.hasScheme ||
-        (uri.scheme != 'http' && uri.scheme != 'https')) {
+    if (rawUrl.isEmpty || uri == null || !uri.hasScheme || (uri.scheme != 'http' && uri.scheme != 'https')) {
       return ToolResult.error('URL 格式无效，请提供完整的 http/https 链接：$rawUrl');
     }
 
@@ -106,12 +104,8 @@ class FetchUrlTool extends AgentTool {
         ),
       );
       // Web 平台受浏览器同源策略限制，走公共只读代理；其他平台直连
-      final targetUrl =
-          kIsWeb ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(rawUrl)}' : rawUrl;
-      final response = await dio.get<List<int>>(
-        targetUrl,
-        options: Options(responseType: ResponseType.bytes),
-      );
+      final targetUrl = kIsWeb ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(rawUrl)}' : rawUrl;
+      final response = await dio.get<List<int>>(targetUrl, options: Options(responseType: ResponseType.bytes));
       final bytes = response.data;
       if (bytes == null || bytes.isEmpty) {
         return ToolResult.error('网页返回了空内容，可能链接失效：$rawUrl');
@@ -133,12 +127,7 @@ class FetchUrlTool extends AgentTool {
     }
 
     final total = page.markdown.length;
-    final details = <String, dynamic>{
-      'type': 'fetch_url',
-      'url': rawUrl,
-      'title': page.title,
-      'total': total,
-    };
+    final details = <String, dynamic>{'type': 'fetch_url', 'url': rawUrl, 'title': page.title, 'total': total};
 
     final header = StringBuffer()
       ..writeln('网页读取成功。')
@@ -152,25 +141,15 @@ class FetchUrlTool extends AgentTool {
       // 静态 HTML 提取为空，大概率是 JS 渲染的 SPA 页面，走服务端无头渲染兜底
       final rendered = await _fetchRenderedPage(rawUrl);
       if (rendered == null || rendered.isEmpty) {
-        return ToolResult.success(
-          '$header\n正文为空（页面由 JavaScript 动态渲染，且渲染兜底服务不可用，无法提取内容）。',
-          uiDetails: details,
-        );
+        return ToolResult.success('$header\n正文为空（页面由 JavaScript 动态渲染，且渲染兜底服务不可用，无法提取内容）。', uiDetails: details);
       }
-      page = FetchedPage(
-        title: page.title,
-        description: page.description,
-        markdown: rendered,
-      );
+      page = FetchedPage(title: page.title, description: page.description, markdown: rendered);
     }
 
     final totalLength = page.markdown.length;
     details['total'] = totalLength;
     if (totalLength == 0) {
-      return ToolResult.success(
-        '$header\n正文为空（页面可能完全由 JavaScript 动态渲染，无法静态提取内容）。',
-        uiDetails: details,
-      );
+      return ToolResult.success('$header\n正文为空（页面可能完全由 JavaScript 动态渲染，无法静态提取内容）。', uiDetails: details);
     }
 
     header
@@ -184,16 +163,12 @@ class FetchUrlTool extends AgentTool {
 
     String footer = '';
     if (end < totalLength) {
-      footer =
-          '\n\n[正文仅展示第 $start~$end 字符，全文共 $totalLength 字符。如需继续阅读，请再次调用本工具并传 offset: $end]';
+      footer = '\n\n[正文仅展示第 $start~$end 字符，全文共 $totalLength 字符。如需继续阅读，请再次调用本工具并传 offset: $end]';
     } else if (start > 0) {
       footer = '\n\n[已读到正文末尾，全文共 $totalLength 字符]';
     }
 
-    return ToolResult.success(
-      '$header$chunk$footer',
-      uiDetails: details,
-    );
+    return ToolResult.success('$header$chunk$footer', uiDetails: details);
   }
 
   /// 把 HTML 解析为「标题 + meta 摘要 + Markdown 正文」，纯静态函数便于单测
@@ -204,13 +179,15 @@ class FetchUrlTool extends AgentTool {
     }
 
     final title = (document.querySelector('title')?.text ?? '').trim();
-    final description = (document.querySelector('meta[name="description"]')?.attributes['content'] ??
+    final description =
+        (document.querySelector('meta[name="description"]')?.attributes['content'] ??
                 document.querySelector('meta[property="og:description"]')?.attributes['content'])
             ?.trim() ??
         '';
 
     // 正文容器选择：article 语义最优，其次 main，兜底 body
-    final root = document.querySelector('article') ??
+    final root =
+        document.querySelector('article') ??
         document.querySelector('[role="main"]') ??
         document.querySelector('main') ??
         document.body ??
@@ -219,11 +196,7 @@ class FetchUrlTool extends AgentTool {
     var markdown = root == null ? '' : _renderBlocks(root, baseUri);
     markdown = markdown.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 
-    return FetchedPage(
-      title: title,
-      description: description.isEmpty ? null : description,
-      markdown: markdown,
-    );
+    return FetchedPage(title: title, description: description.isEmpty ? null : description, markdown: markdown);
   }
 
   /// 块级元素递归渲染为 Markdown
@@ -418,10 +391,7 @@ class FetchUrlTool extends AgentTool {
       final targetUrl = kIsWeb
           ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('$readerPrefix$url')}'
           : '$readerPrefix$url';
-      final response = await dio.get<String>(
-        targetUrl,
-        options: Options(responseType: ResponseType.plain),
-      );
+      final response = await dio.get<String>(targetUrl, options: Options(responseType: ResponseType.plain));
       final text = response.data;
       if (text == null || text.trim().isEmpty) return null;
       return _stripJinaHeader(text);

@@ -85,11 +85,13 @@ class MiFitnessApiClient {
   final MiFitnessAuthService _authService;
   static const String host = 'https://hlth.io.mi.com';
 
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 20),
-    receiveTimeout: const Duration(seconds: 20),
-    validateStatus: (status) => status != null && status < 500,
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 20),
+      validateStatus: (status) => status != null && status < 500,
+    ),
+  );
 
   MiFitnessApiClient(this._authService);
 
@@ -135,12 +137,7 @@ class MiFitnessApiClient {
     // refreshServiceToken 内部有并发去重，fetchDaySummary 的多个并行请求只会触发一次刷新。
     if (response.statusCode == 401 && allowAuthRetry) {
       final refreshed = await _authService.refreshServiceToken();
-      return _postEncrypted(
-        path: path,
-        payload: payload,
-        credentials: refreshed,
-        allowAuthRetry: false,
-      );
+      return _postEncrypted(path: path, payload: payload, credentials: refreshed, allowAuthRetry: false);
     }
 
     // 刷新后的新票仍被拒：不是「票据过期」而是签名/参数问题，直接抛出（不清凭据，避免误判）
@@ -181,11 +178,7 @@ class MiFitnessApiClient {
       'reverse': false,
     };
 
-    final res = await _postEncrypted(
-      path: path,
-      payload: payload,
-      credentials: credentials,
-    );
+    final res = await _postEncrypted(path: path, payload: payload, credentials: credentials);
 
     if (res is Map && res['code'] == 0 && res['result'] != null) {
       final list = res['result']['data_list'];
@@ -206,7 +199,9 @@ class MiFitnessApiClient {
       try {
         final list = await fetchFitnessData(startTime: startTime, endTime: endTime, key: key);
         if (list.isNotEmpty) {
-          LoggerService.instance.info('MiFitness standing data fetched successfully with key: $key, count: ${list.length}');
+          LoggerService.instance.info(
+            'MiFitness standing data fetched successfully with key: $key, count: ${list.length}',
+          );
           return list;
         }
       } catch (e) {
@@ -220,7 +215,8 @@ class MiFitnessApiClient {
   Future<HealthDailyMetrics> fetchDaySummary(DateTime date) async {
     final startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
     final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
-    final dateStr = '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
     // 睡眠查询窗口扩展到前一天 12:00，确保能捞到跨午夜睡眠（前晚入睡→当天醒来）
     final sleepQueryStart = startOfDay.subtract(const Duration(hours: 12));
@@ -231,9 +227,7 @@ class MiFitnessApiClient {
     // 真没数据时云端回 code=0 + 空列表、不走异常。这种情况是登录态或网络故障，必须抛出而不是返回全 0，
     // 否则会把库里已有的真实数据抹成空白（历史踩坑：serviceToken 过期后整周同步成 0 步）。
     final failures = <Object>[];
-    Future<List<Map<String, dynamic>>> guarded(
-      Future<List<Map<String, dynamic>>> Function() fetch,
-    ) async {
+    Future<List<Map<String, dynamic>>> guarded(Future<List<Map<String, dynamic>>> Function() fetch) async {
       try {
         return await fetch();
       } catch (e) {
@@ -255,10 +249,7 @@ class MiFitnessApiClient {
     ]);
     if (failures.length >= directFetchCount) {
       // 登录态问题优先上抛：它决定了「要重新扫码」还是「稍后重试」，不能被其它指标的错误盖掉
-      throw failures.firstWhere(
-        (e) => e is MiFitnessAuthException,
-        orElse: () => failures.first,
-      );
+      throw failures.firstWhere((e) => e is MiFitnessAuthException, orElse: () => failures.first);
     }
 
     final stepsData = results[0];
@@ -421,14 +412,16 @@ class MiFitnessApiClient {
       final time = (item['time'] as num?)?.toInt() ?? 0;
       try {
         final val = json.decode(item['value'] as String? ?? '{}') as Map<String, dynamic>;
-        samples.add(_MiStepSample(
-          sid: item['sid']?.toString() ?? '',
-          minute: time ~/ 60,
-          hour: time ~/ 3600,
-          steps: (val['steps'] as num?)?.toInt() ?? 0,
-          distanceMeters: (val['distance'] as num?)?.toDouble() ?? 0.0,
-          calories: (val['calories'] as num?)?.toDouble() ?? 0.0,
-        ));
+        samples.add(
+          _MiStepSample(
+            sid: item['sid']?.toString() ?? '',
+            minute: time ~/ 60,
+            hour: time ~/ 3600,
+            steps: (val['steps'] as num?)?.toInt() ?? 0,
+            distanceMeters: (val['distance'] as num?)?.toDouble() ?? 0.0,
+            calories: (val['calories'] as num?)?.toDouble() ?? 0.0,
+          ),
+        );
       } catch (_) {
         // 忽略：单条步数样本格式异常，跳过该点，避免一条脏数据中断日汇总
       }
@@ -484,11 +477,7 @@ class MiFitnessApiClient {
       'next_key': null,
     };
 
-    final res = await _postEncrypted(
-      path: path,
-      payload: payload,
-      credentials: credentials,
-    );
+    final res = await _postEncrypted(path: path, payload: payload, credentials: credentials);
 
     final sportRecords = <HealthSportRecord>[];
     if (res is Map && res['code'] == 0 && res['result'] != null) {
@@ -501,39 +490,37 @@ class MiFitnessApiClient {
               final valStr = item['value'] as String? ?? '{}';
               final val = json.decode(valStr) as Map<String, dynamic>;
 
-              final startSec = (val['start_time'] as num?)?.toInt() ??
-                  (item['time'] as num?)?.toInt() ??
-                  0;
+              final startSec = (val['start_time'] as num?)?.toInt() ?? (item['time'] as num?)?.toInt() ?? 0;
               final endSec = (val['end_time'] as num?)?.toInt() ?? startSec;
               final duration = (val['duration'] as num?)?.toInt() ?? (endSec - startSec);
               final dist = (val['distance'] as num?)?.toDouble() ?? 0.0;
-              final cal = (val['calories'] as num?)?.toDouble() ??
-                  (val['total_cal'] as num?)?.toDouble() ??
-                  0.0;
+              final cal = (val['calories'] as num?)?.toDouble() ?? (val['total_cal'] as num?)?.toDouble() ?? 0.0;
               final category = _mapCategory(val['sport_type'] ?? item['category']);
               final title = _mapTitle(category, val['sport_type']);
 
-              sportRecords.add(HealthSportRecord(
-                id: sid.isNotEmpty ? sid : 'sport_$startSec',
-                sid: sid,
-                category: category,
-                title: title,
-                startTime: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
-                endTime: DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
-                durationSeconds: duration,
-                distanceMeters: dist,
-                calories: cal,
-                avgPace: (val['avg_pace'] as num?)?.toDouble(),
-                maxPace: (val['max_pace'] as num?)?.toDouble(),
-                avgSpeed: (val['avg_speed'] as num?)?.toDouble(),
-                avgHeartRate: (val['avg_hrm'] as num?)?.toInt(),
-                maxHeartRate: (val['max_hrm'] as num?)?.toInt(),
-                steps: (val['steps'] as num?)?.toInt(),
-                avgCadence: (val['avg_cadence'] as num?)?.toInt(),
-                detailJson: valStr,
-                source: 'mi_fitness',
-                createdAt: DateTime.now(),
-              ));
+              sportRecords.add(
+                HealthSportRecord(
+                  id: sid.isNotEmpty ? sid : 'sport_$startSec',
+                  sid: sid,
+                  category: category,
+                  title: title,
+                  startTime: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+                  endTime: DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
+                  durationSeconds: duration,
+                  distanceMeters: dist,
+                  calories: cal,
+                  avgPace: (val['avg_pace'] as num?)?.toDouble(),
+                  maxPace: (val['max_pace'] as num?)?.toDouble(),
+                  avgSpeed: (val['avg_speed'] as num?)?.toDouble(),
+                  avgHeartRate: (val['avg_hrm'] as num?)?.toInt(),
+                  maxHeartRate: (val['max_hrm'] as num?)?.toInt(),
+                  steps: (val['steps'] as num?)?.toInt(),
+                  avgCadence: (val['avg_cadence'] as num?)?.toInt(),
+                  detailJson: valStr,
+                  source: 'mi_fitness',
+                  createdAt: DateTime.now(),
+                ),
+              );
             } catch (e) {
               LoggerService.instance.warning('Failed to parse sport record item: $e');
             }
@@ -597,10 +584,7 @@ class MiFitnessApiClient {
   /// 小米云端把每段睡眠作为独立 item 返回，且请求 `reverse: false` 按时间升序，
   /// 若按「最后一段胜出」会让午睡覆盖整夜睡眠（曾导致一天只记 20 分钟）。
   /// 因此时长与分期跨段累加，入睡/醒来/评分只取最长的那一段。
-  static MiSleepSummary parseSleepSummary(
-    List<Map<String, dynamic>> sleepData,
-    DateTime date,
-  ) {
+  static MiSleepSummary parseSleepSummary(List<Map<String, dynamic>> sleepData, DateTime date) {
     int durationMinutes = 0;
     int deepSleep = 0;
     int lightSleep = 0;
@@ -670,12 +654,7 @@ class MiFitnessApiClient {
                 segAwake += durMin;
               }
               segmentStageMinutes += durMin;
-              sleepStages.add({
-                'state': state,
-                'start': st,
-                'end': et,
-                'duration': durMin,
-              });
+              sleepStages.add({'state': state, 'start': st, 'end': et, 'duration': durMin});
             }
           }
         }

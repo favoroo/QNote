@@ -37,9 +37,7 @@ class UpdateCheckResult {
   const UpdateCheckResult._(this.status, {this.updateInfo, this.errorMessage});
 
   /// 已是最新版本。
-  static const UpdateCheckResult upToDate = UpdateCheckResult._(
-    UpdateCheckStatus.upToDate,
-  );
+  static const UpdateCheckResult upToDate = UpdateCheckResult._(UpdateCheckStatus.upToDate);
 
   /// 发现新版本。
   factory UpdateCheckResult.available(UpdateInfo info) =>
@@ -113,12 +111,10 @@ class UpdateService {
   static final UpdateService instance = UpdateService._();
 
   /// Gitee Releases 最新版本接口地址（国内首选主源）。
-  static const String _giteeReleaseUrl =
-      'https://gitee.com/api/v5/repos/$kGiteeOwner/$kGiteeRepo/releases/latest';
+  static const String _giteeReleaseUrl = 'https://gitee.com/api/v5/repos/$kGiteeOwner/$kGiteeRepo/releases/latest';
 
   /// GitHub Releases 最新版本官方接口地址（备选源）。
-  static const String _githubReleaseUrl =
-      'https://api.github.com/repos/$kRepoOwner/$kRepoName/releases/latest';
+  static const String _githubReleaseUrl = 'https://api.github.com/repos/$kRepoOwner/$kRepoName/releases/latest';
 
   /// 国内 GitHub 加速镜像前缀（末尾带斜杠）。
   static const List<String> kGithubProxies = <String>[
@@ -146,10 +142,7 @@ class UpdateService {
   /// 记录本次检查更新的时间戳。
   Future<void> recordCheckTime() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(
-      _kLastCheckTimeKey,
-      DateTime.now().millisecondsSinceEpoch,
-    );
+    await prefs.setInt(_kLastCheckTimeKey, DateTime.now().millisecondsSinceEpoch);
   }
 
   /// 判断当前冷启动是否应当触发静默更新检查。
@@ -186,23 +179,15 @@ class UpdateService {
         return response.data as Map<String, dynamic>;
       }
     } on DioException catch (e) {
-      LoggerService.instance.warning(
-        '更新接口 ($endpoint) 访问失败: ${e.message}',
-        category: LogCategory.network,
-      );
+      LoggerService.instance.warning('更新接口 ($endpoint) 访问失败: ${e.message}', category: LogCategory.network);
     } catch (e) {
-      LoggerService.instance.warning(
-        '更新接口 ($endpoint) 异常: $e',
-        category: LogCategory.network,
-      );
+      LoggerService.instance.warning('更新接口 ($endpoint) 异常: $e', category: LogCategory.network);
     }
     return null;
   }
 
   /// 从 Release JSON 的 assets 中提取第一个 .apk 附件的下载地址与体积。
-  static ({String url, int size})? extractApkAsset(
-    Map<String, dynamic> releaseData,
-  ) {
+  static ({String url, int size})? extractApkAsset(Map<String, dynamic> releaseData) {
     final assets = releaseData['assets'];
     if (assets is! List) return null;
     for (final item in assets) {
@@ -237,8 +222,7 @@ class UpdateService {
     for (final endpoint in candidateEndpoints) {
       try {
         final response = await _dio.get<dynamic>(endpoint);
-        if (response.statusCode == 200 &&
-            response.data is Map<String, dynamic>) {
+        if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
           releaseData = response.data as Map<String, dynamic>;
           break;
         }
@@ -250,10 +234,7 @@ class UpdateService {
         );
       } catch (e) {
         lastErrorReason = e.toString();
-        LoggerService.instance.warning(
-          '更新检查接口 ($endpoint) 异常: $e，尝试下一个备用地址',
-          category: LogCategory.network,
-        );
+        LoggerService.instance.warning('更新检查接口 ($endpoint) 异常: $e，尝试下一个备用地址', category: LogCategory.network);
       }
     }
 
@@ -295,10 +276,7 @@ class UpdateService {
             ? 'https://api.github.com/repos/$kRepoOwner/$kRepoName/releases/tags/$tagName'
             : 'https://gitee.com/api/v5/repos/$kGiteeOwner/$kGiteeRepo/releases/tags/$tagName';
         // GitHub 官方接口失败时再依次尝试国内加速镜像
-        final fallbackEndpoints = <String>[
-          fallbackBase,
-          ...kGithubProxies.map((proxy) => '$proxy$fallbackBase'),
-        ];
+        final fallbackEndpoints = <String>[fallbackBase, ...kGithubProxies.map((proxy) => '$proxy$fallbackBase')];
         for (final ep in fallbackEndpoints) {
           final fallbackData = await _fetchReleaseJson(ep);
           if (fallbackData != null) {
@@ -306,10 +284,7 @@ class UpdateService {
             if (apk != null) {
               rawApkUrl = apk.url;
               apkSize = apk.size > 0 ? apk.size : null;
-              LoggerService.instance.info(
-                '补查到另一端 APK 附件: $rawApkUrl',
-                category: LogCategory.network,
-              );
+              LoggerService.instance.info('补查到另一端 APK 附件: $rawApkUrl', category: LogCategory.network);
               break;
             }
           }
@@ -326,8 +301,7 @@ class UpdateService {
           candidateDownloadUrls.add(rawApkUrl);
           // 备选推断 GitHub 对应的加速镜像与直链
           final fileName = rawApkUrl.split('/').last;
-          final ghDirectUrl =
-              'https://github.com/$kRepoOwner/$kRepoName/releases/download/$tagName/$fileName';
+          final ghDirectUrl = 'https://github.com/$kRepoOwner/$kRepoName/releases/download/$tagName/$fileName';
           for (final proxy in kGithubProxies) {
             candidateDownloadUrls.add('$proxy$ghDirectUrl');
           }
@@ -360,11 +334,7 @@ class UpdateService {
         ),
       );
     } catch (e, stackTrace) {
-      LoggerService.instance.error(
-        '解析更新数据异常: $e',
-        category: LogCategory.network,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.error('解析更新数据异常: $e', category: LogCategory.network, details: stackTrace.toString());
       return UpdateCheckResult.failed('解析更新数据失败');
     }
   }
@@ -380,8 +350,7 @@ class UpdateService {
   Future<String> downloadApk({
     required List<String> candidateUrls,
     required void Function(int received, int total) onProgress,
-    void Function(int received, int total, double speedBytesPerSec)?
-    onProgressWithSpeed,
+    void Function(int received, int total, double speedBytesPerSec)? onProgressWithSpeed,
     int concurrency = 3,
     CancelToken? cancelToken,
   }) async {
@@ -402,10 +371,7 @@ class UpdateService {
       }
 
       try {
-        LoggerService.instance.info(
-          '尝试通过节点下载 APK: $url',
-          category: LogCategory.network,
-        );
+        LoggerService.instance.info('尝试通过节点下载 APK: $url', category: LogCategory.network);
 
         final resultPath = await downloader.download(
           url: url,
@@ -425,16 +391,10 @@ class UpdateService {
         if (CancelToken.isCancel(e)) {
           rethrow;
         }
-        LoggerService.instance.warning(
-          'APK 下载节点失败 ($url): ${e.message}，准备尝试下一个镜像',
-          category: LogCategory.network,
-        );
+        LoggerService.instance.warning('APK 下载节点失败 ($url): ${e.message}，准备尝试下一个镜像', category: LogCategory.network);
       } catch (e) {
         lastError = e;
-        LoggerService.instance.warning(
-          'APK 下载节点异常 ($url): $e，准备尝试下一个镜像',
-          category: LogCategory.network,
-        );
+        LoggerService.instance.warning('APK 下载节点异常 ($url): $e，准备尝试下一个镜像', category: LogCategory.network);
       }
     }
 

@@ -97,9 +97,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     _initialServerUrl = _serverUrlController.text.trim();
     _initialUsername = _usernameController.text.trim();
     _initialPassword = _passwordController.text;
-    _initialRemotePath = _remotePathController.text.trim().isEmpty
-        ? 'QNote'
-        : _remotePathController.text.trim();
+    _initialRemotePath = _remotePathController.text.trim().isEmpty ? 'QNote' : _remotePathController.text.trim();
     _initialWebdavEnabled = _webdavEnabled;
     _initialSyncOnLaunch = _syncOnLaunch;
     _initialSyncImages = _syncImages;
@@ -200,9 +198,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       serverUrl: _serverUrlController.text.trim(),
       username: _usernameController.text.trim(),
       password: _passwordController.text,
-      remotePath: _remotePathController.text.trim().isEmpty
-          ? 'QNote'
-          : _remotePathController.text.trim(),
+      remotePath: _remotePathController.text.trim().isEmpty ? 'QNote' : _remotePathController.text.trim(),
       autoSync: _webdavEnabled,
       syncInterval: _webdavEnabled ? _syncInterval : 0,
       lastSyncTime: existing?.lastSyncTime,
@@ -239,9 +235,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         serverUrl: url,
         username: user,
         password: pwd,
-        remotePath: _remotePathController.text.trim().isEmpty
-            ? 'QNote'
-            : _remotePathController.text.trim(),
+        remotePath: _remotePathController.text.trim().isEmpty ? 'QNote' : _remotePathController.text.trim(),
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -430,17 +424,9 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildInputField(
-            label: '服务器地址',
-            hint: '如 https://dav.jianguoyun.com/dav/',
-            controller: _serverUrlController,
-          ),
+          _buildInputField(label: '服务器地址', hint: '如 https://dav.jianguoyun.com/dav/', controller: _serverUrlController),
           const SizedBox(height: 12),
-          _buildInputField(
-            label: '账号',
-            hint: 'WebDAV 用户名或邮箱',
-            controller: _usernameController,
-          ),
+          _buildInputField(label: '账号', hint: 'WebDAV 用户名或邮箱', controller: _usernameController),
           const SizedBox(height: 12),
           _buildInputField(
             label: '应用密码',
@@ -484,11 +470,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           ),
           if (_showAdvancedPath) ...[
             const SizedBox(height: 8),
-            _buildInputField(
-              label: '远程根目录名称',
-              hint: '默认 QNote',
-              controller: _remotePathController,
-            ),
+            _buildInputField(label: '远程根目录名称', hint: '默认 QNote', controller: _remotePathController),
           ],
         ],
       ),
@@ -537,9 +519,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
               title: '同步频率',
               trailing: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
-                  value: _syncIntervalOptions.any((e) => e.value == _syncInterval)
-                      ? _syncInterval
-                      : 15,
+                  value: _syncIntervalOptions.any((e) => e.value == _syncInterval) ? _syncInterval : 15,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     fontSize: AppTypography.body,
@@ -547,10 +527,12 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   ),
                   isDense: true,
                   items: _syncIntervalOptions
-                      .map((e) => DropdownMenuItem(
-                            value: e.value,
-                            child: Text(e.key, style: const TextStyle(fontSize: AppTypography.body)),
-                          ))
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e.value,
+                          child: Text(e.key, style: const TextStyle(fontSize: AppTypography.body)),
+                        ),
+                      )
                       .toList(),
                   onChanged: (val) {
                     if (val != null) {
@@ -609,10 +591,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), shape: BoxShape.circle),
                 child: Icon(_statusIcon(syncStatus), color: statusColor, size: 20),
               ),
               const SizedBox(width: 12),
@@ -641,13 +620,8 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      lastSyncTime != null
-                          ? '上次同步：${_formatCompactLastSyncTime(lastSyncTime)}'
-                          : '尚未同步',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.hintColor,
-                        fontSize: AppTypography.label,
-                      ),
+                      lastSyncTime != null ? '上次同步：${_formatCompactLastSyncTime(lastSyncTime)}' : '尚未同步',
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: AppTypography.label),
                     ),
                   ],
                 ),
@@ -688,9 +662,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             height: 46,
             child: FilledButton.icon(
               onPressed: isSyncing ? null : _performSync,
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
+              style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
               icon: isSyncing
                   ? const SizedBox(
                       width: 16,
@@ -723,10 +695,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         children: [
           Container(
             padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: iconColor, size: 18),
           ),
           const SizedBox(width: 14),
@@ -746,10 +715,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   const SizedBox(height: 2),
                   Text(
                     description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.hintColor,
-                      fontSize: AppTypography.label,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: AppTypography.label),
                   ),
                 ],
               ],
@@ -778,10 +744,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           padding: const EdgeInsets.only(left: 4, bottom: 4),
           child: Text(
             label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.hintColor,
-              fontWeight: FontWeight.w500,
-            ),
+            style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w500),
           ),
         ),
         TextField(
@@ -792,32 +755,20 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             filled: true,
             fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
             ),
             suffixIcon: isPassword
                 ? IconButton(
-                    icon: Icon(
-                      obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                      size: 18,
-                    ),
+                    icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
                     onPressed: onToggleObscure,
                   )
                 : null,
           ),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-            fontSize: AppTypography.body,
-          ),
+          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500, fontSize: AppTypography.body),
         ),
       ],
     );

@@ -9,10 +9,7 @@ import 'package:qnote_flutter/core/router/app_router.dart';
 /// 可用厂商条目时都应该走这里，明确告知「去添加模型」而不是抛一段技术错误。
 ///
 /// [scene] 用于文案定位（如「小Q 对话」「AI 评分」），可以留空。
-Future<void> showNoModelConfiguredDialog(
-  BuildContext context, {
-  String scene = '',
-}) async {
+Future<void> showNoModelConfiguredDialog(BuildContext context, {String scene = ''}) async {
   // 悬浮小Q 面板挂在全局 Overlay 上，用它的 context 弹窗可能被悬浮球遮挡；
   // 统一落到根导航器上下文，弹窗层级与路由页面一致。
   final hostContext = rootNavigatorKey.currentContext ?? context;
@@ -23,26 +20,15 @@ Future<void> showNoModelConfiguredDialog(
     builder: (ctx) {
       final theme = Theme.of(ctx);
       return AlertDialog(
-        icon: Icon(
-          Icons.extension_off_rounded,
-          color: theme.colorScheme.primary,
-        ),
+        icon: Icon(Icons.extension_off_rounded, color: theme.colorScheme.primary),
         title: const Text('还没有可用的 AI 模型'),
         content: Text(
-          scene.isEmpty
-              ? '添加模型服务：填入 API 地址与密钥，扫描并启用模型即可使用。'
-              : '$scene需要添加模型服务。\n到「AI 模型配置」填入 API 地址与密钥即可。',
+          scene.isEmpty ? '添加模型服务：填入 API 地址与密钥，扫描并启用模型即可使用。' : '$scene需要添加模型服务。\n到「AI 模型配置」填入 API 地址与密钥即可。',
           style: theme.textTheme.bodyMedium,
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('稍后'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('去添加模型'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('稍后')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('去添加模型')),
         ],
       );
     },
@@ -77,10 +63,7 @@ Future<void> showVisionUnsupportedDialog(
     builder: (ctx) {
       final theme = Theme.of(ctx);
       return AlertDialog(
-        icon: Icon(
-          Icons.image_not_supported_outlined,
-          color: theme.colorScheme.error,
-        ),
+        icon: Icon(Icons.image_not_supported_outlined, color: theme.colorScheme.error),
         title: const Text('当前模型不支持识图'),
         content: Text(
           '$scene需要识图，但「时间线提取」绑定的「$modelName」不支持图片输入。\n'
@@ -89,14 +72,8 @@ Future<void> showVisionUnsupportedDialog(
           style: theme.textTheme.bodyMedium,
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('知道了'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('去换模型'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('知道了')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('去换模型')),
         ],
       );
     },
@@ -128,9 +105,7 @@ class NoModelGuideCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -145,41 +120,24 @@ class NoModelGuideCard extends StatelessWidget {
                     color: colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    Icons.extension_rounded,
-                    color: colorScheme.primary,
-                    size: 20,
-                  ),
+                  child: Icon(Icons.extension_rounded, color: colorScheme.primary, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    '还没有可用的 AI 模型',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('还没有可用的 AI 模型', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
             const SizedBox(height: 10),
             Text(
-              scene.isEmpty
-                  ? '添加模型服务后，小Q 对话、日记提取与 AI 评分即可使用。'
-                  : '$scene需要调用 AI 模型，添加模型服务后即可使用。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
+              scene.isEmpty ? '添加模型服务后，小Q 对话、日记提取与 AI 评分即可使用。' : '$scene需要调用 AI 模型，添加模型服务后即可使用。',
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
             ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () => context.push(
-                  '/settings/ai-config',
-                  extra: const AiConfigPageArgs(autoOpenAdd: true),
-                ),
+                onPressed: () => context.push('/settings/ai-config', extra: const AiConfigPageArgs(autoOpenAdd: true)),
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text('去添加模型'),
               ),

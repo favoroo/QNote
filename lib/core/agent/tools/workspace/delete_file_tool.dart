@@ -18,23 +18,21 @@ class DeleteFileTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'path': {
-            'type': 'string',
-            'description': '要删除的文件或分类目录绝对路径'
-                '（如 "/todos/今日/拿快递.md"、"/todos/临时分类/"、'
-                '"/timeline/<id>.md"、"/chats/<会话id>.json"）',
-          },
-        },
-        'required': ['path'],
-      };
+    'type': 'object',
+    'properties': {
+      'path': {
+        'type': 'string',
+        'description':
+            '要删除的文件或分类目录绝对路径'
+            '（如 "/todos/今日/拿快递.md"、"/todos/临时分类/"、'
+            '"/timeline/<id>.md"、"/chats/<会话id>.json"）',
+      },
+    },
+    'required': ['path'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final path = (arguments['path'] as String? ?? '').trim();
     if (path.isEmpty) {
       return ToolResult.error('路径不能为空');
@@ -43,10 +41,7 @@ class DeleteFileTool extends AgentTool {
     try {
       final res = await _vfs.deleteFile(path);
       final title = res['title'] ?? path;
-      return ToolResult.success(
-        '已成功删除 [$title] ($path)',
-        uiDetails: res,
-      );
+      return ToolResult.success('已成功删除 [$title] ($path)', uiDetails: res);
     } catch (e) {
       return ToolResult.error('删除文件失败: $e');
     }

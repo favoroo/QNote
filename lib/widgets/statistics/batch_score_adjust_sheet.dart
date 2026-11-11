@@ -37,10 +37,7 @@ class BatchScoreAdjustSheet extends StatefulWidget {
           color: colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: SafeArea(
-          top: false,
-          child: BatchScoreAdjustSheet(adjust: adjust),
-        ),
+        child: SafeArea(top: false, child: BatchScoreAdjustSheet(adjust: adjust)),
       ),
     );
   }
@@ -102,12 +99,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
     }
     setState(() => _loadingPreview = true);
     try {
-      final result = await widget.adjust(
-        from: _from,
-        to: _to,
-        spec: spec,
-        dryRun: true,
-      );
+      final result = await widget.adjust(from: _from, to: _to, spec: spec, dryRun: true);
       if (!mounted || seq != _requestSeq) return;
       setState(() {
         _preview = result;
@@ -127,12 +119,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
   Future<void> _apply(ScoreAdjustSpec spec) async {
     setState(() => _applying = true);
     try {
-      final result = await widget.adjust(
-        from: _from,
-        to: _to,
-        spec: spec,
-        dryRun: false,
-      );
+      final result = await widget.adjust(from: _from, to: _to, spec: spec, dryRun: false);
       if (!mounted) return;
       setState(() => _applying = false);
       Toast.success(context, '已调整 ${result.applied} 天评分${_clampedSuffix(result)}');
@@ -227,18 +214,11 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
               ),
             ),
           ),
-          Text(
-            '批量调整评分',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text('批量调整评分', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Text(
             '按同一规则改已有评分，无评分的日期跳过、不新建。',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
           Flexible(
             child: SingleChildScrollView(
@@ -250,18 +230,9 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ActionChip(
-                        label: const Text('近7天'),
-                        onPressed: _applying ? null : () => _applyQuickRange(7),
-                      ),
-                      ActionChip(
-                        label: const Text('近30天'),
-                        onPressed: _applying ? null : () => _applyQuickRange(30),
-                      ),
-                      ActionChip(
-                        label: const Text('本月'),
-                        onPressed: _applying ? null : _applyThisMonth,
-                      ),
+                      ActionChip(label: const Text('近7天'), onPressed: _applying ? null : () => _applyQuickRange(7)),
+                      ActionChip(label: const Text('近30天'), onPressed: _applying ? null : () => _applyQuickRange(30)),
+                      ActionChip(label: const Text('本月'), onPressed: _applying ? null : _applyThisMonth),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -306,9 +277,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                           child: TextField(
                             controller: _deltaController,
                             enabled: !_applying,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              signed: true,
-                            ),
+                            keyboardType: const TextInputType.numberWithOptions(signed: true),
                             decoration: const InputDecoration(
                               labelText: '加减分值',
                               helperText: '负数即降分',
@@ -367,12 +336,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                   _buildPreviewCard(context, applied: applied),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.error,
-                      ),
-                    ),
+                    Text(_error!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.error)),
                   ],
                 ],
               ),
@@ -384,11 +348,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
             child: FilledButton.icon(
               onPressed: canApply ? () => _apply(spec) : null,
               icon: _applying
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.check),
               label: Text(applied > 0 ? '应用到 $applied 天' : _noTargetLabel()),
             ),
@@ -419,11 +379,7 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
       child: _loadingPreview
           ? Row(
               children: [
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 const SizedBox(width: 10),
                 Text('正在计算…', style: Theme.of(context).textTheme.bodySmall),
               ],
@@ -432,12 +388,8 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  result == null
-                      ? '设置规则后列出改动日期与前后分值'
-                      : result.preview,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  result == null ? '设置规则后列出改动日期与前后分值' : result.preview,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 if (result != null && result.outcomes.isNotEmpty) ...[
                   const SizedBox(height: 8),
@@ -455,24 +407,16 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                           ),
                           Expanded(
                             child: Text(
-                              outcome.changes
-                                  .map((c) => '${c.field.label} ${c.before ?? '—'}→${c.after}')
-                                  .join('　'),
+                              outcome.changes.map((c) => '${c.field.label} ${c.before ?? '—'}→${c.after}').join('　'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: colorScheme.primary,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.primary),
                             ),
                           ),
                           if (outcome.clamped)
                             Tooltip(
                               message: '已到上下限，实际幅度小于请求值',
-                              child: Icon(
-                                Icons.warning_amber_rounded,
-                                size: 16,
-                                color: colorScheme.error,
-                              ),
+                              child: Icon(Icons.warning_amber_rounded, size: 16, color: colorScheme.error),
                             ),
                         ],
                       ),
@@ -480,17 +424,13 @@ class _BatchScoreAdjustSheetState extends State<BatchScoreAdjustSheet> {
                   if (result.outcomes.length > 6)
                     Text(
                       '另有 ${result.outcomes.length - 6} 天同类改动',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                     ),
                 ],
                 const SizedBox(height: 8),
                 Text(
                   '总分不随维度重算，评语不变；超近 3 个月的日期不在热力图显示。',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                 ),
               ],
             ),

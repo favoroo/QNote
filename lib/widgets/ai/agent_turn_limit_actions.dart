@@ -15,12 +15,7 @@ class AgentTurnLimitActions extends StatelessWidget {
   /// 是否可点（Agent 执行中禁用，防止并发任务）
   final bool enabled;
 
-  const AgentTurnLimitActions({
-    super.key,
-    required this.onContinue,
-    required this.onPause,
-    this.enabled = true,
-  });
+  const AgentTurnLimitActions({super.key, required this.onContinue, required this.onPause, this.enabled = true});
 
   @override
   Widget build(BuildContext context) {

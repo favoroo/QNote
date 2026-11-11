@@ -15,36 +15,18 @@ Future<DateTime?> showTimePickerDialog({
   if (mode == TimePickerMode.dateTime) {
     return showDialog<DateTime>(
       context: context,
-      builder: (context) => TimeDateDialog(
-        initialDate: now,
-        title: title,
-      ),
+      builder: (context) => TimeDateDialog(initialDate: now, title: title),
     );
   }
 
   switch (mode) {
     case TimePickerMode.date:
-      return showDatePicker(
-        context: context,
-        initialDate: now,
-        firstDate: DateTime(2000),
-        lastDate: DateTime(2100),
-      );
+      return showDatePicker(context: context, initialDate: now, firstDate: DateTime(2000), lastDate: DateTime(2100));
 
     case TimePickerMode.time:
-      final result = await showTimeScrollPicker(
-        context: context,
-        initialHour: now.hour,
-        initialMinute: now.minute,
-      );
+      final result = await showTimeScrollPicker(context: context, initialHour: now.hour, initialMinute: now.minute);
       if (result == null) return null;
-      return DateTime(
-        now.year,
-        now.month,
-        now.day,
-        result.hour,
-        result.minute,
-      );
+      return DateTime(now.year, now.month, now.day, result.hour, result.minute);
 
     default:
       return null;
@@ -55,11 +37,7 @@ class TimeDateDialog extends StatefulWidget {
   final DateTime initialDate;
   final String title;
 
-  const TimeDateDialog({
-    super.key,
-    required this.initialDate,
-    required this.title,
-  });
+  const TimeDateDialog({super.key, required this.initialDate, required this.title});
 
   @override
   State<TimeDateDialog> createState() => _TimeDateDialogState();
@@ -121,12 +99,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  widget.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text(widget.title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 IconButton(
                   icon: const Icon(Icons.close, size: 20),
                   onPressed: () => Navigator.pop(context),
@@ -144,9 +117,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Theme(
-                data: theme.copyWith(
-                  splashFactory: NoSplash.splashFactory,
-                ),
+                data: theme.copyWith(splashFactory: NoSplash.splashFactory),
                 child: CalendarDatePicker(
                   initialDate: _selectedDate,
                   firstDate: DateTime(2000),
@@ -163,12 +134,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '时间',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                Text('时间', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                 TextButton.icon(
                   onPressed: () {
                     setState(() {
@@ -188,10 +154,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                     });
                   },
                   icon: Icon(_isKeyboardMode ? Icons.view_day_outlined : Icons.keyboard_outlined, size: 14),
-                  label: Text(
-                    _isKeyboardMode ? '滑动选择' : '键盘输入',
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                  label: Text(_isKeyboardMode ? '滑动选择' : '键盘输入', style: const TextStyle(fontSize: 12)),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     minimumSize: Size.zero,
@@ -207,9 +170,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                 color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: _isKeyboardMode
-                  ? _buildKeyboardInput(theme)
-                  : _buildScrollPickers(theme),
+              child: _isKeyboardMode ? _buildKeyboardInput(theme) : _buildScrollPickers(theme),
             ),
             const SizedBox(height: 12),
             SizedBox(
@@ -238,10 +199,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                   children: [
                     Icon(Icons.check, size: 20),
                     SizedBox(width: 8),
-                    Text(
-                      '完成',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
+                    Text('完成', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
               ),
@@ -276,10 +234,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                 counterText: '',
                 filled: true,
                 fillColor: theme.colorScheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
@@ -330,10 +285,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                 counterText: '',
                 filled: true,
                 fillColor: theme.colorScheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
@@ -366,12 +318,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 4,
-                ),
-              ],
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4)],
             ),
           ),
         ),
@@ -396,7 +343,9 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                       index.toString().padLeft(2, '0'),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         height: 1.0,
                         leadingDistribution: TextLeadingDistribution.even,
                       ),
@@ -432,7 +381,9 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                       index.toString().padLeft(2, '0'),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         height: 1.0,
                         leadingDistribution: TextLeadingDistribution.even,
                       ),
@@ -471,19 +422,18 @@ class DashedRectPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2, size.width - strokeWidth, size.height - strokeWidth),
-        Radius.circular(borderRadius),
-      ));
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2, size.width - strokeWidth, size.height - strokeWidth),
+          Radius.circular(borderRadius),
+        ),
+      );
 
     final dashedPath = Path();
     for (final metric in path.computeMetrics()) {
       double distance = 0.0;
       while (distance < metric.length) {
-        dashedPath.addPath(
-          metric.extractPath(distance, distance + dashWidth),
-          Offset.zero,
-        );
+        dashedPath.addPath(metric.extractPath(distance, distance + dashWidth), Offset.zero);
         distance += dashWidth + dashSpace;
       }
     }

@@ -3,10 +3,7 @@ import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart
 
 /// 向用户提问或请求确认的工具
 class AskUserTool extends AgentTool {
-  final Future<String?> Function({
-    required String question,
-    List<String>? options,
-  })? onAskUser;
+  final Future<String?> Function({required String question, List<String>? options})? onAskUser;
 
   AskUserTool({this.onAskUser});
 
@@ -19,26 +16,20 @@ class AskUserTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'question': {
-            'type': 'string',
-            'description': '向用户提出的问题或操作确认提示内容',
-          },
-          'options': {
-            'type': 'array',
-            'items': {'type': 'string'},
-            'description': '建议的快捷选项列表供用户点击选择，例如 ["确认删除", "取消"]',
-          },
-        },
-        'required': ['question'],
-      };
+    'type': 'object',
+    'properties': {
+      'question': {'type': 'string', 'description': '向用户提出的问题或操作确认提示内容'},
+      'options': {
+        'type': 'array',
+        'items': {'type': 'string'},
+        'description': '建议的快捷选项列表供用户点击选择，例如 ["确认删除", "取消"]',
+      },
+    },
+    'required': ['question'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final question = arguments['question'] as String? ?? '';
     final options = (arguments['options'] as List?)?.map((e) => e.toString()).toList();
 
@@ -47,20 +38,12 @@ class AskUserTool extends AgentTool {
     // 挂起等待用户在 UI 弹窗中完成交互
     final userChoice = onAskUser != null
         ? await onAskUser!(question: question, options: options)
-        : await AgentInteractionService.instance.askUser(
-            question: question,
-            options: options,
-          );
+        : await AgentInteractionService.instance.askUser(question: question, options: options);
 
     if (userChoice == null) {
       return ToolResult.success(
         '用户取消了该操作（或关闭了确认弹窗）。请停止继续执行此操作，并向用户简要反馈已取消。',
-        uiDetails: {
-          'type': 'ask_user',
-          'question': question,
-          'options': options,
-          'status': 'cancelled',
-        },
+        uiDetails: {'type': 'ask_user', 'question': question, 'options': options, 'status': 'cancelled'},
       );
     }
 
@@ -92,4 +75,3 @@ class AskUserTool extends AgentTool {
     );
   }
 }
-

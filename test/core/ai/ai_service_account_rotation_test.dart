@@ -39,9 +39,7 @@ void main() {
       accountRouting: routing,
       accountAffinity: affinity,
       apiKeys: const [],
-      models: const [
-        AiProviderModel(id: 'raccoon-chat-ml-5-5', name: 'Raccoon Chat'),
-      ],
+      models: const [AiProviderModel(id: 'raccoon-chat-ml-5-5', name: 'Raccoon Chat')],
       createdAt: DateTime(2026, 1, 1),
       updatedAt: DateTime(2026, 1, 1),
     );
@@ -62,9 +60,7 @@ void main() {
     );
   }
 
-  List<ChatMessage> messages(String text) => [
-    ChatMessage(role: 'user', content: text, timestamp: DateTime.now()),
-  ];
+  List<ChatMessage> messages(String text) => [ChatMessage(role: 'user', content: text, timestamp: DateTime.now())];
 
   setUpAll(() {
     // AI 日志会落持久化通道，不 mock 会刷一屏 MissingPluginException
@@ -82,13 +78,8 @@ void main() {
   tearDown(auth.resetForTest);
 
   test('轮流：两个账号各用一次，Authorization 跟着换', () async {
-    RaccoonAuthService.accountsLoaderForTest = (_) async => [
-      account('a1', 0),
-      account('a2', 1),
-    ];
-    service.updateConfig(
-      AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'),
-    );
+    RaccoonAuthService.accountsLoaderForTest = (_) async => [account('a1', 0), account('a2', 1)];
+    service.updateConfig(AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'));
 
     await service.chatResponse(messages('hi'));
     await service.chatResponse(messages('hi again'));
@@ -97,14 +88,9 @@ void main() {
   });
 
   test('账号 A 撞 429 → 自动换账号 B 重发并成功', () async {
-    RaccoonAuthService.accountsLoaderForTest = (_) async => [
-      account('a1', 0),
-      account('a2', 1),
-    ];
+    RaccoonAuthService.accountsLoaderForTest = (_) async => [account('a1', 0), account('a2', 1)];
     adapter.rateLimitedTokens = {'token-a1'};
-    service.updateConfig(
-      AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'));
 
     final reply = await service.chatResponse(messages('hi'));
 
@@ -113,18 +99,11 @@ void main() {
   });
 
   test('单账号撞 429 时不换号：沿用原有退避重试链路并透出原始错误', () async {
-    RaccoonAuthService.accountsLoaderForTest = (_) async => [
-      account('a1', 0),
-    ];
+    RaccoonAuthService.accountsLoaderForTest = (_) async => [account('a1', 0)];
     adapter.rateLimitedTokens = {'token-a1'};
-    service.updateConfig(
-      AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(provider(), 'raccoon-chat-ml-5-5'));
 
-    await expectLater(
-      service.chatResponse(messages('hi')),
-      throwsA(isA<DioException>()),
-    );
+    await expectLater(service.chatResponse(messages('hi')), throwsA(isA<DioException>()));
     // 退避重试仍打在同一账号上，没有把唯一账号打进冷却而误报「请重新登录」
     expect(adapter.authHeaders, isNotEmpty);
     expect(adapter.authHeaders.every((h) => h == 'Bearer token-a1'), isTrue);
@@ -132,10 +111,7 @@ void main() {
   });
 
   test('会话亲和：同一会话的两条消息固定用同一账号', () async {
-    RaccoonAuthService.accountsLoaderForTest = (_) async => [
-      account('a1', 0),
-      account('a2', 1),
-    ];
+    RaccoonAuthService.accountsLoaderForTest = (_) async => [account('a1', 0), account('a2', 1)];
     final scoped = provider(affinity: AccountAffinity.session.id);
     service.updateConfig(AiConfig.fromProvider(scoped, 'raccoon-chat-ml-5-5'));
 
@@ -152,14 +128,9 @@ void main() {
   });
 
   test('顺序策略：始终用排在前面的账号', () async {
-    RaccoonAuthService.accountsLoaderForTest = (_) async => [
-      account('a1', 0),
-      account('a2', 0),
-    ];
+    RaccoonAuthService.accountsLoaderForTest = (_) async => [account('a1', 0), account('a2', 0)];
     final failover = provider(routing: AccountRouting.failover.id);
-    service.updateConfig(
-      AiConfig.fromProvider(failover, 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(failover, 'raccoon-chat-ml-5-5'));
 
     await service.chatResponse(messages('hi'));
     await service.chatResponse(messages('again'));
@@ -168,15 +139,10 @@ void main() {
   });
 
   test('严格亲和：账号失败也不换号，错误直接抛给用户', () async {
-    RaccoonAuthService.accountsLoaderForTest = (_) async => [
-      account('a1', 0),
-      account('a2', 1),
-    ];
+    RaccoonAuthService.accountsLoaderForTest = (_) async => [account('a1', 0), account('a2', 1)];
     adapter.rateLimitedTokens = {'token-a1'};
     final strict = provider(affinity: AccountAffinity.strict.id);
-    service.updateConfig(
-      AiConfig.fromProvider(strict, 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(strict, 'raccoon-chat-ml-5-5'));
 
     await expectLater(
       service.chatResponse(
@@ -195,9 +161,7 @@ void main() {
       account('a2', 1),
     ];
     final failover = provider(routing: AccountRouting.failover.id);
-    service.updateConfig(
-      AiConfig.fromProvider(failover, 'raccoon-chat-ml-5-5'),
-    );
+    service.updateConfig(AiConfig.fromProvider(failover, 'raccoon-chat-ml-5-5'));
 
     await service.chatResponse(messages('hi'));
 
@@ -233,9 +197,7 @@ class _MultiAccountAdapter implements HttpClientAdapter {
         ],
       });
     }
-    return _json({
-      'message': 'unexpected path ${options.uri.path}',
-    }, status: 404);
+    return _json({'message': 'unexpected path ${options.uri.path}'}, status: 404);
   }
 
   ResponseBody _json(Map<String, dynamic> body, {int status = 200}) {

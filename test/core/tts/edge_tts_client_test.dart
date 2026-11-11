@@ -9,9 +9,7 @@ void main() {
   group('EdgeTtsClient 握手参数', () {
     test('URL 携带 v2 令牌与 Sec-MS-GEC-Version=2-（v1 令牌已被服务端 403）', () async {
       Uri? captured;
-      final connection = _FakeConnection([
-        const EdgeWsTextFrame('Path:turn.end'),
-      ]);
+      final connection = _FakeConnection([const EdgeWsTextFrame('Path:turn.end')]);
       try {
         await EdgeTtsClient.synthesize(
           text: '你好',
@@ -27,10 +25,7 @@ void main() {
       }
       final query = captured!.queryParameters;
       expect(query['Sec-MS-GEC-Version'], '2-143.0.3650.75');
-      expect(
-        query['Sec-MS-GEC'],
-        matches(RegExp(r'^[0-9A-F]{16}-[0-9A-F]{64}$')),
-      );
+      expect(query['Sec-MS-GEC'], matches(RegExp(r'^[0-9A-F]{16}-[0-9A-F]{64}$')));
       expect(query['TrustedClientToken'], '6A5AA1D4EAFF4E9FB37E23D68491D6F4');
     });
 
@@ -41,11 +36,7 @@ void main() {
 
   group('EdgeTtsClient.buildSsml', () {
     test('包含音色名与语速百分比', () {
-      final ssml = EdgeTtsClient.buildSsml(
-        text: '你好',
-        voice: 'zh-CN-YunxiNeural',
-        rate: 1.2,
-      );
+      final ssml = EdgeTtsClient.buildSsml(text: '你好', voice: 'zh-CN-YunxiNeural', rate: 1.2);
       expect(ssml, contains("<voice name='zh-CN-YunxiNeural'>"));
       expect(ssml, contains("rate='+20%'"));
       expect(ssml, contains('你好'));
@@ -53,11 +44,7 @@ void main() {
 
     test('语速倍率换算为百分比偏移', () {
       String rateOf(double multiplier) {
-        final ssml = EdgeTtsClient.buildSsml(
-          text: 'x',
-          voice: 'v',
-          rate: multiplier,
-        );
+        final ssml = EdgeTtsClient.buildSsml(text: 'x', voice: 'v', rate: multiplier);
         return RegExp(r"rate='([^']+)'").firstMatch(ssml)!.group(1)!;
       }
 
@@ -67,11 +54,7 @@ void main() {
     });
 
     test('XML 特殊字符转义', () {
-      final ssml = EdgeTtsClient.buildSsml(
-        text: 'a&b<c>"d\'e',
-        voice: 'v',
-        rate: 1.0,
-      );
+      final ssml = EdgeTtsClient.buildSsml(text: 'a&b<c>"d\'e', voice: 'v', rate: 1.0);
       expect(ssml, contains('a&amp;b&lt;c&gt;&quot;d&apos;e'));
       expect(ssml, isNot(contains('a&b')));
     });
@@ -93,10 +76,7 @@ void main() {
       );
       expect(bytes, [1, 2, 3, 4, 5]);
       // 协议要求先 speech.config 再 ssml，两帧都要发出
-      expect(connection.sent.map((f) => _framePath(f)).toList(), [
-        'speech.config',
-        'ssml',
-      ]);
+      expect(connection.sent.map((f) => _framePath(f)).toList(), ['speech.config', 'ssml']);
     });
 
     test('头长超出帧体的畸形帧被跳过，不吞掉后续音频', () async {
@@ -127,9 +107,7 @@ void main() {
           rate: 1.0,
           connect: (_) async => connection,
         ),
-        throwsA(
-          isA<TtsException>().having((e) => e.code, 'code', 'empty_audio'),
-        ),
+        throwsA(isA<TtsException>().having((e) => e.code, 'code', 'empty_audio')),
       );
     });
   });
@@ -159,5 +137,4 @@ List<int> _binaryFrame(String header, List<int> payload) {
 }
 
 /// 从发出的协议帧里取 Path 头，用于断言发送顺序
-String _framePath(String frame) =>
-    RegExp(r'Path:(\S+)').firstMatch(frame)?.group(1) ?? '';
+String _framePath(String frame) => RegExp(r'Path:(\S+)').firstMatch(frame)?.group(1) ?? '';

@@ -74,9 +74,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
     // 初始化基础页面上下文（编辑页覆盖上下文由各编辑页自行注册），同样延后到帧末
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref
-          .read(floatingQProvider.notifier)
-          .setBaseContext(QPageContext.fromLocation(_location));
+      ref.read(floatingQProvider.notifier).setBaseContext(QPageContext.fromLocation(_location));
     });
   }
 
@@ -93,9 +91,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
     // 这里只关心面板开关，避免整条悬浮层（含面板输入框）被高频重建，
     // 否则 Web 端中文输入法组合态会被反复打断（删字复活、光标错乱）
     final panelOpen = ref.watch(floatingQProvider.select((s) => s.panelOpen));
-    final anchorAlignment = ref.watch(
-      floatingQProvider.select((s) => s.anchorAlignment),
-    );
+    final anchorAlignment = ref.watch(floatingQProvider.select((s) => s.anchorAlignment));
     final size = MediaQuery.sizeOf(context);
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
@@ -122,8 +118,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
                     ignoring: !panelOpen,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () =>
-                          ref.read(floatingQProvider.notifier).closePanel(),
+                      onTap: () => ref.read(floatingQProvider.notifier).closePanel(),
                     ),
                   ),
                 ),
@@ -143,10 +138,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
                       child: ScaleTransition(
                         // 以触发按钮的底边锚点缩放：视觉上从长按的按钮位置向上展开
                         alignment: anchorAlignment,
-                        scale: Tween<double>(
-                          begin: 0.88,
-                          end: 1,
-                        ).animate(animation),
+                        scale: Tween<double>(begin: 0.88, end: 1).animate(animation),
                         child: child,
                       ),
                     ),
@@ -154,10 +146,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
                         ? SizedBox(
                             key: const ValueKey('panel'),
                             width: double.infinity,
-                            child: _FloatingQPanel(
-                              onUndo: _handleUndo,
-                              panelSelection: _panelSelection,
-                            ),
+                            child: _FloatingQPanel(onUndo: _handleUndo, panelSelection: _panelSelection),
                           )
                         : const SizedBox.shrink(key: ValueKey('panel-hidden')),
                   ),
@@ -207,14 +196,10 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
     // 精确订阅上下文徽章文案：流式刷新（约 60ms 一次）不重建面板外壳，
     // 输入行 TextField 因此保持稳定（Web 端中文 IME 组合态不被打断）
     final contextLabel = ref.watch(
-      floatingQProvider.select(
-        (s) => s.contextLabel ?? s.effectiveContext?.displayLabel ?? '当前页面',
-      ),
+      floatingQProvider.select((s) => s.contextLabel ?? s.effectiveContext?.displayLabel ?? '当前页面'),
     );
     // 外部分享场景：内容来自第三方应用，与当前页面无关，不展示位置徽章
-    final externalShareMode = ref.watch(
-      floatingQProvider.select((s) => s.externalShareMode),
-    );
+    final externalShareMode = ref.watch(floatingQProvider.select((s) => s.externalShareMode));
 
     return Material(
       color: theme.colorScheme.surface,
@@ -229,14 +214,9 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildHeader(
-              theme,
-              externalShareMode ? '小Q' : '小Q · $contextLabel',
-            ),
+            _buildHeader(theme, externalShareMode ? '小Q' : '小Q · $contextLabel'),
             Divider(height: 1, color: theme.colorScheme.outlineVariant),
-            Flexible(
-              child: _PanelMessages(panelSelection: widget.panelSelection),
-            ),
+            Flexible(child: _PanelMessages(panelSelection: widget.panelSelection)),
             // 撤回横幅自管显隐（内部按 phase 判定），常驻面板不自动消失
             _PanelUndoBanner(onUndo: widget.onUndo),
             // 「给小Q」引用卡片自管显隐（无挂起引用时不占位）
@@ -261,9 +241,7 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
           Expanded(
             child: Text(
               title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -276,8 +254,7 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
             child: IconButton(
               icon: const Icon(Icons.refresh_rounded, size: 20),
               color: theme.colorScheme.onSurfaceVariant,
-              onPressed: () =>
-                  ref.read(floatingQProvider.notifier).newConversation(),
+              onPressed: () => ref.read(floatingQProvider.notifier).newConversation(),
             ),
           ),
           // 展开到 /ai 全页面（完整对话体验）
@@ -297,8 +274,7 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
             child: IconButton(
               icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
               color: theme.colorScheme.onSurfaceVariant,
-              onPressed: () =>
-                  ref.read(floatingQProvider.notifier).closePanel(),
+              onPressed: () => ref.read(floatingQProvider.notifier).closePanel(),
             ),
           ),
         ],
@@ -330,8 +306,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
   bool _follow = true;
 
   bool get _isNearBottom =>
-      !_listController.hasClients ||
-      _listController.position.maxScrollExtent - _listController.offset < 24;
+      !_listController.hasClients || _listController.position.maxScrollExtent - _listController.offset < 24;
 
   @override
   void dispose() {
@@ -388,9 +363,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       // 中转消息（与 AI 主页面 isChatTimelineVisibleMessage 过滤的是同一类消息），
       // 快捷面板不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
       if (displayContent.trim().isEmpty) continue;
-      children.add(
-        _buildEntrance(_buildBubble(theme, message, displayContent)),
-      );
+      children.add(_buildEntrance(_buildBubble(theme, message, displayContent)));
       // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
       if (message.role == 'assistant' &&
           message.uiDetails?['type'] == 'turn_limit' &&
@@ -398,8 +371,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
         children.add(
           AgentTurnLimitActions(
             enabled: fq.phase != FloatingQPhase.working,
-            onContinue: () =>
-                ref.read(floatingQProvider.notifier).continueTask(),
+            onContinue: () => ref.read(floatingQProvider.notifier).continueTask(),
             onPause: () => ref.read(floatingQProvider.notifier).pauseTask(),
           ),
         );
@@ -407,49 +379,32 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     }
 
     if (fq.statusText != null) {
-      children.add(
-        _buildEntrance(
-          _buildStatusLine(theme, fq.statusText!, fq.streamingStartedAt),
-        ),
-      );
+      children.add(_buildEntrance(_buildStatusLine(theme, fq.statusText!, fq.streamingStartedAt)));
       // 思考中状态行下方挂实时思考尾随区（模型返回思考增量时才出现）
       final liveThought = fq.streamingThought;
       if (liveThought != null && liveThought.trim().isNotEmpty) {
-        children.add(
-          _buildEntrance(_buildThoughtTail(theme, liveThought.trim())),
-        );
+        children.add(_buildEntrance(_buildThoughtTail(theme, liveThought.trim())));
       }
     } else if (fq.streamingText != null && fq.streamingText!.isNotEmpty) {
       children.add(
         _buildEntrance(
-          _buildAssistantBubble(
-            theme,
-            stripRedundantImageMarkdown(fq.streamingText!, generatedImageKeys),
-          ),
+          _buildAssistantBubble(theme, stripRedundantImageMarkdown(fq.streamingText!, generatedImageKeys)),
         ),
       );
     }
 
     if (children.isEmpty) {
-      final externalShareMode = ref.watch(
-        floatingQProvider.select((s) => s.externalShareMode),
-      );
-      final effectiveContext = ref.watch(
-        floatingQProvider.select((s) => s.effectiveContext),
-      );
+      final externalShareMode = ref.watch(floatingQProvider.select((s) => s.externalShareMode));
+      final effectiveContext = ref.watch(floatingQProvider.select((s) => s.effectiveContext));
       final emptyPrompt = externalShareMode
           ? '让小Q整理或提炼这段内容。'
-          : (effectiveContext?.emptyPromptHint ??
-                QPageContext.fallback.emptyPromptHint);
+          : (effectiveContext?.emptyPromptHint ?? QPageContext.fallback.emptyPromptHint);
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         child: Text(
           emptyPrompt,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            height: 1.4,
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.4),
         ),
       );
     }
@@ -465,9 +420,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
         return QTextSelectionToolbar(
           anchors: selectableRegionState.contextMenuAnchors,
           buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems.where(
-              (item) => item.type != ContextMenuButtonType.custom,
-            ),
+            ...selectableRegionState.contextMenuButtonItems.where((item) => item.type != ContextMenuButtonType.custom),
             if (hasSelection)
               ContextMenuButtonItem(
                 label: '给小Q',
@@ -490,8 +443,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
       },
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
-          if (notification is ScrollUpdateNotification &&
-              notification.dragDetails != null) {
+          if (notification is ScrollUpdateNotification && notification.dragDetails != null) {
             _follow = false; // 用户主动拖动即暂停贴底跟随
           }
           if (_isNearBottom) _follow = true; // 拖回底部附近自动恢复
@@ -535,9 +487,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     if (message.toolName != 'generate_image' || message.isError == true) {
       return null;
     }
-    final paths =
-        (message.uiDetails?['paths'] as List?)?.whereType<String>().toList() ??
-        const [];
+    final paths = (message.uiDetails?['paths'] as List?)?.whereType<String>().toList() ?? const [];
     if (paths.isEmpty) return null;
     return Align(
       alignment: Alignment.centerLeft,
@@ -579,11 +529,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     Toast.info(context, '已添加到附件');
   }
 
-  Widget _buildBubble(
-    ThemeData theme,
-    ChatMessage message,
-    String displayContent,
-  ) {
+  Widget _buildBubble(ThemeData theme, ChatMessage message, String displayContent) {
     if (message.role == 'user') {
       return Align(
         alignment: Alignment.centerRight,
@@ -594,12 +540,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
             color: theme.colorScheme.primary,
             borderRadius: BorderRadius.circular(AppRadius.medium),
           ),
-          child: Text(
-            displayContent,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onPrimary,
-            ),
-          ),
+          child: Text(displayContent, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onPrimary)),
         ),
       );
     }
@@ -623,11 +564,7 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
 
   /// 等待态状态行：状态文案 + 思考形变无限符号动画 + 已用时递增计数
   /// （遵循小Q等待态显示规范，不用闪烁光标）
-  Widget _buildStatusLine(
-    ThemeData theme,
-    String statusText,
-    DateTime? startedAt,
-  ) {
+  Widget _buildStatusLine(ThemeData theme, String statusText, DateTime? startedAt) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 2),
       child: Row(
@@ -636,26 +573,18 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
           Flexible(
             child: Text(
               statusText,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 7),
-            child: MorphingInfinity(
-              size: 20,
-              strokeWidth: 1.5,
-              color: theme.colorScheme.primary,
-            ),
+            child: MorphingInfinity(size: 20, strokeWidth: 1.5, color: theme.colorScheme.primary),
           ),
           StreamingElapsedText(
             startedAt: startedAt,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -693,13 +622,7 @@ class _PanelUndoBanner extends ConsumerWidget {
     final theme = Theme.of(context);
     // 记录按结构相等比较：仅撤回相关状态变化时才重建横幅
     final (showBanner, undoCount, isUndoing) = ref.watch(
-      floatingQProvider.select(
-        (s) => (
-          s.phase == FloatingQPhase.countdown,
-          s.pendingUndoCount,
-          s.isUndoing,
-        ),
-      ),
+      floatingQProvider.select((s) => (s.phase == FloatingQPhase.countdown, s.pendingUndoCount, s.isUndoing)),
     );
     // 高度展开/收合 + 淡入：横幅插入/移除不再硬切挤压消息区；
     // 空态保持等宽零高，宽度稳定后只做高度方向动画
@@ -713,46 +636,28 @@ class _PanelUndoBanner extends ConsumerWidget {
             ? Container(
                 key: const ValueKey('undo-banner'),
                 width: double.infinity,
-                color: theme.colorScheme.tertiaryContainer.withValues(
-                  alpha: 0.4,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
+                color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.history_rounded,
-                      size: 16,
-                      color: theme.colorScheme.tertiary,
-                    ),
+                    Icon(Icons.history_rounded, size: 16, color: theme.colorScheme.tertiary),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '可撤回 $undoCount 处修改',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onTertiaryContainer,
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onTertiaryContainer),
                       ),
                     ),
                     TextButton(
                       onPressed: isUndoing ? null : onUndo,
                       child: isUndoing
-                          ? LoadingRing(
-                              size: 14,
-                              strokeWidth: 1.8,
-                              color: theme.colorScheme.primary,
-                            )
+                          ? LoadingRing(size: 14, strokeWidth: 1.8, color: theme.colorScheme.primary)
                           : const Text('撤回'),
                     ),
                   ],
                 ),
               )
-            : const SizedBox(
-                width: double.infinity,
-                key: ValueKey('undo-empty'),
-              ),
+            : const SizedBox(width: double.infinity, key: ValueKey('undo-empty')),
       ),
     );
   }
@@ -787,13 +692,10 @@ class _PanelQuoteCard extends ConsumerWidget {
   String _titleLine(QTextQuote quote) {
     final label = _sourceLabel(quote.source);
     // 外部分享与对话内容无实体标题，只展示来源标签
-    if (quote.source == QQuoteSource.external ||
-        quote.source == QQuoteSource.chat) {
+    if (quote.source == QQuoteSource.external || quote.source == QQuoteSource.chat) {
       return label;
     }
-    final title = quote.source == QQuoteSource.journal
-        ? '$label ${quote.sourceTitle}'
-        : '$label《${quote.sourceTitle}》';
+    final title = quote.source == QQuoteSource.journal ? '$label ${quote.sourceTitle}' : '$label《${quote.sourceTitle}》';
     final location = quote.locationDesc;
     return location == null ? title : '$title · $location';
   }
@@ -818,11 +720,7 @@ class _PanelQuoteCard extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 1),
-            child: Icon(
-              _sourceIcon(quote.source),
-              size: 16,
-              color: theme.colorScheme.primary,
-            ),
+            child: Icon(_sourceIcon(quote.source), size: 16, color: theme.colorScheme.primary),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -841,9 +739,7 @@ class _PanelQuoteCard extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(
                   quote.quotedText.isEmpty
-                      ? (quote.locationDesc?.contains('光标') == true
-                            ? '（光标处，可让小Q续写或编辑）'
-                            : '（引用完整内容）')
+                      ? (quote.locationDesc?.contains('光标') == true ? '（光标处，可让小Q续写或编辑）' : '（引用完整内容）')
                       : quote.quotedText,
                   style: theme.textTheme.bodySmall,
                   maxLines: 2,
@@ -862,8 +758,7 @@ class _PanelQuoteCard extends ConsumerWidget {
               tooltip: '移除引用',
               icon: const Icon(Icons.close_rounded),
               color: theme.colorScheme.onSurfaceVariant,
-              onPressed: () =>
-                  ref.read(floatingQProvider.notifier).clearPendingQuote(),
+              onPressed: () => ref.read(floatingQProvider.notifier).clearPendingQuote(),
             ),
           ),
         ],
@@ -879,12 +774,10 @@ class _PanelImageAttachments extends ConsumerStatefulWidget {
   const _PanelImageAttachments();
 
   @override
-  ConsumerState<_PanelImageAttachments> createState() =>
-      _PanelImageAttachmentsState();
+  ConsumerState<_PanelImageAttachments> createState() => _PanelImageAttachmentsState();
 }
 
-class _PanelImageAttachmentsState
-    extends ConsumerState<_PanelImageAttachments> {
+class _PanelImageAttachmentsState extends ConsumerState<_PanelImageAttachments> {
   @override
   void initState() {
     super.initState();
@@ -893,20 +786,16 @@ class _PanelImageAttachmentsState
     });
   }
 
-  void _consumePending() =>
-      ref.read(floatingQProvider.notifier).consumePendingImages();
+  void _consumePending() => ref.read(floatingQProvider.notifier).consumePendingImages();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final images = ref.watch(floatingQProvider.select((s) => s.attachedImages));
 
-    ref.listen<List<String>?>(
-      floatingQProvider.select((s) => s.pendingImages),
-      (prev, next) {
-        if (next != null && next.isNotEmpty) _consumePending();
-      },
-    );
+    ref.listen<List<String>?>(floatingQProvider.select((s) => s.pendingImages), (prev, next) {
+      if (next != null && next.isNotEmpty) _consumePending();
+    });
 
     if (images.isEmpty) {
       return const SizedBox.shrink(key: ValueKey('image-attachments-hidden'));
@@ -927,34 +816,21 @@ class _PanelImageAttachmentsState
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.medium),
-                  child: UnifiedImage(
-                    imagePath: path,
-                    width: 64,
-                    height: 64,
-                    fit: BoxFit.cover,
-                  ),
+                  child: UnifiedImage(imagePath: path, width: 64, height: 64, fit: BoxFit.cover),
                 ),
                 // 移除按钮叠在缩略图右上角内侧（外溢负偏移会被 ListView 裁剪）
                 Positioned(
                   top: 2,
                   right: 2,
                   child: GestureDetector(
-                    onTap: () => ref
-                        .read(floatingQProvider.notifier)
-                        .removeAttachedImage(path),
+                    onTap: () => ref.read(floatingQProvider.notifier).removeAttachedImage(path),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surface.withValues(
-                          alpha: 0.85,
-                        ),
+                        color: theme.colorScheme.surface.withValues(alpha: 0.85),
                         shape: BoxShape.circle,
                       ),
                       padding: const EdgeInsets.all(2),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      child: Icon(Icons.close_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ),
                 ),
@@ -994,9 +870,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
   /// 软键盘行为由 textInputAction:newline 交给 IME（移动端发送一律点按钮）；
   /// 返回 handled 后 engine 不再把 Enter 送入文本输入通道，避免发送与换行叠加
   KeyEventResult _handleEnterKey(FocusNode node, KeyEvent event) {
-    final isEnter =
-        event.logicalKey == LogicalKeyboardKey.enter ||
-        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    final isEnter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (!isEnter || event is KeyRepeatEvent) return KeyEventResult.ignored;
     if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
     if (event is KeyDownEvent) _handleSend();
@@ -1039,19 +913,12 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isWorking = ref.watch(
-      floatingQProvider.select((s) => s.phase == FloatingQPhase.working),
-    );
-    final externalShareMode = ref.watch(
-      floatingQProvider.select((s) => s.externalShareMode),
-    );
-    final effectiveContext = ref.watch(
-      floatingQProvider.select((s) => s.effectiveContext),
-    );
+    final isWorking = ref.watch(floatingQProvider.select((s) => s.phase == FloatingQPhase.working));
+    final externalShareMode = ref.watch(floatingQProvider.select((s) => s.externalShareMode));
+    final effectiveContext = ref.watch(floatingQProvider.select((s) => s.effectiveContext));
     final inputHint = externalShareMode
         ? '告诉小Q如何处理这段内容…'
-        : (effectiveContext?.inputHintText ??
-              QPageContext.fallback.inputHintText);
+        : (effectiveContext?.inputHintText ?? QPageContext.fallback.inputHintText);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
@@ -1064,36 +931,23 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
             child: GestureDetector(
               onTap: () => showQuickPromptDialog(context, ref, (text) {
                 _inputController.text = text;
-                _inputController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: text.length),
-                );
+                _inputController.selection = TextSelection.fromPosition(TextPosition(offset: text.length));
                 _focusNode.requestFocus();
               }),
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.5,
-                  ),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.bolt_rounded,
-                      size: 15,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    Icon(Icons.bolt_rounded, size: 15, color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Text(
                       '常用提示词',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -1120,33 +974,21 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
                     decoration: InputDecoration(
                       hintText: inputHint,
                       hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.5,
-                        ),
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                       ),
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(AppRadius.medium),
-                        borderSide: BorderSide(
-                          color: theme.colorScheme.outlineVariant,
-                        ),
+                        borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(AppRadius.medium),
-                        borderSide: BorderSide(
-                          color: theme.colorScheme.outlineVariant,
-                        ),
+                        borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(AppRadius.medium),
-                        borderSide: BorderSide(
-                          color: theme.colorScheme.primary,
-                          width: 1.5,
-                        ),
+                        borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
                       ),
                     ),
                   ),
@@ -1170,16 +1012,12 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
                           height: 40,
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primary.withValues(
-                              alpha: theme.brightness == Brightness.dark
-                                  ? 0.14
-                                  : 0.08,
+                              alpha: theme.brightness == Brightness.dark ? 0.14 : 0.08,
                             ),
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: theme.colorScheme.primary.withValues(
-                                alpha: theme.brightness == Brightness.dark
-                                    ? 0.22
-                                    : 0.14,
+                                alpha: theme.brightness == Brightness.dark ? 0.22 : 0.14,
                               ),
                               width: 0.8,
                             ),
@@ -1187,11 +1025,7 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
                           child: Stack(
                             alignment: Alignment.center,
                             children: [
-                              LoadingRing(
-                                size: 30,
-                                strokeWidth: 1.3,
-                                color: theme.colorScheme.primary,
-                              ),
+                              LoadingRing(size: 30, strokeWidth: 1.3, color: theme.colorScheme.primary),
                               Container(
                                 width: 9.5,
                                 height: 9.5,

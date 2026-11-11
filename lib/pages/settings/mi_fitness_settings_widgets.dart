@@ -95,10 +95,7 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 36),
-                child: CircularProgressIndicator(),
-              )
+              const Padding(padding: EdgeInsets.symmetric(vertical: 36), child: CircularProgressIndicator())
             else if (_session != null) ...[
               Container(
                 width: 200,
@@ -108,11 +105,7 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
                 ),
                 child: ClipRRect(
@@ -120,22 +113,15 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
                   child: Image.network(
                     _session!.qrCodeUrl,
                     fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => const Center(
-                      child: Icon(
-                        Icons.broken_image,
-                        size: 40,
-                        color: Colors.grey,
-                      ),
-                    ),
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Center(child: Icon(Icons.broken_image, size: 40, color: Colors.grey)),
                   ),
                 ),
               ),
               const SizedBox(height: 14),
               Text(
                 _statusText,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
@@ -152,10 +138,7 @@ class _MiQrLoginDialogState extends ConsumerState<_MiQrLoginDialog> {
             ] else ...[
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  _statusText,
-                  style: TextStyle(color: colorScheme.error),
-                ),
+                child: Text(_statusText, style: TextStyle(color: colorScheme.error)),
               ),
               FilledButton(
                 onPressed: () {
@@ -199,44 +182,31 @@ class _SyncProgressDialog extends StatelessWidget {
           Text('批量同步中', style: TextStyle(fontSize: 16)),
         ],
       ),
-      content:
-          ValueListenableBuilder<({int current, int total, String message})>(
-            valueListenable: notifier,
-            builder: (ctx, state, _) {
-              final progress = state.total > 0
-                  ? (state.current / state.total).clamp(0.0, 1.0)
-                  : 0.0;
-              final percent = (progress * 100).toInt();
+      content: ValueListenableBuilder<({int current, int total, String message})>(
+        valueListenable: notifier,
+        builder: (ctx, state, _) {
+          final progress = state.total > 0 ? (state.current / state.total).clamp(0.0, 1.0) : 0.0;
+          final percent = (progress * 100).toInt();
 
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 8,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    state.message,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$percent%',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(value: progress, minHeight: 8),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                state.message,
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text('$percent%', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -293,22 +263,14 @@ class _StepTargetSheetState extends State<_StepTargetSheet> {
                 width: 36,
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
               ),
             ),
             Row(
               children: [
                 const Icon(Icons.flag_rounded, size: 20),
                 const SizedBox(width: 8),
-                Text(
-                  '每日目标步数',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text('每日目标步数', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 16),
@@ -333,11 +295,7 @@ class _StepTargetSheetState extends State<_StepTargetSheet> {
             TextField(
               controller: _controller,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: '自定义步数',
-                suffixText: '步',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: '自定义步数', suffixText: '步', border: OutlineInputBorder()),
               onChanged: (val) {
                 final parsed = int.tryParse(val);
                 if (parsed != null && _presets.contains(parsed)) {

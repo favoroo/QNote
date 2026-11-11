@@ -51,8 +51,7 @@ class DiaryPage extends ConsumerStatefulWidget {
   ConsumerState<DiaryPage> createState() => _DiaryPageState();
 }
 
-class _DiaryPageState extends ConsumerState<DiaryPage>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateMixin, WidgetsBindingObserver {
   static const int _itemsPerDay = kDiaryTimelineItemsPerDay;
   static const double _nodeHeight = kDiaryTimelineNodeHeight;
 
@@ -229,9 +228,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _itemContexts.clear();
     _itemHeights.clear();
 
-    _scrollController = ScrollController(
-      keepScrollOffset: false,
-    );
+    _scrollController = ScrollController(keepScrollOffset: false);
     _scrollController.addListener(_onScroll);
   }
 
@@ -244,20 +241,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     );
   }
 
-  double _estimateOffsetForTimeWithRecords(
-    DateTime targetTime,
-    Map<String, List<DiaryRecord>> recordsByDate,
-  ) {
+  double _estimateOffsetForTimeWithRecords(DateTime targetTime, Map<String, List<DiaryRecord>> recordsByDate) {
     return estimateDiaryOffsetForTimeWithRecords(
       targetTime: targetTime,
       windowStartDate: _windowStartDate,
       today: _today,
       isExpanded: _isDateExpanded,
-      recordCountForDate: (date) =>
-          (recordsByDate[_dateKey(date)] ?? const <DiaryRecord>[]).length,
+      recordCountForDate: (date) => (recordsByDate[_dateKey(date)] ?? const <DiaryRecord>[]).length,
       displayTimesForDate: (date) =>
-          (recordsByDate[_dateKey(date)] ?? const <DiaryRecord>[])
-              .map((record) => record.getDisplayTime()),
+          (recordsByDate[_dateKey(date)] ?? const <DiaryRecord>[]).map((record) => record.getDisplayTime()),
     );
   }
 
@@ -294,10 +286,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     double estimatedOffset;
     if (recordsByDate != null && targetTime != null) {
-      estimatedOffset = _estimateOffsetForTimeWithRecords(
-        targetTime,
-        recordsByDate,
-      );
+      estimatedOffset = _estimateOffsetForTimeWithRecords(targetTime, recordsByDate);
     } else {
       estimatedOffset = _estimateOffsetForIndex(targetIndex);
     }
@@ -321,10 +310,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         } else {
           jumpOffset = targetOffset + viewportHeight * 0.7;
         }
-        jumpOffset = jumpOffset.clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
+        jumpOffset = jumpOffset.clamp(0.0, _scrollController.position.maxScrollExtent);
 
         _scrollController.jumpTo(jumpOffset);
 
@@ -346,25 +332,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         });
       } else {
         // Target is close or we already jumped, animate to estimated target.
-        _scrollController
-            .animateTo(
-              targetOffset,
-              duration: AppDurations.medium,
-              curve: Curves.easeOutCubic,
-            )
-            .then((_) {
-              if (mounted) {
-                _scrollToTarget(
-                  targetIndex: targetIndex,
-                  targetKey: targetKey,
-                  smooth: smooth,
-                  alignment: alignment,
-                  attempts: attempts + 1,
-                  recordsByDate: recordsByDate,
-                  targetTime: targetTime,
-                );
-              }
-            });
+        _scrollController.animateTo(targetOffset, duration: AppDurations.medium, curve: Curves.easeOutCubic).then((_) {
+          if (mounted) {
+            _scrollToTarget(
+              targetIndex: targetIndex,
+              targetKey: targetKey,
+              smooth: smooth,
+              alignment: alignment,
+              attempts: attempts + 1,
+              recordsByDate: recordsByDate,
+              targetTime: targetTime,
+            );
+          }
+        });
       }
     } else {
       _scrollController.jumpTo(targetOffset);
@@ -386,11 +366,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
   }
 
-  void _scrollToContext(
-    BuildContext targetContext, {
-    bool smooth = true,
-    double alignment = 0.5,
-  }) {
+  void _scrollToContext(BuildContext targetContext, {bool smooth = true, double alignment = 0.5}) {
     if (!targetContext.mounted) return;
 
     final renderBox = targetContext.findRenderObject() as RenderBox?;
@@ -405,8 +381,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
 
-    final viewportBox =
-        _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.hasSize) {
       Scrollable.ensureVisible(
         targetContext,
@@ -423,13 +398,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final viewportTopOnScreen = viewportBox.localToGlobal(Offset.zero).dy;
     final nodeTopOnScreen = renderBox.localToGlobal(Offset.zero).dy;
     final scrollOffset = _scrollController.offset;
-    final nodeTopInScroll =
-        scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
-    final preciseTarget =
-        (nodeTopInScroll - (viewportHeight - nodeHeight) * alignment).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
+    final nodeTopInScroll = scrollOffset + (nodeTopOnScreen - viewportTopOnScreen);
+    final preciseTarget = (nodeTopInScroll - (viewportHeight - nodeHeight) * alignment).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
 
     if ((scrollOffset - preciseTarget).abs() < 2.0) {
       _finishProgrammaticScroll();
@@ -438,21 +411,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     if (smooth) {
       final distance = (scrollOffset - preciseTarget).abs();
-      final duration = distance < 50.0
-          ? const Duration(milliseconds: 150)
-          : const Duration(milliseconds: 350);
+      final duration = distance < 50.0 ? const Duration(milliseconds: 150) : const Duration(milliseconds: 350);
 
-      _scrollController
-          .animateTo(
-            preciseTarget,
-            duration: duration,
-            curve: Curves.easeOutCubic,
-          )
-          .then((_) {
-            if (mounted) {
-              _finishProgrammaticScroll();
-            }
-          });
+      _scrollController.animateTo(preciseTarget, duration: duration, curve: Curves.easeOutCubic).then((_) {
+        if (mounted) {
+          _finishProgrammaticScroll();
+        }
+      });
     } else {
       _scrollController.jumpTo(preciseTarget);
       _finishProgrammaticScroll();
@@ -469,11 +434,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     if (smooth) {
       _scrollController
-          .animateTo(
-            targetOffset,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic,
-          )
+          .animateTo(targetOffset, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic)
           .then((_) {
             if (mounted) {
               _finishProgrammaticScroll();
@@ -489,10 +450,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _isProgrammaticScrolling = false;
   }
 
-  void _scrollToCurrentTime({
-    bool smooth = true,
-    Map<String, List<DiaryRecord>>? recordsByDate,
-  }) {
+  void _scrollToCurrentTime({bool smooth = true, Map<String, List<DiaryRecord>>? recordsByDate}) {
     if (!_scrollController.hasClients) return;
 
     final now = DateTime.now();
@@ -509,11 +467,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
 
     _isProgrammaticScrolling = true;
-    ref.read(selectedDateProvider.notifier).state = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    );
+    ref.read(selectedDateProvider.notifier).state = DateTime(now.year, now.month, now.day);
 
     final nodeIndex = diaryTimelineNodeIndex(now);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
@@ -528,11 +482,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     );
   }
 
-  void _scrollToTime(
-    DateTime targetTime, {
-    bool smooth = true,
-    Map<String, List<DiaryRecord>>? recordsByDate,
-  }) {
+  void _scrollToTime(DateTime targetTime, {bool smooth = true, Map<String, List<DiaryRecord>>? recordsByDate}) {
     if (!_scrollController.hasClients) return;
 
     final dayOffset = _dateToDayOffset(targetTime);
@@ -549,11 +499,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     _isProgrammaticScrolling = true;
     _expandDate(targetTime);
-    ref.read(selectedDateProvider.notifier).state = DateTime(
-      targetTime.year,
-      targetTime.month,
-      targetTime.day,
-    );
+    ref.read(selectedDateProvider.notifier).state = DateTime(targetTime.year, targetTime.month, targetTime.day);
 
     final nodeIndex = diaryTimelineNodeIndex(targetTime);
     final targetIndex = dayOffset * _itemsPerDay + (nodeIndex + 1);
@@ -577,19 +523,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           selectEvent.time.minute == time.minute) {
         ref.read(diaryInputTimeProvider.notifier).state = null;
       } else {
-        ref.read(diaryInputTimeProvider.notifier).state =
-            TimelineTimeSelectEvent(time, date: date);
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(time, date: date);
       }
       return;
     }
 
-    final clickedDateTime = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
-    );
+    final clickedDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
     final selectionStart = DateTime(
       selectEvent.date.year,
@@ -611,26 +550,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     if (clickedDateTime.isAtSameMomentAs(selectionStart)) {
       // 1. 点击开始时间节点：取消全部勾选
       ref.read(diaryInputTimeProvider.notifier).state = null;
-    } else if (clickedDateTime.isAfter(selectionStart) &&
-        !clickedDateTime.isAfter(selectionEnd)) {
+    } else if (clickedDateTime.isAfter(selectionStart) && !clickedDateTime.isAfter(selectionEnd)) {
       // 2. 点击范围内的某个节点（排除开始节点）：将该节点及之后的节点取消勾选，即新范围是 [开始, 点击节点 - 30分钟]
-      final newEndDateTime = clickedDateTime.subtract(
-        const Duration(minutes: 30),
-      );
-      final newEndTime = TimeOfDay(
-        hour: newEndDateTime.hour,
-        minute: newEndDateTime.minute,
-      );
+      final newEndDateTime = clickedDateTime.subtract(const Duration(minutes: 30));
+      final newEndTime = TimeOfDay(hour: newEndDateTime.hour, minute: newEndDateTime.minute);
 
       ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
         selectEvent.time,
         endTime: newEndTime,
         date: selectEvent.date,
-        endDate: DateTime(
-          newEndDateTime.year,
-          newEndDateTime.month,
-          newEndDateTime.day,
-        ),
+        endDate: DateTime(newEndDateTime.year, newEndDateTime.month, newEndDateTime.day),
       );
     } else if (clickedDateTime.isAfter(selectionEnd)) {
       // 3. 点击结束节点之后的节点：将范围延长到该节点，即新范围是 [开始, 点击节点]
@@ -652,10 +581,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _handleNodeDoubleTap(DateTime date, TimeOfDay time) {
-    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-      time,
-      date: date,
-    );
+    ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(time, date: date);
   }
 
   @override
@@ -731,8 +657,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
       if (offset < edgeBuffer && _windowStartDate.isAfter(earliestDate)) {
         _shiftWindowBackward();
-      } else if (offset > maxScroll - edgeBuffer &&
-          _windowStartDate.isBefore(latestDate)) {
+      } else if (offset > maxScroll - edgeBuffer && _windowStartDate.isBefore(latestDate)) {
         _shiftWindowForward();
       }
     }
@@ -740,13 +665,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     // Determine currently visible date based on the exact center of the viewport
     final viewportCtx = _viewportKey.currentContext;
     if (viewportCtx != null) {
-      final RenderBox? viewportBox =
-          viewportCtx.findRenderObject() as RenderBox?;
+      final RenderBox? viewportBox = viewportCtx.findRenderObject() as RenderBox?;
       if (viewportBox != null && viewportBox.hasSize) {
         // Find the Y coordinate for the center of the viewport on screen
-        final double centerYOnScreen = viewportBox
-            .localToGlobal(Offset(0, viewportBox.size.height / 2))
-            .dy;
+        final double centerYOnScreen = viewportBox.localToGlobal(Offset(0, viewportBox.size.height / 2)).dy;
 
         int? centerIndex;
         double minDistanceAboveCenter = double.infinity;
@@ -828,9 +750,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients && _shiftTargetOffset != null) {
-        _scrollController.jumpTo(
-          _shiftTargetOffset!.clamp(0.0, _scrollController.position.maxScrollExtent),
-        );
+        _scrollController.jumpTo(_shiftTargetOffset!.clamp(0.0, _scrollController.position.maxScrollExtent));
         _shiftTargetOffset = null;
       }
       if (mounted) {
@@ -857,9 +777,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients && _shiftTargetOffset != null) {
-        _scrollController.jumpTo(
-          _shiftTargetOffset!.clamp(0.0, _scrollController.position.maxScrollExtent),
-        );
+        _scrollController.jumpTo(_shiftTargetOffset!.clamp(0.0, _scrollController.position.maxScrollExtent));
         _shiftTargetOffset = null;
       }
       if (mounted) {
@@ -977,8 +895,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                       DateColorMark(
                         id: currentMark?.id ?? '',
                         date: selectedDate,
-                        color:
-                            '#${colorValue.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+                        color: '#${colorValue.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
                       ),
                     );
                   }
@@ -1002,21 +919,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                             : null,
                       ),
                       child: colorValue == null
-                          ? Icon(
-                              Icons.close,
-                              size: 18,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            )
+                          ? Icon(Icons.close, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant)
                           : null,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       item['name'] as String,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -1024,12 +935,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             }).toList(),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-        ],
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消'))],
       ),
     );
   }
@@ -1052,9 +958,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _navigateToSearch() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const SearchView()));
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchView()));
   }
 
   void _navigateToBatchManage() {
@@ -1065,33 +969,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   ///
   /// 满档与破纪录才配流光描边和彩带（分级规格见 [resolveCheerLevel]），平时保持极轻；
   /// 1 秒内连记多条只展示最后一次，避免胶囊排队刷屏。
-  void _showCheer({
-    required String title,
-    String? sub,
-    required CheerLevel level,
-  }) {
+  void _showCheer({required String title, String? sub, required CheerLevel level}) {
     // 面板还开着（尤其正在播「弹窗变卡片」）时先压住：胶囊会被面板挡住，
     // 彩带层又会盖住飞行。等路由彻底结束再由 _flushPendingCheer 播。
     if (_recordSheetOpen) {
       _cheerSeq++;
-      _pendingCheer = CheerEvent(
-        id: _cheerSeq,
-        title: title,
-        sub: sub,
-        level: level,
-      );
+      _pendingCheer = CheerEvent(id: _cheerSeq, title: title, sub: sub, level: level);
       return;
     }
     _cheerTimer?.cancel();
     _cheerExitTimer?.cancel();
     _cheerSeq++;
     setState(() {
-      _cheerEvent = CheerEvent(
-        id: _cheerSeq,
-        title: title,
-        sub: sub,
-        level: level,
-      );
+      _cheerEvent = CheerEvent(id: _cheerSeq, title: title, sub: sub, level: level);
       _cheerLeaving = false;
     });
     if (level.isCheer) {
@@ -1149,11 +1039,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final entry = OverlayEntry(
       // 这层铺满整屏，不吃手势就会把时间线滚动和两个 FAB 的点击全吞掉。
       builder: (context) => IgnorePointer(
-        child: CheerBurstOverlay(
-          level: event.level,
-          seed: event.id,
-          onFinished: _removeCheerBurst,
-        ),
+        child: CheerBurstOverlay(level: event.level, seed: event.id, onFinished: _removeCheerBurst),
       ),
     );
     Overlay.of(context).insert(entry);
@@ -1195,13 +1081,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
     setState(() => _insertingRecordIds.addAll(recordIds));
     _insertClearTimer?.cancel();
-    _insertClearTimer = Timer(
-      _kInsertRevealDelay + _kInsertDuration + const Duration(milliseconds: 400),
-      () {
-        if (!mounted) return;
-        setState(_insertingRecordIds.clear);
-      },
-    );
+    _insertClearTimer = Timer(_kInsertRevealDelay + _kInsertDuration + const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(_insertingRecordIds.clear);
+    });
   }
 
   void _handleDelete(DiaryRecord record) {
@@ -1257,20 +1140,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   /// 记录 id 与当天文件路径在发送时由引用块注入，这里只带摘录与时间展示
   void _quoteRecordToQ(DiaryRecord record) {
     HapticFeedback.lightImpact();
-    final excerpt = record.content.trim().isNotEmpty
-        ? record.content.trim()
-        : record.title.trim();
-    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
-          source: QQuoteSource.diary,
-          sourceId: record.id,
-          sourceTitle: record.title.trim().isNotEmpty
-              ? record.title.trim()
-              : '一条流水记录',
-          quotedText:
-              excerpt.length > 500 ? '${excerpt.substring(0, 500)}…' : excerpt,
-          locationDesc:
-              DateFormat('MM-dd HH:mm').format(record.startTime ?? record.time),
-        ));
+    final excerpt = record.content.trim().isNotEmpty ? record.content.trim() : record.title.trim();
+    ref
+        .read(floatingQProvider.notifier)
+        .openWithQuote(
+          QTextQuote(
+            source: QQuoteSource.diary,
+            sourceId: record.id,
+            sourceTitle: record.title.trim().isNotEmpty ? record.title.trim() : '一条流水记录',
+            quotedText: excerpt.length > 500 ? '${excerpt.substring(0, 500)}…' : excerpt,
+            locationDesc: DateFormat('MM-dd HH:mm').format(record.startTime ?? record.time),
+          ),
+        );
   }
 
   Future<void> _handleAiExtract(DiaryRecord record) async {
@@ -1314,11 +1195,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (mounted) {
         setState(() => _extractingRecordId = null);
         if (!_isBatchExtracting) {
-          await showVisionUnsupportedDialog(
-            context,
-            modelName: e.modelName,
-            scene: 'AI 提取',
-          );
+          await showVisionUnsupportedDialog(context, modelName: e.modelName, scene: 'AI 提取');
         }
       }
       return;
@@ -1345,41 +1222,28 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       Map<String, dynamic>? newBodyState = record.bodyState != null
           ? Map.from(record.bodyState!)
           : null; // ignore: prefer_final_locals
-      final List<TagEntry> newTagEntries = result.tagEntries.isNotEmpty
-          ? result.tagEntries
-          : record.tagEntries;
+      final List<TagEntry> newTagEntries = result.tagEntries.isNotEmpty ? result.tagEntries : record.tagEntries;
 
       if (result.tagEntries.isNotEmpty) {
         newTags = result.tagEntries.map((e) => e.name).toList();
         newDisplayTag = result.tagEntries.first.name;
-        newBodyState = Map<String, dynamic>.from(
-          result.tagEntries.first.fields,
-        );
+        newBodyState = Map<String, dynamic>.from(result.tagEntries.first.fields);
       } else if (foundShortcut != null) {
         if (!newTags.contains(foundShortcut.name)) {
-          newTags = [
-            foundShortcut.name,
-            ...newTags.where((t) => t != newDisplayTag),
-          ];
+          newTags = [foundShortcut.name, ...newTags.where((t) => t != newDisplayTag)];
         }
         newDisplayTag = foundShortcut.name;
       }
 
       if (result.time.isNotEmpty) {
-        final baseDate = DateTime(
-          record.time.year,
-          record.time.month,
-          record.time.day,
-        );
+        final baseDate = DateTime(record.time.year, record.time.month, record.time.day);
         if (result.time['start'] != null) {
           final parts = (result.time['start'] as String).split(':');
           if (parts.length >= 2) {
             final hour = int.tryParse(parts[0]) ?? record.time.hour;
             final minute = int.tryParse(parts[1]) ?? record.time.minute;
             final startOffset = result.time['startOffset'] as int? ?? 0;
-            final dt = baseDate.add(
-              Duration(days: startOffset, hours: hour, minutes: minute),
-            );
+            final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
             newTime = dt;
             newStartTime = dt;
           }
@@ -1390,9 +1254,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             final hour = int.tryParse(parts[0]) ?? 0;
             final minute = int.tryParse(parts[1]) ?? 0;
             final endOffset = result.time['endOffset'] as int? ?? 0;
-            newEndTime = baseDate.add(
-              Duration(days: endOffset, hours: hour, minutes: minute),
-            );
+            newEndTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
           }
         } else {
           newEndTime = null;
@@ -1420,10 +1282,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         _createUndoController(record.id);
       }
 
-      await ref.read(diaryListProvider.notifier).updateDiary(
-        updated,
-        updateWidgets: !_isBatchExtracting,
-      );
+      await ref.read(diaryListProvider.notifier).updateDiary(updated, updateWidgets: !_isBatchExtracting);
       if (mounted && !_isBatchExtracting) {
         Toast.success(context, '优化完成');
       }
@@ -1470,10 +1329,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     // Dispose existing if any
     _undoControllers[recordId]?.dispose();
 
-    final controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 15),
-    );
+    final controller = AnimationController(vsync: this, duration: const Duration(seconds: 15));
     controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         final preRecord = _undoRecords[recordId];
@@ -1491,9 +1347,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
         if (mounted) {
           setState(() {});
-          if (preRecord != null &&
-              currentRecord != null &&
-              currentRecord.time != preRecord.time) {
+          if (preRecord != null && currentRecord != null && currentRecord.time != preRecord.time) {
             _scrollToTime(currentRecord.time, smooth: true);
           }
         }
@@ -1526,7 +1380,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (r.isDeleted) continue;
       if (r.displayTag.isNotEmpty && r.displayTag != '记录') continue;
       if (r.content.trim().isEmpty && r.photos.isEmpty) continue;
-      
+
       untaggedAll++;
       if (_isSameDay(r.time, selectedDate)) {
         untaggedToday++;
@@ -1539,7 +1393,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
 
     final items = <ActionMenuItem>[];
-    
+
     if (untaggedToday > 0) {
       items.add(
         ActionMenuItem(
@@ -1549,7 +1403,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         ),
       );
     }
-    
+
     if (untaggedAll > untaggedToday) {
       items.add(
         ActionMenuItem(
@@ -1564,11 +1418,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       // If only one option, just execute it directly
       items.first.onTap();
     } else {
-      ActionMenu.show(
-        context: context,
-        key: _smartExtractFabKey,
-        items: items,
-      );
+      ActionMenu.show(context: context, key: _smartExtractFabKey, items: items);
     }
   }
 
@@ -1617,10 +1467,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     });
 
     if (mounted) {
-      Toast.info(
-        context,
-        '开始提取 ${untaggedRecords.length} 条${allDates ? '（全部日期）' : ''}',
-      );
+      Toast.info(context, '开始提取 ${untaggedRecords.length} 条${allDates ? '（全部日期）' : ''}');
     }
 
     for (int i = 0; i < untaggedRecords.length; i++) {
@@ -1638,8 +1485,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       }
 
       // Skip if already tagged (might have been manually tagged during batch)
-      if (currentRecord.displayTag.isNotEmpty &&
-          currentRecord.displayTag != '记录') {
+      if (currentRecord.displayTag.isNotEmpty && currentRecord.displayTag != '记录') {
         setState(() {
           _batchExtractCompleted = i + 1;
         });
@@ -1651,22 +1497,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       if (_scrollController.hasClients) {
         final allCurrentRecords = ref.read(diaryListProvider).valueOrNull ?? [];
         final recordsByDate = _buildRecordsByDate(allCurrentRecords);
-        final targetDate = DateTime(
-          currentRecord.time.year,
-          currentRecord.time.month,
-          currentRecord.time.day,
-        );
+        final targetDate = DateTime(currentRecord.time.year, currentRecord.time.month, currentRecord.time.day);
         final isExpanded = _isDateExpanded(targetDate);
         if (isExpanded) {
-          final estimatedOffset = _estimateOffsetForTimeWithRecords(
-            currentRecord.time,
-            recordsByDate,
-          );
+          final estimatedOffset = _estimateOffsetForTimeWithRecords(currentRecord.time, recordsByDate);
           final scrollOffset = _scrollController.offset;
           final viewportHeight = _scrollController.position.viewportDimension;
           // 预留上下安全边距（顶部导航与底部悬浮钮区域）
-          if (estimatedOffset >= scrollOffset + 40 &&
-              estimatedOffset <= scrollOffset + viewportHeight - 140) {
+          if (estimatedOffset >= scrollOffset + 40 && estimatedOffset <= scrollOffset + viewportHeight - 140) {
             needScroll = false;
           }
         }
@@ -1707,10 +1545,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         }
       });
       if (cancelled) {
-        Toast.info(
-          context,
-          '已停止提取（$_batchExtractCompleted/$_batchExtractTotal）',
-        );
+        Toast.info(context, '已停止提取（$_batchExtractCompleted/$_batchExtractTotal）');
       } else {
         Toast.success(context, '提取完成（$_batchExtractTotal 条）');
       }
@@ -1725,14 +1560,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     if (_isBatchExtracting) return;
     final displayName = await showTimelineModelSelector(context, ref);
     if (displayName != null && mounted) {
-      Toast.success(
-        context,
-        '已切换：$displayName',
-        duration: const Duration(seconds: 1),
-      );
+      Toast.success(context, '已切换：$displayName', duration: const Duration(seconds: 1));
     }
   }
-
 
   /// 时间线"每日日记"悬浮按钮：位于智能提取按钮左侧。
   /// 当天已写日记时呈实心书本态，未写时呈描边记录态
@@ -1751,16 +1581,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: hasJournal
-                  ? theme.colorScheme.tertiary
-                  : theme.colorScheme.surface,
+              color: hasJournal ? theme.colorScheme.tertiary : theme.colorScheme.surface,
               shape: BoxShape.circle,
-              border: hasJournal
-                  ? null
-                  : Border.all(
-                      color: theme.colorScheme.outlineVariant,
-                      width: 1.5,
-                    ),
+              border: hasJournal ? null : Border.all(color: theme.colorScheme.outlineVariant, width: 1.5),
               boxShadow: [
                 BoxShadow(
                   color: theme.colorScheme.shadow.withValues(alpha: 0.06),
@@ -1772,9 +1595,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             child: Icon(
               hasJournal ? Icons.menu_book : Icons.edit_note,
               size: 20,
-              color: hasJournal
-                  ? theme.colorScheme.onTertiary
-                  : theme.colorScheme.onSurfaceVariant,
+              color: hasJournal ? theme.colorScheme.onTertiary : theme.colorScheme.onSurfaceVariant,
             ),
           ),
         );
@@ -1843,9 +1664,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   ///
   /// 只对单条记录做（固定事件一次多条时落点不唯一）。量不到、卡片不在视口里
   /// 就返回 null，面板退回原来的插入动画。
-  Future<RecordCardMorphTarget?> _prepareRecordCardMorph(
-    List<String> recordIds,
-  ) async {
+  Future<RecordCardMorphTarget?> _prepareRecordCardMorph(List<String> recordIds) async {
     if (recordIds.length != 1 || !_recordSheetOpen) {
       return null;
     }
@@ -1863,11 +1682,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
 
     // 只跳不飘：面板还压在上面，不要让目标卡片在飞行途中继续移动。
-    _scrollToTime(
-      record.getDisplayTime(),
-      smooth: false,
-      recordsByDate: _buildRecordsByDate(allRecords),
-    );
+    _scrollToTime(record.getDisplayTime(), smooth: false, recordsByDate: _buildRecordsByDate(allRecords));
 
     Rect? rect;
     for (var attempt = 0; attempt < 4 && rect == null; attempt++) {
@@ -1884,8 +1699,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     // 目标必须在时间线视口里，否则盖板会飞到屏幕外（被列表裁掉的卡片）。
     final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox != null && viewportBox.attached && viewportBox.hasSize) {
-      final viewportRect =
-          viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+      final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
       if (!viewportRect.overlaps(rect)) {
         return null;
       }
@@ -1936,11 +1750,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   Future<void> _handleJournalTap() async {
     final selectedDate = ref.read(selectedDateProvider);
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => JournalEditorView(date: selectedDate),
-      ),
-    );
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalEditorView(date: selectedDate)));
     // 编辑器内部保存时会失效缓存，这里兜底返回后刷新按钮状态
     ref.invalidate(journalByDateProvider(selectedDate));
   }
@@ -1965,15 +1775,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: _isBatchExtracting
-              ? primary.withValues(alpha: isDark ? 0.14 : 0.08)
-              : primary,
+          color: _isBatchExtracting ? primary.withValues(alpha: isDark ? 0.14 : 0.08) : primary,
           shape: BoxShape.circle,
           border: _isBatchExtracting
-              ? Border.all(
-                  color: primary.withValues(alpha: isDark ? 0.22 : 0.14),
-                  width: 0.8,
-                )
+              ? Border.all(color: primary.withValues(alpha: isDark ? 0.22 : 0.14), width: 0.8)
               : null,
           boxShadow: [
             BoxShadow(
@@ -1991,18 +1796,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   Container(
                     width: 9.5,
                     height: 9.5,
-                    decoration: BoxDecoration(
-                      color: primary,
-                      borderRadius: BorderRadius.circular(2.0),
-                    ),
+                    decoration: BoxDecoration(color: primary, borderRadius: BorderRadius.circular(2.0)),
                   ),
                 ],
               )
-            : Icon(
-                Icons.auto_fix_high,
-                size: 20,
-                color: theme.colorScheme.onPrimary,
-              ),
+            : Icon(Icons.auto_fix_high, size: 20, color: theme.colorScheme.onPrimary),
       ),
     );
   }
@@ -2010,14 +1808,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   Future<void> _handleAiExtractModelSelect(DiaryRecord record) async {
     final displayName = await showTimelineModelSelector(context, ref);
     if (displayName != null && mounted) {
-      Toast.success(
-        context,
-        '已切换：$displayName',
-        duration: const Duration(seconds: 1),
-      );
+      Toast.success(context, '已切换：$displayName', duration: const Duration(seconds: 1));
     }
   }
-
 
   void _confirmBatchExtract() {
     setState(() {
@@ -2039,28 +1832,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainer,
-        border: Border(
-          top: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: 1,
-          ),
-        ),
+        border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), width: 1)),
       ),
       child: SafeArea(
         top: false,
         child: Row(
           children: [
-            Icon(
-              Icons.auto_awesome,
-              color: theme.colorScheme.primary,
-              size: 18,
-            ),
+            Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 18),
             const SizedBox(width: 8),
             Text(
               '已优化 ${_batchExtractedRecordIds.length} 条记录',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
             ),
             const Spacer(),
             FilledButton(
@@ -2069,13 +1851,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                 elevation: 0,
                 backgroundColor: theme.colorScheme.primary,
                 foregroundColor: theme.colorScheme.onPrimary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
               child: const Text('确认保存'),
             ),
@@ -2177,8 +1954,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           Consumer(
             builder: (context, ref, _) {
               final selectedDate = ref.watch(selectedDateProvider);
-              final colorMarks =
-                  ref.watch(diaryColorMarkProvider).valueOrNull ?? [];
+              final colorMarks = ref.watch(diaryColorMarkProvider).valueOrNull ?? [];
               final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
               final currentColorMark = colorMarks.where((m) {
                 final markDateStr = DateFormat('yyyy-MM-dd').format(m.date);
@@ -2196,8 +1972,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                         const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(Icons.menu),
-                          onPressed: () =>
-                              rootScaffoldKey.currentState?.openDrawer(),
+                          onPressed: () => rootScaffoldKey.currentState?.openDrawer(),
                           padding: const EdgeInsets.symmetric(horizontal: 6),
                           constraints: const BoxConstraints(),
                         ),
@@ -2205,13 +1980,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                         Container(
                           width: 36,
                           height: 36,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer,
-                            shape: BoxShape.circle,
-                          ),
+                          decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, shape: BoxShape.circle),
                           child: IconButton(
-                            icon:
-                                const Icon(Icons.palette_outlined, size: 18),
+                            icon: const Icon(Icons.palette_outlined, size: 18),
                             color: theme.colorScheme.primary,
                             onPressed: _showColorMarkDialog,
                             padding: EdgeInsets.zero,
@@ -2222,8 +1993,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           child: GestureDetector(
                             onTap: _showDatePicker,
                             child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 8.0),
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -2258,10 +2028,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                         Container(
                           width: 36,
                           height: 36,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer,
-                            shape: BoxShape.circle,
-                          ),
+                          decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, shape: BoxShape.circle),
                           child: IconButton(
                             icon: const Icon(Icons.list_alt_rounded, size: 18),
                             color: theme.colorScheme.primary,
@@ -2299,12 +2066,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           left: 39,
                           top: 0,
                           bottom: 0,
-                          child: Container(
-                            width: 2,
-                            color: theme.colorScheme.outlineVariant.withValues(
-                              alpha: 0.4,
-                            ),
-                          ),
+                          child: Container(width: 2, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
                         ),
                         GestureDetector(
                           key: _viewportKey,
@@ -2333,124 +2095,71 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                               if (subIndex == 0) {
                                 final isExpanded = _isDateExpanded(date);
                                 final dateKey = _dateKey(date);
-                                final dayRecords =
-                                    recordsByDate[dateKey] ?? const [];
+                                final dayRecords = recordsByDate[dateKey] ?? const [];
 
                                 childWidget = Container(
-                                  key: ValueKey(
-                                    'div_${dayOffset}_${date.millisecondsSinceEpoch}',
-                                  ),
+                                  key: ValueKey('div_${dayOffset}_${date.millisecondsSinceEpoch}'),
                                   height: 80.0,
                                   color: theme.scaffoldBackgroundColor,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
                                   alignment: Alignment.center,
                                   child: Row(
                                     children: [
                                       Expanded(
-                                        child: Divider(
-                                          color: theme
-                                              .colorScheme
-                                              .outlineVariant
-                                              .withValues(alpha: 0.5),
-                                        ),
+                                        child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
                                       ),
                                       InkWell(
                                         onTap: () => _toggleDateExpanded(date),
-                                        borderRadius:
-                                            BorderRadius.circular(20),
+                                        borderRadius: BorderRadius.circular(20),
                                         child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
-                                          ),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Text(
                                                 _formatDividerDate(date),
-                                                style: theme
-                                                    .textTheme
-                                                    .titleSmall
-                                                    ?.copyWith(
-                                                      color: _isToday(date)
-                                                          ? theme
-                                                              .colorScheme
-                                                              .primary
-                                                          : theme
-                                                              .colorScheme
-                                                              .onSurfaceVariant,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
+                                                style: theme.textTheme.titleSmall?.copyWith(
+                                                  color: _isToday(date)
+                                                      ? theme.colorScheme.primary
+                                                      : theme.colorScheme.onSurfaceVariant,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
-                                              if (!isExpanded &&
-                                                  dayRecords.isNotEmpty) ...[
+                                              if (!isExpanded && dayRecords.isNotEmpty) ...[
                                                 const SizedBox(width: 6),
                                                 Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 1.5,
-                                                  ),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                                   decoration: BoxDecoration(
-                                                    color: (_isToday(date)
-                                                            ? theme
-                                                                .colorScheme
-                                                                .primary
-                                                            : theme
-                                                                .colorScheme
-                                                                .onSurfaceVariant)
-                                                        .withValues(
-                                                          alpha: 0.12,
-                                                        ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10,
-                                                        ),
+                                                    color:
+                                                        (_isToday(date)
+                                                                ? theme.colorScheme.primary
+                                                                : theme.colorScheme.onSurfaceVariant)
+                                                            .withValues(alpha: 0.12),
+                                                    borderRadius: BorderRadius.circular(10),
                                                   ),
                                                   child: Text(
                                                     '${dayRecords.length}',
-                                                    style: theme
-                                                        .textTheme
-                                                        .labelSmall
-                                                        ?.copyWith(
-                                                          color: _isToday(date)
-                                                              ? theme
-                                                                  .colorScheme
-                                                                  .primary
-                                                              : theme
-                                                                  .colorScheme
-                                                                  .onSurfaceVariant,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          fontSize: 10,
-                                                        ),
+                                                    style: theme.textTheme.labelSmall?.copyWith(
+                                                      color: _isToday(date)
+                                                          ? theme.colorScheme.primary
+                                                          : theme.colorScheme.onSurfaceVariant,
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 10,
+                                                    ),
                                                   ),
                                                 ),
                                               ],
                                               const SizedBox(width: 4),
                                               AnimatedRotation(
                                                 turns: isExpanded ? 0.0 : -0.25,
-                                                duration: const Duration(
-                                                  milliseconds: 200,
-                                                ),
+                                                duration: const Duration(milliseconds: 200),
                                                 curve: Curves.easeInOut,
                                                 child: Icon(
-                                                  Icons
-                                                      .keyboard_arrow_down_rounded,
+                                                  Icons.keyboard_arrow_down_rounded,
                                                   size: 18,
                                                   color: _isToday(date)
-                                                      ? theme
-                                                          .colorScheme
-                                                          .primary
-                                                      : theme
-                                                          .colorScheme
-                                                          .onSurfaceVariant
-                                                          .withValues(
-                                                            alpha: 0.7,
-                                                          ),
+                                                      ? theme.colorScheme.primary
+                                                      : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                                 ),
                                               ),
                                             ],
@@ -2458,12 +2167,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                         ),
                                       ),
                                       Expanded(
-                                        child: Divider(
-                                          color: theme
-                                              .colorScheme
-                                              .outlineVariant
-                                              .withValues(alpha: 0.5),
-                                        ),
+                                        child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
                                       ),
                                     ],
                                   ),
@@ -2472,12 +2176,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                 childWidget = const SizedBox.shrink();
                               } else {
                                 final nodeIndex = subIndex - 1;
-                                final time = TimeOfDay(
-                                  hour: nodeIndex ~/ 2,
-                                  minute: (nodeIndex % 2) * 30,
-                                );
-                                final currentMinutes =
-                                    time.hour * 60 + time.minute;
+                                final time = TimeOfDay(hour: nodeIndex ~/ 2, minute: (nodeIndex % 2) * 30);
+                                final currentMinutes = time.hour * 60 + time.minute;
                                 final nextMinutes = currentMinutes + 30;
                                 final nodeStartDateTime = DateTime(
                                   date.year,
@@ -2488,21 +2188,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                 );
 
                                 final dateKey = _dateKey(date);
-                                final dayRecords =
-                                    recordsByDate[dateKey] ?? const [];
+                                final dayRecords = recordsByDate[dateKey] ?? const [];
                                 final recordsInInterval = dayRecords.where((r) {
                                   final preRecord = _undoRecords[r.id];
                                   final displayTime = preRecord != null
                                       ? preRecord.getDisplayTime()
                                       : r.getDisplayTime();
-                                  final rMinutes =
-                                      displayTime.hour * 60 +
-                                      displayTime.minute;
+                                  final rMinutes = displayTime.hour * 60 + displayTime.minute;
                                   if (nodeIndex == 47) {
                                     return rMinutes >= currentMinutes;
                                   } else {
-                                    return rMinutes >= currentMinutes &&
-                                        rMinutes < nextMinutes;
+                                    return rMinutes >= currentMinutes && rMinutes < nextMinutes;
                                   }
                                 }).toList();
 
@@ -2519,11 +2215,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                   );
 
                                   if (selectEvent.endTime == null) {
-                                    isStandardNodeSelected = nodeStartDateTime
-                                        .isAtSameMomentAs(selectionStart);
+                                    isStandardNodeSelected = nodeStartDateTime.isAtSameMomentAs(selectionStart);
                                   } else {
-                                    final selEndDate =
-                                        selectEvent.endDate ?? selectEvent.date;
+                                    final selEndDate = selectEvent.endDate ?? selectEvent.date;
                                     final selectionEnd = DateTime(
                                       selEndDate.year,
                                       selEndDate.month,
@@ -2532,62 +2226,41 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                       selectEvent.endTime!.minute,
                                     );
                                     isStandardNodeSelected =
-                                        !nodeStartDateTime.isBefore(
-                                          selectionStart,
-                                        ) &&
-                                        !nodeStartDateTime.isAfter(
-                                          selectionEnd,
-                                        );
+                                        !nodeStartDateTime.isBefore(selectionStart) &&
+                                        !nodeStartDateTime.isAfter(selectionEnd);
                                   }
                                 }
 
                                 bool isDraggedSelected = false;
-                                if (_dragStartIndex != null &&
-                                    _dragEndIndex != null) {
-                                  final start = math.min(
-                                    _dragStartIndex!,
-                                    _dragEndIndex!,
-                                  );
-                                  final end = math.max(
-                                    _dragStartIndex!,
-                                    _dragEndIndex!,
-                                  );
+                                if (_dragStartIndex != null && _dragEndIndex != null) {
+                                  final start = math.min(_dragStartIndex!, _dragEndIndex!);
+                                  final end = math.max(_dragStartIndex!, _dragEndIndex!);
                                   isDraggedSelected = i >= start && i <= end;
                                 }
 
-                                final bool finalIsSelected =
-                                    isDraggedSelected || isStandardNodeSelected;
+                                final bool finalIsSelected = isDraggedSelected || isStandardNodeSelected;
                                 final bool isMultiSelect =
-                                    isDraggedSelected ||
-                                    (isUserSelected &&
-                                        selectEvent.endTime != null);
+                                    isDraggedSelected || (isUserSelected && selectEvent.endTime != null);
 
-                                final inputMinutes =
-                                    currentInputTime.hour * 60 +
-                                    currentInputTime.minute;
+                                final inputMinutes = currentInputTime.hour * 60 + currentInputTime.minute;
                                 final now = TimeOfDay.now();
                                 final nowMinutes = now.hour * 60 + now.minute;
 
-                                final isSelectedTimeInThisInterval =
-                                    nodeIndex == 47
+                                final isSelectedTimeInThisInterval = nodeIndex == 47
                                     ? inputMinutes >= currentMinutes
-                                    : (inputMinutes >= currentMinutes &&
-                                          inputMinutes < nextMinutes);
+                                    : (inputMinutes >= currentMinutes && inputMinutes < nextMinutes);
 
                                 final showDedicatedSelectedNode =
                                     isUserSelected &&
                                     _isSameDay(selectEvent.date, date) &&
                                     isSelectedTimeInThisInterval &&
-                                    !(currentInputTime.minute == 0 ||
-                                        currentInputTime.minute == 30);
+                                    !(currentInputTime.minute == 0 || currentInputTime.minute == 30);
 
                                 final isNowInThisInterval = nodeIndex == 47
                                     ? nowMinutes >= currentMinutes
-                                    : (nowMinutes >= currentMinutes &&
-                                          nowMinutes < nextMinutes);
+                                    : (nowMinutes >= currentMinutes && nowMinutes < nextMinutes);
 
-                                final selectionStartForCurrentTime =
-                                    isUserSelected
+                                final selectionStartForCurrentTime = isUserSelected
                                     ? DateTime(
                                         selectEvent.date.year,
                                         selectEvent.date.month,
@@ -2596,46 +2269,26 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                         selectEvent.time.minute,
                                       )
                                     : DateTime(0);
-                                final selectionEndForCurrentTime =
-                                    isUserSelected &&
-                                        selectEvent.endTime != null
+                                final selectionEndForCurrentTime = isUserSelected && selectEvent.endTime != null
                                     ? DateTime(
-                                        (selectEvent.endDate ??
-                                                selectEvent.date)
-                                            .year,
-                                        (selectEvent.endDate ??
-                                                selectEvent.date)
-                                            .month,
-                                        (selectEvent.endDate ??
-                                                selectEvent.date)
-                                            .day,
+                                        (selectEvent.endDate ?? selectEvent.date).year,
+                                        (selectEvent.endDate ?? selectEvent.date).month,
+                                        (selectEvent.endDate ?? selectEvent.date).day,
                                         selectEvent.endTime!.hour,
                                         selectEvent.endTime!.minute,
                                       )
                                     : DateTime(0);
 
-                                final nowDateTime = DateTime(
-                                  date.year,
-                                  date.month,
-                                  date.day,
-                                  now.hour,
-                                  now.minute,
-                                );
+                                final nowDateTime = DateTime(date.year, date.month, date.day, now.hour, now.minute);
                                 final isCurrentTimeSelected =
                                     isUserSelected &&
                                     _isToday(date) &&
                                     (selectEvent.endTime != null
-                                        ? (!nowDateTime.isBefore(
-                                                selectionStartForCurrentTime,
-                                              ) &&
-                                              !nowDateTime.isAfter(
-                                                selectionEndForCurrentTime,
-                                              ))
+                                        ? (!nowDateTime.isBefore(selectionStartForCurrentTime) &&
+                                              !nowDateTime.isAfter(selectionEndForCurrentTime))
                                         : (_isSameDay(selectEvent.date, date) &&
-                                              now.hour ==
-                                                  currentInputTime.hour &&
-                                              now.minute ==
-                                                  currentInputTime.minute));
+                                              now.hour == currentInputTime.hour &&
+                                              now.minute == currentInputTime.minute));
 
                                 final showDedicatedCurrentTimeNode =
                                     isNowInThisInterval &&
@@ -2654,115 +2307,72 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                         now.minute == currentInputTime.minute);
 
                                 final isStandardNodeCurrentTime =
-                                    _isToday(date) &&
-                                    (now.hour == time.hour &&
-                                        now.minute == time.minute);
+                                    _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
 
                                 childWidget = Column(
-                                  key: (isNowInThisInterval && _isToday(date))
-                                      ? _currentTimeNodeKey
-                                      : null,
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
+                                  key: (isNowInThisInterval && _isToday(date)) ? _currentTimeNodeKey : null,
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
                                     _EmptyTimeNode(
-                                      key: ValueKey(
-                                        'n_${dayOffset}_$nodeIndex',
-                                      ),
+                                      key: ValueKey('n_${dayOffset}_$nodeIndex'),
                                       time: time,
                                       isSelected: finalIsSelected,
                                       isMultiSelect: isMultiSelect,
                                       isDraggedSelected: isDraggedSelected,
                                       isCurrentTime: isStandardNodeCurrentTime,
                                       onTap: () => _handleNodeTap(date, time),
-                                      onDoubleTap: () =>
-                                          _handleNodeDoubleTap(date, time),
+                                      onDoubleTap: () => _handleNodeDoubleTap(date, time),
                                     ),
                                     if (showDedicatedSelectedNode)
                                       _SelectedTimeNode(
                                         time: currentInputTime,
                                         isCurrentTime:
                                             _isToday(date) &&
-                                            (now.hour ==
-                                                    currentInputTime.hour &&
-                                                now.minute ==
-                                                    currentInputTime.minute),
-                                        onTap: () => _handleNodeTap(
-                                          date,
-                                          currentInputTime,
-                                        ),
-                                        onDoubleTap: () => _handleNodeDoubleTap(
-                                          date,
-                                          currentInputTime,
-                                        ),
+                                            (now.hour == currentInputTime.hour &&
+                                                now.minute == currentInputTime.minute),
+                                        onTap: () => _handleNodeTap(date, currentInputTime),
+                                        onDoubleTap: () => _handleNodeDoubleTap(date, currentInputTime),
                                       ),
                                     if (showDedicatedSelectedCurrentTimeNode)
                                       _SelectedTimeNode(
                                         time: now,
                                         isCurrentTime: true,
                                         onTap: () => _handleNodeTap(date, now),
-                                        onDoubleTap: () =>
-                                            _handleNodeDoubleTap(date, now),
+                                        onDoubleTap: () => _handleNodeDoubleTap(date, now),
                                       ),
                                     if (showDedicatedCurrentTimeNode)
                                       _CurrentTimeNode(
                                         time: now,
                                         onTap: () => _handleNodeTap(date, now),
-                                        onDoubleTap: () =>
-                                            _handleNodeDoubleTap(date, now),
+                                        onDoubleTap: () => _handleNodeDoubleTap(date, now),
                                       ),
                                     ...recordsInInterval.map(
                                       (record) => RepaintBoundary(
                                         child: Opacity(
                                           // 发送后飞行期间先藏起来，等盖板落位再揭开；
                                           // 只改透明度，卡片仍占位，目标 Rect 可以照量。
-                                          opacity:
-                                              _hiddenMorphRecordId == record.id
-                                              ? 0
-                                              : 1,
+                                          opacity: _hiddenMorphRecordId == record.id ? 0 : 1,
                                           child: _InsertingItemWrapper(
-                                            isInserting:
-                                                _insertingRecordIds.contains(
-                                                  record.id,
-                                                ),
+                                            isInserting: _insertingRecordIds.contains(record.id),
                                             // 飞行落位只补一圈辉光，不再从 0 长高。
-                                            animateSize:
-                                                _glowOnlyRecordId != record.id,
+                                            animateSize: _glowOnlyRecordId != record.id,
                                             child: _CollapsingItemWrapper(
-                                              isCollapsing:
-                                                  _deletingRecordIds.contains(
-                                                    record.id,
-                                                  ),
+                                              isCollapsing: _deletingRecordIds.contains(record.id),
                                               child: DiaryItem(
                                                 record: record,
-                                                cardKey: _recordCardKeyFor(
-                                                  record.id,
-                                                ),
-                                                timeDragHandleKey: _handleKeyFor(
-                                                  record.id,
-                                                ),
-                                                isTimeDragging:
-                                                    _cardDrag?.record.id ==
-                                                    record.id,
+                                                cardKey: _recordCardKeyFor(record.id),
+                                                timeDragHandleKey: _handleKeyFor(record.id),
+                                                isTimeDragging: _cardDrag?.record.id == record.id,
                                                 onTap: () => _handleEdit(record),
                                                 onEdit: _handleEdit,
                                                 onDelete: _handleDelete,
                                                 onQuoteToQ: _quoteRecordToQ,
-                                                onAiExtract: () =>
-                                                    _handleAiExtract(record),
-                                                onAiExtractLongPress: () =>
-                                                    _handleAiExtractModelSelect(
-                                                      record,
-                                                    ),
-                                                isExtracting:
-                                                    _extractingRecordId ==
-                                                    record.id,
-                                                onUndo: () =>
-                                                    _undoExtract(record),
-                                                isUndoable: _undoRecords
-                                                    .containsKey(record.id),
-                                                undoAnimation:
-                                                    _undoControllers[record.id],
+                                                onAiExtract: () => _handleAiExtract(record),
+                                                onAiExtractLongPress: () => _handleAiExtractModelSelect(record),
+                                                isExtracting: _extractingRecordId == record.id,
+                                                onUndo: () => _undoExtract(record),
+                                                isUndoable: _undoRecords.containsKey(record.id),
+                                                undoAnimation: _undoControllers[record.id],
                                               ),
                                             ),
                                           ),
@@ -2775,12 +2385,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
                               return TimelineItemWrapper(
                                 index: i,
-                                onMount: (index, ctx) =>
-                                    _itemContexts[index] = ctx,
-                                onUnmount: (index) =>
-                                    _itemContexts.remove(index),
-                                onHeightChange: (index, height) =>
-                                    _itemHeights[index] = height,
+                                onMount: (index, ctx) => _itemContexts[index] = ctx,
+                                onUnmount: (index) => _itemContexts.remove(index),
+                                onHeightChange: (index, height) => _itemHeights[index] = height,
                                 child: childWidget,
                               );
                             },
@@ -2789,8 +2396,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                       ],
                     );
                   },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
+                  loading: () => const Center(child: CircularProgressIndicator()),
                   error: (e, _) => AppErrorState(
                     error: e,
                     action: '加载记录失败',
@@ -2800,17 +2406,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   ),
                 ),
                 // 每日日记 FAB（智能提取按钮左侧）
-                Positioned(
-                  right: 72,
-                  bottom: _fabBottom,
-                  child: _buildJournalFAB(theme),
-                ),
+                Positioned(right: 72, bottom: _fabBottom, child: _buildJournalFAB(theme)),
                 // Smart Extract FAB
-                Positioned(
-                  right: 16,
-                  bottom: _fabBottom,
-                  child: _buildSmartExtractFAB(theme),
-                ),
+                Positioned(right: 16, bottom: _fabBottom, child: _buildSmartExtractFAB(theme)),
                 // 记录按钮：左下角，与右侧两钮同高对称。
                 // 时间线上选中时间后它会横向展开成胶囊，把选中的时间段直接顶在按钮上。
                 Positioned(
@@ -2826,10 +2424,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           ? Duration.zero
                           : const Duration(milliseconds: 90),
                       curve: Curves.easeOutCubic,
-                      child: DiaryRecordFab(
-                        key: _recordFabKey,
-                        onTap: _openRecordSheet,
-                      ),
+                      child: DiaryRecordFab(key: _recordFabKey, onTap: _openRecordSheet),
                     ),
                   ),
                 ),
@@ -2840,11 +2435,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                     right: 0,
                     bottom: _fabBottom + 56,
                     child: Center(
-                      child: RecordCheerToast(
-                        event: _cheerEvent!,
-                        leaving: _cheerLeaving,
-                        onDismissed: _dismissCheer,
-                      ),
+                      child: RecordCheerToast(event: _cheerEvent!, leaving: _cheerLeaving, onDismissed: _dismissCheer),
                     ),
                   ),
               ],
@@ -2952,19 +2543,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       final startDayOffset = start ~/ _itemsPerDay;
       final startSubIndex = start % _itemsPerDay;
       final startNodeIndex = math.max(0, startSubIndex - 1);
-      final startTime = TimeOfDay(
-        hour: startNodeIndex ~/ 2,
-        minute: (startNodeIndex % 2) * 30,
-      );
+      final startTime = TimeOfDay(hour: startNodeIndex ~/ 2, minute: (startNodeIndex % 2) * 30);
       final startDate = _indexToDate(startDayOffset);
 
       final endDayOffset = end ~/ _itemsPerDay;
       final endSubIndex = end % _itemsPerDay;
       final endNodeIndex = math.max(0, endSubIndex - 1);
-      final endTime = TimeOfDay(
-        hour: endNodeIndex ~/ 2,
-        minute: (endNodeIndex % 2) * 30,
-      );
+      final endTime = TimeOfDay(hour: endNodeIndex ~/ 2, minute: (endNodeIndex % 2) * 30);
       final endDate = _indexToDate(endDayOffset);
 
       ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
@@ -3016,8 +2601,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   /// 卡片当前的全局 Rect（发送后飞行落点用）。
   Rect? _recordCardRect(String recordId) {
-    final box =
-        _recordCardKeys[recordId]?.currentContext?.findRenderObject() as RenderBox?;
+    final box = _recordCardKeys[recordId]?.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.attached || !box.hasSize) {
       return null;
     }
@@ -3069,22 +2653,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
 
-    final handleBox =
-        _recordHandleKeys[record.id]?.currentContext?.findRenderObject()
-            as RenderBox?;
-    final viewportBox =
-        _viewportKey.currentContext?.findRenderObject() as RenderBox?;
-    if (handleBox == null ||
-        !handleBox.hasSize ||
-        viewportBox == null ||
-        !viewportBox.hasSize) {
+    final handleBox = _recordHandleKeys[record.id]?.currentContext?.findRenderObject() as RenderBox?;
+    final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (handleBox == null || !handleBox.hasSize || viewportBox == null || !viewportBox.hasSize) {
       return;
     }
 
-    final handleRect =
-        handleBox.localToGlobal(Offset.zero) & handleBox.size;
-    final viewportRect =
-        viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    final handleRect = handleBox.localToGlobal(Offset.zero) & handleBox.size;
+    final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
     // 卡片左边界正好接在 48px 宽的节点栏右侧；右侧留白 = 列表 16 + 卡片 12。
     final cardLeft = handleRect.right;
     final cardWidth = viewportRect.right - 28 - cardLeft;
@@ -3096,13 +2672,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _cardDrag = _RecordTimeDragState(
       record: record,
       startGlobalY: details.globalPosition.dy,
-      startScrollOffset: _scrollController.hasClients
-          ? _scrollController.offset
-          : 0,
-      grabOffsetY: (details.globalPosition.dy - handleRect.top).clamp(
-        0.0,
-        handleRect.height,
-      ),
+      startScrollOffset: _scrollController.hasClients ? _scrollController.offset : 0,
+      grabOffsetY: (details.globalPosition.dy - handleRect.top).clamp(0.0, handleRect.height),
       cardLeft: cardLeft,
       cardWidth: cardWidth,
       // 时间轴竖线位于列表内容 left + 39，宽 2px，中心取 +40。
@@ -3110,11 +2681,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       proxyTop: handleRect.top,
       topLimit: viewportRect.top + 8,
       bottomLimit: viewportRect.bottom - 132,
-      shift: resolveTimelineTimeShift(
-        record: record,
-        contentDeltaPx: 0,
-        pixelsPerMinute: _dragPixelsPerMinute,
-      ),
+      shift: resolveTimelineTimeShift(record: record, contentDeltaPx: 0, pixelsPerMinute: _dragPixelsPerMinute),
     );
     HapticFeedback.mediumImpact();
     setState(() {});
@@ -3133,13 +2700,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       return;
     }
     _lastDragPosition = globalPosition;
-    final scrollOffset = _scrollController.hasClients
-        ? _scrollController.offset
-        : drag.startScrollOffset;
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : drag.startScrollOffset;
     // 内容坐标系位移 = 手指位移 + 列表滚动量：手指不动、列表滚动时时间也应继续变化。
-    final contentDelta =
-        (globalPosition.dy - drag.startGlobalY) +
-        (scrollOffset - drag.startScrollOffset);
+    final contentDelta = (globalPosition.dy - drag.startGlobalY) + (scrollOffset - drag.startScrollOffset);
     final shift = resolveTimelineTimeShift(
       record: drag.record,
       contentDeltaPx: contentDelta,
@@ -3187,19 +2750,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _saveDraggedRecordTime(before, after);
   }
 
-  Future<void> _saveDraggedRecordTime(
-    DiaryRecord before,
-    DiaryRecord after,
-  ) async {
+  Future<void> _saveDraggedRecordTime(DiaryRecord before, DiaryRecord after) async {
     try {
       await ref.read(diaryListProvider.notifier).updateDiary(after);
       if (!mounted) {
         return;
       }
-      final label = formatTimelineDragTimeLabel(
-        after.startTime ?? after.time,
-        end: after.endTime,
-      );
+      final label = formatTimelineDragTimeLabel(after.startTime ?? after.time, end: after.endTime);
       Toast.show(
         context,
         '已调整到 $label',
@@ -3211,11 +2768,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         },
       );
     } catch (e, stackTrace) {
-      LoggerService.instance.error(
-        '拖动调整记录时间失败: $e',
-        category: LogCategory.database,
-        stackTrace: stackTrace,
-      );
+      LoggerService.instance.error('拖动调整记录时间失败: $e', category: LogCategory.database, stackTrace: stackTrace);
       if (mounted) {
         Toast.error(context, '调整时间失败');
       }
@@ -3225,10 +2778,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   void _showCardDragOverlay() {
     _removeCardDragOverlay();
     final overlay = Overlay.of(context, rootOverlay: true);
-    final entry = OverlayEntry(
-      builder: (overlayContext) =>
-          _buildCardDragOverlay(Theme.of(overlayContext)),
-    );
+    final entry = OverlayEntry(builder: (overlayContext) => _buildCardDragOverlay(Theme.of(overlayContext)));
     overlay.insert(entry);
     _cardDragOverlay = entry;
   }
@@ -3258,18 +2808,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     final maxTop = math.max(drag.topLimit, drag.bottomLimit);
     final top = math.min(math.max(drag.proxyTop, drag.topLimit), maxTop);
     final indicatorY = top + 23;
-    final targetLabel = formatTimelineDragTimeLabel(
-      shift.startTime ?? shift.time,
-      end: shift.endTime,
-    );
+    final targetLabel = formatTimelineDragTimeLabel(shift.startTime ?? shift.time, end: shift.endTime);
     final originalLabel = formatTimelineDragTimeLabel(
       drag.record.startTime ?? drag.record.time,
       end: drag.record.endTime,
     );
     final delta = shift.deltaMinutes;
-    final deltaLabel = delta == 0
-        ? null
-        : (delta > 0 ? '+$delta 分钟' : '$delta 分钟');
+    final deltaLabel = delta == 0 ? null : (delta > 0 ? '+$delta 分钟' : '$delta 分钟');
 
     return IgnorePointer(
       child: Stack(
@@ -3279,10 +2824,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             left: drag.axisX - 1,
             top: indicatorY - 1,
             width: math.max(0.0, drag.cardLeft - drag.axisX + 1),
-            child: Container(
-              height: 2,
-              color: theme.colorScheme.primary.withValues(alpha: 0.35),
-            ),
+            child: Container(height: 2, color: theme.colorScheme.primary.withValues(alpha: 0.35)),
           ),
           Positioned(
             left: drag.axisX - 4,
@@ -3293,12 +2835,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.35),
-                    blurRadius: 6,
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: theme.colorScheme.primary.withValues(alpha: 0.35), blurRadius: 6)],
               ),
             ),
           ),
@@ -3311,20 +2848,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: tagColor.withValues(alpha: 0.35),
-                ),
+                border: Border.all(color: tagColor.withValues(alpha: 0.35)),
                 boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.16),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                  BoxShadow(
-                    color: tagColor.withValues(alpha: 0.14),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 24, offset: const Offset(0, 10)),
+                  BoxShadow(color: tagColor.withValues(alpha: 0.14), blurRadius: 10, offset: const Offset(0, 4)),
                 ],
               ),
               child: Column(
@@ -3336,15 +2863,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                       Container(
                         width: 26,
                         height: 26,
-                        decoration: BoxDecoration(
-                          color: tagColor.withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.schedule_rounded,
-                          size: 15,
-                          color: tagColor,
-                        ),
+                        decoration: BoxDecoration(color: tagColor.withValues(alpha: 0.12), shape: BoxShape.circle),
+                        child: Icon(Icons.schedule_rounded, size: 15, color: tagColor),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -3353,9 +2873,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                             children: [
                               TextSpan(
                                 text: '调整到 ',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
+                                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                               ),
                               TextSpan(
                                 text: targetLabel,
@@ -3368,9 +2886,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                 TextSpan(
                                   text: '  $deltaLabel',
                                   style: theme.textTheme.labelSmall?.copyWith(
-                                    color: theme.colorScheme.primary.withValues(
-                                      alpha: 0.75,
-                                    ),
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.75),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -3380,11 +2896,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      Icon(
-                        Icons.drag_indicator_rounded,
-                        size: 18,
-                        color: theme.colorScheme.outline,
-                      ),
+                      Icon(Icons.drag_indicator_rounded, size: 18, color: theme.colorScheme.outline),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -3392,16 +2904,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                     _dragPreviewText(drag.record),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '松开生效 · 原 $originalLabel',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                    ),
+                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
                   ),
                 ],
               ),
@@ -3413,26 +2921,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   String _dragPreviewText(DiaryRecord record) {
-    return diaryDragPreviewText(
-      content: record.content,
-      title: record.title,
-      photoCount: record.photos.length,
-    );
+    return diaryDragPreviewText(content: record.content, title: record.title, photoCount: record.photos.length);
   }
 
   void _startAutoScrollTimer() {
     _autoScrollTimer?.cancel();
-    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 20), (
-      timer,
-    ) {
-      if (_lastDragPosition == null ||
-          !mounted ||
-          !_scrollController.hasClients) {
+    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 20), (timer) {
+      if (_lastDragPosition == null || !mounted || !_scrollController.hasClients) {
         return;
       }
 
-      final renderBox =
-          _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final renderBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
       if (renderBox == null || !renderBox.hasSize) return;
 
       final localPos = renderBox.globalToLocal(_lastDragPosition!);
@@ -3447,8 +2946,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         // 向上滚动 (越靠近边缘，滚动速度越快)
         final ratio = (threshold - localPos.dy) / threshold;
         scrollDelta = -maxSpeed * ratio;
-      } else if (localPos.dy > viewportHeight - threshold &&
-          localPos.dy <= viewportHeight) {
+      } else if (localPos.dy > viewportHeight - threshold && localPos.dy <= viewportHeight) {
         // 向下滚动 (越靠近边缘，滚动速度越快)
         final ratio = (localPos.dy - (viewportHeight - threshold)) / threshold;
         scrollDelta = maxSpeed * ratio;
@@ -3456,10 +2954,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
       if (scrollDelta != 0.0) {
         final currentOffset = _scrollController.offset;
-        final targetOffset = (currentOffset + scrollDelta).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
+        final targetOffset = (currentOffset + scrollDelta).clamp(0.0, _scrollController.position.maxScrollExtent);
 
         if (targetOffset != currentOffset) {
           _scrollController.jumpTo(targetOffset);

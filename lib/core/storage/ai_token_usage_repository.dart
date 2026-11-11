@@ -18,8 +18,7 @@ import 'package:qnote_flutter/models/ai_token_usage.dart';
 class AiTokenUsageRepository {
   static const String table = 'ai_token_usage_daily';
 
-  static final AiTokenUsageRepository instance =
-      AiTokenUsageRepository._internal();
+  static final AiTokenUsageRepository instance = AiTokenUsageRepository._internal();
 
   AiTokenUsageRepository._internal();
 
@@ -38,11 +37,7 @@ class AiTokenUsageRepository {
   ///
   /// 同一天同一厂商同一模型的多次请求在事务里读改写，避免并发发信（AgentLoop
   /// 的多个工具轮次、日记提取与主对话并行）互相覆盖计数。
-  Future<void> record({
-    required String providerId,
-    required String modelName,
-    required AiTokenUsage usage,
-  }) async {
+  Future<void> record({required String providerId, required String modelName, required AiTokenUsage usage}) async {
     if (usage.isEmpty) return;
     try {
       final db = await _db;
@@ -51,12 +46,7 @@ class AiTokenUsageRepository {
       await db.transaction((txn) async {
         final rows = await txn.query(
           table,
-          columns: [
-            'prompt_tokens',
-            'completion_tokens',
-            'total_tokens',
-            'request_count',
-          ],
+          columns: ['prompt_tokens', 'completion_tokens', 'total_tokens', 'request_count'],
           where: 'date = ? AND provider_id = ? AND model_name = ?',
           whereArgs: [date, providerId, modelName],
           limit: 1,
@@ -80,8 +70,7 @@ class AiTokenUsageRepository {
           table,
           {
             'prompt_tokens': read('prompt_tokens') + usage.promptTokens,
-            'completion_tokens':
-                read('completion_tokens') + usage.completionTokens,
+            'completion_tokens': read('completion_tokens') + usage.completionTokens,
             'total_tokens': read('total_tokens') + usage.totalTokens,
             'request_count': read('request_count') + 1,
             'updated_at': now,
@@ -100,9 +89,7 @@ class AiTokenUsageRepository {
     try {
       final db = await _db;
       final today = dateKeyOf(DateTime.now());
-      final weekStart = dateKeyOf(
-        DateTime.now().subtract(const Duration(days: 6)),
-      );
+      final weekStart = dateKeyOf(DateTime.now().subtract(const Duration(days: 6)));
       final rows = await db.rawQuery(
         '''
         SELECT
@@ -155,9 +142,7 @@ class AiTokenUsageRepository {
           FROM $table
           $where
         ''', range.args);
-        int readTotal(String key) =>
-            (totalRows.isEmpty ? 0 : totalRows.first[key] as num?)?.toInt() ??
-            0;
+        int readTotal(String key) => (totalRows.isEmpty ? 0 : totalRows.first[key] as num?)?.toInt() ?? 0;
 
         final rows = await txn.rawQuery('''
           SELECT
@@ -194,20 +179,12 @@ class AiTokenUsageRepository {
           );
           providers
               .putIfAbsent(providerId, _UsageAccumulator.new)
-              .add(
-                promptTokens: prompt,
-                completionTokens: completion,
-                totalTokens: total,
-                requestCount: requests,
-              );
+              .add(promptTokens: prompt, completionTokens: completion, totalTokens: total, requestCount: requests);
         }
 
         models.sort(_compareBreakdown);
-        final providerRows =
-            providers.entries
-                .map((entry) => entry.value.toBreakdown(providerId: entry.key))
-                .toList()
-              ..sort(_compareBreakdown);
+        final providerRows = providers.entries.map((entry) => entry.value.toBreakdown(providerId: entry.key)).toList()
+          ..sort(_compareBreakdown);
 
         return AiTokenUsageDetail(
           period: period,
@@ -228,33 +205,22 @@ class AiTokenUsageRepository {
   }
 
   /// 时间范围对应的 SQL 条件；`all` 不设条件
-  static ({String? clause, List<Object?> args}) _rangeOf(
-    AiTokenUsagePeriod period,
-  ) {
+  static ({String? clause, List<Object?> args}) _rangeOf(AiTokenUsagePeriod period) {
     final now = DateTime.now();
     switch (period) {
       case AiTokenUsagePeriod.today:
         return (clause: 'date = ?', args: [dateKeyOf(now)]);
       case AiTokenUsagePeriod.week:
-        return (
-          clause: 'date >= ?',
-          args: [dateKeyOf(now.subtract(const Duration(days: 6)))],
-        );
+        return (clause: 'date >= ?', args: [dateKeyOf(now.subtract(const Duration(days: 6)))]);
       case AiTokenUsagePeriod.month:
-        return (
-          clause: 'date >= ?',
-          args: [dateKeyOf(now.subtract(const Duration(days: 29)))],
-        );
+        return (clause: 'date >= ?', args: [dateKeyOf(now.subtract(const Duration(days: 29)))]);
       case AiTokenUsagePeriod.all:
         return (clause: null, args: const []);
     }
   }
 
   /// 排行排序：token 降序 → 请求数降序 → 维度名，保证同量时顺序稳定
-  static int _compareBreakdown(
-    AiTokenUsageBreakdown a,
-    AiTokenUsageBreakdown b,
-  ) {
+  static int _compareBreakdown(AiTokenUsageBreakdown a, AiTokenUsageBreakdown b) {
     final byTotal = b.totalTokens.compareTo(a.totalTokens);
     if (byTotal != 0) return byTotal;
     final byRequests = b.requestCount.compareTo(a.requestCount);

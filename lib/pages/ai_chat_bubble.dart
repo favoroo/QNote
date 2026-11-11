@@ -56,13 +56,10 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
   Widget build(BuildContext context) {
     final streamingContent = ref.watch(aiStreamingMessageProvider);
     // 正文与阶段性状态互斥展示：优先正文；正文未到时展示状态行（思考中/准备中…）
-    final hasContent =
-        streamingContent != null && streamingContent.trim().isNotEmpty;
+    final hasContent = streamingContent != null && streamingContent.trim().isNotEmpty;
     final statusText = hasContent ? null : ref.watch(aiStreamingStatusProvider);
     // 正文流式输出时本身在持续增长，无需已用时计时
-    final statusStartedAt = hasContent
-        ? null
-        : ref.watch(aiStreamingStartedAtProvider);
+    final statusStartedAt = hasContent ? null : ref.watch(aiStreamingStartedAtProvider);
 
     String content = '';
     if (hasContent) {
@@ -73,8 +70,7 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
         _flushTimer = null;
         _renderedContent = streamingContent;
       } else if (streamingContent != _renderedContent) {
-        if (streamingContent.length - _renderedContent.length >=
-                _minFlushDelta ||
+        if (streamingContent.length - _renderedContent.length >= _minFlushDelta ||
             !streamingContent.startsWith(_renderedContent)) {
           // 增量达阈值，或内容被整体替换（重发/重试），立即跟上
           _flushTimer?.cancel();
@@ -101,11 +97,7 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
       // 固定 Key：思考行在首字到达后插入到气泡上方，若气泡没有 Key
       // 会因 Column 第 0 个子节点变化而被卸载重建，入场动画和气泡状态都会重来。
       key: const ValueKey('streaming_chat_bubble'),
-      message: ChatMessage(
-        role: 'assistant',
-        content: content,
-        timestamp: DateTime.now(),
-      ),
+      message: ChatMessage(role: 'assistant', content: content, timestamp: DateTime.now()),
       statusText: statusText,
       statusStartedAt: statusStartedAt,
       isFirstInGroup: widget.isFirstInGroup && !showThoughtRow,
@@ -202,9 +194,7 @@ class ChatBubble extends ConsumerWidget {
   });
 
   /// 是否为待处理的步数上限消息（渲染「继续/暂停」按钮）
-  bool get _isTurnLimitPending =>
-      message.uiDetails?['type'] == 'turn_limit' &&
-      message.uiDetails?['handled'] != true;
+  bool get _isTurnLimitPending => message.uiDetails?['type'] == 'turn_limit' && message.uiDetails?['handled'] != true;
 
   /// 点击助手气泡：本条正在合成/播放时中断朗读，否则沿用收起键盘行为。
   ///
@@ -213,8 +203,7 @@ class ChatBubble extends ConsumerWidget {
   void _onBubbleTap(WidgetRef ref) {
     final playback = ref.read(ttsPlaybackProvider);
     final isVoiceOn =
-        playback.messageId == TtsPlayer.messageKeyOf(message) &&
-        playback.status != TtsPlaybackStatus.idle;
+        playback.messageId == TtsPlayer.messageKeyOf(message) && playback.status != TtsPlaybackStatus.idle;
     if (!isVoiceOn) {
       FocusManager.instance.primaryFocus?.unfocus();
       return;
@@ -272,10 +261,7 @@ class ChatBubble extends ConsumerWidget {
         builder: (context, value, child) {
           return Opacity(
             opacity: value,
-            child: Transform.translate(
-              offset: Offset(0, (1 - value) * 12),
-              child: child,
-            ),
+            child: Transform.translate(offset: Offset(0, (1 - value) * 12), child: child),
           );
         },
         child: Column(
@@ -304,15 +290,8 @@ class ChatBubble extends ConsumerWidget {
                 ),
               ),
             Padding(
-              padding: EdgeInsets.only(
-                left: 4,
-                right: 4,
-                bottom: isLastInGroup ? 12 : 2,
-              ),
-              child: ThinkingProcessView(
-                thought: message.content,
-                durationSeconds: message.thoughtSeconds,
-              ),
+              padding: EdgeInsets.only(left: 4, right: 4, bottom: isLastInGroup ? 12 : 2),
+              child: ThinkingProcessView(thought: message.content, durationSeconds: message.thoughtSeconds),
             ),
           ],
         ),
@@ -326,16 +305,11 @@ class ChatBubble extends ConsumerWidget {
       builder: (context, value, child) {
         return Opacity(
           opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - value) * 20),
-            child: child,
-          ),
+          child: Transform.translate(offset: Offset(0, (1 - value) * 20), child: child),
         );
       },
       child: Column(
-        crossAxisAlignment: isUser
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
+        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           // Avatar and sender name header - 仅当同组第一条消息时显示，同一回复多条消息避免重复显示头像
           if (isFirstInGroup)
@@ -382,11 +356,7 @@ class ChatBubble extends ConsumerWidget {
                           shape: BoxShape.circle,
                         ),
                         child: Center(
-                          child: Icon(
-                            Icons.person_rounded,
-                            size: 14,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                          child: Icon(Icons.person_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ),
                   ],
@@ -405,40 +375,22 @@ class ChatBubble extends ConsumerWidget {
               child: Container(
                 width: isUser ? null : double.infinity,
                 // 下挂操作条时收紧间距，让两段读起来是同一张卡
-                margin: EdgeInsets.only(
-                  bottom: showActionBar ? 6 : (isLastInGroup ? 16 : 4),
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: isUser ? 10 : 12,
-                ),
+                margin: EdgeInsets.only(bottom: showActionBar ? 6 : (isLastInGroup ? 16 : 4)),
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: isUser ? 10 : 12),
                 constraints: BoxConstraints(
-                  maxWidth: isUser
-                      ? MediaQuery.of(context).size.width * 0.82
-                      : double.infinity,
+                  maxWidth: isUser ? MediaQuery.of(context).size.width * 0.82 : double.infinity,
                 ),
                 decoration: BoxDecoration(
-                  color: isUser
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.surfaceContainer,
+                  color: isUser ? theme.colorScheme.primary : theme.colorScheme.surfaceContainer,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(16),
                     topRight: const Radius.circular(16),
-                    bottomLeft: isUser
-                        ? const Radius.circular(16)
-                        : const Radius.circular(4),
-                    bottomRight: isUser
-                        ? const Radius.circular(4)
-                        : const Radius.circular(16),
+                    bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
+                    bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
                   ),
                   border: isUser
                       ? null
-                      : Border.all(
-                          color: theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.5,
-                          ),
-                          width: 1,
-                        ),
+                      : Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1),
                   boxShadow: isUser
                       ? null
                       : [
@@ -454,31 +406,17 @@ class ChatBubble extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (message.images != null &&
-                              message.images!.isNotEmpty)
-                            _buildImagesGrid(message.images!),
+                          if (message.images != null && message.images!.isNotEmpty) _buildImagesGrid(message.images!),
                           if (message.content.isNotEmpty)
-                            Text(
-                              message.content,
-                              style: TextStyle(
-                                color: theme.colorScheme.onPrimary,
-                                fontSize: 14,
-                              ),
-                            ),
+                            Text(message.content, style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 14)),
                         ],
                       )
                     : AnimatedSwitcher(
-                        duration: AppMotion.duration(
-                          context,
-                          AppDurations.normal,
-                        ),
+                        duration: AppMotion.duration(context, AppDurations.normal),
                         switchInCurve: AppCurves.emphasized,
                         switchOutCurve: AppCurves.exit,
                         layoutBuilder: (currentChild, previousChildren) {
-                          return Stack(
-                            alignment: Alignment.topLeft,
-                            children: [...previousChildren, ?currentChild],
-                          );
+                          return Stack(alignment: Alignment.topLeft, children: [...previousChildren, ?currentChild]);
                         },
                         child: statusText != null
                             ? _StreamingStatusCard(
@@ -487,9 +425,7 @@ class ChatBubble extends ConsumerWidget {
                                 startedAt: statusStartedAt,
                               )
                             : !hasRenderableBody
-                            ? const MorphingInfinity(
-                                key: ValueKey('streaming_loading'),
-                              )
+                            ? const MorphingInfinity(key: ValueKey('streaming_loading'))
                             : Column(
                                 key: const ValueKey('streaming_body'),
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,38 +435,24 @@ class ChatBubble extends ConsumerWidget {
                                   // 连续工具聚合卡片或单工具执行反馈卡片
                                   if (message.role == 'tool_group')
                                     ToolChainGroupWidget(
-                                      toolMessages:
-                                          (message.uiDetails?['messages']
-                                              as List<ChatMessage>?) ??
-                                          const [],
+                                      toolMessages: (message.uiDetails?['messages'] as List<ChatMessage>?) ?? const [],
                                       theme: theme,
                                     )
                                   else if (message.role == 'tool')
-                                    buildToolFeedback(
-                                      context,
-                                      message,
-                                      theme,
-                                      onSendToQ: onSendToQ,
-                                    )
+                                    buildToolFeedback(context, message, theme, onSendToQ: onSendToQ)
                                   else ...[
                                     MarkdownBody(
                                       data: message.content,
                                       selectable: false,
                                       // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
                                       // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
-                                      sizedImageBuilder: (config) =>
-                                          ChatBodyImage(
-                                            src: config.uri.toString(),
-                                            generatedImageKeys:
-                                                generatedImageKeys,
-                                            onSendToQ: onSendToQ,
-                                          ),
+                                      sizedImageBuilder: (config) => ChatBodyImage(
+                                        src: config.uri.toString(),
+                                        generatedImageKeys: generatedImageKeys,
+                                        onSendToQ: onSendToQ,
+                                      ),
                                       styleSheet: MarkdownStyleSheet(
-                                        p: TextStyle(
-                                          color: theme.colorScheme.onSurface,
-                                          fontSize: 14,
-                                          height: 1.5,
-                                        ),
+                                        p: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14, height: 1.5),
                                         h1: TextStyle(
                                           color: theme.colorScheme.onSurface,
                                           fontSize: 18,
@@ -556,42 +478,19 @@ class ChatBubble extends ConsumerWidget {
                                           backgroundColor: Colors.transparent,
                                         ),
                                         codeblockDecoration: BoxDecoration(
-                                          color: theme
-                                              .colorScheme
-                                              .surfaceContainerLow,
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
+                                          color: theme.colorScheme.surfaceContainerLow,
+                                          borderRadius: BorderRadius.circular(8),
                                           border: Border.all(
-                                            color: theme
-                                                .colorScheme
-                                                .outlineVariant
-                                                .withValues(alpha: 0.5),
+                                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                                           ),
                                         ),
                                         blockquoteDecoration: BoxDecoration(
-                                          color: theme
-                                              .colorScheme
-                                              .surfaceContainerLow,
-                                          border: Border(
-                                            left: BorderSide(
-                                              color: theme.colorScheme.primary,
-                                              width: 4,
-                                            ),
-                                          ),
-                                          borderRadius:
-                                              const BorderRadius.horizontal(
-                                                right: Radius.circular(6),
-                                              ),
+                                          color: theme.colorScheme.surfaceContainerLow,
+                                          border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 4)),
+                                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
                                         ),
-                                        blockquotePadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
-                                            ),
-                                        listBullet: TextStyle(
-                                          color: theme.colorScheme.onSurface,
-                                        ),
+                                        blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        listBullet: TextStyle(color: theme.colorScheme.onSurface),
                                       ),
                                     ),
                                   ],
@@ -616,11 +515,7 @@ class ChatBubble extends ConsumerWidget {
             ),
           // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
           if (!isUser && _isTurnLimitPending)
-            AgentTurnLimitActions(
-              onContinue: onContinue,
-              onPause: onPause,
-              enabled: actionsEnabled,
-            ),
+            AgentTurnLimitActions(onContinue: onContinue, onPause: onPause, enabled: actionsEnabled),
         ],
       ),
     );
@@ -636,8 +531,7 @@ class ChatBubble extends ConsumerWidget {
     ValueChanged<String>? onSendToQ,
   }) {
     final uiDetails = message.uiDetails;
-    final isAskUser =
-        message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
+    final isAskUser = message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
 
     if (isAskUser) {
       final question = uiDetails?['question'] as String? ?? message.content;
@@ -650,9 +544,7 @@ class ChatBubble extends ConsumerWidget {
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.35,
-          ),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isCancelled
@@ -666,33 +558,20 @@ class ChatBubble extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.help_outline_rounded,
-                  size: 16,
-                  color: theme.colorScheme.primary,
-                ),
+                Icon(Icons.help_outline_rounded, size: 16, color: theme.colorScheme.primary),
                 const SizedBox(width: 6),
                 Text(
                   '小Q询问',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
-                  ),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
                 ),
                 const Spacer(),
                 if (isConfirmed)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: Colors.green.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: Colors.green.withValues(alpha: 0.3),
-                      ),
+                      border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -701,43 +580,26 @@ class ChatBubble extends ConsumerWidget {
                         const SizedBox(width: 4),
                         Text(
                           choice != null ? '已选：$choice' : '已确认',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.green,
-                          ),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green),
                         ),
                       ],
                     ),
                   )
                 else if (isCancelled)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.errorContainer.withValues(
-                        alpha: 0.3,
-                      ),
+                      color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.close,
-                          size: 12,
-                          color: theme.colorScheme.error,
-                        ),
+                        Icon(Icons.close, size: 12, color: theme.colorScheme.error),
                         const SizedBox(width: 4),
                         Text(
                           '已取消',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.error,
-                          ),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.error),
                         ),
                       ],
                     ),
@@ -749,11 +611,7 @@ class ChatBubble extends ConsumerWidget {
               data: question,
               selectable: false,
               styleSheet: MarkdownStyleSheet(
-                p: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 13,
-                  height: 1.4,
-                ),
+                p: TextStyle(color: theme.colorScheme.onSurface, fontSize: 13, height: 1.4),
               ),
             ),
           ],
@@ -763,9 +621,7 @@ class ChatBubble extends ConsumerWidget {
 
     // generate_image 生图完成：气泡内直接大图预览，附模型与提示词摘要
     if (message.toolName == 'generate_image' && message.isError != true) {
-      final paths =
-          (uiDetails?['paths'] as List?)?.whereType<String>().toList() ??
-          const [];
+      final paths = (uiDetails?['paths'] as List?)?.whereType<String>().toList() ?? const [];
       final model = uiDetails?['model'] as String? ?? '';
       final prompt = uiDetails?['prompt'] as String? ?? '';
       return Container(
@@ -774,9 +630,7 @@ class ChatBubble extends ConsumerWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -784,19 +638,11 @@ class ChatBubble extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 14,
-                  color: theme.colorScheme.primary,
-                ),
+                Icon(Icons.auto_awesome_rounded, size: 14, color: theme.colorScheme.primary),
                 const SizedBox(width: 6),
                 Text(
                   model.isEmpty ? '生图完成' : '生图完成 · $model',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
-                  ),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
                 ),
               ],
             ),
@@ -819,10 +665,7 @@ class ChatBubble extends ConsumerWidget {
                 prompt,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
+                style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
               ),
           ],
         ),
@@ -840,9 +683,7 @@ class ChatBubble extends ConsumerWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -863,10 +704,7 @@ class ChatBubble extends ConsumerWidget {
                 '已查看图片 $path$sizeHint',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                ),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
               ),
             ),
           ],
@@ -880,9 +718,7 @@ class ChatBubble extends ConsumerWidget {
       final name = uiDetails?['name'] as String? ?? '';
       final section = uiDetails?['section'] as String?;
       final rawSkills = uiDetails?['skills'];
-      final skillsList = rawSkills is List
-          ? rawSkills.map((e) => e.toString()).toList()
-          : null;
+      final skillsList = rawSkills is List ? rawSkills.map((e) => e.toString()).toList() : null;
 
       if (isError) {
         return Container(
@@ -891,28 +727,17 @@ class ChatBubble extends ConsumerWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: theme.colorScheme.error.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.3)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.error_outline,
-                size: 14,
-                color: theme.colorScheme.error,
-              ),
+              Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  message.content.trim().isNotEmpty
-                      ? message.content.trim()
-                      : '调用技能失败',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: theme.colorScheme.error,
-                  ),
+                  message.content.trim().isNotEmpty ? message.content.trim() : '调用技能失败',
+                  style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
                 ),
               ),
             ],
@@ -928,45 +753,28 @@ class ChatBubble extends ConsumerWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            ),
+            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.auto_awesome,
-                size: 14,
-                color: theme.colorScheme.primary,
-              ),
+              Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   '已查看技能列表 · ${skillsList.length} 个',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                  ),
+                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.85)),
                 ),
               ),
               if (message.content.trim().isNotEmpty) ...[
                 const SizedBox(width: 6),
                 GestureDetector(
-                  onTap: () => _showSkillHandbookDialog(
-                    context,
-                    '技能列表',
-                    message.content,
-                  ),
+                  onTap: () => _showSkillHandbookDialog(context, '技能列表', message.content),
                   child: Text(
                     '查看',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -976,9 +784,7 @@ class ChatBubble extends ConsumerWidget {
       }
 
       final skillTitle = name.isEmpty ? '技能手册' : name;
-      final sectionHint = (section != null && section.trim().isNotEmpty)
-          ? ' · $section'
-          : '';
+      final sectionHint = (section != null && section.trim().isNotEmpty) ? ' · $section' : '';
 
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
@@ -986,18 +792,12 @@ class ChatBubble extends ConsumerWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.auto_awesome,
-              size: 14,
-              color: theme.colorScheme.primary,
-            ),
+            Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -1014,18 +814,10 @@ class ChatBubble extends ConsumerWidget {
             if (message.content.trim().isNotEmpty) ...[
               const SizedBox(width: 6),
               GestureDetector(
-                onTap: () => _showSkillHandbookDialog(
-                  context,
-                  skillTitle,
-                  message.content,
-                ),
+                onTap: () => _showSkillHandbookDialog(context, skillTitle, message.content),
                 child: Text(
                   '查看',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -1045,18 +837,12 @@ class ChatBubble extends ConsumerWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: theme.colorScheme.error.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.3)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.error_outline,
-                size: 14,
-                color: theme.colorScheme.error,
-              ),
+              Icon(Icons.error_outline, size: 14, color: theme.colorScheme.error),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -1065,10 +851,7 @@ class ChatBubble extends ConsumerWidget {
                       : (path.isNotEmpty ? '读取文件失败：$path' : '读取文件失败'),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: theme.colorScheme.error,
-                  ),
+                  style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
                 ),
               ),
             ],
@@ -1083,45 +866,28 @@ class ChatBubble extends ConsumerWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.description_outlined,
-              size: 14,
-              color: theme.colorScheme.primary,
-            ),
+            Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.primary),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 '已读取文件 $displayPath',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                ),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
               ),
             ),
             if (message.content.trim().isNotEmpty) ...[
               const SizedBox(width: 6),
               GestureDetector(
-                onTap: () => _showFilePreviewDialog(
-                  context,
-                  displayPath,
-                  message.content,
-                ),
+                onTap: () => _showFilePreviewDialog(context, displayPath, message.content),
                 child: Text(
                   '预览',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -1151,9 +917,7 @@ class ChatBubble extends ConsumerWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1161,9 +925,7 @@ class ChatBubble extends ConsumerWidget {
             Icon(
               hasError ? Icons.link_off : Icons.language,
               size: 14,
-              color: hasError
-                  ? theme.colorScheme.error
-                  : theme.colorScheme.primary,
+              color: hasError ? theme.colorScheme.error : theme.colorScheme.primary,
             ),
             const SizedBox(width: 6),
             Expanded(
@@ -1171,24 +933,14 @@ class ChatBubble extends ConsumerWidget {
                 title.isEmpty ? '已读取网页 $url' : '已读取网页：$title',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                ),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
               ),
             ),
             // 点击卡片用系统浏览器打开原网页，方便用户核对来源
             if (!hasError && url.isNotEmpty)
               GestureDetector(
-                onTap: () => launchUrl(
-                  Uri.parse(url),
-                  mode: LaunchMode.externalApplication,
-                ),
-                child: Icon(
-                  Icons.open_in_new,
-                  size: 14,
-                  color: theme.colorScheme.primary,
-                ),
+                onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+                child: Icon(Icons.open_in_new, size: 14, color: theme.colorScheme.primary),
               ),
           ],
         ),
@@ -1236,21 +988,14 @@ class ChatBubble extends ConsumerWidget {
   }
 
   /// 技能手册查看弹窗：避免大段 Markdown 技能说明直接在主对话流刷屏
-  static void _showSkillHandbookDialog(
-    BuildContext context,
-    String skillName,
-    String content,
-  ) {
+  static void _showSkillHandbookDialog(BuildContext context, String skillName, String content) {
     final theme = Theme.of(context);
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 600,
-            maxHeight: MediaQuery.of(context).size.height * 0.75,
-          ),
+          constraints: BoxConstraints(maxWidth: 600, maxHeight: MediaQuery.of(context).size.height * 0.75),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -1259,19 +1004,12 @@ class ChatBubble extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
+                    Icon(Icons.auto_awesome, size: 18, color: theme.colorScheme.primary),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '技能手册 · $skillName',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1285,9 +1023,7 @@ class ChatBubble extends ConsumerWidget {
                 ),
                 const Divider(height: 20),
                 Flexible(
-                  child: SingleChildScrollView(
-                    child: MarkdownBody(data: content, selectable: true),
-                  ),
+                  child: SingleChildScrollView(child: MarkdownBody(data: content, selectable: true)),
                 ),
               ],
             ),
@@ -1298,21 +1034,14 @@ class ChatBubble extends ConsumerWidget {
   }
 
   /// 文件内容预览弹窗：点击「预览」按钮按需查看，避免正文长篇大论挤占对话空间
-  static void _showFilePreviewDialog(
-    BuildContext context,
-    String filePath,
-    String content,
-  ) {
+  static void _showFilePreviewDialog(BuildContext context, String filePath, String content) {
     final theme = Theme.of(context);
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 600,
-            maxHeight: MediaQuery.of(context).size.height * 0.75,
-          ),
+          constraints: BoxConstraints(maxWidth: 600, maxHeight: MediaQuery.of(context).size.height * 0.75),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -1321,19 +1050,12 @@ class ChatBubble extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.description_outlined,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
+                    Icon(Icons.description_outlined, size: 18, color: theme.colorScheme.primary),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '文件预览 · $filePath',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1367,6 +1089,7 @@ class ChatBubble extends ConsumerWidget {
     );
   }
 }
+
 class _TypingBubble extends StatelessWidget {
   final bool isFirstInGroup;
   final bool isLastInGroup;
@@ -1383,10 +1106,7 @@ class _TypingBubble extends StatelessWidget {
       builder: (context, value, child) {
         return Opacity(
           opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - value) * 8),
-            child: child,
-          ),
+          child: Transform.translate(offset: Offset(0, (1 - value) * 8), child: child),
         );
       },
       child: Column(
@@ -1424,25 +1144,12 @@ class _TypingBubble extends StatelessWidget {
                   bottomLeft: Radius.circular(4),
                   bottomRight: Radius.circular(16),
                 ),
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.5,
-                  ),
-                  width: 1,
-                ),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1),
                 boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2)),
                 ],
               ),
-              child: MorphingInfinity(
-                size: 26,
-                strokeWidth: 1.6,
-                color: theme.colorScheme.primary,
-              ),
+              child: MorphingInfinity(size: 26, strokeWidth: 1.6, color: theme.colorScheme.primary),
             ),
           ),
         ],
@@ -1464,13 +1171,7 @@ class _InputPill extends StatelessWidget {
   final IconData? trailing;
   final VoidCallback onTap;
 
-  const _InputPill({
-    required this.icon,
-    required this.label,
-    this.suffix,
-    this.trailing,
-    required this.onTap,
-  });
+  const _InputPill({required this.icon, required this.label, this.suffix, this.trailing, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1498,15 +1199,8 @@ class _InputPill extends StatelessWidget {
                 ),
               ),
               if (suffix != null)
-                Text(
-                  ' · $suffix',
-                  maxLines: 1,
-                  style: theme.textTheme.bodySmall?.copyWith(color: color),
-                ),
-              if (trailing != null) ...[
-                const SizedBox(width: 2),
-                Icon(trailing, size: 14, color: color),
-              ],
+                Text(' · $suffix', maxLines: 1, style: theme.textTheme.bodySmall?.copyWith(color: color)),
+              if (trailing != null) ...[const SizedBox(width: 2), Icon(trailing, size: 14, color: color)],
             ],
           ),
         ),
@@ -1525,22 +1219,16 @@ class _StreamingStatusCard extends ConsumerWidget {
   /// 本轮任务开始时间，状态行尾部显示「已用时」递增计数
   final DateTime? startedAt;
 
-  const _StreamingStatusCard({
-    super.key,
-    required this.statusText,
-    this.startedAt,
-  });
+  const _StreamingStatusCard({super.key, required this.statusText, this.startedAt});
 
   /// 「思考中/准备中」只表示任务在跑，思考步骤行（含计时与呼吸动画）
   /// 已经表达同一信息，不再重复占一行
-  static bool _isThinkingStatus(String text) =>
-      text.startsWith('小Q思考中') || text.startsWith('小Q准备中');
+  static bool _isThinkingStatus(String text) => text.startsWith('小Q思考中') || text.startsWith('小Q准备中');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final hasThought =
-        ref.watch(aiStreamingThoughtProvider)?.trim().isNotEmpty ?? false;
+    final hasThought = ref.watch(aiStreamingThoughtProvider)?.trim().isNotEmpty ?? false;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -1556,31 +1244,20 @@ class _StreamingStatusCard extends ConsumerWidget {
                 Flexible(
                   child: Text(
                     statusText,
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 14, height: 1.5),
                   ),
                 ),
                 // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
                 Padding(
                   padding: const EdgeInsets.only(left: 8, right: 6),
-                  child: MorphingInfinity(
-                    size: 21,
-                    strokeWidth: 1.5,
-                    color: theme.colorScheme.primary,
-                  ),
+                  child: MorphingInfinity(size: 21, strokeWidth: 1.5, color: theme.colorScheme.primary),
                 ),
                 // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
                 Padding(
                   padding: const EdgeInsets.only(left: 2),
                   child: StreamingElapsedText(
                     startedAt: startedAt,
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
                   ),
                 ),
               ],

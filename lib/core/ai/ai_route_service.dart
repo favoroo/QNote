@@ -28,11 +28,7 @@ class AiRouteSelection {
     this.requireVision = false,
   });
 
-  AiModelRoute toRoute() => AiModelRoute._(
-        groupId: group.id,
-        candidates: candidates,
-        requireVision: requireVision,
-      );
+  AiModelRoute toRoute() => AiModelRoute._(groupId: group.id, candidates: candidates, requireVision: requireVision);
 }
 
 /// 一次运行（一条用户消息 / 一次提取调用）的组内切换状态
@@ -41,11 +37,8 @@ class AiRouteSelection {
 /// 单例，主对话、悬浮小Q、日记提取会并发使用，任何「本次已试过哪些成员」这类
 /// 状态放进单例都会串台。
 class AiModelRoute {
-  AiModelRoute._({
-    required this.groupId,
-    required List<AiConfig> candidates,
-    required this.requireVision,
-  }) : _candidates = candidates;
+  AiModelRoute._({required this.groupId, required List<AiConfig> candidates, required this.requireVision})
+    : _candidates = candidates;
 
   final String groupId;
 
@@ -110,8 +103,7 @@ class AiModelRoute {
     AiRouteService.instance.markMemberSucceeded(config, elapsed: elapsed);
   }
 
-  static String _key(AiConfig config) =>
-      '${config.providerId}::${config.modelName}';
+  static String _key(AiConfig config) => '${config.providerId}::${config.modelName}';
 }
 
 /// 单成员的健康度（进程内，用于智能策略与冷却判定）
@@ -258,9 +250,7 @@ class AiRouteService {
     var candidates = allMembers;
     var requireVision = false;
     if (preferVision && group.preferVision) {
-      final visionMembers = allMembers
-          .where((c) => ModelVisionCapability.supportsVision(c))
-          .toList();
+      final visionMembers = allMembers.where((c) => ModelVisionCapability.supportsVision(c)).toList();
       if (visionMembers.isNotEmpty) {
         candidates = visionMembers;
         requireVision = true;
@@ -268,18 +258,13 @@ class AiRouteService {
     }
 
     // 冷却成员不参与轮换/权重/评分，全部冷却时退回「最早解锁」再让发信层排队等待
-    var selectable =
-        candidates.where((c) => !isCooling(_key(c))).toList();
+    var selectable = candidates.where((c) => !isCooling(_key(c))).toList();
     if (selectable.isEmpty) {
       selectable = candidates;
-      LoggerService.instance.logAI(
-        '路由组「${group.name}」全部成员冷却中，按最早解锁成员发出（由 Key 池排队）',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('路由组「${group.name}」全部成员冷却中，按最早解锁成员发出（由 Key 池排队）', level: LogLevel.warning);
     }
 
-    final ordered =
-        _orderedCandidates(group, selectable, advance: advance);
+    final ordered = _orderedCandidates(group, selectable, advance: advance);
     final selected = ordered.first;
     if (advance) {
       _lastUsed[group.id] = _key(selected);
@@ -289,20 +274,14 @@ class AiRouteService {
         '${selected.providerId} · ${selected.modelName}',
       );
     }
-    return AiRouteSelection(
-      config: selected,
-      candidates: ordered,
-      group: group,
-      requireVision: requireVision,
-    );
+    return AiRouteSelection(config: selected, candidates: ordered, group: group, requireVision: requireVision);
   }
 
   /// 组内可解析的成员（厂存在且未停用 + 模型仍启用 + 地址与密钥齐全）→ 请求配置
   List<AiConfig> _feasibleMembers(AiRouteGroup group, List<AiProvider> providers) {
     final result = <AiConfig>[];
     for (final member in group.enabledMembers) {
-      final provider =
-          providers.where((p) => p.id == member.providerId).firstOrNull;
+      final provider = providers.where((p) => p.id == member.providerId).firstOrNull;
       if (provider == null) continue;
       // 厂商被停用时整条成员让位，组里其它厂商的成员继续承接流量
       if (!provider.enabled) continue;
@@ -317,17 +296,11 @@ class AiRouteService {
   /// 按策略给出候选顺序：首位是本次要用的成员，其余是失败后的切换顺序
   ///
   /// [advance] 为 false 时只计算「当前轮到谁」而不推进任何轮询状态。
-  List<AiConfig> _orderedCandidates(
-    AiRouteGroup group,
-    List<AiConfig> selectable, {
-    required bool advance,
-  }) {
+  List<AiConfig> _orderedCandidates(AiRouteGroup group, List<AiConfig> selectable, {required bool advance}) {
     switch (group.strategy) {
       case RouteStrategy.manual:
         final pinned = group.pinnedMember;
-        final index = pinned == null
-            ? -1
-            : selectable.indexWhere((c) => _key(c) == pinned);
+        final index = pinned == null ? -1 : selectable.indexWhere((c) => _key(c) == pinned);
         final start = index >= 0 ? index : 0;
         return _rotateOrder(selectable, start);
       case RouteStrategy.failover:
@@ -338,9 +311,7 @@ class AiRouteService {
         return _rotateOrder(selectable, start);
       case RouteStrategy.smart:
         final sorted = List<AiConfig>.from(selectable)
-          ..sort((a, b) => _smartScore(b, selectable).compareTo(
-                _smartScore(a, selectable),
-              ));
+          ..sort((a, b) => _smartScore(b, selectable).compareTo(_smartScore(a, selectable)));
         return _rotateOrder(sorted, 0);
       case RouteStrategy.rotate:
         final cursor = _rotateCursor[group.id] ?? 0;
@@ -366,15 +337,10 @@ class AiRouteService {
   /// 而不是先连续用 A 三次再轮到 B。
   ///
   /// [advance] 为 false 时只看这一轮会选谁，不改动累计权重。
-  int _weightedStartIndex(
-    AiRouteGroup group,
-    List<AiConfig> selectable, {
-    required bool advance,
-  }) {
+  int _weightedStartIndex(AiRouteGroup group, List<AiConfig> selectable, {required bool advance}) {
     if (selectable.length <= 1) return 0;
     final weights = selectable
-        .map((c) => _weightFor(group, c)
-            .clamp(RouteGroupMember.minWeight, RouteGroupMember.maxWeight))
+        .map((c) => _weightFor(group, c).clamp(RouteGroupMember.minWeight, RouteGroupMember.maxWeight))
         .toList();
     final total = weights.fold<int>(0, (a, b) => a + b);
 
@@ -397,13 +363,11 @@ class AiRouteService {
     return best;
   }
 
-  String _weightKey(String groupId, AiConfig config) =>
-      '$groupId|${_key(config)}';
+  String _weightKey(String groupId, AiConfig config) => '$groupId|${_key(config)}';
 
   int _weightFor(AiRouteGroup group, AiConfig config) {
     for (final member in group.members) {
-      if (member.providerId == config.providerId &&
-          member.modelName == config.modelName) {
+      if (member.providerId == config.providerId && member.modelName == config.modelName) {
         return member.weight;
       }
     }
@@ -419,13 +383,10 @@ class AiRouteService {
     if (latency == null) {
       latencyScore = 1.0;
     } else {
-      final normalized =
-          latency.clamp(0.0, latencyCeilingMs.toDouble()) / latencyCeilingMs;
+      final normalized = latency.clamp(0.0, latencyCeilingMs.toDouble()) / latencyCeilingMs;
       latencyScore = (1 - normalized).clamp(0.0, 1.0).toDouble();
     }
-    final maxUses = selectable
-        .map((c) => _health[_key(c)]?.uses ?? 0)
-        .fold<int>(0, (a, b) => a > b ? a : b);
+    final maxUses = selectable.map((c) => _health[_key(c)]?.uses ?? 0).fold<int>(0, (a, b) => a > b ? a : b);
     final uses = health?.uses ?? 0;
     final usageScore = maxUses == 0 ? 1.0 : 1 - (uses / (maxUses + 1));
     return successRate * 0.6 + latencyScore * 0.3 + usageScore * 0.1;
@@ -435,8 +396,7 @@ class AiRouteService {
     var cooldown = memberCooldown;
     if (ApiKeyPool.isKeyScopedError(error)) {
       cooldown = ApiKeyPool.instance.cooldownFromError(error);
-    } else if (ApiKeyPool.isConnectionClassError(error) ||
-        _isServerError(error)) {
+    } else if (ApiKeyPool.isConnectionClassError(error) || _isServerError(error)) {
       cooldown = transientCooldown;
     }
     return cooldown > maxCooldown ? maxCooldown : cooldown;
@@ -447,8 +407,7 @@ class AiRouteService {
     return status != null && status >= 500;
   }
 
-  static String _key(AiConfig config) =>
-      '${config.providerId}::${config.modelName}';
+  static String _key(AiConfig config) => '${config.providerId}::${config.modelName}';
 
   @visibleForTesting
   void resetForTest() {

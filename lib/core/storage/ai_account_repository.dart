@@ -21,10 +21,7 @@ class AiAccountRepository {
 
   Future<List<AiAccount>> getAll() async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      tableName,
-      orderBy: 'sort_order ASC, created_at ASC',
-    );
+    final maps = await db.query(tableName, orderBy: 'sort_order ASC, created_at ASC');
     return maps.map((m) => AiAccount.fromMap(m)).toList();
   }
 
@@ -42,12 +39,7 @@ class AiAccountRepository {
 
   Future<AiAccount?> getById(String id) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      tableName,
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
+    final maps = await db.query(tableName, where: 'id = ?', whereArgs: [id], limit: 1);
     if (maps.isEmpty) return null;
     return AiAccount.fromMap(maps.first);
   }
@@ -61,11 +53,7 @@ class AiAccountRepository {
   Future<void> upsert(AiAccount account) async {
     final db = await _dbHelper.database;
     final saved = account.copyWith(updatedAt: DateTime.now());
-    await db.insert(
-      tableName,
-      saved.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(tableName, saved.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// 批量写入（账号顺序调整：一次性重排 sort_order，避免中途落库失败留下重复序号）
@@ -91,11 +79,7 @@ class AiAccountRepository {
   /// 删除某厂商条目下的全部账号（厂商被删 / 切换回 API Key 模式）
   Future<void> deleteByProvider(String providerId) async {
     final db = await _dbHelper.database;
-    await db.delete(
-      tableName,
-      where: 'provider_id = ?',
-      whereArgs: [providerId],
-    );
+    await db.delete(tableName, where: 'provider_id = ?', whereArgs: [providerId]);
   }
 
   /// 数据管理页「清空全部数据」时一并清掉，避免残留登录态

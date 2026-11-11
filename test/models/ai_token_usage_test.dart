@@ -10,11 +10,7 @@ void main() {
   group('OpenAI 兼容口径', () {
     test('读取 prompt / completion / total', () {
       final usage = AiTokenUsage.fromResponse({
-        'usage': {
-          'prompt_tokens': 120,
-          'completion_tokens': 80,
-          'total_tokens': 200,
-        },
+        'usage': {'prompt_tokens': 120, 'completion_tokens': 80, 'total_tokens': 200},
       });
 
       expect(usage, isNotNull);
@@ -54,11 +50,7 @@ void main() {
   group('Gemini 口径', () {
     test('读取 usageMetadata 的 tokenCount 字段', () {
       final usage = AiTokenUsage.fromResponse({
-        'usageMetadata': {
-          'promptTokenCount': 300,
-          'candidatesTokenCount': 120,
-          'totalTokenCount': 420,
-        },
+        'usageMetadata': {'promptTokenCount': 300, 'candidatesTokenCount': 120, 'totalTokenCount': 420},
       });
 
       expect(usage!.promptTokens, 300);
@@ -70,11 +62,7 @@ void main() {
       // Gemini 的 total 会额外包含 thoughts token，比输入+输出大，
       // 此时不能用兜底值把服务端算出来的真实总量抹掉
       final usage = AiTokenUsage.fromResponse({
-        'usageMetadata': {
-          'promptTokenCount': 100,
-          'candidatesTokenCount': 50,
-          'totalTokenCount': 500,
-        },
+        'usageMetadata': {'promptTokenCount': 100, 'candidatesTokenCount': 50, 'totalTokenCount': 500},
       });
 
       expect(usage!.totalTokens, 500);

@@ -22,8 +22,7 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
-import 'package:qnote_flutter/database_init.dart'
-    if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
+import 'package:qnote_flutter/database_init.dart' if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
 import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
@@ -36,17 +35,10 @@ import 'package:qnote_flutter/widgets/update_dialog.dart';
 ///
 /// 包括：Logger、日期格式化、数据库工厂、打开数据库、默认配置（快捷键/AI配置/AI角色/通知服务初始化）。
 Future<void> preInitializeApp() async {
-  await Future.wait([
-    LoggerService.instance.init(),
-    initializeDateFormatting('zh_CN'),
-    initDatabaseFactory(),
-  ]);
+  await Future.wait([LoggerService.instance.init(), initializeDateFormatting('zh_CN'), initDatabaseFactory()]);
 
   // 打开数据库与版本号读取互不依赖，并行执行缩短冷启动
-  await Future.wait([
-    DatabaseHelper.instance.database,
-    AppVersion.init(),
-  ]);
+  await Future.wait([DatabaseHelper.instance.database, AppVersion.init()]);
 
   final configRepo = ConfigRepository.instance;
   await Future.wait([
@@ -124,8 +116,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
           final autoSync = await healthSyncService.getAutoSync();
           if (autoSync) {
             final lastSync = await healthSyncService.getLastSyncTime();
-            final shouldSync = lastSync == null ||
-                DateTime.now().difference(lastSync).inHours >= 1;
+            final shouldSync = lastSync == null || DateTime.now().difference(lastSync).inHours >= 1;
             if (shouldSync) {
               // fire-and-forget，不阻塞启动。窗口取 4 天：午睡可能发生在当天最后一次同步之后，
               // 窗口过窄会让那天永久停在缺午睡的错值上（落库按 date 主键整行 replace）
@@ -134,19 +125,12 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
           }
         }
       } catch (e) {
-        LoggerService.instance.warning(
-          '小米运动健康自动同步失败: $e',
-          category: LogCategory.system,
-        );
+        LoggerService.instance.warning('小米运动健康自动同步失败: $e', category: LogCategory.system);
       }
 
       NotificationService.instance.startReminderCheck();
     } catch (e, stackTrace) {
-      LoggerService.instance.error(
-        '延迟初始化失败: $e',
-        category: LogCategory.system,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.error('延迟初始化失败: $e', category: LogCategory.system, details: stackTrace.toString());
     }
   }
 
@@ -179,17 +163,9 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       final dialogContext = rootNavigatorKey.currentContext;
       if (dialogContext == null || !dialogContext.mounted) return;
 
-      await showUpdateDialog(
-        context: dialogContext,
-        updateInfo: updateInfo,
-        currentVersion: AppVersion.version,
-      );
+      await showUpdateDialog(context: dialogContext, updateInfo: updateInfo, currentVersion: AppVersion.version);
     } catch (e, stackTrace) {
-      LoggerService.instance.warning(
-        '启动检查更新失败: $e',
-        category: LogCategory.system,
-        details: stackTrace.toString(),
-      );
+      LoggerService.instance.warning('启动检查更新失败: $e', category: LogCategory.system, details: stackTrace.toString());
     }
   }
 
@@ -224,9 +200,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       final now = DateTime.now();
       // 完整度把 DateTime.now() 缓存在 Provider 里，列表不变就不重算：
       // 跨零点回前台且期间无数据变更时不主动失效，圆环会一直显示昨天的条数。
-      if (now.year != baseline.year ||
-          now.month != baseline.month ||
-          now.day != baseline.day) {
+      if (now.year != baseline.year || now.month != baseline.month || now.day != baseline.day) {
         ref.invalidate(diaryProgressProvider);
       }
       if (changes.isEmpty) {
@@ -309,9 +283,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
             _handleExternalSharedText(text.trim());
           }
         case 'onSharedImages':
-          final paths =
-              (call.arguments as List?)?.map((e) => e.toString()).toList() ??
-                  const <String>[];
+          final paths = (call.arguments as List?)?.map((e) => e.toString()).toList() ?? const <String>[];
           if (paths.isNotEmpty) {
             _handleExternalSharedImages(paths);
           }
@@ -346,8 +318,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
 
     try {
-      final pending =
-          await _shareChannel.invokeMethod<List<dynamic>>('getPendingSharedImages');
+      final pending = await _shareChannel.invokeMethod<List<dynamic>>('getPendingSharedImages');
       final paths = pending?.map((e) => e.toString()).toList() ?? const <String>[];
       if (paths.isNotEmpty) {
         _handleExternalSharedImages(paths);
@@ -366,14 +337,9 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
   /// 输入框保持空白由用户输入指令；发送时内容作为外部上下文注入，
   /// 不显示也不注入页面位置
   void _handleExternalSharedText(String text) {
-    ref.read(floatingQProvider.notifier).openWithQuote(
-          QTextQuote(
-            source: QQuoteSource.external,
-            sourceId: '',
-            sourceTitle: '系统分享',
-            quotedText: text,
-          ),
-        );
+    ref
+        .read(floatingQProvider.notifier)
+        .openWithQuote(QTextQuote(source: QQuoteSource.external, sourceId: '', sourceTitle: '系统分享', quotedText: text));
   }
 
   void _handleExternalSharedImages(List<String> paths) {
@@ -398,10 +364,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
       locale: const Locale('zh', 'CN'),
       builder: (context, child) {
         final theme = Theme.of(context);
@@ -431,20 +394,16 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
                 router.pop();
               },
               child: Stack(
-              children: [
-                child ?? const SizedBox.shrink(),
-                // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
-                // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
-                // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
-                // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
-                // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
-                Overlay(
-                  initialEntries: [
-                    OverlayEntry(builder: (_) => const FloatingQOverlay()),
-                  ],
-                ),
-              ],
-            ),
+                children: [
+                  child ?? const SizedBox.shrink(),
+                  // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
+                  // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
+                  // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
+                  // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
+                  // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
+                  Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
+                ],
+              ),
             ),
           ),
         );

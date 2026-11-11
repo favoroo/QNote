@@ -19,8 +19,7 @@ class FinanceStatsWidget extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final expenseData = stats.expenseByType.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final expenseData = stats.expenseByType.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
     return Column(
       children: [
@@ -98,10 +97,7 @@ class _FinanceTrendChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: AppPalette.chartGrid(isDark),
-            strokeWidth: 1,
-          ),
+          getDrawingHorizontalLine: (value) => FlLine(color: AppPalette.chartGrid(isDark), strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -126,10 +122,8 @@ class _FinanceTrendChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 40,
-              getTitlesWidget: (value, meta) => Text(
-                '¥${value.toInt()}',
-                style: const TextStyle(fontSize: 9, color: AppPalette.textMuted),
-              ),
+              getTitlesWidget: (value, meta) =>
+                  Text('¥${value.toInt()}', style: const TextStyle(fontSize: 9, color: AppPalette.textMuted)),
             ),
           ),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -197,32 +191,20 @@ class _ExpenseTypeChart extends StatelessWidget {
                 width: 56,
                 child: Text(
                   item.key,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppPalette.textSecondary(isDark),
-                  ),
+                  style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(isDark)),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: StatProgressBar(
-                  isDark: isDark,
-                  value: pct,
-                  color: color,
-                  minHeight: 12,
-                ),
+                child: StatProgressBar(isDark: isDark, value: pct, color: color, minHeight: 12),
               ),
               const SizedBox(width: 8),
               SizedBox(
                 width: 48,
                 child: Text(
                   '¥${item.value.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppPalette.textMuted,
-                  ),
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppPalette.textMuted),
                   textAlign: TextAlign.end,
                 ),
               ),

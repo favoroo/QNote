@@ -13,12 +13,7 @@ import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 /// 只负责画，不吃也不挡手势 —— 调用方需自行套 [IgnorePointer]，否则这层铺满
 /// body 的画布会把时间线的滚动和两个 FAB 的点击全吞掉。
 class CheerBurstOverlay extends StatefulWidget {
-  const CheerBurstOverlay({
-    super.key,
-    required this.level,
-    required this.seed,
-    this.onFinished,
-  });
+  const CheerBurstOverlay({super.key, required this.level, required this.seed, this.onFinished});
 
   /// 庆祝强度：决定粒子数量与整段时长。
   final CheerLevel level;
@@ -247,7 +242,5 @@ class _BurstPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BurstPainter oldDelegate) =>
-      oldDelegate.baseAlpha != baseAlpha ||
-      oldDelegate.particles != particles ||
-      oldDelegate.palette != palette;
+      oldDelegate.baseAlpha != baseAlpha || oldDelegate.particles != particles || oldDelegate.palette != palette;
 }

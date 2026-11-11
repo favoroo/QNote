@@ -13,10 +13,7 @@ import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 void main() {
   group('QSystemPrompt 人格段结构', () {
     test('人格段独立成节并位于 AGENTS.md 规范之前', () {
-      final prompt = QSystemPrompt.buildSystemPrompt(
-        personalityPrompt: '你是元气小Q。',
-        personalityName: '活泼元气',
-      );
+      final prompt = QSystemPrompt.buildSystemPrompt(personalityPrompt: '你是元气小Q。', personalityName: '活泼元气');
 
       expect(prompt, startsWith('# 人格与身份'));
       final personalityAt = prompt.indexOf('你是元气小Q。');
@@ -26,17 +23,12 @@ void main() {
     });
 
     test('输出个性名标记，让模型知道自己是哪一种人格', () {
-      final prompt = QSystemPrompt.buildSystemPrompt(
-        personalityPrompt: '你是温柔陪伴者小Q。',
-        personalityName: '温柔陪伴',
-      );
+      final prompt = QSystemPrompt.buildSystemPrompt(personalityPrompt: '你是温柔陪伴者小Q。', personalityName: '温柔陪伴');
       expect(prompt, contains('（当前个性：**温柔陪伴**）'));
     });
 
     test('personalityName 留空时不输出空标记行', () {
-      final prompt = QSystemPrompt.buildSystemPrompt(
-        personalityPrompt: '你是效率助理小Q。',
-      );
+      final prompt = QSystemPrompt.buildSystemPrompt(personalityPrompt: '你是效率助理小Q。');
       expect(prompt, contains('你是效率助理小Q。'));
       expect(prompt, isNot(contains('当前个性：')));
     });
@@ -65,8 +57,7 @@ void main() {
     test('禁用的可选工具对应准则段不注入（回归保护）', () {
       final all = QSystemPrompt.buildSystemPrompt();
       final withoutImage = QSystemPrompt.buildSystemPrompt(
-        enabledOptionalTools: AgentToolRegistry.optionalToolNames
-            .difference({'generate_image'}),
+        enabledOptionalTools: AgentToolRegistry.optionalToolNames.difference({'generate_image'}),
       );
       expect(all, contains('图片生成（generate_image）'));
       expect(withoutImage, isNot(contains('图片生成（generate_image）')));
@@ -92,10 +83,7 @@ void main() {
   group('QPersonalityService.digestOf 尾部摘要提炼', () {
     test('取首个整句作为摘要', () {
       const text = '你是一位说话带点幽默感的极简助手。喜欢用短句，偶尔打个比方。';
-      expect(
-        QPersonalityService.digestOf(text),
-        '你是一位说话带点幽默感的极简助手。',
-      );
+      expect(QPersonalityService.digestOf(text), '你是一位说话带点幽默感的极简助手。');
     });
 
     test('多行与多余空白折叠成一行', () {
@@ -112,10 +100,7 @@ void main() {
     });
 
     test('英文句末标点同样断句', () {
-      expect(
-        QPersonalityService.digestOf('Be witty and terse. Never ramble.'),
-        'Be witty and terse.',
-      );
+      expect(QPersonalityService.digestOf('Be witty and terse. Never ramble.'), 'Be witty and terse.');
     });
   });
 }

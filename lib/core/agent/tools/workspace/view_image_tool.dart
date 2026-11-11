@@ -30,22 +30,15 @@ class ViewImageTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'path': {
-            'type': 'string',
-            'description':
-                '图片文件路径（须来自时间线/日记/笔记等数据中真实记录的路径，或以 /images/ 开头的相对路径；不可用于对话附件图片）',
-          },
-        },
-        'required': ['path'],
-      };
+    'type': 'object',
+    'properties': {
+      'path': {'type': 'string', 'description': '图片文件路径（须来自时间线/日记/笔记等数据中真实记录的路径，或以 /images/ 开头的相对路径；不可用于对话附件图片）'},
+    },
+    'required': ['path'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final path = arguments['path'] as String? ?? '';
     if (path.trim().isEmpty) {
       return ToolResult.error('图片路径为空，请提供时间线/日记/笔记中列出的图片路径');
@@ -89,10 +82,7 @@ class ViewImageTool extends AgentTool {
       return ToolResult.success(
         '已成功加载图片: $path（约 $sizeKB KB）。图片已附加到本轮对话中，请直接基于图片画面内容进行分析与回答。',
         images: [dataUri],
-        uiDetails: {
-          'path': path,
-          'sizeKB': sizeKB,
-        },
+        uiDetails: {'path': path, 'sizeKB': sizeKB},
       );
     } catch (e) {
       return ToolResult.error('读取图片失败: $e（当前模型或平台可能不支持图片输入）');

@@ -16,10 +16,7 @@ DiaryRecord _record() {
   );
 }
 
-Widget _buildHarness({
-  required GlobalKey handleKey,
-  required ValueChanged<Offset> onTimelineLongPress,
-}) {
+Widget _buildHarness({required GlobalKey handleKey, required ValueChanged<Offset> onTimelineLongPress}) {
   return MaterialApp(
     home: Scaffold(
       body: GestureDetector(
@@ -27,12 +24,7 @@ Widget _buildHarness({
         onLongPressStart: (details) => onTimelineLongPress(details.globalPosition),
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          children: [
-            DiaryItem(
-              record: _record(),
-              timeDragHandleKey: handleKey,
-            ),
-          ],
+          children: [DiaryItem(record: _record(), timeDragHandleKey: handleKey)],
         ),
       ),
     ),
@@ -45,10 +37,7 @@ void main() {
     Offset? longPressPosition;
 
     await tester.pumpWidget(
-      _buildHarness(
-        handleKey: handleKey,
-        onTimelineLongPress: (position) => longPressPosition = position,
-      ),
+      _buildHarness(handleKey: handleKey, onTimelineLongPress: (position) => longPressPosition = position),
     );
 
     final handleRect = tester.getRect(find.byKey(handleKey));
@@ -65,10 +54,7 @@ void main() {
     Offset? longPressPosition;
 
     await tester.pumpWidget(
-      _buildHarness(
-        handleKey: handleKey,
-        onTimelineLongPress: (position) => longPressPosition = position,
-      ),
+      _buildHarness(handleKey: handleKey, onTimelineLongPress: (position) => longPressPosition = position),
     );
 
     final cardRect = tester.getRect(find.byType(AnimatedGradientBorder));

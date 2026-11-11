@@ -7,11 +7,7 @@ import 'package:qnote_flutter/models/reasoning_effort.dart';
 /// 这张表决定「界面给不给入口」与「请求带什么字段」，改错任何一格都会让
 /// 用户选的档位静默失效或把请求打挂，因此逐厂商锁定参数形态。
 void main() {
-  ModelReasoningCapability capabilityOf(
-    String modelName, {
-    String providerType = 'openai',
-    String? vendorId,
-  }) {
+  ModelReasoningCapability capabilityOf(String modelName, {String providerType = 'openai', String? vendorId}) {
     final capability = ModelReasoningCapability.resolve(
       modelName: modelName,
       providerType: providerType,
@@ -37,16 +33,10 @@ void main() {
     });
 
     test('自定义勾选的 minimal/xhigh/max 会真实发出去', () {
-      final capability = capabilityOf('gpt-5.4-mini').withLevels([
-        ReasoningEffort.minimal,
-        ReasoningEffort.xhigh,
-        ReasoningEffort.max,
-      ]);
-      expect(capability.levels, [
-        ReasoningEffort.minimal,
-        ReasoningEffort.xhigh,
-        ReasoningEffort.max,
-      ]);
+      final capability = capabilityOf(
+        'gpt-5.4-mini',
+      ).withLevels([ReasoningEffort.minimal, ReasoningEffort.xhigh, ReasoningEffort.max]);
+      expect(capability.levels, [ReasoningEffort.minimal, ReasoningEffort.xhigh, ReasoningEffort.max]);
 
       final body = <String, dynamic>{};
       capability.applyToOpenAiBody(body, ReasoningEffort.xhigh);
@@ -58,26 +48,16 @@ void main() {
     });
 
     test('所有模型都能自定义完整档位，不做协议裁剪', () {
-      final binary = capabilityOf('glm-4.6').withLevels([
-        ReasoningEffort.minimal,
-        ReasoningEffort.medium,
-        ReasoningEffort.max,
-      ]);
-      expect(binary.levels, [
-        ReasoningEffort.minimal,
-        ReasoningEffort.medium,
-        ReasoningEffort.max,
-      ]);
+      final binary = capabilityOf(
+        'glm-4.6',
+      ).withLevels([ReasoningEffort.minimal, ReasoningEffort.medium, ReasoningEffort.max]);
+      expect(binary.levels, [ReasoningEffort.minimal, ReasoningEffort.medium, ReasoningEffort.max]);
       expect(binary.configurableLevels, ReasoningEffort.values);
     });
 
     test('o 系没有 none 档，选了也不发字段', () {
       final capability = capabilityOf('o3-mini');
-      expect(capability.levels, [
-        ReasoningEffort.low,
-        ReasoningEffort.medium,
-        ReasoningEffort.high,
-      ]);
+      expect(capability.levels, [ReasoningEffort.low, ReasoningEffort.medium, ReasoningEffort.high]);
 
       final body = <String, dynamic>{};
       capability.applyToOpenAiBody(body, ReasoningEffort.none);
@@ -85,17 +65,11 @@ void main() {
     });
 
     test('gpt-5-chat 是对话模型，不提供入口', () {
-      expect(
-        ModelReasoningCapability.resolve(modelName: 'gpt-5-chat-latest'),
-        isNull,
-      );
+      expect(ModelReasoningCapability.resolve(modelName: 'gpt-5-chat-latest'), isNull);
     });
 
     test('未知模型不猜字段', () {
-      expect(
-        ModelReasoningCapability.resolve(modelName: 'my-custom-model'),
-        isNull,
-      );
+      expect(ModelReasoningCapability.resolve(modelName: 'my-custom-model'), isNull);
     });
   });
 
@@ -131,9 +105,7 @@ void main() {
     });
 
     test('自定义中间档位真实发出，不再静默跳过', () {
-      final capability = capabilityOf(
-        'glm-4.5',
-      ).withLevels([ReasoningEffort.low, ReasoningEffort.xhigh]);
+      final capability = capabilityOf('glm-4.5').withLevels([ReasoningEffort.low, ReasoningEffort.xhigh]);
       final body = <String, dynamic>{};
       capability.applyToOpenAiBody(body, ReasoningEffort.xhigh);
       expect(body, {
@@ -163,10 +135,7 @@ void main() {
 
   group('OpenRouter 统一协议', () {
     test('写 reasoning.effort', () {
-      final capability = capabilityOf(
-        'anthropic/claude-sonnet-4',
-        vendorId: 'openrouter',
-      );
+      final capability = capabilityOf('anthropic/claude-sonnet-4', vendorId: 'openrouter');
       final body = <String, dynamic>{};
       capability.applyToOpenAiBody(body, ReasoningEffort.medium);
       expect(body, {
@@ -175,77 +144,45 @@ void main() {
     });
 
     test('不在名单里的模型不提供入口', () {
-      expect(
-        ModelReasoningCapability.resolve(
-          modelName: 'meta-llama/llama-4',
-          vendorId: 'openrouter',
-        ),
-        isNull,
-      );
+      expect(ModelReasoningCapability.resolve(modelName: 'meta-llama/llama-4', vendorId: 'openrouter'), isNull);
     });
   });
 
   group('Gemini 原生 thinkingConfig', () {
     test('Gemini 3 默认低/高，写 thinkingLevel，可自定义中间档', () {
-      final capability = capabilityOf(
-        'gemini-3-flash-preview',
-        providerType: 'gemini',
-      );
+      final capability = capabilityOf('gemini-3-flash-preview', providerType: 'gemini');
       expect(capability.levels, [ReasoningEffort.low, ReasoningEffort.high]);
 
       final body = <String, dynamic>{};
       capability.applyToOpenAiBody(body, ReasoningEffort.high);
       expect(body, isEmpty, reason: 'Gemini 参数挂在 generationConfig 下');
 
-      expect(capability.geminiThinkingConfig(ReasoningEffort.high), {
-        'thinkingLevel': 'high',
-      });
-      expect(capability.geminiThinkingConfig(ReasoningEffort.low), {
-        'thinkingLevel': 'low',
-      });
+      expect(capability.geminiThinkingConfig(ReasoningEffort.high), {'thinkingLevel': 'high'});
+      expect(capability.geminiThinkingConfig(ReasoningEffort.low), {'thinkingLevel': 'low'});
     });
 
     test('Gemini 3 勾选的中/极高/最高就近折叠为 high', () {
-      final capability =
-          capabilityOf(
-            'gemini-3-pro-preview',
-            providerType: 'gemini',
-          ).withLevels([
-            ReasoningEffort.none,
-            ReasoningEffort.medium,
-            ReasoningEffort.xhigh,
-            ReasoningEffort.max,
-          ]);
+      final capability = capabilityOf(
+        'gemini-3-pro-preview',
+        providerType: 'gemini',
+      ).withLevels([ReasoningEffort.none, ReasoningEffort.medium, ReasoningEffort.xhigh, ReasoningEffort.max]);
 
       expect(capability.supports(ReasoningEffort.medium), isTrue);
-      expect(capability.geminiThinkingConfig(ReasoningEffort.medium), {
-        'thinkingLevel': 'high',
-      });
-      expect(capability.geminiThinkingConfig(ReasoningEffort.max), {
-        'thinkingLevel': 'high',
-      });
-      expect(capability.geminiThinkingConfig(ReasoningEffort.none), {
-        'thinkingLevel': 'low',
-      });
+      expect(capability.geminiThinkingConfig(ReasoningEffort.medium), {'thinkingLevel': 'high'});
+      expect(capability.geminiThinkingConfig(ReasoningEffort.max), {'thinkingLevel': 'high'});
+      expect(capability.geminiThinkingConfig(ReasoningEffort.none), {'thinkingLevel': 'low'});
     });
 
     test('Gemini 2.5 Pro 不允许关闭思考', () {
       final capability = capabilityOf('gemini-2.5-pro', providerType: 'gemini');
       expect(capability.supports(ReasoningEffort.none), isFalse);
       expect(capability.geminiThinkingConfig(ReasoningEffort.none), isNull);
-      expect(capability.geminiThinkingConfig(ReasoningEffort.medium), {
-        'thinkingBudget': 4096,
-      });
+      expect(capability.geminiThinkingConfig(ReasoningEffort.medium), {'thinkingBudget': 4096});
     });
 
     test('Gemini 2.5 Flash 支持关闭（budget=0）', () {
-      final capability = capabilityOf(
-        'gemini-2.5-flash',
-        providerType: 'gemini',
-      );
-      expect(capability.geminiThinkingConfig(ReasoningEffort.none), {
-        'thinkingBudget': 0,
-      });
+      final capability = capabilityOf('gemini-2.5-flash', providerType: 'gemini');
+      expect(capability.geminiThinkingConfig(ReasoningEffort.none), {'thinkingBudget': 0});
     });
 
     test('OpenAI 兼容模型不会拿到 Gemini 配置', () {
@@ -260,9 +197,7 @@ void main() {
 
   group('未收录模型的通用兜底（界面入口永远可见）', () {
     test('OpenAI 兼容给全档位，none 写 minimal', () {
-      final capability = ModelReasoningCapability.forUi(
-        modelName: 'my-custom-model',
-      );
+      final capability = ModelReasoningCapability.forUi(modelName: 'my-custom-model');
       expect(capability.isGeneric, isTrue);
       expect(capability.levels, [
         ReasoningEffort.none,
@@ -281,10 +216,7 @@ void main() {
     });
 
     test('OpenRouter 兜底写 reasoning.effort 而不是顶层字段', () {
-      final capability = ModelReasoningCapability.forUi(
-        modelName: 'meta-llama/llama-4',
-        vendorId: 'openrouter',
-      );
+      final capability = ModelReasoningCapability.forUi(modelName: 'meta-llama/llama-4', vendorId: 'openrouter');
       expect(capability.isGeneric, isTrue);
 
       final body = <String, dynamic>{};
@@ -295,13 +227,8 @@ void main() {
     });
 
     test('Gemini 兜底写 thinkingBudget', () {
-      final capability = ModelReasoningCapability.forUi(
-        modelName: 'gemini-unknown-preview',
-        providerType: 'gemini',
-      );
-      expect(capability.geminiThinkingConfig(ReasoningEffort.high), {
-        'thinkingBudget': 16384,
-      });
+      final capability = ModelReasoningCapability.forUi(modelName: 'gemini-unknown-preview', providerType: 'gemini');
+      expect(capability.geminiThinkingConfig(ReasoningEffort.high), {'thinkingBudget': 16384});
     });
 
     test('已收录模型仍走精确能力，不被兜底覆盖', () {

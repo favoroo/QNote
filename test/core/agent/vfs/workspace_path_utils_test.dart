@@ -60,37 +60,22 @@ void main() {
 
   group('parseWorkspaceStatsDate', () {
     test('解析合法日期并丢弃时间部分', () {
-      expect(
-        parseWorkspaceStatsDate('2026-09-11T10:20:30', '开始日期'),
-        DateTime(2026, 9, 11),
-      );
+      expect(parseWorkspaceStatsDate('2026-09-11T10:20:30', '开始日期'), DateTime(2026, 9, 11));
       expect(parseWorkspaceStatsDate('2026-09-11', '结束日期'), DateTime(2026, 9, 11));
     });
 
     test('缺失与非法日期抛出带字段名的异常', () {
-      expect(
-        () => parseWorkspaceStatsDate('', '开始日期'),
-        throwsA(predicate((e) => e.toString().contains('缺少 开始日期'))),
-      );
+      expect(() => parseWorkspaceStatsDate('', '开始日期'), throwsA(predicate((e) => e.toString().contains('缺少 开始日期'))));
       expect(
         () => parseWorkspaceStatsDate('not-a-date', '结束日期'),
-        throwsA(
-          predicate(
-            (e) =>
-                e.toString().contains('结束日期 日期格式无效') &&
-                e.toString().contains('not-a-date'),
-          ),
-        ),
+        throwsA(predicate((e) => e.toString().contains('结束日期 日期格式无效') && e.toString().contains('not-a-date'))),
       );
     });
   });
 
   group('stripWorkspaceLineNumbers', () {
     test('剥离行首数字加制表符', () {
-      expect(
-        stripWorkspaceLineNumbers('1\t第一行\n2\t第二行'),
-        '第一行\n第二行',
-      );
+      expect(stripWorkspaceLineNumbers('1\t第一行\n2\t第二行'), '第一行\n第二行');
       expect(stripWorkspaceLineNumbers('12\t'), '');
     });
 
@@ -153,24 +138,15 @@ void main() {
     test('workspaceEntityKeyFromPath 取末段实体标识', () {
       const uuid = '123e4567-e89b-12d3-a456-426614174000';
       expect(workspaceEntityKeyFromPath('/todos/工作/$uuid.md', '/todos/'), uuid);
-      expect(
-        workspaceEntityKeyFromPath('/todos/工作/[x] 写报告.md', '/todos/'),
-        '写报告',
-      );
+      expect(workspaceEntityKeyFromPath('/todos/工作/[x] 写报告.md', '/todos/'), '写报告');
       expect(workspaceEntityKeyFromPath('/notes/笔记本/标题.md', '/notes/'), '标题');
     });
   });
 
   group('isUuidPathSegment', () {
     test('合法 UUID（大小写均支持）', () {
-      expect(
-        isUuidPathSegment('123e4567-e89b-12d3-a456-426614174000'),
-        isTrue,
-      );
-      expect(
-        isUuidPathSegment('123E4567-E89B-12D3-A456-426614174000'),
-        isTrue,
-      );
+      expect(isUuidPathSegment('123e4567-e89b-12d3-a456-426614174000'), isTrue);
+      expect(isUuidPathSegment('123E4567-E89B-12D3-A456-426614174000'), isTrue);
     });
 
     test('非法形态与带后缀片段不判定为 id', () {

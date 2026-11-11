@@ -34,11 +34,7 @@ class ChangelogPage extends StatelessWidget {
     );
   }
 
-  Widget _buildChangelogCard(
-    BuildContext context,
-    ChangelogEntry entry,
-    bool isCurrent,
-  ) {
+  Widget _buildChangelogCard(BuildContext context, ChangelogEntry entry, bool isCurrent) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -52,13 +48,7 @@ class ChangelogPage extends StatelessWidget {
               ? colorScheme.primary.withValues(alpha: 0.4)
               : colorScheme.outlineVariant.withValues(alpha: 0.3),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,10 +58,7 @@ class ChangelogPage extends StatelessWidget {
             children: [
               Text(
                 'v${entry.version}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.primary,
-                ),
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary),
               ),
               if (isCurrent) ...[
                 const SizedBox(width: 8),
@@ -91,45 +78,42 @@ class ChangelogPage extends StatelessWidget {
                 ),
               ],
               const Spacer(),
-              Text(
-                entry.date,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.hintColor,
-                ),
-              ),
+              Text(entry.date, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
             ],
           ),
           const SizedBox(height: 12),
           // 要点列表
-          ...entry.notes.map((note) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 7),
-                      child: Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                          shape: BoxShape.circle,
-                        ),
+          ...entry.notes.map(
+            (note) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        note,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.85),
-                          height: 1.5,
-                        ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      note,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurface.withValues(alpha: 0.85),
+                        height: 1.5,
                       ),
                     ),
-                  ],
-                ),
-              )),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

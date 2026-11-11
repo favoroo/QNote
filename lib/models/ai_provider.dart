@@ -95,8 +95,7 @@ class AiProviderModel {
     'id': id,
     'name': name,
     if (reasoningEffort != null) 'reasoning_effort': reasoningEffort!.wireName,
-    if (reasoningEfforts != null)
-      'reasoning_efforts': [for (final effort in reasoningEfforts!) effort.wireName],
+    if (reasoningEfforts != null) 'reasoning_efforts': [for (final effort in reasoningEfforts!) effort.wireName],
     if (rate != null) 'rate': rate,
     if (rateWas != null) 'rate_was': rateWas,
     if (contextWindow != null) 'context_window': contextWindow,
@@ -111,18 +110,14 @@ class AiProviderModel {
     return AiProviderModel.of(
       id,
       name: map['name'] as String?,
-      reasoningEffort: ReasoningEffort.tryParse(
-        map['reasoning_effort']?.toString(),
-      ),
+      reasoningEffort: ReasoningEffort.tryParse(map['reasoning_effort']?.toString()),
       reasoningEfforts: ReasoningEffort.tryParseList(map['reasoning_efforts']),
       rate: _numOf(map['rate']),
       rateWas: _numOf(map['rate_was']),
       contextWindow: _intOf(map['context_window']),
       rateNote: note == null || note.isEmpty ? null : note,
       supportsVision: map['vision'] is bool ? map['vision'] as bool : null,
-      supportsImageGeneration: map['image_gen'] is bool
-          ? map['image_gen'] as bool
-          : null,
+      supportsImageGeneration: map['image_gen'] is bool ? map['image_gen'] as bool : null,
     );
   }
 
@@ -180,9 +175,7 @@ class AiProviderModel {
   static const Object _unsetReasoningEfforts = Object();
 
   /// 档位集合归一：去重、按枚举顺序（由弱到强）排序，空集合回落到自动识别
-  static List<ReasoningEffort>? _normalizeEfforts(
-    List<ReasoningEffort>? levels,
-  ) {
+  static List<ReasoningEffort>? _normalizeEfforts(List<ReasoningEffort>? levels) {
     if (levels == null || levels.isEmpty) return null;
     final set = levels.toSet();
     return List.unmodifiable([
@@ -192,10 +185,7 @@ class AiProviderModel {
   }
 
   /// 两个档位集合是否内容一致（顺序已在构造时归一）
-  static bool _sameEfforts(
-    List<ReasoningEffort>? a,
-    List<ReasoningEffort>? b,
-  ) {
+  static bool _sameEfforts(List<ReasoningEffort>? a, List<ReasoningEffort>? b) {
     if (identical(a, b)) return true;
     if (a == null || b == null || a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
@@ -223,8 +213,7 @@ class AiProviderModel {
     }
   }
 
-  static String listToJson(List<AiProviderModel> models) =>
-      jsonEncode(models.map((m) => m.toMap()).toList());
+  static String listToJson(List<AiProviderModel> models) => jsonEncode(models.map((m) => m.toMap()).toList());
 
   @override
   bool operator ==(Object other) =>
@@ -235,12 +224,8 @@ class AiProviderModel {
       _sameEfforts(other.reasoningEfforts, reasoningEfforts);
 
   @override
-  int get hashCode => Object.hash(
-    id,
-    name,
-    reasoningEffort,
-    reasoningEfforts == null ? null : Object.hashAll(reasoningEfforts!),
-  );
+  int get hashCode =>
+      Object.hash(id, name, reasoningEffort, reasoningEfforts == null ? null : Object.hashAll(reasoningEfforts!));
 
   @override
   String toString() => 'AiProviderModel($id)';
@@ -348,21 +333,15 @@ class AiProvider {
   bool get usesAccountAuth => authMode != authModeApiKey;
 
   /// 是否已有可用凭证（账号型交给登录态判断，发信层再校验）
-  bool get hasCredentials =>
-      usesAccountAuth || apiKeys.any((key) => key.trim().isNotEmpty);
+  bool get hasCredentials => usesAccountAuth || apiKeys.any((key) => key.trim().isNotEmpty);
 
   /// 厂商下是否还有可用的「地址 + 凭证 + 模型」组合（已停用的厂商一律不可用）
-  bool get isUsable =>
-      enabled &&
-      baseUrl.trim().isNotEmpty &&
-      hasCredentials &&
-      models.isNotEmpty;
+  bool get isUsable => enabled && baseUrl.trim().isNotEmpty && hasCredentials && models.isNotEmpty;
 
   /// 首个已启用模型，作为未绑定角色时的默认选择
   AiProviderModel? get firstModel => models.isEmpty ? null : models.first;
 
-  AiModelRef refFor(String modelName) =>
-      AiModelRef(providerId: id, modelName: modelName);
+  AiModelRef refFor(String modelName) => AiModelRef(providerId: id, modelName: modelName);
 
   bool hasModel(String modelName) => models.any((m) => m.id == modelName);
 
@@ -399,19 +378,15 @@ class AiProvider {
       authMode: (map['auth_mode'] as String?)?.trim().isNotEmpty == true
           ? (map['auth_mode'] as String).trim()
           : authModeApiKey,
-      accountRouting:
-          (map['account_routing'] as String?)?.trim().isNotEmpty == true
+      accountRouting: (map['account_routing'] as String?)?.trim().isNotEmpty == true
           ? (map['account_routing'] as String).trim()
           : defaultAccountRouting,
-      accountAffinity:
-          (map['account_affinity'] as String?)?.trim().isNotEmpty == true
+      accountAffinity: (map['account_affinity'] as String?)?.trim().isNotEmpty == true
           ? (map['account_affinity'] as String).trim()
           : defaultAccountAffinity,
       apiKeys: _decodeKeys(map['api_keys']),
       models: AiProviderModel.listFromJson(map['models'] as String?),
-      modelCatalog: AiProviderModel.listFromJson(
-        map['model_catalog'] as String?,
-      ),
+      modelCatalog: AiProviderModel.listFromJson(map['model_catalog'] as String?),
       catalogUpdatedAt: _parseTime(map['catalog_updated_at'] as String?),
       isDefault: (map['is_default'] as int? ?? 0) == 1,
       // 缺列（老库/旧备份）时按「启用」处理，避免升级后所有厂商集体失效
@@ -441,9 +416,7 @@ class AiProvider {
   }) {
     return AiProvider(
       id: id ?? this.id,
-      vendorId: identical(vendorId, _unset)
-          ? this.vendorId
-          : vendorId as String?,
+      vendorId: identical(vendorId, _unset) ? this.vendorId : vendorId as String?,
       name: name ?? this.name,
       providerType: providerType ?? this.providerType,
       baseUrl: baseUrl ?? this.baseUrl,
@@ -453,9 +426,7 @@ class AiProvider {
       apiKeys: apiKeys ?? this.apiKeys,
       models: models ?? this.models,
       modelCatalog: modelCatalog ?? this.modelCatalog,
-      catalogUpdatedAt: identical(catalogUpdatedAt, _unset)
-          ? this.catalogUpdatedAt
-          : catalogUpdatedAt as DateTime?,
+      catalogUpdatedAt: identical(catalogUpdatedAt, _unset) ? this.catalogUpdatedAt : catalogUpdatedAt as DateTime?,
       isDefault: isDefault ?? this.isDefault,
       enabled: enabled ?? this.enabled,
       createdAt: createdAt ?? this.createdAt,
@@ -489,17 +460,14 @@ class AiProvider {
   /// 旧备份/旧库里的 `ai_configs` 行 → 厂商条目（同 URL 归并密钥与模型）
   ///
   /// 迁移与「导入旧格式备份」共用这一条路径，保证两种来源得到一致结果。
-  static List<AiProvider> fromLegacyConfigMaps(
-    List<Map<String, dynamic>> configs,
-  ) {
+  static List<AiProvider> fromLegacyConfigMaps(List<Map<String, dynamic>> configs) {
     final grouped = <String, List<Map<String, dynamic>>>{};
     final order = <String>[];
     for (final map in configs) {
       final vendorId = (map['vendor_id'] as String?)?.trim() ?? '';
       final baseUrl = ((map['base_url'] as String?) ?? '').trim();
       final providerType = ((map['provider'] as String?) ?? 'openai').trim();
-      final groupKey =
-          '${vendorId.isEmpty ? 'custom' : vendorId}|$baseUrl|$providerType';
+      final groupKey = '${vendorId.isEmpty ? 'custom' : vendorId}|$baseUrl|$providerType';
       if (!grouped.containsKey(groupKey)) {
         grouped[groupKey] = [];
         order.add(groupKey);
@@ -524,20 +492,16 @@ class AiProvider {
 
         final modelName = ((row['model_name'] as String?) ?? '').trim();
         if (modelName.isNotEmpty && modelIds.add(modelName)) {
-          models.add(
-            AiProviderModel.of(modelName, name: row['name'] as String?),
-          );
+          models.add(AiProviderModel.of(modelName, name: row['name'] as String?));
         }
 
         if ((row['is_default'] as int? ?? 0) == 1) isDefault = true;
         final rowCreated = _parseTime(row['created_at'] as String?);
-        if (rowCreated != null &&
-            (createdAt == null || rowCreated.isBefore(createdAt))) {
+        if (rowCreated != null && (createdAt == null || rowCreated.isBefore(createdAt))) {
           createdAt = rowCreated;
         }
         final rowUpdated = _parseTime(row['updated_at'] as String?);
-        if (rowUpdated != null &&
-            (updatedAt == null || rowUpdated.isAfter(updatedAt))) {
+        if (rowUpdated != null && (updatedAt == null || rowUpdated.isAfter(updatedAt))) {
           updatedAt = rowUpdated;
         }
       }
@@ -548,9 +512,7 @@ class AiProvider {
       providers.add(
         AiProvider(
           id: (first['id'] as String?) ?? '',
-          vendorId: (vendorId == null || vendorId.isEmpty)
-              ? 'custom'
-              : vendorId,
+          vendorId: (vendorId == null || vendorId.isEmpty) ? 'custom' : vendorId,
           name: vendorId == null || vendorId.isEmpty ? '自定义服务' : vendorId,
           providerType: ((first['provider'] as String?) ?? 'openai'),
           baseUrl: ((first['base_url'] as String?) ?? '').trim(),

@@ -7,20 +7,13 @@ class EmptyStateWidget extends StatefulWidget {
   final String? description;
   final double iconSize;
 
-  const EmptyStateWidget({
-    super.key,
-    required this.icon,
-    required this.message,
-    this.description,
-    this.iconSize = 48,
-  });
+  const EmptyStateWidget({super.key, required this.icon, required this.message, this.description, this.iconSize = 48});
 
   @override
   State<EmptyStateWidget> createState() => _EmptyStateWidgetState();
 }
 
-class _EmptyStateWidgetState extends State<EmptyStateWidget>
-    with SingleTickerProviderStateMixin {
+class _EmptyStateWidgetState extends State<EmptyStateWidget> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   bool _animationsEnabled = true;
 
@@ -28,10 +21,7 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget>
   void initState() {
     super.initState();
     // 2.6s 优雅低频呼吸浮动周期，节能且不喧宾夺主
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
-    )..repeat();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))..repeat();
   }
 
   @override
@@ -66,22 +56,12 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget>
       decoration: BoxDecoration(
         color: colorScheme.primary.withValues(alpha: 0.04),
         shape: BoxShape.circle,
-        border: Border.all(
-          color: colorScheme.primary.withValues(alpha: 0.06),
-          width: 2,
-        ),
+        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.06), width: 2),
       ),
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colorScheme.primary.withValues(alpha: 0.08),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          widget.icon,
-          size: widget.iconSize,
-          color: colorScheme.primary,
-        ),
+        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
+        child: Icon(widget.icon, size: widget.iconSize, color: colorScheme.primary),
       ),
     );
 
@@ -96,10 +76,7 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget>
             final scale = 1.0 + math.sin(progress) * 0.02;
             return Transform.translate(
               offset: Offset(0, offsetY),
-              child: Transform.scale(
-                scale: scale,
-                child: child,
-              ),
+              child: Transform.scale(scale: scale, child: child),
             );
           },
           child: iconBox,
@@ -117,19 +94,14 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget>
             const SizedBox(height: 24),
             Text(
               widget.message,
-              style: textTheme.titleMedium?.copyWith(
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+              style: textTheme.titleMedium?.copyWith(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
             if (widget.description != null) ...[
               const SizedBox(height: 8),
               Text(
                 widget.description!,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                ),
+                style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
                 textAlign: TextAlign.center,
               ),
             ],

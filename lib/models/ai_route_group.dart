@@ -56,20 +56,14 @@ class RouteGroupMember {
   /// 组内临时停用：保留位置与配置，但不参与选路
   final bool enabled;
 
-  const RouteGroupMember({
-    required this.providerId,
-    required this.modelName,
-    this.weight = 1,
-    this.enabled = true,
-  });
+  const RouteGroupMember({required this.providerId, required this.modelName, this.weight = 1, this.enabled = true});
 
   /// 权重允许范围：太小看不出差别，太大让权重 UI 与轮次都变得难懂
   static const int minWeight = 1;
   static const int maxWeight = 9;
 
   /// 成员引用（`providerId::modelName`），与角色绑定/展示名共用同一编码
-  AiModelRef get ref =>
-      AiModelRef(providerId: providerId, modelName: modelName);
+  AiModelRef get ref => AiModelRef(providerId: providerId, modelName: modelName);
 
   String encode() => ref.encode();
 
@@ -83,18 +77,17 @@ class RouteGroupMember {
   }
 
   Map<String, dynamic> toMap() => {
-        'providerId': providerId,
-        'modelName': modelName,
-        'weight': weight,
-        'enabled': enabled,
-      };
+    'providerId': providerId,
+    'modelName': modelName,
+    'weight': weight,
+    'enabled': enabled,
+  };
 
   factory RouteGroupMember.fromMap(Map<String, dynamic> map) {
     return RouteGroupMember(
       providerId: (map['providerId'] ?? '').toString(),
       modelName: (map['modelName'] ?? '').toString(),
-      weight: ((map['weight'] as num?)?.toInt() ?? minWeight)
-          .clamp(minWeight, maxWeight),
+      weight: ((map['weight'] as num?)?.toInt() ?? minWeight).clamp(minWeight, maxWeight),
       enabled: map['enabled'] as bool? ?? true,
     );
   }
@@ -120,8 +113,7 @@ class RouteGroupMember {
     }
   }
 
-  static String listToJson(List<RouteGroupMember> members) =>
-      jsonEncode(members.map((m) => m.toMap()).toList());
+  static String listToJson(List<RouteGroupMember> members) => jsonEncode(members.map((m) => m.toMap()).toList());
 
   @override
   bool operator ==(Object other) =>
@@ -172,11 +164,10 @@ class AiRouteGroup {
   });
 
   /// 参与选路的成员（组内启用）
-  List<RouteGroupMember> get enabledMembers =>
-      members.where((m) => m.enabled).toList();
+  List<RouteGroupMember> get enabledMembers => members.where((m) => m.enabled).toList();
 
-  bool hasMember(String providerId, String modelName) => members
-      .any((m) => m.providerId == providerId && m.modelName == modelName);
+  bool hasMember(String providerId, String modelName) =>
+      members.any((m) => m.providerId == providerId && m.modelName == modelName);
 
   AiRouteGroup copyWith({
     String? id,
@@ -193,9 +184,7 @@ class AiRouteGroup {
       name: name ?? this.name,
       strategy: strategy ?? this.strategy,
       members: members ?? this.members,
-      pinnedMember: identical(pinnedMember, _unset)
-          ? this.pinnedMember
-          : pinnedMember as String?,
+      pinnedMember: identical(pinnedMember, _unset) ? this.pinnedMember : pinnedMember as String?,
       preferVision: preferVision ?? this.preferVision,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -221,14 +210,10 @@ class AiRouteGroup {
     final id = (map['id'] ?? '').toString();
     return AiRouteGroup(
       id: id,
-      name: (map['name'] as String?)?.trim().isNotEmpty == true
-          ? (map['name'] as String).trim()
-          : '未命名路由组',
+      name: (map['name'] as String?)?.trim().isNotEmpty == true ? (map['name'] as String).trim() : '未命名路由组',
       strategy: RouteStrategy.fromId(map['strategy'] as String?),
       members: RouteGroupMember.listFromJson(map['members'] as String?),
-      pinnedMember: (map['pinned_member'] as String?)?.trim().isEmpty == true
-          ? null
-          : map['pinned_member'] as String?,
+      pinnedMember: (map['pinned_member'] as String?)?.trim().isEmpty == true ? null : map['pinned_member'] as String?,
       preferVision: (map['prefer_vision'] as int? ?? 1) == 1,
       createdAt: _parseTime(map['created_at'] as String?) ?? DateTime.now(),
       updatedAt: _parseTime(map['updated_at'] as String?) ?? DateTime.now(),
@@ -241,6 +226,7 @@ class AiRouteGroup {
   }
 
   @override
-  String toString() => 'AiRouteGroup($id, $name, ${strategy.id}, '
+  String toString() =>
+      'AiRouteGroup($id, $name, ${strategy.id}, '
       '${members.length} members)';
 }

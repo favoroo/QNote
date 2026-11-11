@@ -46,8 +46,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
   static const String managedHost = 'https://autoglm-acceleration-api.zhipuai.cn';
 
   /// 对话基址：与厂商模板的 defaultBaseUrl 保持一致
-  static const String chatBase =
-      '$managedHost/autoclaw-proxy/proxy/autoclaw';
+  static const String chatBase = '$managedHost/autoclaw-proxy/proxy/autoclaw';
 
   static const String product = 'autoclaw';
   static const String appId = '100003';
@@ -63,8 +62,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
 
   /// 网关会拒绝不带这行的请求；前缀在已有 system 消息里追加，避免出现
   /// 两个互相竞争的 system 角色。
-  static const String officialSystemPrompt =
-      'You are AutoClaw. Answer the user directly and concisely.';
+  static const String officialSystemPrompt = 'You are AutoClaw. Answer the user directly and concisely.';
 
   /// 提前多久刷新（与插件一致的 60 秒量级）
   static const Duration refreshMargin = Duration(seconds: 60);
@@ -108,28 +106,23 @@ class AutoClawAuthService extends AccountAuthServiceBase {
 
   @override
   @protected
-  Future<List<AiAccount>> Function(String providerId)?
-  get accountsLoaderHook => accountsLoaderForTest;
+  Future<List<AiAccount>> Function(String providerId)? get accountsLoaderHook => accountsLoaderForTest;
 
   @override
   @protected
-  Future<String?> Function(String providerId)? get accessTokenLoaderHook =>
-      accessTokenLoaderForTest;
+  Future<String?> Function(String providerId)? get accessTokenLoaderHook => accessTokenLoaderForTest;
 
   @override
   @protected
-  Future<void> Function(AiAccount account)? get accountSaverHook =>
-      accountSaverForTest;
+  Future<void> Function(AiAccount account)? get accountSaverHook => accountSaverForTest;
 
   @override
   @protected
-  Future<AiAccount> Function(AiAccount account)?
-  get accountRefresherHook => accountRefresherForTest;
+  Future<AiAccount> Function(AiAccount account)? get accountRefresherHook => accountRefresherForTest;
 
   /// 测试注入：绕开数据库直接给账号列表
   @visibleForTesting
-  static Future<List<AiAccount>> Function(String providerId)?
-  accountsLoaderForTest;
+  static Future<List<AiAccount>> Function(String providerId)? accountsLoaderForTest;
 
   // ── token 读取与刷新 ─────────────────────────────────────
 
@@ -152,10 +145,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
   static Future<AiAccount> Function(AiAccount account)? accountRefresherForTest;
 
   @override
-  Future<AiAccount> reloadAccount(
-    String accountId, {
-    required bool force,
-  }) async {
+  Future<AiAccount> reloadAccount(String accountId, {required bool force}) async {
     final stored = await repository.getById(accountId);
     if (stored == null) {
       evictCachedAccount(accountId);
@@ -171,28 +161,12 @@ class AutoClawAuthService extends AccountAuthServiceBase {
       throw authExpired(stored.providerId);
     }
 
-    final deviceId = _jwtClaim(refreshToken, 'device_id') ??
-        _jwtClaim(stored.accessToken, 'device_id') ??
-        '';
-    final body = {
-      'source_id': product,
-      'device_id': deviceId,
-      'refresh_token': refreshToken,
-    };
-    var envelope = await _send(
-      'POST',
-      '$host/userapi/v1/refresh',
-      headers: _bizHeaders(),
-      data: body,
-    );
+    final deviceId = _jwtClaim(refreshToken, 'device_id') ?? _jwtClaim(stored.accessToken, 'device_id') ?? '';
+    final body = {'source_id': product, 'device_id': deviceId, 'refresh_token': refreshToken};
+    var envelope = await _send('POST', '$host/userapi/v1/refresh', headers: _bizHeaders(), data: body);
     // 国内短信账号走 agent-refresh；旧版 refresh 会以 400002 拒绝
     if (envelope.code == 400002 || envelope.status == 400) {
-      envelope = await _send(
-        'POST',
-        '$host/userapi/v1/agent-refresh',
-        headers: _bizHeaders(),
-        data: body,
-      );
+      envelope = await _send('POST', '$host/userapi/v1/agent-refresh', headers: _bizHeaders(), data: body);
     }
     if (envelope.isAuthRejected || _isDeadRefresh(envelope)) {
       LoggerService.instance.logAI(
@@ -204,11 +178,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
       throw authExpired(stored.providerId);
     }
     if (envelope.code != 0 || envelope.data is! Map) {
-      throw FormatException(
-        envelope.message.isEmpty
-            ? '刷新登录态失败（code=${envelope.code}）'
-            : envelope.message,
-      );
+      throw FormatException(envelope.message.isEmpty ? '刷新登录态失败（code=${envelope.code}）' : envelope.message);
     }
     final data = envelope.data as Map;
     final access = _bareToken(data['access_token']?.toString() ?? '');
@@ -246,10 +216,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
 
   /// 发送短信验证码，返回本次登录的挑战（device_id 由服务端校验）
   @override
-  Future<AccountSmsChallenge> sendLoginCode(
-    String providerId,
-    String phone,
-  ) async {
+  Future<AccountSmsChallenge> sendLoginCode(String providerId, String phone) async {
     final normalized = phone.trim();
     if (!RegExp(r'^1\d{10}$').hasMatch(normalized)) {
       throw const FormatException('请输入 11 位手机号（不带 +86）');
@@ -259,18 +226,10 @@ class AutoClawAuthService extends AccountAuthServiceBase {
       'POST',
       '$host/userapi/v1/agent-send-code',
       headers: _bizHeaders(),
-      data: {
-        'source_id': product,
-        'device_id': deviceId,
-        'phone': normalized,
-      },
+      data: {'source_id': product, 'device_id': deviceId, 'phone': normalized},
     );
     if (envelope.isAuthRejected || envelope.code != 0) {
-      throw FormatException(
-        envelope.message.isEmpty
-            ? '发送验证码失败（code=${envelope.code}）'
-            : envelope.message,
-      );
+      throw FormatException(envelope.message.isEmpty ? '发送验证码失败（code=${envelope.code}）' : envelope.message);
     }
     return AccountSmsChallenge(phone: normalized, ticket: deviceId);
   }
@@ -301,17 +260,11 @@ class AutoClawAuthService extends AccountAuthServiceBase {
       },
     );
     if (envelope.isAuthRejected || envelope.code != 0) {
-      throw FormatException(
-        envelope.message.isEmpty
-            ? '登录失败（code=${envelope.code}）'
-            : envelope.message,
-      );
+      throw FormatException(envelope.message.isEmpty ? '登录失败（code=${envelope.code}）' : envelope.message);
     }
     final data = envelope.data;
     if (data is! Map) {
-      throw FormatException(
-        '登录失败：响应缺少账号信息（HTTP ${envelope.status}）',
-      );
+      throw FormatException('登录失败：响应缺少账号信息（HTTP ${envelope.status}）');
     }
     final access = _bareToken(data['access_token']?.toString() ?? '');
     final refresh = _bareToken(data['refresh_token']?.toString() ?? '');
@@ -331,10 +284,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     );
   }
 
-  Future<_AutoClawProfile?> _fetchProfile(
-    String access,
-    String deviceId,
-  ) async {
+  Future<_AutoClawProfile?> _fetchProfile(String access, String deviceId) async {
     try {
       final envelope = await _send(
         'POST',
@@ -368,23 +318,18 @@ class AutoClawAuthService extends AccountAuthServiceBase {
   }) => persistLogin(
     providerId,
     accountId: accountId,
-    buildAccount:
-        ({
-          required String accountId,
-          AiAccount? previous,
-          required bool fetchProfile,
-        }) => _accountFromTokens(
-          providerId,
-          accountId: accountId,
-          access: access,
-          refresh: refresh,
-          deviceId: deviceId,
-          profile: profile,
-          previous: previous,
-          fallbackPhone: fallbackPhone,
-          uidHint: uidHint,
-          fetchProfile: fetchProfile,
-        ),
+    buildAccount: ({required String accountId, AiAccount? previous, required bool fetchProfile}) => _accountFromTokens(
+      providerId,
+      accountId: accountId,
+      access: access,
+      refresh: refresh,
+      deviceId: deviceId,
+      profile: profile,
+      previous: previous,
+      fallbackPhone: fallbackPhone,
+      uidHint: uidHint,
+      fetchProfile: fetchProfile,
+    ),
   );
 
   // ── 模型目录 ─────────────────────────────────────────────
@@ -393,36 +338,14 @@ class AutoClawAuthService extends AccountAuthServiceBase {
   /// 厂商没有模型目录接口，清单与上下文/识图能力取自官方客户端 2.1.0 内置表；
   /// AutoClaw 按积分池计费，不对外暴露逐模型倍率，所以倍率字段留空（不编 1×）。
   static const List<AiProviderModel> _catalog = [
-    AiProviderModel(
-      id: 'zai_auto',
-      name: 'GLM Auto',
-      contextWindow: 1048576,
-      supportsVision: true,
-    ),
-    AiProviderModel(
-      id: 'zai_auto-fast',
-      name: 'GLM Auto Fast',
-      contextWindow: 1048576,
-      supportsVision: true,
-    ),
-    AiProviderModel(
-      id: 'zaicoding_glm-5.3',
-      name: 'GLM-5.3',
-      contextWindow: 1048576,
-      supportsVision: false,
-    ),
-    AiProviderModel(
-      id: 'zai_glm-5.3-flash',
-      name: 'GLM-5.3 Flash',
-      contextWindow: 1048576,
-      supportsVision: true,
-    ),
+    AiProviderModel(id: 'zai_auto', name: 'GLM Auto', contextWindow: 1048576, supportsVision: true),
+    AiProviderModel(id: 'zai_auto-fast', name: 'GLM Auto Fast', contextWindow: 1048576, supportsVision: true),
+    AiProviderModel(id: 'zaicoding_glm-5.3', name: 'GLM-5.3', contextWindow: 1048576, supportsVision: false),
+    AiProviderModel(id: 'zai_glm-5.3-flash', name: 'GLM-5.3 Flash', contextWindow: 1048576, supportsVision: true),
   ];
 
   @override
-  Future<List<AiProviderModel>> fetchModelsForProvider(
-    String providerId,
-  ) async {
+  Future<List<AiProviderModel>> fetchModelsForProvider(String providerId) async {
     final accounts = await accountsFor(providerId, forceReload: true);
     if (accounts.isEmpty) throw notLoggedIn(providerId);
     return List<AiProviderModel>.of(_catalog);
@@ -431,8 +354,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
   // ── 账号额度 ─────────────────────────────────────────────
 
   @override
-  Future<AccountQuota> fetchQuota(AiAccount account) =>
-      runWithToken(account, _readQuota);
+  Future<AccountQuota> fetchQuota(AiAccount account) => runWithToken(account, _readQuota);
 
   Future<AccountQuota> _readQuota(String token) async {
     final envelope = await _send(
@@ -442,11 +364,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     );
     _rejectIfUnauthorized(envelope);
     if (envelope.code != 0 || envelope.data is! Map) {
-      throw FormatException(
-        envelope.message.isEmpty
-            ? '查询积分失败（code=${envelope.code}）'
-            : envelope.message,
-      );
+      throw FormatException(envelope.message.isEmpty ? '查询积分失败（code=${envelope.code}）' : envelope.message);
     }
     final data = envelope.data as Map;
     final total = _intOf(data['total_balance']);
@@ -464,10 +382,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
         if (row['display'] == false) continue;
         final balance = _intOf(row['balance']);
         if (balance == null || balance <= 0) continue;
-        final name =
-            (row['display_name'] ?? row['public_wallet_type'] ?? '积分')
-                .toString()
-                .trim();
+        final name = (row['display_name'] ?? row['public_wallet_type'] ?? '积分').toString().trim();
         if (name.isEmpty) continue;
         // 与总额相同的单钱包不再重复展示
         if ((balance - total).abs() < 1) continue;
@@ -476,11 +391,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
       }
     }
 
-    return AccountQuota(
-      balance: total,
-      detail: parts.join(' · '),
-      fetchedAt: DateTime.now(),
-    );
+    return AccountQuota(balance: total, detail: parts.join(' · '), fetchedAt: DateTime.now());
   }
 
   /// 今日签到状态（容错：任何失败都返回 null，不影响积分展示）
@@ -511,8 +422,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
   // ── 手动签到 ─────────────────────────────────────────────
 
   @override
-  Future<AccountCheckInResult> checkIn(AiAccount account) =>
-      runWithToken(account, _checkInWithToken);
+  Future<AccountCheckInResult> checkIn(AiAccount account) => runWithToken(account, _checkInWithToken);
 
   Future<AccountCheckInResult> _checkInWithToken(String token) async {
     final envelope = await _send(
@@ -524,11 +434,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     _rejectIfUnauthorized(envelope);
     final checkedAt = DateTime.now();
     if (envelope.code != 0 || envelope.data is! Map) {
-      throw FormatException(
-        envelope.message.isEmpty
-            ? '签到失败（code=${envelope.code}）'
-            : envelope.message,
-      );
+      throw FormatException(envelope.message.isEmpty ? '签到失败（code=${envelope.code}）' : envelope.message);
     }
     final data = envelope.data as Map;
     final reward = _intOf(data['reward_points']) ?? 0;
@@ -611,7 +517,8 @@ class AutoClawAuthService extends AccountAuthServiceBase {
 
   /// 国内网关要求请求体带官方 system prompt 前缀，且拒收 max_tokens
   @override
-  void adaptChatBody(Map<String, dynamic> body, {required String model}) {    body.remove('max_tokens');
+  void adaptChatBody(Map<String, dynamic> body, {required String model}) {
+    body.remove('max_tokens');
     body.remove('max_completion_tokens');
     final messages = body['messages'];
     if (messages is List) {
@@ -646,10 +553,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
             first['content'] = officialSystemPrompt;
           }
         } else {
-          messages.insert(0, {
-            'role': 'system',
-            'content': officialSystemPrompt,
-          });
+          messages.insert(0, {'role': 'system', 'content': officialSystemPrompt});
         }
       }
     }
@@ -659,12 +563,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     }
   }
 
-  Future<_Envelope> _send(
-    String method,
-    String url, {
-    Map<String, String>? headers,
-    Object? data,
-  }) async {
+  Future<_Envelope> _send(String method, String url, {Map<String, String>? headers, Object? data}) async {
     final Response<dynamic> response;
     try {
       response = await _dio.request<dynamic>(
@@ -689,9 +588,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     return _Envelope(
       status: status,
       code: _intOf(map?['code']) ?? 0,
-      message: (map?['msg'] ?? map?['message'] ?? _messageOfData(dataBlock))
-          .toString()
-          .trim(),
+      message: (map?['msg'] ?? map?['message'] ?? _messageOfData(dataBlock)).toString().trim(),
       data: dataBlock,
     );
   }
@@ -725,13 +622,9 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     final cleanAccess = _bareToken(access);
     final claims = _decodeJwtClaims(cleanAccess);
     final now = DateTime.now();
-    final freshProfile = fetchProfile && profile == null
-        ? await _fetchProfile(cleanAccess, deviceId)
-        : null;
+    final freshProfile = fetchProfile && profile == null ? await _fetchProfile(cleanAccess, deviceId) : null;
     final effectiveProfile = profile ?? freshProfile;
-    final maskedPhone = _maskPhone(
-      _firstNonEmpty([effectiveProfile?.phone ?? '', fallbackPhone]),
-    );
+    final maskedPhone = _maskPhone(_firstNonEmpty([effectiveProfile?.phone ?? '', fallbackPhone]));
     return AiAccount(
       id: accountId,
       providerId: providerId,
@@ -740,11 +633,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
       accessToken: cleanAccess,
       refreshToken: refresh.trim(),
       expiresAt: _jwtExpiry(claims),
-      uid: _firstNonEmpty([
-        effectiveProfile?.userId ?? '',
-        uidHint,
-        _extractUid(claims),
-      ]),
+      uid: _firstNonEmpty([effectiveProfile?.userId ?? '', uidHint, _extractUid(claims)]),
       displayName: effectiveProfile?.name ?? _extractName(claims),
       phone: maskedPhone.isNotEmpty ? maskedPhone : (previous?.phone ?? ''),
       status: AiAccount.statusActive,
@@ -790,8 +679,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     return buffer.toString();
   }
 
-  static String _md5(String input) =>
-      md5.convert(utf8.encode(input)).toString();
+  static String _md5(String input) => md5.convert(utf8.encode(input)).toString();
 
   static String _bareToken(String value) {
     var trimmed = value.trim();
@@ -832,8 +720,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     final seconds = exp is num ? exp.toInt() : int.tryParse('${exp ?? ''}');
     if (seconds == null || seconds <= 0) return null;
     // 提前 10 分钟视为过期：refresh token 一次一换，临期再刷新等于多烧一次
-    return DateTime.fromMillisecondsSinceEpoch(seconds * 1000)
-        .subtract(expirySkew);
+    return DateTime.fromMillisecondsSinceEpoch(seconds * 1000).subtract(expirySkew);
   }
 
   static String _extractUid(Map<String, dynamic>? claims) {
@@ -845,8 +732,7 @@ class AutoClawAuthService extends AccountAuthServiceBase {
     return '';
   }
 
-  static String _extractName(Map<String, dynamic>? claims) =>
-      claims?['name']?.toString().trim() ?? '';
+  static String _extractName(Map<String, dynamic>? claims) => claims?['name']?.toString().trim() ?? '';
 
   static String _firstNonEmpty(List<String> values) {
     for (final value in values) {
@@ -869,21 +755,15 @@ class AutoClawAuthService extends AccountAuthServiceBase {
   // ── 测试用入口 ───────────────────────────────────────────
 
   @visibleForTesting
-  static Map<String, dynamic> requestHeadersForTest(
-    String token, {
-    String model = 'zai_auto',
-  }) =>
+  static Map<String, dynamic> requestHeadersForTest(String token, {String model = 'zai_auto'}) =>
       AutoClawAuthService.instance.requestHeaders(token, model: model);
 
   @visibleForTesting
-  static void adaptChatBodyForTest(
-    Map<String, dynamic> body, {
-    String model = 'zai_auto',
-  }) => AutoClawAuthService.instance.adaptChatBody(body, model: model);
+  static void adaptChatBodyForTest(Map<String, dynamic> body, {String model = 'zai_auto'}) =>
+      AutoClawAuthService.instance.adaptChatBody(body, model: model);
 
   @visibleForTesting
-  static Map<String, dynamic>? decodeJwtForTest(String token) =>
-      _decodeJwtClaims(_bareToken(token));
+  static Map<String, dynamic>? decodeJwtForTest(String token) => _decodeJwtClaims(_bareToken(token));
 
   @visibleForTesting
   static String maskPhoneForTest(String raw) => _maskPhone(raw);
@@ -906,12 +786,7 @@ class _Envelope {
   final String message;
   final dynamic data;
 
-  const _Envelope({
-    required this.status,
-    required this.code,
-    required this.message,
-    required this.data,
-  });
+  const _Envelope({required this.status, required this.code, required this.message, required this.data});
 
   /// 401/403 是登录失效；403 的「额度用尽」是账号量用完，不是登录问题
   bool get isAuthRejected {
@@ -922,17 +797,11 @@ class _Envelope {
 
   bool get _isQuotaExhausted {
     final text = message;
-    if (text.contains('额度') ||
-        text.contains('余额') ||
-        text.contains('用完') ||
-        text.contains('用尽')) {
+    if (text.contains('额度') || text.contains('余额') || text.contains('用完') || text.contains('用尽')) {
       return true;
     }
     final lower = text.toLowerCase();
-    return lower.contains('quota') ||
-        lower.contains('insufficient') ||
-        lower.contains('exhausted') ||
-        code == 810000;
+    return lower.contains('quota') || lower.contains('insufficient') || lower.contains('exhausted') || code == 810000;
   }
 }
 
@@ -941,9 +810,5 @@ class _AutoClawProfile {
   final String name;
   final String phone;
 
-  const _AutoClawProfile({
-    required this.userId,
-    required this.name,
-    required this.phone,
-  });
+  const _AutoClawProfile({required this.userId, required this.name, required this.phone});
 }

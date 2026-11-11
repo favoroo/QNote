@@ -19,21 +19,14 @@ class BubbleActionBar extends ConsumerWidget {
   /// 重新生成是否可点（流式输出中禁用，避免与进行中的任务并发）
   final bool regenerateEnabled;
 
-  const BubbleActionBar({
-    super.key,
-    required this.message,
-    this.onRegenerate,
-    this.regenerateEnabled = true,
-  });
+  const BubbleActionBar({super.key, required this.message, this.onRegenerate, this.regenerateEnabled = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final playback = ref.watch(ttsPlaybackProvider);
     final key = TtsPlayer.messageKeyOf(message);
-    final status = playback.messageId == key
-        ? playback.status
-        : TtsPlaybackStatus.idle;
+    final status = playback.messageId == key ? playback.status : TtsPlaybackStatus.idle;
 
     // 合成/播放失败时以 Toast 提示一次（state 变化即触发，无需手动去重）
     ref.listen<TtsPlaybackState>(ttsPlaybackProvider, (prev, next) {
@@ -61,10 +54,7 @@ class BubbleActionBar extends ConsumerWidget {
           bottomLeft: Radius.circular(12),
           bottomRight: Radius.circular(12),
         ),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: 1,
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1),
       ),
       child: Row(
         children: [
@@ -85,25 +75,15 @@ class BubbleActionBar extends ConsumerWidget {
             },
             // 播放中高亮底色：全局单朗读通道，一眼看出正在听哪一条
             active: status == TtsPlaybackStatus.playing,
-            onPressed: () =>
-                ref.read(ttsPlaybackProvider.notifier).toggleMessage(message),
+            onPressed: () => ref.read(ttsPlaybackProvider.notifier).toggleMessage(message),
             icon: switch (status) {
               TtsPlaybackStatus.synthesizing => SizedBox(
                 width: 16,
                 height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: theme.colorScheme.primary,
-                ),
+                child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
               ),
-              TtsPlaybackStatus.playing => const Icon(
-                Icons.stop_rounded,
-                size: 18,
-              ),
-              TtsPlaybackStatus.idle => const Icon(
-                Icons.volume_up_rounded,
-                size: 18,
-              ),
+              TtsPlaybackStatus.playing => const Icon(Icons.stop_rounded, size: 18),
+              TtsPlaybackStatus.idle => const Icon(Icons.volume_up_rounded, size: 18),
             },
           ),
           // 重新生成是「一轮一次」的动作，靠右与随手可点的复制/朗读分区
@@ -130,12 +110,7 @@ class _BarButton extends StatelessWidget {
   /// 播放中等需要强调的态：改用 primaryContainer 底色
   final bool active;
 
-  const _BarButton({
-    required this.tooltip,
-    required this.onPressed,
-    required this.icon,
-    this.active = false,
-  });
+  const _BarButton({required this.tooltip, required this.onPressed, required this.icon, this.active = false});
 
   @override
   Widget build(BuildContext context) {
@@ -151,9 +126,7 @@ class _BarButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         backgroundColor: active ? scheme.primaryContainer : null,
-        foregroundColor: active
-            ? scheme.onPrimaryContainer
-            : scheme.onSurfaceVariant,
+        foregroundColor: active ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
       ),
       icon: icon,
     );

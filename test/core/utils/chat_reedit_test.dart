@@ -22,18 +22,13 @@ Todo _todo(String id, {String title = '买牛奶', bool isDeleted = false}) => T
 );
 
 /// 造一条带引用附件的用户消息，形态与 sendMessage 落库时一致
-ChatMessage _userMessage({Map<String, dynamic>? attachments}) => ChatMessage(
-  role: 'user',
-  content: '帮我看看',
-  uiDetails: attachments == null ? null : {'attachments': attachments},
-);
+ChatMessage _userMessage({Map<String, dynamic>? attachments}) =>
+    ChatMessage(role: 'user', content: '帮我看看', uiDetails: attachments == null ? null : {'attachments': attachments});
 
 void main() {
   group('ChatAttachmentRefs.fromMessage', () {
     test('无 uiDetails 的旧消息返回全空实例', () {
-      final refs = ChatAttachmentRefs.fromMessage(
-        ChatMessage(role: 'user', content: 'hi'),
-      );
+      final refs = ChatAttachmentRefs.fromMessage(ChatMessage(role: 'user', content: 'hi'));
 
       expect(refs.noteIds, isNull);
       expect(refs.todoIds, isNull);
@@ -59,9 +54,7 @@ void main() {
     });
 
     test('缺失、空列表、非列表一律归一为 null', () {
-      final refs = ChatAttachmentRefs.fromMessage(
-        _userMessage(attachments: {'notes': <String>[], 'todos': 't1'}),
-      );
+      final refs = ChatAttachmentRefs.fromMessage(_userMessage(attachments: {'notes': <String>[], 'todos': 't1'}));
 
       expect(refs.noteIds, isNull);
       expect(refs.todoIds, isNull);
@@ -85,10 +78,7 @@ void main() {
 
   group('附件 chip 展示名', () {
     test('日记带「日记」后缀，笔记与待办空标题走占位名', () {
-      expect(
-        journalChipTitle(_note('journal_note_2026-09-10', title: '2026-09-10')),
-        '2026-09-10 日记',
-      );
+      expect(journalChipTitle(_note('journal_note_2026-09-10', title: '2026-09-10')), '2026-09-10 日记');
       expect(noteChipTitle(_note('n1', title: '周报模板')), '周报模板');
       expect(noteChipTitle(_note('n2', title: '')), '无标题笔记');
       expect(todoChipTitle(_todo('t1', title: '买牛奶')), '买牛奶');
@@ -125,16 +115,10 @@ void main() {
       final readTodoIds = <String>[];
 
       final titles = await resolveAttachmentTitles(
-        const ChatAttachmentRefs(
-          noteIds: ['n1'],
-          todoIds: ['t1'],
-          journalIds: ['journal_note_2026-09-10'],
-        ),
+        const ChatAttachmentRefs(noteIds: ['n1'], todoIds: ['t1'], journalIds: ['journal_note_2026-09-10']),
         noteById: (id) async {
           readNoteIds.add(id);
-          return id.startsWith('journal_')
-              ? _note(id, title: '2026-09-10')
-              : _note(id, title: '周报模板');
+          return id.startsWith('journal_') ? _note(id, title: '2026-09-10') : _note(id, title: '周报模板');
         },
         todoById: (id) async {
           readTodoIds.add(id);
@@ -162,11 +146,7 @@ void main() {
       }
 
       await resolveAttachmentTitles(
-        const ChatAttachmentRefs(
-          noteIds: ['n1', 'n2'],
-          todoIds: ['t1', 't2'],
-          journalIds: ['journal_note_2026-09-10'],
-        ),
+        const ChatAttachmentRefs(noteIds: ['n1', 'n2'], todoIds: ['t1', 't2'], journalIds: ['journal_note_2026-09-10']),
         noteById: (id) => track(_note(id)),
         todoById: (id) => track(_todo(id)),
       );
@@ -176,10 +156,7 @@ void main() {
 
     test('已硬删或回收站里的实体不入标题表', () async {
       final titles = await resolveAttachmentTitles(
-        const ChatAttachmentRefs(
-          noteIds: ['gone', 'trashed'],
-          todoIds: ['goneT'],
-        ),
+        const ChatAttachmentRefs(noteIds: ['gone', 'trashed'], todoIds: ['goneT']),
         noteById: (id) async {
           if (id == 'gone') return null;
           return _note(id, title: '已进回收站', isDeleted: true);
@@ -202,27 +179,10 @@ void main() {
     });
 
     test('取最后一条用户消息，而非会话最后一条', () {
-      expect(
-        reeditableUserIndex([msg('user'), msg('assistant'), msg('tool')]),
-        0,
-      );
-      expect(
-        reeditableUserIndex([msg('user'), msg('user'), msg('assistant')]),
-        1,
-      );
-      expect(
-        reeditableUserIndex([msg('user'), msg('assistant'), msg('user')]),
-        2,
-      );
-      expect(
-        reeditableUserIndex([
-          msg('user'),
-          msg('assistant'),
-          msg('user'),
-          msg('tool_group'),
-        ]),
-        2,
-      );
+      expect(reeditableUserIndex([msg('user'), msg('assistant'), msg('tool')]), 0);
+      expect(reeditableUserIndex([msg('user'), msg('user'), msg('assistant')]), 1);
+      expect(reeditableUserIndex([msg('user'), msg('assistant'), msg('user')]), 2);
+      expect(reeditableUserIndex([msg('user'), msg('assistant'), msg('user'), msg('tool_group')]), 2);
     });
   });
 
@@ -233,11 +193,7 @@ void main() {
       undoLog: changes == 0
           ? null
           : WorkspaceUndoEntry.encodeList([
-              for (var i = 0; i < changes; i++)
-                WorkspaceUndoEntry(
-                  path: '/timeline/$i.md',
-                  existedBefore: false,
-                ),
+              for (var i = 0; i < changes; i++) WorkspaceUndoEntry(path: '/timeline/$i.md', existedBefore: false),
             ]),
     );
     ChatMessage ai() => ChatMessage(role: 'assistant', content: '好了');
@@ -248,12 +204,7 @@ void main() {
 
     test('累加本轮及其后所有轮次的变更', () {
       // 回退会把后面几轮一并撤掉，确认文案里的数字必须算全，否则低估破坏面
-      final messages = [
-        user('第一轮', changes: 2),
-        ai(),
-        user('第二轮', changes: 3),
-        ai(),
-      ];
+      final messages = [user('第一轮', changes: 2), ai(), user('第二轮', changes: 3), ai()];
       expect(countTurnUndoChanges(messages, fromUserIndex: 0), 5);
       expect(countTurnUndoChanges(messages, fromUserIndex: 2), 3);
     });
@@ -267,66 +218,40 @@ void main() {
     });
 
     test('undoLog 是畸形 JSON 时归 0，不抛', () {
-      final messages = [
-        ChatMessage(role: 'user', content: '提问', undoLog: '{不是列表'),
-      ];
+      final messages = [ChatMessage(role: 'user', content: '提问', undoLog: '{不是列表')];
       expect(countTurnUndoChanges(messages, fromUserIndex: 0), 0);
     });
   });
 
   group('isReeditAnchorValid', () {
-    ChatMessage user([String content = '提问']) =>
-        ChatMessage(role: 'user', content: content);
+    ChatMessage user([String content = '提问']) => ChatMessage(role: 'user', content: content);
 
     test('同对象同下标有效', () {
       final anchor = user();
       final messages = [user('更早'), anchor, user('更早')];
-      expect(
-        isReeditAnchorValid(messages: messages, index: 1, anchor: anchor),
-        isTrue,
-      );
+      expect(isReeditAnchorValid(messages: messages, index: 1, anchor: anchor), isTrue);
     });
 
     test('越界或该下标已非用户消息时失效', () {
       final anchor = user();
       final messages = [anchor, ChatMessage(role: 'assistant', content: 'ok')];
-      expect(
-        isReeditAnchorValid(messages: messages, index: 5, anchor: anchor),
-        isFalse,
-      );
-      expect(
-        isReeditAnchorValid(messages: messages, index: 1, anchor: anchor),
-        isFalse,
-      );
+      expect(isReeditAnchorValid(messages: messages, index: 5, anchor: anchor), isFalse);
+      expect(isReeditAnchorValid(messages: messages, index: 1, anchor: anchor), isFalse);
     });
 
     test('同下标换成内容与时间戳完全相同的另一条对象：判失效', () {
       // 锁死「不许用内容比对冒充身份」：库里读回来的副本逐字段相同，
       // 但按它撤回就可能删掉另一轮，只有对象引用能认出还是原来那条
       final timestamp = DateTime(2026, 9, 25, 8, 30);
-      final anchor = ChatMessage(
-        role: 'user',
-        content: '记一下',
-        timestamp: timestamp,
-      );
-      final lookAlike = ChatMessage(
-        role: 'user',
-        content: '记一下',
-        timestamp: timestamp,
-      );
+      final anchor = ChatMessage(role: 'user', content: '记一下', timestamp: timestamp);
+      final lookAlike = ChatMessage(role: 'user', content: '记一下', timestamp: timestamp);
       expect(lookAlike.content, anchor.content);
-      expect(
-        isReeditAnchorValid(messages: [lookAlike], index: 0, anchor: anchor),
-        isFalse,
-      );
+      expect(isReeditAnchorValid(messages: [lookAlike], index: 0, anchor: anchor), isFalse);
     });
 
     test('回退把列表截到锚点之前：失效', () {
       final anchor = user();
-      expect(
-        isReeditAnchorValid(messages: [user('更早')], index: 1, anchor: anchor),
-        isFalse,
-      );
+      expect(isReeditAnchorValid(messages: [user('更早')], index: 1, anchor: anchor), isFalse);
     });
   });
 
@@ -381,10 +306,7 @@ void main() {
       expect(base.matches(const ReeditDraft(text: '记一条待办\n')), isTrue);
       expect(base.matches(const ReeditDraft(text: '记一条待办 ')), isTrue);
       expect(base.matches(const ReeditDraft(text: '记一条笔记')), isFalse);
-      expect(
-        base.matches(const ReeditDraft(text: '记一条待办', hasQuote: true)),
-        isFalse,
-      );
+      expect(base.matches(const ReeditDraft(text: '记一条待办', hasQuote: true)), isFalse);
     });
   });
 }

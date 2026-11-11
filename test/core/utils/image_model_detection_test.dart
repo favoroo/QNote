@@ -120,18 +120,8 @@ void main() {
       // 老配置没有 image_gen 字段，靠模型名也能立刻识别
       expect(isImageGenerationModel(AiProviderModel.of('gpt-image-1')), isTrue);
       expect(isImageGenerationModel(AiProviderModel.of('gpt-4o')), isFalse);
-      expect(
-        isImageGenerationModel(
-          AiProviderModel.of('flux-1.1-pro', supportsImageGeneration: false),
-        ),
-        isFalse,
-      );
-      expect(
-        isImageGenerationModel(
-          AiProviderModel.of('my-relay-drawer', supportsImageGeneration: true),
-        ),
-        isTrue,
-      );
+      expect(isImageGenerationModel(AiProviderModel.of('flux-1.1-pro', supportsImageGeneration: false)), isFalse);
+      expect(isImageGenerationModel(AiProviderModel.of('my-relay-drawer', supportsImageGeneration: true)), isTrue);
     });
   });
 }

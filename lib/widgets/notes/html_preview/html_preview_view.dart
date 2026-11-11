@@ -11,17 +11,10 @@ class HtmlPreviewView extends StatelessWidget {
   final String htmlContent;
   final String? noteId;
 
-  const HtmlPreviewView({
-    super.key,
-    required this.htmlContent,
-    this.noteId,
-  });
+  const HtmlPreviewView({super.key, required this.htmlContent, this.noteId});
 
   @override
   Widget build(BuildContext context) {
-    return PlatformPreview(
-      htmlContent: htmlContent,
-      noteId: noteId,
-    );
+    return PlatformPreview(htmlContent: htmlContent, noteId: noteId);
   }
 }

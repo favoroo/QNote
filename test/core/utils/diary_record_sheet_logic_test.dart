@@ -138,10 +138,7 @@ void main() {
 
     test('优先按 bodyState 的 fixed_event_id 识别', () {
       final records = [
-        _record(
-          title: '完全不同的标题',
-          bodyState: {'fixed_event_id': 't1'},
-        ),
+        _record(title: '完全不同的标题', bodyState: {'fixed_event_id': 't1'}),
       ];
 
       expect(isFixedEventAddedOnDate(template, date, records), isTrue);
@@ -149,25 +146,15 @@ void main() {
 
     test('fixed_event_id 命中时不再回退标题比对', () {
       final records = [
-        _record(
-          title: '晨跑',
-          bodyState: {'fixed_event_id': 'other'},
-        ),
+        _record(title: '晨跑', bodyState: {'fixed_event_id': 'other'}),
       ];
 
-      expect(
-        isFixedEventAddedOnDate(template, date, records),
-        isFalse,
-        reason: '有 id 元数据时以 id 为准，标题相同也不能误判',
-      );
+      expect(isFixedEventAddedOnDate(template, date, records), isFalse, reason: '有 id 元数据时以 id 为准，标题相同也不能误判');
     });
 
     test('其次按 bodyState 的 fixed_event_name 识别', () {
       final records = [
-        _record(
-          title: '别的标题',
-          bodyState: {'fixed_event_name': '晨跑'},
-        ),
+        _record(title: '别的标题', bodyState: {'fixed_event_name': '晨跑'}),
       ];
 
       expect(isFixedEventAddedOnDate(template, date, records), isTrue);
@@ -234,11 +221,7 @@ void main() {
     });
 
     test('没有时间段时回退到模板自身的 startTime / endTime', () {
-      final template = _template(
-        startTime: '06:40',
-        endTime: '07:10',
-        timePeriods: const [],
-      );
+      final template = _template(startTime: '06:40', endTime: '07:10', timePeriods: const []);
 
       final result = resolveFixedEventSelectionTimes(template);
 
@@ -260,10 +243,7 @@ void main() {
 
   group('mergeFixedEventContents 备注合并', () {
     test('按传入顺序换行拼接', () {
-      final templates = [
-        _template(id: 'a', content: '第一段'),
-        _template(id: 'b', content: '第二段'),
-      ];
+      final templates = [_template(id: 'a', content: '第一段'), _template(id: 'b', content: '第二段')];
 
       expect(mergeFixedEventContents(templates), '第一段\n第二段');
     });
@@ -275,10 +255,7 @@ void main() {
     });
 
     test('内容和名称都为空时跳过该模板', () {
-      final templates = [
-        _template(id: 'a', name: '', content: ''),
-        _template(id: 'b', name: '早饭', content: ''),
-      ];
+      final templates = [_template(id: 'a', name: '', content: ''), _template(id: 'b', name: '早饭', content: '')];
 
       expect(mergeFixedEventContents(templates), '早饭');
     });
@@ -337,38 +314,23 @@ void main() {
 
   group('isDiaryDraftEmpty 草稿是否为空', () {
     test('正文、标签、图片都为空时为空草稿', () {
-      expect(
-        isDiaryDraftEmpty(inputText: '', tagEntryCount: 0, photoCount: 0),
-        isTrue,
-      );
+      expect(isDiaryDraftEmpty(inputText: '', tagEntryCount: 0, photoCount: 0), isTrue);
     });
 
     test('纯空白正文仍算空草稿', () {
-      expect(
-        isDiaryDraftEmpty(inputText: '  \n\t ', tagEntryCount: 0, photoCount: 0),
-        isTrue,
-      );
+      expect(isDiaryDraftEmpty(inputText: '  \n\t ', tagEntryCount: 0, photoCount: 0), isTrue);
     });
 
     test('有正文时不为空', () {
-      expect(
-        isDiaryDraftEmpty(inputText: '喝了杯咖啡', tagEntryCount: 0, photoCount: 0),
-        isFalse,
-      );
+      expect(isDiaryDraftEmpty(inputText: '喝了杯咖啡', tagEntryCount: 0, photoCount: 0), isFalse);
     });
 
     test('只有标签字段时不为空', () {
-      expect(
-        isDiaryDraftEmpty(inputText: '   ', tagEntryCount: 1, photoCount: 0),
-        isFalse,
-      );
+      expect(isDiaryDraftEmpty(inputText: '   ', tagEntryCount: 1, photoCount: 0), isFalse);
     });
 
     test('只有图片时不为空', () {
-      expect(
-        isDiaryDraftEmpty(inputText: '', tagEntryCount: 0, photoCount: 1),
-        isFalse,
-      );
+      expect(isDiaryDraftEmpty(inputText: '', tagEntryCount: 0, photoCount: 1), isFalse);
     });
   });
 
@@ -376,37 +338,13 @@ void main() {
     final selectedDate = DateTime(2026, 11, 11);
 
     test('同一天只写时分', () {
-      expect(
-        formatDiaryTimeLabel(selectedDate, const TimeOfDay(hour: 9, minute: 5)),
-        '09:05',
-      );
-      expect(
-        formatDiaryTimeLabel(
-          selectedDate,
-          const TimeOfDay(hour: 9, minute: 5),
-          offset: 0,
-        ),
-        '09:05',
-      );
+      expect(formatDiaryTimeLabel(selectedDate, const TimeOfDay(hour: 9, minute: 5)), '09:05');
+      expect(formatDiaryTimeLabel(selectedDate, const TimeOfDay(hour: 9, minute: 5), offset: 0), '09:05');
     });
 
     test('跨天补上 MM-dd 前缀', () {
-      expect(
-        formatDiaryTimeLabel(
-          selectedDate,
-          const TimeOfDay(hour: 22, minute: 0),
-          offset: -1,
-        ),
-        '11-10 22:00',
-      );
-      expect(
-        formatDiaryTimeLabel(
-          selectedDate,
-          const TimeOfDay(hour: 7, minute: 30),
-          offset: 1,
-        ),
-        '11-12 07:30',
-      );
+      expect(formatDiaryTimeLabel(selectedDate, const TimeOfDay(hour: 22, minute: 0), offset: -1), '11-10 22:00');
+      expect(formatDiaryTimeLabel(selectedDate, const TimeOfDay(hour: 7, minute: 30), offset: 1), '11-12 07:30');
     });
   });
 }

@@ -5,13 +5,15 @@ import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 void main() {
   group('AiErrorExplainer', () {
     test('DNS 解析失败：提取主机名并给出 VPN 建议（真实报错文本形态）', () {
-      final text = AiErrorExplainer.describe(Exception(
-        '请求模型失败: DioException [connection error]: The connection errored: '
-        "Failed host lookup: '1demacbook-pro.tail77f123.ts.net' This indicates "
-        'an error which most likely cannot be solved by the library. Error: '
-        "SocketException: Failed host lookup: '1demacbook-pro.tail77f123.ts.net' "
-        '(OS Error: No address associated with hostname, errno = 7)',
-      ));
+      final text = AiErrorExplainer.describe(
+        Exception(
+          '请求模型失败: DioException [connection error]: The connection errored: '
+          "Failed host lookup: '1demacbook-pro.tail77f123.ts.net' This indicates "
+          'an error which most likely cannot be solved by the library. Error: '
+          "SocketException: Failed host lookup: '1demacbook-pro.tail77f123.ts.net' "
+          '(OS Error: No address associated with hostname, errno = 7)',
+        ),
+      );
       expect(text, contains('无法解析服务器地址'));
       expect(text, contains('1demacbook-pro.tail77f123.ts.net'));
       expect(text, contains('Tailscale'));
@@ -19,9 +21,7 @@ void main() {
     });
 
     test('DNS 解析失败：主机名无引号包裹时同样可提取', () {
-      final text = AiErrorExplainer.describe(
-        'Failed host lookup: my-gateway.example.com',
-      );
+      final text = AiErrorExplainer.describe('Failed host lookup: my-gateway.example.com');
       expect(text, contains('`my-gateway.example.com`'));
     });
 
@@ -88,9 +88,7 @@ void main() {
     });
 
     test('HTTP 404：提示检查地址与模型名', () {
-      final text = AiErrorExplainer.describe(
-        'The request returned an invalid status code of 404',
-      );
+      final text = AiErrorExplainer.describe('The request returned an invalid status code of 404');
       expect(text, contains('接口或模型不存在'));
     });
 

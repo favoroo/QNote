@@ -31,21 +31,13 @@ class TokenUsageCard extends ConsumerWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
           ),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: summaryAsync.when(
             loading: () => const SizedBox(
               height: 96,
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
+              child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
             ),
             // 统计读失败不该在配置页摆一块红脸：退化成空态即可，不影响模型配置本身
             error: (e, st) => _content(theme, AiTokenUsageSummary.empty),
@@ -63,31 +55,13 @@ class TokenUsageCard extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Icon(
-              Icons.data_usage_rounded,
-              size: 16,
-              color: colorScheme.primary,
-            ),
+            Icon(Icons.data_usage_rounded, size: 16, color: colorScheme.primary),
             const SizedBox(width: 6),
-            Text(
-              'Token 消耗',
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text('Token 消耗', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
             const Spacer(),
-            Text(
-              '本机累计',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
+            Text('本机累计', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
             const SizedBox(width: 2),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 16,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            Icon(Icons.chevron_right_rounded, size: 16, color: colorScheme.onSurfaceVariant),
           ],
         ),
         const SizedBox(height: 10),
@@ -96,9 +70,7 @@ class TokenUsageCard extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
               '暂无消耗记录。仅统计服务端返回的用量。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
           )
         else ...[
@@ -110,25 +82,15 @@ class TokenUsageCard extends ConsumerWidget {
                 message: '${formatTokenCountExact(summary.totalTokens)} tokens',
                 child: Text(
                   formatTokenCount(summary.totalTokens),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
-                  ),
+                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.5),
                 ),
               ),
               const SizedBox(width: 4),
-              Text(
-                'tokens',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
+              Text('tokens', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
               const Spacer(),
               Text(
                 '${summary.requestCount} 次请求',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -136,39 +98,19 @@ class TokenUsageCard extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: _metric(
-                  theme,
-                  label: '输入',
-                  value: summary.promptTokens,
-                  exact: summary.promptTokens,
-                ),
+                child: _metric(theme, label: '输入', value: summary.promptTokens, exact: summary.promptTokens),
               ),
               _verticalDivider(theme),
               Expanded(
-                child: _metric(
-                  theme,
-                  label: '输出',
-                  value: summary.completionTokens,
-                  exact: summary.completionTokens,
-                ),
+                child: _metric(theme, label: '输出', value: summary.completionTokens, exact: summary.completionTokens),
               ),
               _verticalDivider(theme),
               Expanded(
-                child: _metric(
-                  theme,
-                  label: '今日',
-                  value: summary.todayTokens,
-                  exact: summary.todayTokens,
-                ),
+                child: _metric(theme, label: '今日', value: summary.todayTokens, exact: summary.todayTokens),
               ),
               _verticalDivider(theme),
               Expanded(
-                child: _metric(
-                  theme,
-                  label: '近 7 天',
-                  value: summary.weekTokens,
-                  exact: summary.weekTokens,
-                ),
+                child: _metric(theme, label: '近 7 天', value: summary.weekTokens, exact: summary.weekTokens),
               ),
             ],
           ),
@@ -177,30 +119,15 @@ class TokenUsageCard extends ConsumerWidget {
     );
   }
 
-  Widget _metric(
-    ThemeData theme, {
-    required String label,
-    required int value,
-    required int exact,
-  }) {
+  Widget _metric(ThemeData theme, {required String label, required int value, required int exact}) {
     return Tooltip(
       message: formatTokenCountExact(exact),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            formatTokenCount(value),
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Text(formatTokenCount(value), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 1),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );

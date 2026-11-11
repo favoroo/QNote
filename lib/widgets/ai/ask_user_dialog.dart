@@ -18,10 +18,7 @@ Future<String?> showAskUserDialog({
     barrierDismissible: true,
     builder: (dialogContext) {
       onDialogBuilt?.call(dialogContext);
-      return AskUserDialog(
-        question: question,
-        options: options,
-      );
+      return AskUserDialog(question: question, options: options);
     },
   );
 }
@@ -31,11 +28,7 @@ class AskUserDialog extends StatefulWidget {
   final String question;
   final List<String>? options;
 
-  const AskUserDialog({
-    super.key,
-    required this.question,
-    this.options,
-  });
+  const AskUserDialog({super.key, required this.question, this.options});
 
   @override
   State<AskUserDialog> createState() => _AskUserDialogState();
@@ -113,32 +106,20 @@ class _AskUserDialogState extends State<AskUserDialog> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: isDestructive
-                ? Icon(
-                    Icons.warning_amber_rounded,
-                    size: 22,
-                    color: primaryColor,
-                  )
-                : QIcon(
-                    size: 22,
-                    color: primaryColor,
-                  ),
+                ? Icon(Icons.warning_amber_rounded, size: 22, color: primaryColor)
+                : QIcon(size: 22, color: primaryColor),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               isDestructive ? '操作确认' : '小Q 确认',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
         ],
       ),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 460,
-          maxHeight: 480,
-        ),
+        constraints: const BoxConstraints(maxWidth: 460, maxHeight: 480),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -149,11 +130,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
                 data: widget.question,
                 selectable: true,
                 styleSheet: MarkdownStyleSheet(
-                  p: TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: colorScheme.onSurface,
-                  ),
+                  p: TextStyle(fontSize: 14, height: 1.5, color: colorScheme.onSurface),
                   strong: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: isDestructive ? colorScheme.error : colorScheme.primary,
@@ -177,23 +154,17 @@ class _AskUserDialogState extends State<AskUserDialog> {
                   runSpacing: 8,
                   children: options.map((option) {
                     final isSelected = _selectedOption == option && !_showCustomInput;
-                    final isOptionDestructive = option.contains('删除') ||
-                        option.contains('清空') ||
-                        option.contains('移除');
+                    final isOptionDestructive = option.contains('删除') || option.contains('清空') || option.contains('移除');
 
                     return ChoiceChip(
                       label: Text(option),
                       selected: isSelected,
-                      selectedColor: isOptionDestructive
-                          ? colorScheme.errorContainer
-                          : colorScheme.primaryContainer,
+                      selectedColor: isOptionDestructive ? colorScheme.errorContainer : colorScheme.primaryContainer,
                       labelStyle: TextStyle(
                         fontSize: 13,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                         color: isSelected
-                            ? (isOptionDestructive
-                                ? colorScheme.onErrorContainer
-                                : colorScheme.onPrimaryContainer)
+                            ? (isOptionDestructive ? colorScheme.onErrorContainer : colorScheme.onPrimaryContainer)
                             : colorScheme.onSurface,
                       ),
                       onSelected: (selected) {
@@ -225,11 +196,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
                       ),
                       Text(
                         _showCustomInput ? '收起输入' : '自定义回复',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.primary,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -270,17 +237,11 @@ class _AskUserDialogState extends State<AskUserDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(null),
-          child: Text(
-            '取消',
-            style: TextStyle(color: colorScheme.onSurfaceVariant),
-          ),
+          child: Text('取消', style: TextStyle(color: colorScheme.onSurfaceVariant)),
         ),
         FilledButton(
           style: isDestructive
-              ? FilledButton.styleFrom(
-                  backgroundColor: colorScheme.error,
-                  foregroundColor: colorScheme.onError,
-                )
+              ? FilledButton.styleFrom(backgroundColor: colorScheme.error, foregroundColor: colorScheme.onError)
               : null,
           onPressed: _submit,
           child: const Text('确认'),

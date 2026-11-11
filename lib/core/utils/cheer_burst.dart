@@ -37,33 +37,35 @@ extension CheerLevelSpec on CheerLevel {
 
   /// 粒子颗数。普通记录为 0，粒子层因此整层不挂。
   int get particleCount => switch (this) {
-        CheerLevel.full => 26,
-        CheerLevel.record => 14,
-        CheerLevel.plain => 0,
-      };
+    CheerLevel.full => 26,
+    CheerLevel.record => 14,
+    CheerLevel.plain => 0,
+  };
 
   /// 胶囊停留时长（ms），到点后退场而非硬切消失。
   int get dwellMs => switch (this) {
-        CheerLevel.full => 2500,
-        CheerLevel.record => 1800,
-        CheerLevel.plain => 1500,
-      };
+    CheerLevel.full => 2500,
+    CheerLevel.record => 1800,
+    CheerLevel.plain => 1500,
+  };
 
   /// 粒子起爆相对事件时刻的延迟（ms）：让圆环先鼓起，动线才有因果。
   int get burstDelayMs => switch (this) {
-        CheerLevel.full => 90,
-        CheerLevel.record => 150,
-        CheerLevel.plain => 0,
-      };
+    CheerLevel.full => 90,
+    CheerLevel.record => 150,
+    CheerLevel.plain => 0,
+  };
 
   /// 粒子层整段时长（ms），含起爆延迟。
   Duration get burstDuration => Duration(
-        milliseconds: burstDelayMs + switch (this) {
+    milliseconds:
+        burstDelayMs +
+        switch (this) {
           CheerLevel.full => 1150,
           CheerLevel.record => 900,
           CheerLevel.plain => 0,
         },
-      );
+  );
 }
 
 /// 粒子形状：彩带为主、圆点填充、四角星做高光。

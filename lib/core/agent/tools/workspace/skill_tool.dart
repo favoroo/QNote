@@ -29,26 +29,25 @@ class SkillTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'name': {
-            'type': 'string',
-            'description': '技能名称或路径（如 "todo-manager"、"stats-analyst"、'
-                '"/skills/todo-manager.md"）；不填则列出所有可用技能。',
-          },
-          'section': {
-            'type': 'string',
-            'description': '可选，只加载手册中的某一章：传序号（如 "4"）或标题关键词'
-                '（如 "批量操作"）。不填返回整篇手册。',
-          },
-        },
-      };
+    'type': 'object',
+    'properties': {
+      'name': {
+        'type': 'string',
+        'description':
+            '技能名称或路径（如 "todo-manager"、"stats-analyst"、'
+            '"/skills/todo-manager.md"）；不填则列出所有可用技能。',
+      },
+      'section': {
+        'type': 'string',
+        'description':
+            '可选，只加载手册中的某一章：传序号（如 "4"）或标题关键词'
+            '（如 "批量操作"）。不填返回整篇手册。',
+      },
+    },
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final name = arguments['name'] as String?;
     if (name == null || name.trim().isEmpty) {
       final skills = _registry.listSkills();
@@ -59,20 +58,13 @@ class SkillTool extends AgentTool {
         final tag = s['origin'] == AgentSkillOrigin.user ? '（自定义技能）' : '';
         buffer.writeln('- **${s['name']}**$tag (`${s['path']}`): ${s['description']}');
       }
-      buffer.writeln(
-        '\n自定义技能可通过 write_file("/skills/<名称>.md") 创建或更新，delete_file 删除；内置技能只读。',
-      );
-      return ToolResult.success(
-        buffer.toString().trimRight(),
-        uiDetails: {'skills': skills},
-      );
+      buffer.writeln('\n自定义技能可通过 write_file("/skills/<名称>.md") 创建或更新，delete_file 删除；内置技能只读。');
+      return ToolResult.success(buffer.toString().trimRight(), uiDetails: {'skills': skills});
     }
 
     final content = _registry.getSkillContent(name);
     if (content == null) {
-      return ToolResult.error(
-        '未找到技能 "$name"。可用技能请调用 skill() 查看列表。',
-      );
+      return ToolResult.error('未找到技能 "$name"。可用技能请调用 skill() 查看列表。');
     }
 
     // 手册真实载入即记一次使用（别名归一到主名；统计失败不影响工具结果）
@@ -81,10 +73,7 @@ class SkillTool extends AgentTool {
 
     final section = arguments['section'] as String?;
     if (section == null || section.trim().isEmpty) {
-      return ToolResult.success(
-        content,
-        uiDetails: {'name': name, 'loaded': true},
-      );
+      return ToolResult.success(content, uiDetails: {'name': name, 'loaded': true});
     }
 
     final extracted = extractSection(content, section);
@@ -130,10 +119,7 @@ class SkillTool extends AgentTool {
     if (start < 0) return null;
 
     // 章节范围：本章标题起，到下一个 ## 标题前（含中间的 ### 子节）
-    final next = headingIndexes.firstWhere(
-      (i) => i > start,
-      orElse: () => lines.length,
-    );
+    final next = headingIndexes.firstWhere((i) => i > start, orElse: () => lines.length);
     return lines.sublist(start, next).join('\n').trimRight();
   }
 
@@ -159,8 +145,7 @@ class SkillTool extends AgentTool {
     final normalizedHeading = _normalizeHeading(heading);
     final normalizedQuery = _normalizeHeading(query);
     if (normalizedQuery.isEmpty) return false;
-    return normalizedHeading == normalizedQuery ||
-        normalizedHeading.contains(normalizedQuery);
+    return normalizedHeading == normalizedQuery || normalizedHeading.contains(normalizedQuery);
   }
 
   /// 归一化标题文本：去掉标记符号、序号与空白，便于宽松比较

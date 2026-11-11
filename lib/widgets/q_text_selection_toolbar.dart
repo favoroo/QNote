@@ -10,11 +10,7 @@ import 'package:flutter/material.dart';
 /// 定位复用 SDK 公开的 [TextSelectionToolbarLayoutDelegate]：不传 `fitsAbove`，
 /// delegate 会按工具栏实际高度（单行/换行后）自动判断放在选区上方还是下方。
 class QTextSelectionToolbar extends StatelessWidget {
-  const QTextSelectionToolbar({
-    super.key,
-    required this.anchors,
-    required this.buttonItems,
-  });
+  const QTextSelectionToolbar({super.key, required this.anchors, required this.buttonItems});
 
   /// 选区锚点，通常取 `editableTextState.contextMenuAnchors`
   final TextSelectionToolbarAnchors anchors;
@@ -33,26 +29,19 @@ class QTextSelectionToolbar extends StatelessWidget {
   /// [EditableTextState.contextMenuButtonItems]（如欧路词典、Edge、Kimi 等），
   /// 平铺后菜单极为拥挤；调用方追加的自定义项（如「给小Q」）不经过这里，
   /// 不受影响
-  static List<ContextMenuButtonItem> defaultButtonItems(
-    EditableTextState editableTextState,
-  ) {
-    return editableTextState.contextMenuButtonItems
-        .where((item) => item.type != ContextMenuButtonType.custom)
-        .toList();
+  static List<ContextMenuButtonItem> defaultButtonItems(EditableTextState editableTextState) {
+    return editableTextState.contextMenuButtonItems.where((item) => item.type != ContextMenuButtonType.custom).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     // 与 SDK TextSelectionToolbar 相同的锚点换算：上下各留出与选区的间距
-    final Offset anchorAbove =
-        anchors.primaryAnchor - const Offset(0.0, _kToolbarContentDistance);
-    final Offset anchorBelow = anchors.primaryAnchor +
-        const Offset(0.0, TextSelectionToolbar.kToolbarContentDistanceBelow);
-    final double paddingAbove =
-        MediaQuery.paddingOf(context).top + _kToolbarScreenPadding;
+    final Offset anchorAbove = anchors.primaryAnchor - const Offset(0.0, _kToolbarContentDistance);
+    final Offset anchorBelow =
+        anchors.primaryAnchor + const Offset(0.0, TextSelectionToolbar.kToolbarContentDistanceBelow);
+    final double paddingAbove = MediaQuery.paddingOf(context).top + _kToolbarScreenPadding;
     // 抵消外层 Padding 的偏移，把锚点换算到布局坐标系内
-    final Offset localAdjustment =
-        Offset(_kToolbarScreenPadding, paddingAbove);
+    final Offset localAdjustment = Offset(_kToolbarScreenPadding, paddingAbove);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -71,17 +60,12 @@ class QTextSelectionToolbar extends StatelessWidget {
           color: Theme.of(context).colorScheme.surface,
           elevation: 1.0,
           // 复刻 SDK 胶囊圆角（44/2）；换行后为圆角矩形，观感一致
-          borderRadius: const BorderRadius.all(
-            Radius.circular(TextSelectionToolbar.kHandleSize),
-          ),
+          borderRadius: const BorderRadius.all(Radius.circular(TextSelectionToolbar.kHandleSize)),
           clipBehavior: Clip.antiAlias,
           child: Wrap(
             alignment: WrapAlignment.center,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              for (int i = 0; i < buttonItems.length; i++)
-                _buildButton(context, i),
-            ],
+            children: [for (int i = 0; i < buttonItems.length; i++) _buildButton(context, i)],
           ),
         ),
       ),
@@ -93,19 +77,11 @@ class QTextSelectionToolbar extends StatelessWidget {
     final item = buttonItems[index];
     final isCustom = item.type == ContextMenuButtonType.custom;
     return TextSelectionToolbarTextButton(
-      padding: TextSelectionToolbarTextButton.getPadding(
-        index,
-        buttonItems.length,
-      ),
+      padding: TextSelectionToolbarTextButton.getPadding(index, buttonItems.length),
       onPressed: item.onPressed,
       child: Text(
         item.label ?? AdaptiveTextSelectionToolbar.getButtonLabel(context, item),
-        style: isCustom
-            ? TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              )
-            : null,
+        style: isCustom ? TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600) : null,
       ),
     );
   }

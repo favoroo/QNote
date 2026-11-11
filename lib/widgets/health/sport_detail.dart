@@ -37,9 +37,7 @@ class SportDetail extends StatelessWidget {
               HealthStatTile(label: '时长', value: _duration(record.durationSeconds)),
               HealthStatTile(
                 label: '距离',
-                value: record.distanceMeters > 0
-                    ? (record.distanceMeters / 1000).toStringAsFixed(2)
-                    : '--',
+                value: record.distanceMeters > 0 ? (record.distanceMeters / 1000).toStringAsFixed(2) : '--',
                 unit: record.distanceMeters > 0 ? 'km' : '',
               ),
               HealthStatTile(
@@ -67,9 +65,7 @@ class SportDetail extends StatelessWidget {
                 ),
                 HealthStatTile(
                   label: '平均速度',
-                  value: (record.avgSpeed != null && record.avgSpeed! > 0)
-                      ? record.avgSpeed!.toStringAsFixed(1)
-                      : '--',
+                  value: (record.avgSpeed != null && record.avgSpeed! > 0) ? record.avgSpeed!.toStringAsFixed(1) : '--',
                   unit: (record.avgSpeed != null && record.avgSpeed! > 0) ? 'km/h' : '',
                 ),
                 HealthStatTile(
@@ -97,11 +93,7 @@ class SportDetail extends StatelessWidget {
                 unit: 'bpm',
                 valueColor: Colors.redAccent,
               ),
-              HealthStatTile(
-                label: '最低',
-                value: _intOf(detail, 'min_hrm')?.toString() ?? '--',
-                unit: 'bpm',
-              ),
+              HealthStatTile(label: '最低', value: _intOf(detail, 'min_hrm')?.toString() ?? '--', unit: 'bpm'),
             ],
           ),
         ),
@@ -115,15 +107,13 @@ class SportDetail extends StatelessWidget {
               children: [
                 HealthRatioBar(
                   segments: [
-                    for (final z in _hrZones)
-                      (label: z.label, value: _numOf(detail, z.key) ?? 0, color: z.color),
+                    for (final z in _hrZones) (label: z.label, value: _numOf(detail, z.key) ?? 0, color: z.color),
                   ],
                 ),
                 const SizedBox(height: 10),
                 HealthRatioLegend(
                   segments: [
-                    for (final z in _hrZones)
-                      (label: z.label, text: _minutes(_numOf(detail, z.key)), color: z.color),
+                    for (final z in _hrZones) (label: z.label, text: _minutes(_numOf(detail, z.key)), color: z.color),
                   ],
                 ),
               ],
@@ -146,7 +136,8 @@ class SportDetail extends StatelessWidget {
                 ),
                 HealthStatTile(
                   label: '有氧效果',
-                  value: _numOf(detail, 'train_effect')?.toStringAsFixed(1) ??
+                  value:
+                      _numOf(detail, 'train_effect')?.toStringAsFixed(1) ??
                       _numOf(detail, 'aerobic_train_effect')?.toStringAsFixed(1) ??
                       '--',
                 ),
@@ -209,6 +200,5 @@ class SportDetail extends StatelessWidget {
     return "$min'${sec.toString().padLeft(2, '0')}\"";
   }
 
-  String _hhmm(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  String _hhmm(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }

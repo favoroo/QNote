@@ -13,9 +13,7 @@ import 'package:qnote_flutter/widgets/ai/token_usage_card.dart';
 /// sqflite 的 FakeAsync 挂死（见 AGENTS.md 的已知坑）。
 Widget _wrap(AiTokenUsageSummary summary) {
   return ProviderScope(
-    overrides: [
-      aiTokenUsageSummaryProvider.overrideWith((ref) async => summary),
-    ],
+    overrides: [aiTokenUsageSummaryProvider.overrideWith((ref) async => summary)],
     child: const MaterialApp(
       home: Scaffold(
         body: Padding(padding: EdgeInsets.all(16), child: TokenUsageCard()),
@@ -64,19 +62,11 @@ void main() {
       ProviderScope(
         overrides: [
           aiTokenUsageSummaryProvider.overrideWith(
-            (ref) async => const AiTokenUsageSummary(
-              promptTokens: 600,
-              completionTokens: 400,
-              totalTokens: 1000,
-              requestCount: 2,
-            ),
+            (ref) async =>
+                const AiTokenUsageSummary(promptTokens: 600, completionTokens: 400, totalTokens: 1000, requestCount: 2),
           ),
-          aiTokenUsageDetailProvider.overrideWith(
-            (ref, period) async => AiTokenUsageDetail.empty(period),
-          ),
-          aiProviderListProvider.overrideWith(
-            () => _FakeProviderListNotifier(),
-          ),
+          aiTokenUsageDetailProvider.overrideWith((ref, period) async => AiTokenUsageDetail.empty(period)),
+          aiProviderListProvider.overrideWith(() => _FakeProviderListNotifier()),
         ],
         child: const MaterialApp(
           home: Scaffold(

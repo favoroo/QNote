@@ -8,13 +8,11 @@ import 'package:qnote_flutter/models/agent_skill.dart';
 /// 数据统一经 [SkillRegistry]（内置为 Dart 常量，用户技能缓存 + app_configs 持久化）；
 /// 小Q Agent 经 VFS 写入 `/skills/*.md` 时会广播事件，此处监听后自动刷新，
 /// 保证「小Q技能」管理页与小Q的写入双向实时同步
-final agentSkillListProvider =
-    AsyncNotifierProvider<AgentSkillNotifier, List<Map<String, String>>>(() {
+final agentSkillListProvider = AsyncNotifierProvider<AgentSkillNotifier, List<Map<String, String>>>(() {
   return AgentSkillNotifier();
 });
 
-class AgentSkillNotifier
-    extends AsyncNotifier<List<Map<String, String>>> {
+class AgentSkillNotifier extends AsyncNotifier<List<Map<String, String>>> {
   void _onWorkspaceChange(WorkspaceChangeEvent event) {
     if (event.path.startsWith('/skills/')) {
       ref.invalidateSelf();
@@ -25,9 +23,7 @@ class AgentSkillNotifier
   Future<List<Map<String, String>>> build() async {
     // addListener 内部按引用去重，build 重复执行不会重复注册
     WorkspaceEventBus.instance.addListener(_onWorkspaceChange);
-    ref.onDispose(
-      () => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange),
-    );
+    ref.onDispose(() => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange));
     // 每次构建强制重载，拾取云同步导入等其他来源的数据变更
     await SkillRegistry.instance.reload();
     // 管理页需要展示已归档技能（带 archived 标记），故全量返回

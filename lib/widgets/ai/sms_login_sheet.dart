@@ -19,12 +19,7 @@ class SmsLoginSheet extends StatefulWidget {
   /// 支持短信登录的厂商服务
   final AccountAuthService service;
 
-  const SmsLoginSheet({
-    super.key,
-    required this.providerId,
-    required this.service,
-    this.accountId,
-  });
+  const SmsLoginSheet({super.key, required this.providerId, required this.service, this.accountId});
 
   @override
   State<SmsLoginSheet> createState() => _SmsLoginSheetState();
@@ -41,8 +36,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
   bool _loggingIn = false;
   String? _error;
 
-  bool get _canSendCode =>
-      !_sending && !_loggingIn && _phoneCtl.text.trim().length == 11;
+  bool get _canSendCode => !_sending && !_loggingIn && _phoneCtl.text.trim().length == 11;
 
   @override
   void dispose() {
@@ -59,10 +53,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
       _error = null;
     });
     try {
-      final challenge = await widget.service.sendLoginCode(
-        widget.providerId,
-        _phoneCtl.text,
-      );
+      final challenge = await widget.service.sendLoginCode(widget.providerId, _phoneCtl.text);
       if (!mounted) return;
       setState(() {
         _challenge = challenge;
@@ -119,10 +110,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
   }
 
   String _friendlyError(Object error) {
-    final text = error
-        .toString()
-        .replaceFirst('FormatException: ', '')
-        .replaceFirst('Exception: ', '');
+    final text = error.toString().replaceFirst('FormatException: ', '').replaceFirst('Exception: ', '');
     return text.length > 120 ? '${text.substring(0, 120)}…' : text;
   }
 
@@ -136,12 +124,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
     final maxCodeLength = widget.service.smsCodeMaxLength;
 
     return SingleChildScrollView(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 12,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
+      padding: EdgeInsets.only(left: 20, right: 20, top: 12, bottom: MediaQuery.of(context).viewInsets.bottom + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,9 +136,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
               Expanded(
                 child: Text(
                   widget.accountId == null ? '登录 $vendor 账号' : '重新登录 $vendor 账号',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               IconButton(
@@ -169,10 +150,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
           Text(
             '使用你自己的 $vendor 账号（+86 手机号）。登录后由账号额度对话，'
             'Token 只保存在本机，不参与备份与同步。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
           ),
           const SizedBox(height: 18),
           Text('手机号', style: theme.textTheme.labelMedium),
@@ -181,15 +159,11 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
             controller: _phoneCtl,
             autofocus: true,
             keyboardType: TextInputType.phone,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(11),
-            ],
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(11)],
             onChanged: (value) {
               setState(() {
                 // 手机号改了，已发的验证码就不再对应，收起验证码输入
-                if (_challenge != null &&
-                    value.trim() != _challenge!.phone) {
+                if (_challenge != null && value.trim() != _challenge!.phone) {
                   _challenge = null;
                   _countdown?.cancel();
                   _secondsLeft = 0;
@@ -208,25 +182,15 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
             children: [
               Expanded(
                 child: Text(
-                  challenge == null
-                      ? '验证码将发送到上面的手机号'
-                      : '验证码已发送至 ${_maskPhone(challenge.phone)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  challenge == null ? '验证码将发送到上面的手机号' : '验证码已发送至 ${_maskPhone(challenge.phone)}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                 ),
               ),
               const SizedBox(width: 12),
               FilledButton.tonal(
-                onPressed: _canSendCode && _secondsLeft == 0
-                    ? _sendCode
-                    : null,
+                onPressed: _canSendCode && _secondsLeft == 0 ? _sendCode : null,
                 child: _sending
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : Text(
                         _secondsLeft > 0
                             ? '${_secondsLeft}s 后重发'
@@ -249,11 +213,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
                 LengthLimitingTextInputFormatter(maxCodeLength),
               ],
               onSubmitted: (_) => _login(),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: '请输入短信中的验证码',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(isDense: true, hintText: '请输入短信中的验证码', border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -261,23 +221,14 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
               child: FilledButton(
                 onPressed: canLogin ? _login : null,
                 child: _loggingIn
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Text('登录'),
               ),
             ),
           ],
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.error,
-              ),
-            ),
+            Text(_error!, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error)),
           ],
         ],
       ),

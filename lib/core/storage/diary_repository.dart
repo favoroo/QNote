@@ -12,11 +12,7 @@ class DiaryRepository {
 
   Future<List<DiaryRecord>> getAll({bool includeDeleted = false}) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'diary_records',
-      where: includeDeleted ? null : 'is_deleted = 0',
-      orderBy: 'time DESC',
-    );
+    final maps = await db.query('diary_records', where: includeDeleted ? null : 'is_deleted = 0', orderBy: 'time DESC');
     return maps.map((m) => DiaryRecord.fromMap(m)).toList();
   }
 
@@ -27,11 +23,7 @@ class DiaryRepository {
       'SELECT DISTINCT substr(time, 1, 10) AS date_str FROM diary_records WHERE is_deleted = 0 ORDER BY time DESC LIMIT ?',
       [limit],
     );
-    return results
-        .map((r) => r['date_str'] as String?)
-        .where((s) => s != null && s.isNotEmpty)
-        .cast<String>()
-        .toList();
+    return results.map((r) => r['date_str'] as String?).where((s) => s != null && s.isNotEmpty).cast<String>().toList();
   }
 
   Future<List<DiaryRecord>> getByDate(DateTime date) async {
@@ -47,10 +39,7 @@ class DiaryRepository {
     );
 
     final targetDate = DateTime(date.year, date.month, date.day);
-    return maps
-        .map((m) => DiaryRecord.fromMap(m))
-        .where((r) => r.belongsToDate(targetDate))
-        .toList();
+    return maps.map((m) => DiaryRecord.fromMap(m)).where((r) => r.belongsToDate(targetDate)).toList();
   }
 
   Future<List<DiaryRecord>> getByDateRange(DateTime start, DateTime end) async {
@@ -69,13 +58,10 @@ class DiaryRepository {
     final targetStart = DateTime(start.year, start.month, start.day);
     final targetEnd = DateTime(end.year, end.month, end.day);
 
-    return maps
-        .map((m) => DiaryRecord.fromMap(m))
-        .where((r) {
-          final effectiveDate = r.getEffectiveDate();
-          return !effectiveDate.isBefore(targetStart) && !effectiveDate.isAfter(targetEnd);
-        })
-        .toList();
+    return maps.map((m) => DiaryRecord.fromMap(m)).where((r) {
+      final effectiveDate = r.getEffectiveDate();
+      return !effectiveDate.isBefore(targetStart) && !effectiveDate.isAfter(targetEnd);
+    }).toList();
   }
 
   Future<List<DiaryRecord>> getByFolder(String folderId) async {
@@ -102,11 +88,7 @@ class DiaryRepository {
 
   Future<DiaryRecord?> getById(String id) async {
     final db = await _dbHelper.database;
-    final maps = await db.query(
-      'diary_records',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final maps = await db.query('diary_records', where: 'id = ?', whereArgs: [id]);
     if (maps.isEmpty) return null;
     return DiaryRecord.fromMap(maps.first);
   }
@@ -126,12 +108,7 @@ class DiaryRepository {
   Future<DiaryRecord> update(DiaryRecord record) async {
     final db = await _dbHelper.database;
     final updated = record.copyWith(updatedAt: DateTime.now());
-    await db.update(
-      'diary_records',
-      updated.toMap(),
-      where: 'id = ?',
-      whereArgs: [record.id],
-    );
+    await db.update('diary_records', updated.toMap(), where: 'id = ?', whereArgs: [record.id]);
     await _syncLog.logChange(
       tableName: 'diary_records',
       recordId: record.id,
@@ -147,32 +124,15 @@ class DiaryRepository {
     if (existing == null) return;
 
     final nowStr = DateTime.now().toIso8601String();
-    await db.update(
-      'diary_records',
-      {'is_deleted': 1, 'updated_at': nowStr},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final updated = existing.copyWith(
-      isDeleted: true,
-      updatedAt: DateTime.parse(nowStr),
-    );
-    await _syncLog.logChange(
-      tableName: 'diary_records',
-      recordId: id,
-      operation: 'update',
-      data: updated.toMap(),
-    );
+    await db.update('diary_records', {'is_deleted': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
+    final updated = existing.copyWith(isDeleted: true, updatedAt: DateTime.parse(nowStr));
+    await _syncLog.logChange(tableName: 'diary_records', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   Future<void> hardDelete(String id) async {
     final db = await _dbHelper.database;
     await db.delete('diary_records', where: 'id = ?', whereArgs: [id]);
-    await _syncLog.logChange(
-      tableName: 'diary_records',
-      recordId: id,
-      operation: 'delete',
-    );
+    await _syncLog.logChange(tableName: 'diary_records', recordId: id, operation: 'delete');
   }
 
   Future<List<DiaryRecord>> search(String query) async {

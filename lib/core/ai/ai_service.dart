@@ -31,9 +31,7 @@ class NoUsefulInfoException implements Exception {
   NoUsefulInfoException([this.message]);
 
   @override
-  String toString() => message != null
-      ? 'NoUsefulInfoException: $message'
-      : 'NoUsefulInfoException';
+  String toString() => message != null ? 'NoUsefulInfoException: $message' : 'NoUsefulInfoException';
 }
 
 /// 带工具流式对话的单个流片段。
@@ -49,17 +47,11 @@ class AiToolStreamChunk {
   final String? reasoningText;
   final ToolCallProgress? toolProgress;
 
-  const AiToolStreamChunk.text(this.text)
-    : reasoningText = null,
-      toolProgress = null;
+  const AiToolStreamChunk.text(this.text) : reasoningText = null, toolProgress = null;
 
-  const AiToolStreamChunk.reasoning(this.reasoningText)
-    : text = null,
-      toolProgress = null;
+  const AiToolStreamChunk.reasoning(this.reasoningText) : text = null, toolProgress = null;
 
-  const AiToolStreamChunk.toolProgress(this.toolProgress)
-    : text = null,
-      reasoningText = null;
+  const AiToolStreamChunk.toolProgress(this.toolProgress) : text = null, reasoningText = null;
 }
 
 /// 工具调用参数的流式生成进度快照
@@ -69,10 +61,7 @@ class ToolCallProgress {
   /// 截至当前的原始参数 JSON 片段（可能不完整，仅用于展示层提取关键信息）
   final String partialArguments;
 
-  const ToolCallProgress({
-    required this.toolName,
-    required this.partialArguments,
-  });
+  const ToolCallProgress({required this.toolName, required this.partialArguments});
 }
 
 class AiService {
@@ -127,12 +116,7 @@ class AiService {
   /// 真正发信时由 [_beginSend] 现取并用逐请求 header 覆写（见 [_authOverride]），
   /// 因此池场景下 [_config] 的 apiKey 只是兜底值（池内首把），排查请求实际用了哪把
   /// Key 要以请求日志里的 `Key=<掩码>` 为准。
-  void updateConfig(
-    AiConfig config, {
-    double? temperature,
-    int? maxTokens,
-    bool pinApiKey = false,
-  }) {
+  void updateConfig(AiConfig config, {double? temperature, int? maxTokens, bool pinApiKey = false}) {
     String cleanedBaseUrl = _cleanUrl(config.baseUrl);
 
     // If Gemini and baseUrl is empty, default to official Gemini API endpoint
@@ -140,13 +124,11 @@ class AiService {
       cleanedBaseUrl = 'https://generativelanguage.googleapis.com';
     }
 
-    if ((!config.usesAccountAuth && config.apiKey.isEmpty) ||
-        cleanedBaseUrl.isEmpty) {
+    if ((!config.usesAccountAuth && config.apiKey.isEmpty) || cleanedBaseUrl.isEmpty) {
       throw ArgumentError('AI配置不完整：缺少 apiKey 或 baseUrl');
     }
 
-    if (!cleanedBaseUrl.startsWith('http://') &&
-        !cleanedBaseUrl.startsWith('https://')) {
+    if (!cleanedBaseUrl.startsWith('http://') && !cleanedBaseUrl.startsWith('https://')) {
       throw ArgumentError('Base URL 格式错误：需以 http:// 或 https:// 开头');
     }
 
@@ -162,9 +144,7 @@ class AiService {
     _reasoningParamsSupported = true;
     if (temperature != null) _temperature = temperature;
     if (maxTokens != null) _maxTokens = maxTokens;
-    _dio.options.baseUrl = cleanedBaseUrl.endsWith('/')
-        ? cleanedBaseUrl
-        : '$cleanedBaseUrl/';
+    _dio.options.baseUrl = cleanedBaseUrl.endsWith('/') ? cleanedBaseUrl : '$cleanedBaseUrl/';
 
     // 从提供商配置读取旧版默认推理强度（模型级选择缺失时兜底）
     _legacyReasoningEffort = _resolveReasoningEffort(config);
@@ -190,8 +170,7 @@ class AiService {
 
     LoggerService.instance.logAI(
       '更新AI配置: 厂商=${config.vendorId ?? 'custom'}, 提供商=${config.provider}, 模型=${config.modelName}',
-      details:
-          '原始URL=${config.baseUrl}, 清理后URL=$cleanedBaseUrl, endpoint=$_generateContentEndpoint',
+      details: '原始URL=${config.baseUrl}, 清理后URL=$cleanedBaseUrl, endpoint=$_generateContentEndpoint',
     );
   }
 
@@ -287,14 +266,10 @@ class AiService {
     final sentKey = trace.sentKey;
     // 冷却必须打在**本次真正发出去的那次**上：路由组切换成员后 [_config] 可能仍是
     // 上一个成员，用 [trace] 的厂商快照才不会把冷却记到错的厂商头上
-    final providerId = trace.providerId.isNotEmpty
-        ? trace.providerId
-        : _config?.providerId;
+    final providerId = trace.providerId.isNotEmpty ? trace.providerId : _config?.providerId;
     final hasProviderId = providerId != null && providerId.isNotEmpty;
     final isConnectionError = ApiKeyPool.isConnectionClassError(error);
-    final isConnectTimeout =
-        error is DioException &&
-        error.type == DioExceptionType.connectionTimeout;
+    final isConnectTimeout = error is DioException && error.type == DioExceptionType.connectionTimeout;
     final keyScoped = ApiKeyPool.isKeyScopedError(error);
     final int maxRetries;
     if (isConnectTimeout) {
@@ -308,15 +283,8 @@ class AiService {
     if (retryCount >= maxRetries) {
       // 深度用尽也要留下一行事实：这把 Key 确实被限流/失效了，不记冷却就会被
       // 下一轮请求立刻再次端上来，白撞同一个 429。
-      if (keyScoped &&
-          sentKey != null &&
-          hasProviderId &&
-          trace.authMode == AiProvider.authModeApiKey) {
-        ApiKeyPool.instance.markLimited(
-          providerId,
-          sentKey,
-          cooldown: ApiKeyPool.instance.cooldownFromError(error),
-        );
+      if (keyScoped && sentKey != null && hasProviderId && trace.authMode == AiProvider.authModeApiKey) {
+        ApiKeyPool.instance.markLimited(providerId, sentKey, cooldown: ApiKeyPool.instance.cooldownFromError(error));
       }
       return false;
     }
@@ -337,11 +305,7 @@ class AiService {
         trace.authMode == AiProvider.authModeApiKey &&
         trace.poolKeys.length >= 2) {
       final pool = ApiKeyPool.instance;
-      pool.markLimited(
-        providerId,
-        sentKey,
-        cooldown: pool.cooldownFromError(error),
-      );
+      pool.markLimited(providerId, sentKey, cooldown: pool.cooldownFromError(error));
       pool.syncKeys(providerId, trace.poolKeys);
       if (!pool.hasAvailable(providerId, trace.poolKeys)) {
         // 整池都在冷却：排队等最早解锁的那把回填；等不到就放弃
@@ -416,10 +380,7 @@ class AiService {
       if (!announced) {
         announced = true;
         onQuotaHold?.call(remaining);
-        LoggerService.instance.logAI(
-          '${trace.scene} 整池冷却，排队 ${remaining.inSeconds}s 等待密钥回填',
-          level: LogLevel.warning,
-        );
+        LoggerService.instance.logAI('${trace.scene} 整池冷却，排队 ${remaining.inSeconds}s 等待密钥回填', level: LogLevel.warning);
       }
       await Future.delayed(_poolPollInterval);
     }
@@ -454,12 +415,7 @@ class AiService {
   }) async {
     final effective = config ?? _config;
     if (effective == null) {
-      return _SendTrace(
-        scene: scene,
-        sentKey: null,
-        poolKeys: const [],
-        startedAt: DateTime.now(),
-      );
+      return _SendTrace(scene: scene, sentKey: null, poolKeys: const [], startedAt: DateTime.now());
     }
 
     // 订阅账号型：token 由账号服务选号后现取（临近过期会先刷新），不走密钥池。
@@ -495,9 +451,7 @@ class AiService {
     // 这时全局 header 里的凭证属于上一个成员，必须逐请求覆写成本成员自己的 Key
     final base = _config;
     final switchedMember =
-        base == null ||
-        base.providerId != effective.providerId ||
-        base.modelName != effective.modelName;
+        base == null || base.providerId != effective.providerId || base.modelName != effective.modelName;
 
     var keys = const <String>[];
     if (!_pinApiKey && effective.providerId.isNotEmpty) {
@@ -514,9 +468,7 @@ class AiService {
         details: '厂商密钥池共 ${keys.length} 把',
       );
     } else if (switchedMember) {
-      sentKey = keys.isNotEmpty
-          ? keys.first
-          : (effective.apiKey.trim().isEmpty ? null : effective.apiKey);
+      sentKey = keys.isNotEmpty ? keys.first : (effective.apiKey.trim().isEmpty ? null : effective.apiKey);
     }
 
     return _SendTrace(
@@ -535,8 +487,7 @@ class AiService {
   /// 有了它就能在纯单测里验证「每次请求实际发出的 Authorization 按池轮换」，
   /// 不必为了读一行密钥把 sqflite 整个拉进测试。
   @visibleForTesting
-  static Future<List<String>> Function(String providerId)?
-  providerKeysLoaderForTest;
+  static Future<List<String>> Function(String providerId)? providerKeysLoaderForTest;
 
   /// 读取厂商条目的密钥列表（读失败按「无池」处理，让请求走全局 header）
   Future<List<String>> _readProviderKeys(String providerId) async {
@@ -550,9 +501,7 @@ class AiService {
     }
     try {
       final provider = await AiProviderRepository.instance.getById(providerId);
-      return (provider?.apiKeys ?? const <String>[])
-          .where((key) => key.trim().isNotEmpty)
-          .toList();
+      return (provider?.apiKeys ?? const <String>[]).where((key) => key.trim().isNotEmpty).toList();
     } catch (e) {
       LoggerService.instance.logAI('读取厂商密钥池失败: $e', level: LogLevel.warning);
       return const [];
@@ -573,9 +522,7 @@ class AiService {
     // 账号型厂商的鉴权头由厂商自己给（AutoClaw 的 X-Authorization、Loomy 的
     // token + Authorization 双头），接口形态差异不散落在发信层
     if (AccountAuthRegistry.isAccountVendor(config.vendorId)) {
-      return AccountAuthRegistry.forVendor(
-        config.vendorId,
-      ).requestHeaders(key, model: config.modelName);
+      return AccountAuthRegistry.forVendor(config.vendorId).requestHeaders(key, model: config.modelName);
     }
     return {'Authorization': 'Bearer $key', 'x-goog-api-key': null};
   }
@@ -635,23 +582,12 @@ class AiService {
         return response;
       } catch (e) {
         final config = _config;
-        if (config != null &&
-            await _refreshAccountAuthIfNeeded(
-              config,
-              e,
-              authRetried,
-              accountId: trace.accountId,
-            )) {
+        if (config != null && await _refreshAccountAuthIfNeeded(config, e, authRetried, accountId: trace.accountId)) {
           authRetried = true;
           retryCount = 0;
           continue;
         }
-        if (await _shouldRetryAndWait(
-          e,
-          retryCount,
-          trace: trace,
-          cancelToken: cancelToken,
-        )) {
+        if (await _shouldRetryAndWait(e, retryCount, trace: trace, cancelToken: cancelToken)) {
           retryCount++;
           continue;
         }
@@ -678,13 +614,7 @@ class AiService {
     if (usage == null || usage.isEmpty) return;
     final providerId = trace?.providerId ?? _config?.providerId ?? '';
     final modelName = trace?.modelName ?? _config?.modelName ?? '';
-    unawaited(
-      AiTokenUsageRepository.instance.record(
-        providerId: providerId,
-        modelName: modelName,
-        usage: usage,
-      ),
-    );
+    unawaited(AiTokenUsageRepository.instance.record(providerId: providerId, modelName: modelName, usage: usage));
   }
 
   /// 网关拒绝思考强度参数时关闭该参数，返回 true 表示应原地重发
@@ -729,13 +659,8 @@ class AiService {
     final body = '${error.response?.data ?? ''}'.toLowerCase();
     // 优先看是否点名了 stream_options；部分网关只回「unknown parameter」也要兜住
     final mentionsOption =
-        body.contains('stream_options') ||
-        body.contains('stream options') ||
-        body.contains('include_usage');
-    final mentionsUnknown =
-        body.contains('unknown') ||
-        body.contains('unsupported') ||
-        body.contains('invalid');
+        body.contains('stream_options') || body.contains('stream options') || body.contains('include_usage');
+    final mentionsUnknown = body.contains('unknown') || body.contains('unsupported') || body.contains('invalid');
     if (!mentionsOption && !mentionsUnknown) return false;
 
     _streamUsageSupported = false;
@@ -757,11 +682,7 @@ class AiService {
   ///
   /// 只有「可重试的瞬时/配额故障」才换成员：参数非法这类业务 4xx 换到别的模型同样
   /// 会失败，白等一轮。返回非 null 表示调用方应把当前成员换成它并重发。
-  AiConfig? _switchRouteMember(
-    AiModelRoute? route,
-    AiConfig failed,
-    Object error,
-  ) {
+  AiConfig? _switchRouteMember(AiModelRoute? route, AiConfig failed, Object error) {
     if (route == null) return null;
     if (!ApiKeyPool.isRecoverableError(error)) return null;
     return route.next(failed, error);
@@ -789,10 +710,7 @@ class AiService {
       } else {
         await accountService.refresh(config.providerId, force: true);
       }
-      LoggerService.instance.logAI(
-        '账号凭证被拒绝，已刷新后重试: ${config.providerId}',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('账号凭证被拒绝，已刷新后重试: ${config.providerId}', level: LogLevel.warning);
       return true;
     } catch (e) {
       LoggerService.instance.logAI('账号凭证刷新失败: $e', level: LogLevel.warning);
@@ -821,11 +739,7 @@ class AiService {
     final accountService = AccountAuthRegistry.forVendor(trace.vendorId);
     final account = await accountService.accountById(trace.accountId);
     if (account == null) return false;
-    accountService.markAccountFailed(
-      account,
-      error,
-      affinity: affinity,
-    );
+    accountService.markAccountFailed(account, error, affinity: affinity);
     return true;
   }
 
@@ -833,12 +747,9 @@ class AiService {
   void _recordAccountSuccess(_SendTrace trace) {
     if (trace.authMode == AiProvider.authModeApiKey) return;
     if (trace.accountId.isEmpty) return;
-    final account = AccountAuthRegistry.forVendor(trace.vendorId)
-        .accountFromCache(trace.accountId);
+    final account = AccountAuthRegistry.forVendor(trace.vendorId).accountFromCache(trace.accountId);
     if (account != null) {
-      AccountAuthRegistry.forVendor(
-        trace.vendorId,
-      ).markAccountSucceeded(account);
+      AccountAuthRegistry.forVendor(trace.vendorId).markAccountSucceeded(account);
     }
   }
 
@@ -851,9 +762,7 @@ class AiService {
   ) async {
     if (!config.usesAccountAuth) return false;
     try {
-      final vendorId = trace.vendorId.isNotEmpty
-          ? trace.vendorId
-          : (config.vendorId ?? '');
+      final vendorId = trace.vendorId.isNotEmpty ? trace.vendorId : (config.vendorId ?? '');
       return await AccountAuthRegistry.forVendor(vendorId).hasAlternateAccount(
         trace.providerId.isNotEmpty ? trace.providerId : config.providerId,
         routing: config.accountRouting,
@@ -912,16 +821,8 @@ class AiService {
     return true;
   }
 
-  Future<String> chat(
-    List<ChatMessage> messages, {
-    CancelToken? cancelToken,
-    AiModelRoute? route,
-  }) async {
-    final response = await chatResponse(
-      messages,
-      cancelToken: cancelToken,
-      route: route,
-    );
+  Future<String> chat(List<ChatMessage> messages, {CancelToken? cancelToken, AiModelRoute? route}) async {
+    final response = await chatResponse(messages, cancelToken: cancelToken, route: route);
     return response.content;
   }
 
@@ -941,8 +842,7 @@ class AiService {
     final startTime = DateTime.now();
     LoggerService.instance.logAI(
       '开始对话请求(带工具支持)',
-      details:
-          '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
+      details: '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
     );
 
     int retryCount = 0;
@@ -959,21 +859,11 @@ class AiService {
 
     while (true) {
       // 每次真正发信前现取凭证（成功也换）；非内置池端点返回 null，沿用全局 header
-      final trace = await _beginSend(
-        '对话请求',
-        config: activeConfig,
-        scope: scope,
-        triedAccountIds: triedAccounts,
-      );
+      final trace = await _beginSend('对话请求', config: activeConfig, scope: scope, triedAccountIds: triedAccounts);
       final sentKey = trace.sentKey;
       try {
         final endpoint = _absoluteEndpoint(activeConfig, stream: false);
-        final bodyMap = await _prepareChatRequestBody(
-          messages,
-          config: activeConfig,
-          stream: false,
-          tools: tools,
-        );
+        final bodyMap = await _prepareChatRequestBody(messages, config: activeConfig, stream: false, tools: tools);
         final dynamic requestBody = bodyMap;
 
         final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
@@ -999,15 +889,13 @@ class AiService {
         List<ToolCall>? toolCalls;
 
         if (activeConfig.provider == 'gemini') {
-          content =
-              data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
+          content = data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
         } else {
           final choice = data['choices']?[0];
           final message = choice?['message'] as Map<String, dynamic>?;
           content = message?['content'] as String? ?? '';
 
-          if (message?['tool_calls'] != null &&
-              message!['tool_calls'] is List) {
+          if (message?['tool_calls'] != null && message!['tool_calls'] is List) {
             toolCalls = (message['tool_calls'] as List)
                 .whereType<Map<String, dynamic>>()
                 .map((m) => ToolCall.fromMap(m))
@@ -1015,34 +903,20 @@ class AiService {
           }
         }
 
-        route?.recordSuccess(
-          activeConfig,
-          elapsed: Duration(milliseconds: duration),
-        );
+        route?.recordSuccess(activeConfig, elapsed: Duration(milliseconds: duration));
         _recordAccountSuccess(trace);
         LoggerService.instance.logAI(
           '对话完成',
-          details:
-              '耗时=${duration}ms, 响应长度=${content.length}字符, 工具调用数=${toolCalls?.length ?? 0}',
+          details: '耗时=${duration}ms, 响应长度=${content.length}字符, 工具调用数=${toolCalls?.length ?? 0}',
         );
 
-        return ChatMessage(
-          role: 'assistant',
-          content: content,
-          toolCalls: toolCalls,
-          timestamp: DateTime.now(),
-        );
+        return ChatMessage(role: 'assistant', content: content, toolCalls: toolCalls, timestamp: DateTime.now());
       } catch (e, stackTrace) {
         // 用户主动中止（Dio CancelToken 触发）：直接抛出，禁止进入重试退避
         if (cancelToken?.isCancelled == true) rethrow;
         // 端点不认思考强度参数：关掉后原地重发，不让调档把对话打挂
         if (_disableReasoningOnReject(e)) continue;
-        if (await _refreshAccountAuthIfNeeded(
-          activeConfig,
-          e,
-          authRetried,
-          accountId: trace.accountId,
-        )) {
+        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried, accountId: trace.accountId)) {
           authRetried = true;
           retryCount = 0;
           continue;
@@ -1060,12 +934,7 @@ class AiService {
           authRetried = false;
           continue;
         }
-        if (await _shouldRetryAndWait(
-          e,
-          retryCount,
-          trace: trace,
-          cancelToken: cancelToken,
-        )) {
+        if (await _shouldRetryAndWait(e, retryCount, trace: trace, cancelToken: cancelToken)) {
           retryCount++;
           continue;
         }
@@ -1099,11 +968,7 @@ class AiService {
             details = 'Response Body: $respData\n\n$details';
           }
         }
-        LoggerService.instance.logAI(
-          '同步对话失败: $e',
-          level: LogLevel.error,
-          details: details,
-        );
+        LoggerService.instance.logAI('同步对话失败: $e', level: LogLevel.error, details: details);
         rethrow;
       }
     }
@@ -1134,8 +999,7 @@ class AiService {
     final startTime = DateTime.now();
     LoggerService.instance.logAI(
       '开始带工具的流式对话请求',
-      details:
-          '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
+      details: '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
     );
 
     int retryCount = 0;
@@ -1155,12 +1019,7 @@ class AiService {
       bool hasDeliveredText = false;
       bool partiallyStreamed = false;
       // 每轮（含重试）都重新取一次凭证：这就是「成功也换」在 AgentLoop 每轮推理上的效果
-      final trace = await _beginSend(
-        '带工具流式对话',
-        config: activeConfig,
-        scope: scope,
-        triedAccountIds: triedAccounts,
-      );
+      final trace = await _beginSend('带工具流式对话', config: activeConfig, scope: scope, triedAccountIds: triedAccounts);
       final sentKey = trace.sentKey;
       try {
         final dynamic bodyMap = await _prepareChatRequestBody(
@@ -1174,10 +1033,7 @@ class AiService {
         final response = await _dio.post<ResponseBody>(
           _absoluteEndpoint(activeConfig, stream: true),
           data: requestBody,
-          options: Options(
-            responseType: ResponseType.stream,
-            headers: _authOverride(sentKey, activeConfig),
-          ),
+          options: Options(responseType: ResponseType.stream, headers: _authOverride(sentKey, activeConfig)),
           cancelToken: cancelToken,
         );
 
@@ -1207,17 +1063,10 @@ class AiService {
             if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
             final data = trimmed.substring(5).trim();
             if (data == '[DONE]') {
-              final duration = DateTime.now()
-                  .difference(startTime)
-                  .inMilliseconds;
-              LoggerService.instance.logAI(
-                'AI带工具流式响应完成 [耗时=${duration}ms]:\n$accumulatedResponse',
-              );
+              final duration = DateTime.now().difference(startTime).inMilliseconds;
+              LoggerService.instance.logAI('AI带工具流式响应完成 [耗时=${duration}ms]:\n$accumulatedResponse');
               _recordParsedUsage(streamUsage, trace: trace);
-              route?.recordSuccess(
-                activeConfig,
-                elapsed: Duration(milliseconds: duration),
-              );
+              route?.recordSuccess(activeConfig, elapsed: Duration(milliseconds: duration));
               _recordAccountSuccess(trace);
               _deliverToolCalls(toolCallBuilders, onToolCallsReady);
               return;
@@ -1243,19 +1092,14 @@ class AiService {
 
               // 首个可见增量即为「用户等了多久才开始看到东西」，是换 Key 策略
               // 最关心的指标（前缀缓存被轮换打掉时会首先反映在这里）
-              if ((delta?['content'] is String &&
-                      (delta!['content'] as String).isNotEmpty) ||
-                  (delta?['reasoning_content'] is String &&
-                      (delta!['reasoning_content'] as String).isNotEmpty) ||
-                  (delta?['reasoning'] is String &&
-                      (delta!['reasoning'] as String).isNotEmpty) ||
+              if ((delta?['content'] is String && (delta!['content'] as String).isNotEmpty) ||
+                  (delta?['reasoning_content'] is String && (delta!['reasoning_content'] as String).isNotEmpty) ||
+                  (delta?['reasoning'] is String && (delta!['reasoning'] as String).isNotEmpty) ||
                   delta?['tool_calls'] is List) {}
 
               // 0. 思考/推理增量：智谱 GLM、DeepSeek reasoner 等用 reasoning_content，
               //    SenseNova 用 reasoning；供「思考中」状态卡实时滚动展示
-              final reasoning =
-                  (delta?['reasoning_content'] ?? delta?['reasoning'])
-                      as String?;
+              final reasoning = (delta?['reasoning_content'] ?? delta?['reasoning']) as String?;
               if (reasoning != null && reasoning.isNotEmpty) {
                 partiallyStreamed = true;
                 yield AiToolStreamChunk.reasoning(reasoning);
@@ -1282,20 +1126,15 @@ class AiService {
                   );
 
                   if (tc['id'] != null) {
-                    builder['id'] =
-                        (builder['id'] as String) + (tc['id'] as String);
+                    builder['id'] = (builder['id'] as String) + (tc['id'] as String);
                   }
                   final func = tc['function'] as Map<String, dynamic>?;
                   if (func != null) {
                     if (func['name'] != null) {
-                      builder['name'] =
-                          (builder['name'] as String) +
-                          (func['name'] as String);
+                      builder['name'] = (builder['name'] as String) + (func['name'] as String);
                     }
                     if (func['arguments'] != null) {
-                      (builder['arguments'] as StringBuffer).write(
-                        func['arguments'],
-                      );
+                      (builder['arguments'] as StringBuffer).write(func['arguments']);
                     }
                   }
 
@@ -1306,16 +1145,12 @@ class AiService {
                   if (name.isNotEmpty && argsBuffer.isNotEmpty) {
                     final now = DateTime.now();
                     final isFirstProgress = builder['progressNotified'] != true;
-                    if (isFirstProgress ||
-                        now.difference(lastProgressAt!).inMilliseconds >= 500) {
+                    if (isFirstProgress || now.difference(lastProgressAt!).inMilliseconds >= 500) {
                       builder['progressNotified'] = true;
                       lastProgressAt = now;
                       partiallyStreamed = true;
                       yield AiToolStreamChunk.toolProgress(
-                        ToolCallProgress(
-                          toolName: name,
-                          partialArguments: argsBuffer.toString(),
-                        ),
+                        ToolCallProgress(toolName: name, partialArguments: argsBuffer.toString()),
                       );
                     }
                   }
@@ -1343,12 +1178,7 @@ class AiService {
         if (_disableReasoningOnReject(e)) continue;
         // 端点不认 stream_options：关掉统计参数后原地重发，不让统计影响对话
         if (_disableStreamUsageOnReject(e)) continue;
-        if (await _refreshAccountAuthIfNeeded(
-          activeConfig,
-          e,
-          authRetried,
-          accountId: trace.accountId,
-        )) {
+        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried, accountId: trace.accountId)) {
           authRetried = true;
           retryCount = 0;
           continue;
@@ -1393,11 +1223,7 @@ class AiService {
             continue;
           }
         }
-        LoggerService.instance.logAI(
-          '带工具流式对话失败: $e',
-          level: LogLevel.error,
-          details: stackTrace.toString(),
-        );
+        LoggerService.instance.logAI('带工具流式对话失败: $e', level: LogLevel.error, details: stackTrace.toString());
         rethrow;
       }
     }
@@ -1410,8 +1236,7 @@ class AiService {
     if (toolCallBuilders.isEmpty || onToolCallsReady == null) return;
     final List<ToolCall> completedCalls = [];
     for (final b in toolCallBuilders.values) {
-      final id =
-          b['id'] as String? ?? 'call_${DateTime.now().millisecondsSinceEpoch}';
+      final id = b['id'] as String? ?? 'call_${DateTime.now().millisecondsSinceEpoch}';
       final name = b['name'] as String? ?? '';
       final argsStr = (b['arguments'] as StringBuffer).toString();
       Map<String, dynamic> args = {};
@@ -1427,18 +1252,11 @@ class AiService {
     }
   }
 
-  Stream<String> chatStream(
-    List<ChatMessage> messages, {
-    AiModelRoute? route,
-    AiRequestScope? scope,
-  }) async* {
+  Stream<String> chatStream(List<ChatMessage> messages, {AiModelRoute? route, AiRequestScope? scope}) async* {
     if (_config == null) throw Exception('AI config not set');
 
     final startTime = DateTime.now();
-    LoggerService.instance.logAI(
-      '开始流式对话请求',
-      details: '模型=${_config!.modelName}, 消息数=${messages.length}',
-    );
+    LoggerService.instance.logAI('开始流式对话请求', details: '模型=${_config!.modelName}, 消息数=${messages.length}');
 
     int retryCount = 0;
     // 订阅账号型：401 只刷新一次 token
@@ -1450,19 +1268,10 @@ class AiService {
 
     while (true) {
       bool hasDeliveredText = false;
-      final trace = await _beginSend(
-        '普通流式对话',
-        config: activeConfig,
-        scope: scope,
-        triedAccountIds: triedAccounts,
-      );
+      final trace = await _beginSend('普通流式对话', config: activeConfig, scope: scope, triedAccountIds: triedAccounts);
       final sentKey = trace.sentKey;
       try {
-        final dynamic bodyMap = await _prepareChatRequestBody(
-          messages,
-          config: activeConfig,
-          stream: true,
-        );
+        final dynamic bodyMap = await _prepareChatRequestBody(messages, config: activeConfig, stream: true);
         final dynamic requestBody = jsonEncode(bodyMap);
 
         final sanitizedBody = _sanitizeRequestBodyForLogging(requestBody);
@@ -1476,10 +1285,7 @@ class AiService {
         final response = await _dio.post<ResponseBody>(
           _absoluteEndpoint(activeConfig, stream: true),
           data: requestBody,
-          options: Options(
-            responseType: ResponseType.stream,
-            headers: _authOverride(sentKey, activeConfig),
-          ),
+          options: Options(responseType: ResponseType.stream, headers: _authOverride(sentKey, activeConfig)),
         );
 
         final stream = response.data?.stream;
@@ -1502,12 +1308,8 @@ class AiService {
             if (trimmed.isEmpty || !trimmed.startsWith('data:')) continue;
             final data = trimmed.substring(5).trim();
             if (data == '[DONE]') {
-              final duration = DateTime.now()
-                  .difference(startTime)
-                  .inMilliseconds;
-              LoggerService.instance.logAI(
-                'AI流式响应完成 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
-              );
+              final duration = DateTime.now().difference(startTime).inMilliseconds;
+              LoggerService.instance.logAI('AI流式响应完成 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse');
               _recordParsedUsage(streamUsage, trace: trace);
               route?.recordSuccess(activeConfig);
               return;
@@ -1517,9 +1319,7 @@ class AiService {
               final json = jsonDecode(data) as Map<String, dynamic>;
               if (json.containsKey('error')) {
                 final errObj = json['error'];
-                final errMsg = errObj is Map
-                    ? (errObj['message'] ?? errObj.toString())
-                    : errObj.toString();
+                final errMsg = errObj is Map ? (errObj['message'] ?? errObj.toString()) : errObj.toString();
                 throw Exception('AI Stream Error: $errMsg');
               }
 
@@ -1528,8 +1328,7 @@ class AiService {
 
               String? text;
               if (activeConfig.provider == 'gemini') {
-                text =
-                    json['candidates']?[0]?['content']?['parts']?[0]?['text'];
+                text = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
               } else {
                 text = json['choices']?[0]?['delta']?['content'];
               }
@@ -1548,9 +1347,7 @@ class AiService {
         }
 
         final duration = DateTime.now().difference(startTime).inMilliseconds;
-        LoggerService.instance.logAI(
-          'AI流式响应结束 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse',
-        );
+        LoggerService.instance.logAI('AI流式响应结束 [总输出=$totalChars字符] [耗时=${duration}ms]:\n$accumulatedResponse');
         _recordParsedUsage(streamUsage, trace: trace);
         route?.recordSuccess(activeConfig);
         _recordAccountSuccess(trace);
@@ -1558,12 +1355,7 @@ class AiService {
       } catch (e, stackTrace) {
         if (_disableReasoningOnReject(e)) continue;
         if (_disableStreamUsageOnReject(e)) continue;
-        if (await _refreshAccountAuthIfNeeded(
-          activeConfig,
-          e,
-          authRetried,
-          accountId: trace.accountId,
-        )) {
+        if (await _refreshAccountAuthIfNeeded(activeConfig, e, authRetried, accountId: trace.accountId)) {
           authRetried = true;
           retryCount = 0;
           continue;
@@ -1582,12 +1374,7 @@ class AiService {
           authRetried = false;
           continue;
         }
-        if (await _shouldRetryAndWait(
-          e,
-          retryCount,
-          hasDeliveredText: hasDeliveredText,
-          trace: trace,
-        )) {
+        if (await _shouldRetryAndWait(e, retryCount, hasDeliveredText: hasDeliveredText, trace: trace)) {
           retryCount++;
           continue;
         }
@@ -1608,11 +1395,7 @@ class AiService {
             details = 'Response Body: $respData\n\n$details';
           }
         }
-        LoggerService.instance.logAI(
-          '流式对话失败: $e',
-          level: LogLevel.error,
-          details: details,
-        );
+        LoggerService.instance.logAI('流式对话失败: $e', level: LogLevel.error, details: details);
         rethrow;
       }
     }
@@ -1649,9 +1432,7 @@ class AiService {
   /// 路由组切到别的成员时按该成员配置重新推断（不同厂商默认值不同）。
   String? _legacyEffortFor(AiConfig config) {
     final base = _config;
-    if (base != null &&
-        base.providerId == config.providerId &&
-        base.modelName == config.modelName) {
+    if (base != null && base.providerId == config.providerId && base.modelName == config.modelName) {
       return _legacyReasoningEffort;
     }
     return _resolveReasoningEffort(config);
@@ -1704,9 +1485,7 @@ class AiService {
     }
     final effort = config.reasoningEffort;
     if (_reasoningParamsSupported && effort != null) {
-      final thinkingConfig = _reasoningCapabilityFor(
-        config,
-      )?.geminiThinkingConfig(effort);
+      final thinkingConfig = _reasoningCapabilityFor(config)?.geminiThinkingConfig(effort);
       if (thinkingConfig != null) {
         generationConfig['thinkingConfig'] = thinkingConfig;
       }
@@ -1773,10 +1552,7 @@ class AiService {
                   });
                 }
               } catch (e) {
-                LoggerService.instance.logAI(
-                  '加载Gemini多模态图片失败: $imgPath, error=$e',
-                  level: LogLevel.warning,
-                );
+                LoggerService.instance.logAI('加载Gemini多模态图片失败: $imgPath, error=$e', level: LogLevel.warning);
               }
             }
           }
@@ -1785,10 +1561,7 @@ class AiService {
         }
       }
 
-      final bodyMap = <String, dynamic>{
-        'contents': contents,
-        'generationConfig': _geminiGenerationConfig(config),
-      };
+      final bodyMap = <String, dynamic>{'contents': contents, 'generationConfig': _geminiGenerationConfig(config)};
       if (systemInstruction != null) {
         bodyMap['systemInstruction'] = {
           'parts': [
@@ -1805,17 +1578,11 @@ class AiService {
     for (final m in messages) {
       if (m.role == 'tool') {
         // 工具执行结果消息 (OpenAI Tool Role)
-        formattedMessages.add({
-          'role': 'tool',
-          'tool_call_id': m.toolCallId ?? '',
-          'content': m.content,
-        });
+        formattedMessages.add({'role': 'tool', 'tool_call_id': m.toolCallId ?? '', 'content': m.content});
         continue;
       }
 
-      if (m.role == 'assistant' &&
-          m.toolCalls != null &&
-          m.toolCalls!.isNotEmpty) {
+      if (m.role == 'assistant' && m.toolCalls != null && m.toolCalls!.isNotEmpty) {
         // 含有工具调用的助手消息
         formattedMessages.add({
           'role': 'assistant',
@@ -1879,10 +1646,7 @@ class AiService {
               });
             }
           } catch (e) {
-            LoggerService.instance.logAI(
-              '加载图片失败: $imgPath, error=$e',
-              level: LogLevel.warning,
-            );
+            LoggerService.instance.logAI('加载图片失败: $imgPath, error=$e', level: LogLevel.warning);
           }
         }
         formattedMessages.add({'role': m.role, 'content': contentList});
@@ -1891,12 +1655,7 @@ class AiService {
       }
     }
 
-    final bodyMap = _buildBaseBody(
-      config: config,
-      messages: formattedMessages,
-      stream: stream,
-      tools: tools,
-    );
+    final bodyMap = _buildBaseBody(config: config, messages: formattedMessages, stream: stream, tools: tools);
     if (isOmni) {
       bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
       bodyMap['output_modalities'] = ['text'];
@@ -1935,9 +1694,7 @@ class AiService {
     // 账号型厂商的请求体适配（AutoClaw 拒收 max_tokens 并要官方前缀，
     // Loomy 只认三档思考强度且旧版 DeepSeek 要图片标记）
     if (AccountAuthRegistry.isAccountVendor(config.vendorId)) {
-      AccountAuthRegistry.forVendor(
-        config.vendorId,
-      ).adaptChatBody(body, model: config.modelName);
+      AccountAuthRegistry.forVendor(config.vendorId).adaptChatBody(body, model: config.modelName);
     }
     return body;
   }
@@ -1960,9 +1717,7 @@ class AiService {
       if (provider.defaultReasoningEffort == null) continue;
       final providerUrl = provider.defaultBaseUrl.toLowerCase();
       if (providerUrl.isNotEmpty &&
-          baseUrl.contains(
-            providerUrl.replaceAll('https://', '').replaceAll('http://', ''),
-          )) {
+          baseUrl.contains(providerUrl.replaceAll('https://', '').replaceAll('http://', ''))) {
         return provider.defaultReasoningEffort;
       }
     }
@@ -1982,10 +1737,7 @@ class AiService {
   }
 
   Future<String> generateDiarySummary(String diaryContent) async {
-    LoggerService.instance.logAI(
-      '生成日记摘要',
-      details: '输入长度=${diaryContent.length}字符',
-    );
+    LoggerService.instance.logAI('生成日记摘要', details: '输入长度=${diaryContent.length}字符');
 
     final messages = [
       ChatMessage(
@@ -2000,10 +1752,7 @@ class AiService {
   }
 
   Future<String> analyzeMood(String diaryContent) async {
-    LoggerService.instance.logAI(
-      '分析心情状态',
-      details: '输入长度=${diaryContent.length}字符',
-    );
+    LoggerService.instance.logAI('分析心情状态', details: '输入长度=${diaryContent.length}字符');
 
     final messages = [
       ChatMessage(
@@ -2018,10 +1767,7 @@ class AiService {
   }
 
   Future<String> generateTodoSuggestions(String context) async {
-    LoggerService.instance.logAI(
-      '生成待办建议',
-      details: '上下文长度=${context.length}字符',
-    );
+    LoggerService.instance.logAI('生成待办建议', details: '上下文长度=${context.length}字符');
 
     final messages = [
       ChatMessage(
@@ -2073,9 +1819,7 @@ class AiService {
     return result;
   }
 
-  Map<String, dynamic> _convertSimplifiedExtractResult(
-    Map<String, dynamic> simplified,
-  ) {
+  Map<String, dynamic> _convertSimplifiedExtractResult(Map<String, dynamic> simplified) {
     final result = <String, dynamic>{};
 
     result['shortcutId'] = simplified['id'] ?? simplified['shortcutId'];
@@ -2129,15 +1873,10 @@ class AiService {
       inputType = '文本';
     }
 
-    LoggerService.instance.logAI(
-      '统一提取请求',
-      details: '类型=$inputType, 有文本=$hasText, 有图片=$hasImage',
-    );
+    LoggerService.instance.logAI('统一提取请求', details: '类型=$inputType, 有文本=$hasText, 有图片=$hasImage');
 
     var systemPrompt = defaultSystemPrompts['unified_extraction'] ?? '';
-    systemPrompt = systemPrompt
-        .replaceAll('{{contextStr}}', contextStr ?? '')
-        .replaceAll('{{schema}}', schema);
+    systemPrompt = systemPrompt.replaceAll('{{contextStr}}', contextStr ?? '').replaceAll('{{schema}}', schema);
 
     dynamic requestBody;
 
@@ -2166,10 +1905,7 @@ class AiService {
               {'text': systemPrompt},
             ],
           },
-          'generationConfig': _geminiGenerationConfig(
-            _config!,
-            responseMimeType: 'application/json',
-          ),
+          'generationConfig': _geminiGenerationConfig(_config!, responseMimeType: 'application/json'),
         };
       } else {
         final isOmni = _config!.modelName.toLowerCase().contains('omni');
@@ -2200,8 +1936,7 @@ class AiService {
         );
 
         if (isOmni) {
-          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch
-              .toString();
+          bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
           bodyMap['output_modalities'] = ['text'];
         }
 
@@ -2222,11 +1957,7 @@ class AiService {
     while (true) {
       // 每次发信前现取凭证：日记提取与主聊天共用同一个 AiService 单例，
       // 只有逐请求覆写 header 才不会互相串台
-      final trace = await _beginSend(
-        '日记统一提取',
-        scope: scope,
-        triedAccountIds: triedAccounts,
-      );
+      final trace = await _beginSend('日记统一提取', scope: scope, triedAccountIds: triedAccounts);
       final sentKey = trace.sentKey;
       try {
         final response = await _dio.post(
@@ -2246,36 +1977,24 @@ class AiService {
         }
 
         final content = _extractTextFromResponse(response.data);
-        LoggerService.instance.logAI(
-          'AI统一提取响应:\n${_formatJsonForLogging(response.data)}',
-        );
+        LoggerService.instance.logAI('AI统一提取响应:\n${_formatJsonForLogging(response.data)}');
 
         final jsonResult = _parseJsonFromAiContent(content);
-        LoggerService.instance.logAI(
-          '统一提取完成',
-          details: '结果数量=${jsonResult is List ? jsonResult.length : 1}',
-        );
+        LoggerService.instance.logAI('统一提取完成', details: '结果数量=${jsonResult is List ? jsonResult.length : 1}');
 
         List<Map<String, dynamic>> results;
         if (jsonResult is List) {
           results = jsonResult.cast<Map<String, dynamic>>();
         } else if (jsonResult is Map<String, dynamic>) {
           if (jsonResult['message'] == 'NO_USEFUL_INFO') {
-            LoggerService.instance.logAI(
-              '统一提取完成',
-              details: 'AI返回NO_USEFUL_INFO，未提取到有用信息',
-            );
+            LoggerService.instance.logAI('统一提取完成', details: 'AI返回NO_USEFUL_INFO，未提取到有用信息');
             return [];
           }
           List<Map<String, dynamic>>? foundList;
-          if (jsonResult['tags'] is List &&
-              (jsonResult['tags'] as List).every((e) => e is Map)) {
-            foundList = (jsonResult['tags'] as List)
-                .cast<Map<String, dynamic>>();
-          } else if (jsonResult['results'] is List &&
-              (jsonResult['results'] as List).every((e) => e is Map)) {
-            foundList = (jsonResult['results'] as List)
-                .cast<Map<String, dynamic>>();
+          if (jsonResult['tags'] is List && (jsonResult['tags'] as List).every((e) => e is Map)) {
+            foundList = (jsonResult['tags'] as List).cast<Map<String, dynamic>>();
+          } else if (jsonResult['results'] is List && (jsonResult['results'] as List).every((e) => e is Map)) {
+            foundList = (jsonResult['results'] as List).cast<Map<String, dynamic>>();
           } else {
             for (final entry in jsonResult.entries) {
               final val = entry.value;
@@ -2302,12 +2021,7 @@ class AiService {
         _recordAccountSuccess(trace);
         return results.map(_convertSimplifiedExtractResult).toList();
       } catch (e, stackTrace) {
-        if (await _refreshAccountAuthIfNeeded(
-          _config!,
-          e,
-          authRetried,
-          accountId: trace.accountId,
-        )) {
+        if (await _refreshAccountAuthIfNeeded(_config!, e, authRetried, accountId: trace.accountId)) {
           authRetried = true;
           retryCount = 0;
           continue;
@@ -2325,20 +2039,11 @@ class AiService {
           authRetried = false;
           continue;
         }
-        if (await _shouldRetryAndWait(
-          e,
-          retryCount,
-          trace: trace,
-          cancelToken: cancelToken,
-        )) {
+        if (await _shouldRetryAndWait(e, retryCount, trace: trace, cancelToken: cancelToken)) {
           retryCount++;
           continue;
         }
-        LoggerService.instance.logAI(
-          '统一提取失败: $e',
-          level: LogLevel.error,
-          details: stackTrace.toString(),
-        );
+        LoggerService.instance.logAI('统一提取失败: $e', level: LogLevel.error, details: stackTrace.toString());
         rethrow;
       }
     }
@@ -2362,8 +2067,7 @@ class AiService {
     final startTime = DateTime.now();
     LoggerService.instance.logAI(
       '开始图片识别请求',
-      details:
-          '模型=${_config!.modelName}, 有文本=${userText != null && userText.isNotEmpty}',
+      details: '模型=${_config!.modelName}, 有文本=${userText != null && userText.isNotEmpty}',
     );
 
     final requestBody = _buildImageChatRequestBody(
@@ -2384,11 +2088,7 @@ class AiService {
     final triedAccounts = <String>{};
 
     while (true) {
-      final trace = await _beginSend(
-        '图片识别',
-        scope: scope,
-        triedAccountIds: triedAccounts,
-      );
+      final trace = await _beginSend('图片识别', scope: scope, triedAccountIds: triedAccounts);
       final sentKey = trace.sentKey;
       try {
         final response = await _dio.post(
@@ -2399,23 +2099,15 @@ class AiService {
         );
         final result = _extractTextFromResponse(response.data);
         _recordUsagePayload(response.data, trace: trace);
-        LoggerService.instance.logAI(
-          '图片识别响应:\n${_formatJsonForLogging(response.data)}',
-        );
+        LoggerService.instance.logAI('图片识别响应:\n${_formatJsonForLogging(response.data)}');
         LoggerService.instance.logAI(
           '图片识别完成',
-          details:
-              '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
+          details: '耗时=${DateTime.now().difference(startTime).inMilliseconds}ms, 响应长度=${result.length}字符',
         );
         _recordAccountSuccess(trace);
         return result;
       } catch (e, stackTrace) {
-        if (await _refreshAccountAuthIfNeeded(
-          _config!,
-          e,
-          authRetried,
-          accountId: trace.accountId,
-        )) {
+        if (await _refreshAccountAuthIfNeeded(_config!, e, authRetried, accountId: trace.accountId)) {
           authRetried = true;
           retryCount = 0;
           continue;
@@ -2433,12 +2125,7 @@ class AiService {
           authRetried = false;
           continue;
         }
-        if (await _shouldRetryAndWait(
-          e,
-          retryCount,
-          trace: trace,
-          cancelToken: cancelToken,
-        )) {
+        if (await _shouldRetryAndWait(e, retryCount, trace: trace, cancelToken: cancelToken)) {
           retryCount++;
           continue;
         }
@@ -2450,11 +2137,7 @@ class AiService {
             details = 'Response Body: $respData\n\n$details';
           }
         }
-        LoggerService.instance.logAI(
-          '图片识别失败: $e',
-          level: LogLevel.error,
-          details: details,
-        );
+        LoggerService.instance.logAI('图片识别失败: $e', level: LogLevel.error, details: details);
         rethrow;
       }
     }
@@ -2505,8 +2188,7 @@ class AiService {
           {
             'role': 'user',
             'content': [
-              if (userMessageText.isNotEmpty)
-                {'type': 'text', 'text': userMessageText},
+              if (userMessageText.isNotEmpty) {'type': 'text', 'text': userMessageText},
               {
                 'type': 'input_image',
                 'input_image': {
@@ -2531,8 +2213,7 @@ class AiService {
         {
           'role': 'user',
           'content': [
-            if (userMessageText.isNotEmpty)
-              {'type': 'text', 'text': userMessageText},
+            if (userMessageText.isNotEmpty) {'type': 'text', 'text': userMessageText},
             {
               'type': 'image_url',
               'image_url': {'url': 'data:$mimeType;base64,$imageBase64'},
@@ -2569,10 +2250,7 @@ class AiService {
             {'text': systemPrompt},
           ],
         },
-        'generationConfig': _geminiGenerationConfig(
-          _config!,
-          responseMimeType: 'application/json',
-        ),
+        'generationConfig': _geminiGenerationConfig(_config!, responseMimeType: 'application/json'),
       };
     }
 
@@ -2633,10 +2311,7 @@ class AiService {
       return data;
     }
     if (data is! Map<String, dynamic>) {
-      LoggerService.instance.logAI(
-        'AI响应数据格式异常: ${data.runtimeType}',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('AI响应数据格式异常: ${data.runtimeType}', level: LogLevel.warning);
       return '';
     }
 
@@ -2694,10 +2369,7 @@ class AiService {
       return jsonDecode(stripped);
     } catch (e) {
       // 当标准解析失败时，记录警告并尝试使用正则/括号定位提取 JSON 子字符串进行二次解析
-      LoggerService.instance.logAI(
-        'AI响应标准JSON解析失败，尝试提取JSON子串。原始内容:\n$content',
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('AI响应标准JSON解析失败，尝试提取JSON子串。原始内容:\n$content', level: LogLevel.warning);
       // 部分模型（如 Gemini）输出的 JSON 字符串值中含未转义的原始换行符，
       // 严格解析会抛 "Control character in string"，先修复再重试
       try {
@@ -2709,10 +2381,7 @@ class AiService {
           return jsonDecode(_sanitizeJsonControlChars(extracted));
         }
       } catch (innerError) {
-        LoggerService.instance.logAI(
-          '提取JSON子串并解析依然失败: $innerError',
-          level: LogLevel.error,
-        );
+        LoggerService.instance.logAI('提取JSON子串并解析依然失败: $innerError', level: LogLevel.error);
       }
       rethrow;
     }
@@ -2906,10 +2575,7 @@ class AiService {
 
   String _stripMarkdownCodeBlock(String content) {
     final trimmed = content.trim();
-    final codeBlockRegex = RegExp(
-      r'^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$',
-      multiLine: false,
-    );
+    final codeBlockRegex = RegExp(r'^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$', multiLine: false);
     final match = codeBlockRegex.firstMatch(trimmed);
     if (match != null) {
       return match.group(1)!.trim();
@@ -2947,18 +2613,12 @@ class AiService {
           final mime = _extractMimeTypeFromDataUrl(url);
           newMap[kStr] = {'url': 'data:$mime;<BASE64_IMAGE_DATA>'};
         } else if (kStr == 'input_image' && value is Map) {
-          newMap[kStr] = {
-            'type': value['type'] ?? 'base64',
-            'data': '<IMAGE_BASE64_DATA>',
-          };
+          newMap[kStr] = {'type': value['type'] ?? 'base64', 'data': '<IMAGE_BASE64_DATA>'};
         } else if (kStr == 'inline_data' &&
             value is Map &&
             value['data'] is String &&
             _isLikelyBase64Image(value['data'])) {
-          newMap[kStr] = {
-            'mime_type': value['mime_type'] ?? 'image/...',
-            'data': '<INLINE_IMAGE_DATA>',
-          };
+          newMap[kStr] = {'mime_type': value['mime_type'] ?? 'image/...', 'data': '<INLINE_IMAGE_DATA>'};
         } else {
           newMap[kStr] = _sanitizeMapOrList(value);
         }
@@ -2977,14 +2637,10 @@ class AiService {
     final trimmed = str.trim();
     if (trimmed.startsWith('data:image/')) return true;
     if (trimmed.startsWith('/') && trimmed.length > 1000) return true;
-    if (trimmed.length > 2000 &&
-        RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed)) {
+    if (trimmed.length > 2000 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(trimmed)) {
       return true;
     }
-    if (trimmed.length > 5000 &&
-        !trimmed.contains('\n') &&
-        !trimmed.contains('\r') &&
-        !trimmed.contains('\t')) {
+    if (trimmed.length > 5000 && !trimmed.contains('\n') && !trimmed.contains('\r') && !trimmed.contains('\t')) {
       return true;
     }
     return false;
@@ -3020,10 +2676,7 @@ class AiService {
   }
 
   /// 将小米运动健康日汇总 + 单次运动记录拼接为 AI 可读文本
-  String _buildHealthDataText(
-    HealthDailyMetrics? m,
-    List<HealthSportRecord> sports,
-  ) {
+  String _buildHealthDataText(HealthDailyMetrics? m, List<HealthSportRecord> sports) {
     if (m == null) {
       return '当日暂无小米运动健康数据';
     }
@@ -3041,9 +2694,7 @@ class AiService {
     if (m.sleepDurationMinutes > 0) {
       final sleepH = m.sleepDurationMinutes ~/ 60;
       final sleepM = m.sleepDurationMinutes % 60;
-      final sleepScoreStr = m.sleepScore != null
-          ? ' (得分: ${m.sleepScore})'
-          : '';
+      final sleepScoreStr = m.sleepScore != null ? ' (得分: ${m.sleepScore})' : '';
       // 时长为当天各段之和（含午睡），入睡/醒来则是主睡眠段，两者口径需分别标注以免 AI 误判
       lines.add('- 全天睡眠时长: $sleepH小时$sleepM分$sleepScoreStr');
       lines.add(
@@ -3165,10 +2816,7 @@ class AiService {
             {'text': systemPrompt},
           ],
         },
-        'generationConfig': _geminiGenerationConfig(
-          _config!,
-          responseMimeType: 'application/json',
-        ),
+        'generationConfig': _geminiGenerationConfig(_config!, responseMimeType: 'application/json'),
       };
     } else {
       final isOmni = _config!.modelName.toLowerCase().contains('omni');
@@ -3211,18 +2859,11 @@ class AiService {
       'AI评分分析请求 [${_config!.provider}] [${_config!.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
-    final response = await _postWithKeyRotation<dynamic>(
-      endpoint,
-      data: requestBody,
-      scene: 'AI评分分析',
-    );
+    final response = await _postWithKeyRotation<dynamic>(endpoint, data: requestBody, scene: 'AI评分分析');
     final responseContent = _extractTextFromResponse(response.data);
-    LoggerService.instance.logAI(
-      'AI评分分析响应:\n${_formatJsonForLogging(response.data)}',
-    );
+    LoggerService.instance.logAI('AI评分分析响应:\n${_formatJsonForLogging(response.data)}');
 
-    final jsonResult =
-        _parseJsonFromAiContent(responseContent) as Map<String, dynamic>;
+    final jsonResult = _parseJsonFromAiContent(responseContent) as Map<String, dynamic>;
 
     final canScore = jsonResult['canScore'] ?? true;
     if (!canScore) {
@@ -3230,9 +2871,7 @@ class AiService {
     }
 
     // 钳位：模型偶尔会返回超界分值，未钳位的分会把统计页的分数环画爆
-    final totalScore = clampScore(
-      (jsonResult['totalScore'] as num?)?.toInt() ?? 60,
-    );
+    final totalScore = clampScore((jsonResult['totalScore'] as num?)?.toInt() ?? 60);
     final rawDimensionScores = jsonResult['dimensionScores'] as Map? ?? {};
     final dimensionScores = rawDimensionScores.map(
       (k, v) => MapEntry(k.toString(), clampScore((v as num?)?.toInt() ?? 60)),
@@ -3251,10 +2890,7 @@ class AiService {
     );
   }
 
-  Future<bool> checkImageRecognition(
-    AiConfig config,
-    String imageBase64,
-  ) async {
+  Future<bool> checkImageRecognition(AiConfig config, String imageBase64) async {
     updateConfig(config, temperature: 0.1, maxTokens: 50);
 
     dynamic requestBody;
@@ -3273,11 +2909,7 @@ class AiService {
             ],
           },
         ],
-        'generationConfig': _geminiGenerationConfig(
-          config,
-          temperature: 0.1,
-          maxTokens: 200,
-        ),
+        'generationConfig': _geminiGenerationConfig(config, temperature: 0.1, maxTokens: 200),
       };
       endpoint = 'v1beta/models/${config.modelName}:generateContent';
     } else {
@@ -3319,11 +2951,7 @@ class AiService {
       '图片识别测试请求 [${config.provider}] [${config.modelName}] $endpoint:\n${_formatJsonForLogging(sanitizedBody)}',
     );
 
-    final response = await _postWithKeyRotation<dynamic>(
-      endpoint,
-      data: requestBody,
-      scene: '图片识别测试',
-    );
+    final response = await _postWithKeyRotation<dynamic>(endpoint, data: requestBody, scene: '图片识别测试');
     final data = response.data;
     LoggerService.instance.logAI('图片识别测试响应:\n${_formatJsonForLogging(data)}');
 

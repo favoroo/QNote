@@ -29,8 +29,7 @@ enum ImageSourceKind { dataUri, url, localPath }
 /// 而不是手搓 HTTP，从而带上密钥池轮换、限流退避等发信策略。
 class DescribeImageTool extends AgentTool {
   /// 未传 question 时的默认提问：既要描述画面，也要把可读文字抠出来
-  static const String defaultQuestion =
-      '请用中文详细描述这张图片的内容；若图中含文字、数字、日期、金额、表格或清单，请逐条原样抄出。';
+  static const String defaultQuestion = '请用中文详细描述这张图片的内容；若图中含文字、数字、日期、金额、表格或清单，请逐条原样抄出。';
 
   /// 识图回复的 token 预算：OCR 长文本 + 场景描述够用，又不至于把上下文灌满
   static const int _maxAnswerTokens = 1200;
@@ -46,9 +45,8 @@ class DescribeImageTool extends AgentTool {
   /// 「空回复算失败」「结果如何包装」这些分支。
   final Future<String> Function(String question, String imageDataUri) _visionRequest;
 
-  DescribeImageTool({
-    Future<String> Function(String question, String imageDataUri)? visionRequester,
-  }) : _visionRequest = visionRequester ?? _requestVisionModel;
+  DescribeImageTool({Future<String> Function(String question, String imageDataUri)? visionRequester})
+    : _visionRequest = visionRequester ?? _requestVisionModel;
 
   @override
   String get name => 'describe_image';
@@ -69,31 +67,19 @@ class DescribeImageTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'path': {
-            'type': 'string',
-            'description':
-                '图片位置：日记/笔记/时间线中记录的图片路径、本地绝对路径、data:image/... 内联图片，或 http(s) 图片链接',
-          },
-          'question': {
-            'type': 'string',
-            'description': '要让识图模型回答的具体问题，例如「图上写了什么」「左半边是什么颜色」；不传则全面描述图片内容',
-          },
-        },
-        'required': ['path'],
-      };
+    'type': 'object',
+    'properties': {
+      'path': {'type': 'string', 'description': '图片位置：日记/笔记/时间线中记录的图片路径、本地绝对路径、data:image/... 内联图片，或 http(s) 图片链接'},
+      'question': {'type': 'string', 'description': '要让识图模型回答的具体问题，例如「图上写了什么」「左半边是什么颜色」；不传则全面描述图片内容'},
+    },
+    'required': ['path'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     final rawPath = (arguments['path'] as String? ?? '').trim();
     if (rawPath.isEmpty) {
-      return ToolResult.error(
-        '图片路径为空，请传入日记/笔记/时间线中真实记录的图片路径，或 data:/http(s) 图片地址',
-      );
+      return ToolResult.error('图片路径为空，请传入日记/笔记/时间线中真实记录的图片路径，或 data:/http(s) 图片地址');
     }
     final question = (arguments['question'] as String? ?? '').trim();
     final effectiveQuestion = question.isEmpty ? defaultQuestion : question;
@@ -163,12 +149,7 @@ class DescribeImageTool extends AgentTool {
 
   /// 把视觉链路的文本回复包装成工具结果；空回复按失败处理（否则模型会把「没有内容」当成图片是空的）
   @visibleForTesting
-  ToolResult buildVisionResult(
-    String rawPath,
-    String question,
-    String answer, {
-    String modelName = '识图模型',
-  }) {
+  ToolResult buildVisionResult(String rawPath, String question, String answer, {String modelName = '识图模型'}) {
     final text = answer.trim();
     if (text.isEmpty) {
       return ToolResult.error(
@@ -231,11 +212,7 @@ class DescribeImageTool extends AgentTool {
       final mime = _mimeFromResponse(response, bytes);
       return 'data:$mime;base64,${base64Encode(bytes)}';
     } on Exception catch (e) {
-      LoggerService.instance.logAI(
-        'describe_image 下载外链图片失败: $url',
-        details: e.toString(),
-        level: LogLevel.warning,
-      );
+      LoggerService.instance.logAI('describe_image 下载外链图片失败: $url', details: e.toString(), level: LogLevel.warning);
       return null;
     }
   }

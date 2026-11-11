@@ -24,8 +24,7 @@ class AgentMemoryCategory {
   }
 
   /// 分类的中文展示名
-  static String displayName(String category) =>
-      category == user ? '用户画像' : '小Q手记';
+  static String displayName(String category) => category == user ? '用户画像' : '小Q手记';
 
   /// 分类容量上限（字符数，含条目前的 "- " 前缀）
   static int maxChars(String category) => category == user ? 1500 : 2400;
@@ -37,11 +36,8 @@ class AgentMemoryDocument {
   final String content; // 文档正文，约定每行一条记忆（以 "- " 开头）
   final DateTime updatedAt;
 
-  AgentMemoryDocument({
-    required this.category,
-    this.content = '',
-    DateTime? updatedAt,
-  }) : updatedAt = updatedAt ?? DateTime.now();
+  AgentMemoryDocument({required this.category, this.content = '', DateTime? updatedAt})
+    : updatedAt = updatedAt ?? DateTime.now();
 
   /// 容量占用百分比（0~100，向上取整）
   int get usagePercent {
@@ -59,11 +55,7 @@ class AgentMemoryDocument {
       .toList();
 
   Map<String, dynamic> toMap() {
-    return {
-      'category': category,
-      'content': content,
-      'updated_at': updatedAt.toIso8601String(),
-    };
+    return {'category': category, 'content': content, 'updated_at': updatedAt.toIso8601String()};
   }
 
   factory AgentMemoryDocument.fromMap(Map<String, dynamic> map) {
@@ -81,11 +73,7 @@ class AgentMemoryDocument {
 
   String toJson() => jsonEncode(toMap());
 
-  AgentMemoryDocument copyWith({
-    String? category,
-    String? content,
-    DateTime? updatedAt,
-  }) {
+  AgentMemoryDocument copyWith({String? category, String? content, DateTime? updatedAt}) {
     return AgentMemoryDocument(
       category: category ?? this.category,
       content: content ?? this.content,

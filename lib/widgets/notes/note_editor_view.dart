@@ -38,18 +38,12 @@ class _TextSegment extends _Segment {
   final MarkdownTextEditingController controller;
   final FocusNode focusNode;
   bool listenersAttached = false;
+
   /// 等宽源码模式：不解析 Markdown 行内语法（html/svg/json/code 笔记使用）
   final bool plainCode;
-  _TextSegment({
-    required BuildContext context,
-    String text = '',
-    this.plainCode = false,
-  })  : focusNode = FocusNode(),
-        controller = MarkdownTextEditingController(
-          context: context,
-          text: text,
-          plainCode: plainCode,
-        ) {
+  _TextSegment({required BuildContext context, String text = '', this.plainCode = false})
+    : focusNode = FocusNode(),
+      controller = MarkdownTextEditingController(context: context, text: text, plainCode: plainCode) {
     controller.focusNode = focusNode;
   }
 
@@ -90,7 +84,6 @@ class _EditorHistoryState {
   });
 }
 
-
 // ---------------------------------------------------------------------------
 // Widget
 // ---------------------------------------------------------------------------
@@ -129,16 +122,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   bool _previewMode = false;
 
   /// 按标题后缀实时识别的文件类型（标题改名时跟随变化）
-  NoteFileType get _fileType =>
-      NoteFileTypeHelper.fromTitle(_titleController.text);
+  NoteFileType get _fileType => NoteFileTypeHelper.fromTitle(_titleController.text);
 
   /// 是否按源码类内容处理：等宽字体、不做 Markdown 行内渲染与 URL 自动拆分
   bool get _isCodeLikeFile => NoteFileTypeHelper.isCodeLike(_fileType);
 
   /// 当前是否处于渲染预览状态（仅 html/svg 生效，json/code 始终为源码模式）
-  bool get _isPreviewActive =>
-      _previewMode &&
-      (_fileType == NoteFileType.html || _fileType == NoteFileType.svg);
+  bool get _isPreviewActive => _previewMode && (_fileType == NoteFileType.html || _fileType == NoteFileType.svg);
 
   // Track which text segment is currently focused
   int _focusedSegmentIndex = 0;
@@ -188,8 +178,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
     // HTML/SVG 笔记默认进入渲染预览模式，源码可通过 AppBar 一键切换
     final initialType = NoteFileTypeHelper.fromTitle(widget.note.title);
-    _previewMode =
-        initialType == NoteFileType.html || initialType == NoteFileType.svg;
+    _previewMode = initialType == NoteFileType.html || initialType == NoteFileType.svg;
 
     _titleController.addListener(_triggerAutoSave);
 
@@ -209,8 +198,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     QTargetBridge.instance.register(
       _qContext.signature,
       QTargetHooks(
-        fingerprint: () =>
-            '${_titleController.text}\u0000${_serializeToMarkdown()}',
+        fingerprint: () => '${_titleController.text}\u0000${_serializeToMarkdown()}',
         reload: _reloadFromRepository,
         onTaskStart: () => _qSuppressAutoSave = true,
         onTaskEnd: () => _qSuppressAutoSave = false,
@@ -239,10 +227,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   void _parseContentIntoSegments(String content) {
     _segments
       ..clear()
-      ..addAll(
-        parseNoteSegments(content, plainCode: _isCodeLikeFile)
-            .map(_createSegment),
-      );
+      ..addAll(parseNoteSegments(content, plainCode: _isCodeLikeFile).map(_createSegment));
     _attachListeners();
   }
 
@@ -250,11 +235,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   _Segment _createSegment(NoteSegmentData data) {
     switch (data.type) {
       case NoteSegmentType.text:
-        return _TextSegment(
-          context: context,
-          text: data.text,
-          plainCode: _isCodeLikeFile,
-        );
+        return _TextSegment(context: context, text: data.text, plainCode: _isCodeLikeFile);
       case NoteSegmentType.image:
         return _ImageSegment(data.path);
       case NoteSegmentType.link:
@@ -284,7 +265,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         seg.controller.addListener(_triggerAutoSave);
         seg.controller.addListener(() => _handleTextChanges(seg));
         seg.controller.addListener(() => _onTextSegmentChanged(seg));
-        
+
         seg.focusNode.addListener(() {
           if (seg.focusNode.hasFocus) {
             final currentIndex = _segments.indexOf(seg);
@@ -388,8 +369,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (focusTargetIdx != -1) {
       _focusedSegmentIndex = focusTargetIdx;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (focusTargetIdx < _segments.length &&
-            _segments[focusTargetIdx] is _TextSegment) {
+        if (focusTargetIdx < _segments.length && _segments[focusTargetIdx] is _TextSegment) {
           (_segments[focusTargetIdx] as _TextSegment).focusNode.requestFocus();
         }
         _saveHistoryState();
@@ -416,11 +396,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       current.dispose();
       prev.dispose();
 
-      final merged = _TextSegment(
-        context: context,
-        text: mergedText,
-        plainCode: _isCodeLikeFile,
-      );
+      final merged = _TextSegment(context: context, text: mergedText, plainCode: _isCodeLikeFile);
       merged.listenersAttached = false;
 
       setState(() {
@@ -446,16 +422,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   List<String> _extractImages() => extractImagePaths(_segmentDataList());
 
   /// 把当前分段压成纯数据列表。
-  List<NoteSegmentData> _segmentDataList() =>
-      _segments.map(_segmentToData).toList();
+  List<NoteSegmentData> _segmentDataList() => _segments.map(_segmentToData).toList();
 
   /// 标题入库口径：空标题统一存成「无标题」，比较与写入必须走同一个函数
   String _normalizeTitle(String raw) => normalizeNoteTitle(raw);
 
   /// 是否有尚未落库的改动（AppBar 保存状态与退出拦截共用）
   bool get _isDirty =>
-      _normalizeTitle(_titleController.text) != _lastSavedTitle ||
-      _serializeToMarkdown() != _lastSavedContent;
+      _normalizeTitle(_titleController.text) != _lastSavedTitle || _serializeToMarkdown() != _lastSavedContent;
 
   /// AppBar 副标题的保存状态文案
   String get _saveStatusLabel => _isSaving ? '保存中…' : (_isDirty ? '未保存' : '已保存');
@@ -654,9 +628,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   void dispose() {
     // 注销悬浮小Q上下文与编辑器联动钩子
     QTargetBridge.instance.unregister(_qContext.signature);
-    _qContainer
-        ?.read(floatingQProvider.notifier)
-        .popOverlayContext(_qContext);
+    _qContainer?.read(floatingQProvider.notifier).popOverlayContext(_qContext);
     _hideHeadingMenu();
     _autoSaveTimer?.cancel();
     _historyTimer?.cancel();
@@ -874,7 +846,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     // Fallback: use last text segment
     if (targetIndex < 0 || targetIndex >= _segments.length || _segments[targetIndex] is! _TextSegment) {
       for (int i = _segments.length - 1; i >= 0; i--) {
-        if (_segments[i] is _TextSegment) { targetIndex = i; break; }
+        if (_segments[i] is _TextSegment) {
+          targetIndex = i;
+          break;
+        }
       }
     }
     if (targetIndex < 0) return;
@@ -931,7 +906,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     setState(() {
       // 检查图片下方的文本段是否为 AI 提取的引用块（以 > 图： 开头），如果是则一并删除
       final nextIdx = segmentIndex + 1;
-      final hasNextExtract = nextIdx < _segments.length &&
+      final hasNextExtract =
+          nextIdx < _segments.length &&
           _segments[nextIdx] is _TextSegment &&
           (_segments[nextIdx] as _TextSegment).controller.text.startsWith('> 图：');
 
@@ -981,11 +957,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         (_segments[nextIdx] as _TextSegment).dispose();
       }
 
-      final merged = _TextSegment(
-        context: context,
-        text: mergedText,
-        plainCode: _isCodeLikeFile,
-      );
+      final merged = _TextSegment(context: context, text: mergedText, plainCode: _isCodeLikeFile);
 
       final start = (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) ? prevIdx : segmentIndex;
       final end = (afterExtractIdx < _segments.length && _segments[afterExtractIdx] is _TextSegment)
@@ -1001,7 +973,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   void _showInsertLinkDialog() {
     final urlController = TextEditingController();
     final titleController = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (context) {
@@ -1013,28 +985,19 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             children: [
               TextField(
                 controller: urlController,
-                decoration: const InputDecoration(
-                  labelText: '链接地址',
-                  hintText: 'https://example.com',
-                ),
+                decoration: const InputDecoration(labelText: '链接地址', hintText: 'https://example.com'),
                 keyboardType: TextInputType.url,
                 autofocus: true,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: '链接标题（可选）',
-                  hintText: '显示标题',
-                ),
+                decoration: const InputDecoration(labelText: '链接标题（可选）', hintText: '显示标题'),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 final url = urlController.text.trim();
@@ -1064,7 +1027,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
     final urlController = TextEditingController(text: seg.url);
     final titleController = TextEditingController(text: seg.title ?? '');
-    
+
     showDialog(
       context: context,
       builder: (context) {
@@ -1076,28 +1039,19 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             children: [
               TextField(
                 controller: urlController,
-                decoration: const InputDecoration(
-                  labelText: '链接地址',
-                  hintText: 'https://example.com',
-                ),
+                decoration: const InputDecoration(labelText: '链接地址', hintText: 'https://example.com'),
                 keyboardType: TextInputType.url,
                 autofocus: true,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: '链接标题（可选）',
-                  hintText: '显示标题',
-                ),
+                decoration: const InputDecoration(labelText: '链接标题（可选）', hintText: '显示标题'),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 final url = urlController.text.trim();
@@ -1108,20 +1062,17 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                     formattedUrl = 'https://$url';
                   }
                   final title = titleController.text.trim();
-                  
+
                   _historyTimer?.cancel();
                   _saveHistoryState();
 
                   setState(() {
-                    _segments[index] = _LinkSegment(
-                      url: formattedUrl,
-                      title: title.isEmpty ? null : title,
-                    );
+                    _segments[index] = _LinkSegment(url: formattedUrl, title: title.isEmpty ? null : title);
                     if (formattedUrl != seg.url) {
                       _dismissedUrls.remove(formattedUrl);
                     }
                   });
-                  
+
                   if (formattedUrl != seg.url) {
                     _fetchMetadataForUrl(formattedUrl);
                   }
@@ -1150,7 +1101,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (targetIndex < 0) targetIndex = _focusedSegmentIndex;
     if (targetIndex < 0 || targetIndex >= _segments.length || _segments[targetIndex] is! _TextSegment) {
       for (int i = _segments.length - 1; i >= 0; i--) {
-        if (_segments[i] is _TextSegment) { targetIndex = i; break; }
+        if (_segments[i] is _TextSegment) {
+          targetIndex = i;
+          break;
+        }
       }
     }
     if (targetIndex < 0) return;
@@ -1192,19 +1146,16 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   void _previewImage(String path) {
-    final images = _segments
-        .whereType<_ImageSegment>()
-        .map((seg) => seg.path)
-        .toList();
+    final images = _segments.whereType<_ImageSegment>().map((seg) => seg.path).toList();
     final initialIndex = images.indexOf(path);
     final fallbackIndex = initialIndex >= 0 ? initialIndex : 0;
 
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => FullScreenImageGallery(
-        images: images.isNotEmpty ? images : [path],
-        initialIndex: fallbackIndex,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            FullScreenImageGallery(images: images.isNotEmpty ? images : [path], initialIndex: fallbackIndex),
       ),
-    ));
+    );
   }
 
   void _copyMarkdown() {
@@ -1241,8 +1192,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     for (final seg in _segments) {
       if (seg is _TextSegment && seg.focusNode.hasFocus) return seg;
     }
-    if (_focusedSegmentIndex < _segments.length &&
-        _segments[_focusedSegmentIndex] is _TextSegment) {
+    if (_focusedSegmentIndex < _segments.length && _segments[_focusedSegmentIndex] is _TextSegment) {
       return _segments[_focusedSegmentIndex] as _TextSegment;
     }
     return null;
@@ -1260,9 +1210,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (sel.baseOffset < 0) return;
 
     int start = sel.baseOffset;
-    while (start > 0 && text[start - 1] != '\n') { start--; }
+    while (start > 0 && text[start - 1] != '\n') {
+      start--;
+    }
     int end = sel.baseOffset;
-    while (end < text.length && text[end] != '\n') { end++; }
+    while (end < text.length && text[end] != '\n') {
+      end++;
+    }
 
     final lineText = text.substring(start, end);
     final newLine = lineText.startsWith(prefix)
@@ -1360,34 +1314,24 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           elevation: 0,
           scrolledUnderElevation: 0,
           // 保存状态常驻可见：原来 _isSaving 只当重入锁用，用户完全看不出内容存没存上
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(20),
-            child: _buildSaveStatusLine(theme),
-          ),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _handleBack,
-          ),
-            title: TextField(
-              controller: _titleController,
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                hintText: '无标题',
-                filled: false,
-              ),
+          bottom: PreferredSize(preferredSize: const Size.fromHeight(20), child: _buildSaveStatusLine(theme)),
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack),
+          title: TextField(
+            controller: _titleController,
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              hintText: '无标题',
+              filled: false,
             ),
+          ),
           actions: [
             // JSON 笔记：一键格式化缩进
             if (_fileType == NoteFileType.json)
-              IconButton(
-                icon: const Icon(Icons.data_object),
-                onPressed: _formatJson,
-                tooltip: '格式化 JSON',
-              ),
+              IconButton(icon: const Icon(Icons.data_object), onPressed: _formatJson, tooltip: '格式化 JSON'),
             // HTML/SVG 笔记：渲染预览与源码编辑切换
             if (_fileType == NoteFileType.html || _fileType == NoteFileType.svg)
               IconButton(
@@ -1404,11 +1348,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         ),
         body: Column(
           children: [
-            Expanded(
-              child: _isPreviewActive
-                  ? _buildPreviewBody(theme)
-                  : _buildEditorBody(theme),
-            ),
+            Expanded(child: _isPreviewActive ? _buildPreviewBody(theme) : _buildEditorBody(theme)),
             // 渲染预览模式下隐藏编辑工具栏
             if (!_isPreviewActive) _buildToolbar(theme),
           ],
@@ -1420,35 +1360,32 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   /// 源码编辑主体（原有分段编辑视图）
   Widget _buildEditorBody(ThemeData theme) {
     return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  if (_segments.isNotEmpty) {
-                    for (int i = _segments.length - 1; i >= 0; i--) {
-                      final seg = _segments[i];
-                      if (seg is _TextSegment) {
-                        seg.focusNode.requestFocus();
-                        final text = seg.controller.text;
-                        if (text.isNotEmpty && !text.endsWith('\n')) {
-                          seg.controller.value = TextEditingValue(
-                            text: '$text\n',
-                            selection: TextSelection.collapsed(offset: text.length + 1),
-                          );
-                        } else {
-                          seg.controller.selection = TextSelection.collapsed(offset: text.length);
-                        }
-                        break;
-                      }
-                    }
-                  }
-                },
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: _buildSegmentWidgets(theme),
-                  ),
-                ),
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (_segments.isNotEmpty) {
+          for (int i = _segments.length - 1; i >= 0; i--) {
+            final seg = _segments[i];
+            if (seg is _TextSegment) {
+              seg.focusNode.requestFocus();
+              final text = seg.controller.text;
+              if (text.isNotEmpty && !text.endsWith('\n')) {
+                seg.controller.value = TextEditingValue(
+                  text: '$text\n',
+                  selection: TextSelection.collapsed(offset: text.length + 1),
+                );
+              } else {
+                seg.controller.selection = TextSelection.collapsed(offset: text.length);
+              }
+              break;
+            }
+          }
+        }
+      },
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _buildSegmentWidgets(theme)),
+      ),
     );
   }
 
@@ -1459,9 +1396,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       return Center(
         child: Text(
           '暂无内容，点右上角查看源码',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
       );
     }
@@ -1479,10 +1414,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         ),
       );
     }
-    return HtmlPreviewView(
-      htmlContent: source,
-      noteId: widget.note.id.toString(),
-    );
+    return HtmlPreviewView(htmlContent: source, noteId: widget.note.id.toString());
   }
 
   List<Widget> _buildSegmentWidgets(ThemeData theme) {
@@ -1527,10 +1459,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         // 悬停高亮：primary 描边包裹目标段，提示松手后图片将插入到该段之前
         return Container(
           decoration: BoxDecoration(
-            border: Border.all(
-              color: theme.colorScheme.primary.withValues(alpha: 0.6),
-              width: 2,
-            ),
+            border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.6), width: 2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: child,
@@ -1586,10 +1515,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           anchors: editableTextState.contextMenuAnchors,
           buttonItems: [
             ...QTextSelectionToolbar.defaultButtonItems(editableTextState),
-            ContextMenuButtonItem(
-              label: '给小Q',
-              onPressed: _sendSelectionToQ,
-            ),
+            ContextMenuButtonItem(label: '给小Q', onPressed: _sendSelectionToQ),
           ],
         );
       },
@@ -1631,8 +1557,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
         // 摘录光标前后的局部上下文，便于小Q准确定位并续写
         final snippet = buildCursorContextSnippet(text, offset);
-        final contextSnippet =
-            snippet.isEmpty ? '（第 $line 行空行光标处）' : snippet;
+        final contextSnippet = snippet.isEmpty ? '（第 $line 行空行光标处）' : snippet;
 
         return QTextQuote(
           source: QQuoteSource.note,
@@ -1717,7 +1642,12 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             ),
           ),
           if (_fetchedMetadata.containsKey(url)) ...[
-            _buildLinkPreviewCard(_fetchedMetadata[url]!, context, () => _showEditLinkDialog(index), () => _removeLinkSegment(index)),
+            _buildLinkPreviewCard(
+              _fetchedMetadata[url]!,
+              context,
+              () => _showEditLinkDialog(index),
+              () => _removeLinkSegment(index),
+            ),
           ] else if (_loadingUrls.contains(url)) ...[
             _buildLinkPreviewPlaceholder(url, theme, () => _removeLinkSegment(index)),
           ] else ...[
@@ -1736,10 +1666,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1800,16 +1727,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               ),
             ),
             const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.edit, size: 16),
-              onPressed: onEdit,
-              tooltip: '编辑',
-            ),
-            IconButton(
-              icon: const Icon(Icons.close, size: 16),
-              onPressed: onDelete,
-              tooltip: '删除',
-            ),
+            IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: onEdit, tooltip: '编辑'),
+            IconButton(icon: const Icon(Icons.close, size: 16), onPressed: onDelete, tooltip: '删除'),
           ],
         ),
       ),
@@ -1818,7 +1737,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   void _removeLinkSegment(int index) {
     if (index < 0 || index >= _segments.length || _segments[index] is! _LinkSegment) return;
-    
+
     _historyTimer?.cancel();
     _saveHistoryState();
 
@@ -1838,11 +1757,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         (_segments[nextIdx] as _TextSegment).dispose();
       }
 
-      final merged = _TextSegment(
-        context: context,
-        text: mergedText,
-        plainCode: _isCodeLikeFile,
-      );
+      final merged = _TextSegment(context: context, text: mergedText, plainCode: _isCodeLikeFile);
 
       final start = (prevIdx >= 0 && _segments[prevIdx] is _TextSegment) ? prevIdx : index;
       final end = (nextIdx < _segments.length && _segments[nextIdx] is _TextSegment) ? nextIdx : index;
@@ -1853,8 +1768,6 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _triggerAutoSave();
   }
 
-
-
   Future<void> _fetchMetadataForUrl(String url) async {
     if (_loadingUrls.contains(url)) return;
     _loadingUrls.add(url);
@@ -1863,7 +1776,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         setState(() {});
       }
     });
-    
+
     final metadata = await LinkPreviewHelper.getMetadata(url);
     _loadingUrls.remove(url);
     if (metadata != null) {
@@ -1883,18 +1796,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
-          width: 1,
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15), width: 1),
       ),
       child: Row(
         children: [
-          const SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -1906,11 +1812,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 16),
-            onPressed: onDelete,
-            tooltip: '删除',
-          ),
+          IconButton(icon: const Icon(Icons.close, size: 16), onPressed: onDelete, tooltip: '删除'),
         ],
       ),
     );
@@ -1923,10 +1825,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -2006,16 +1905,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               ),
             ),
             const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.edit, size: 16),
-              onPressed: onEdit,
-              tooltip: '编辑',
-            ),
-            IconButton(
-              icon: const Icon(Icons.close, size: 16),
-              onPressed: onDismiss,
-              tooltip: '删除',
-            ),
+            IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: onEdit, tooltip: '编辑'),
+            IconButton(icon: const Icon(Icons.close, size: 16), onPressed: onDismiss, tooltip: '删除'),
           ],
         ),
       ),
@@ -2028,21 +1919,11 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       constraints: const BoxConstraints(maxHeight: 280),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: UnifiedImage(
-          imagePath: seg.path,
-          width: double.infinity,
-          fit: BoxFit.cover,
-        ),
+        child: UnifiedImage(imagePath: seg.path, width: double.infinity, fit: BoxFit.cover),
       ),
     );
     return Padding(
@@ -2063,20 +1944,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                   borderRadius: BorderRadius.circular(16),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: UnifiedImage(
-                      imagePath: seg.path,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
+                    child: UnifiedImage(imagePath: seg.path, width: double.infinity, fit: BoxFit.cover),
                   ),
                 ),
               ),
             ),
             childWhenDragging: Opacity(opacity: 0.35, child: imageCard),
-            child: GestureDetector(
-              onTap: () => _previewImage(seg.path),
-              child: imageCard,
-            ),
+            child: GestureDetector(onTap: () => _previewImage(seg.path), child: imageCard),
           ),
           Positioned(
             top: 8,
@@ -2087,13 +1961,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               child: Container(
                 width: 30,
                 height: 30,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(Icons.close, size: 16, color: Colors.white),
-                ),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), shape: BoxShape.circle),
+                child: const Center(child: Icon(Icons.close, size: 16, color: Colors.white)),
               ),
             ),
           ),
@@ -2106,7 +1975,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   void _showHeadingMenu(BuildContext context) {
     if (_headingMenuOverlay != null) return;
-    
+
     final RenderBox button = context.findRenderObject() as RenderBox;
     final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final Offset position = button.localToGlobal(Offset.zero, ancestor: overlay);
@@ -2118,11 +1987,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _hideHeadingMenu,
-              child: Container(
-                width: double.infinity,
-                height: double.infinity,
-                color: Colors.transparent,
-              ),
+              child: Container(width: double.infinity, height: double.infinity, color: Colors.transparent),
             ),
             Positioned(
               left: position.dx - 20,
@@ -2167,10 +2032,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       child: Container(
         width: 140,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Text(
-          text,
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
       ),
     );
   }
@@ -2179,12 +2041,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        border: Border(
-          top: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            width: 1,
-          ),
-        ),
+        border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), width: 1)),
       ),
       child: SafeArea(
         top: false,
@@ -2196,10 +2053,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                 height: 38,
                 decoration: BoxDecoration(
                   border: Border(
-                    bottom: BorderSide(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                      width: 1,
-                    ),
+                    bottom: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), width: 1),
                   ),
                 ),
                 child: ListView(
@@ -2221,24 +2075,20 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _ToolbarButton(
-                    icon: Icons.undo,
-                    onPressed: _undoList.length >= 2 ? _undo : null,
-                  ),
-                  _ToolbarButton(
-                    icon: Icons.redo,
-                    onPressed: _redoList.isNotEmpty ? _redo : null,
-                  ),
+                  _ToolbarButton(icon: Icons.undo, onPressed: _undoList.length >= 2 ? _undo : null),
+                  _ToolbarButton(icon: Icons.redo, onPressed: _redoList.isNotEmpty ? _redo : null),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: VerticalDivider(
-                      width: 1, indent: 8, endIndent: 8,
+                      width: 1,
+                      indent: 8,
+                      endIndent: 8,
                       color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                     ),
                   ),
                   Builder(
                     builder: (context) => _ToolbarButton(
-                      icon: Icons.title, 
+                      icon: Icons.title,
                       onPressed: () => _toggleBlockPrefix('# '),
                       onLongPress: () => _showHeadingMenu(context),
                     ),
@@ -2250,15 +2100,14 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: VerticalDivider(
-                      width: 1, indent: 8, endIndent: 8,
+                      width: 1,
+                      indent: 8,
+                      endIndent: 8,
                       color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                     ),
                   ),
                   _ToolbarButton(
-                    iconWidget: const QAvatar(
-                      size: 20,
-                      withBackground: true,
-                    ),
+                    iconWidget: const QAvatar(size: 20, withBackground: true),
                     tooltip: '给小Q',
                     onPressed: _sendSelectionToQ,
                   ),
@@ -2270,10 +2119,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                       });
                     },
                   ),
-                  _ToolbarButton(
-                    icon: Icons.keyboard_hide,
-                    onPressed: () => _focusedTextSeg?.focusNode.unfocus(),
-                  ),
+                  _ToolbarButton(icon: Icons.keyboard_hide, onPressed: () => _focusedTextSeg?.focusNode.unfocus()),
                 ],
               ),
             ),
@@ -2294,13 +2140,8 @@ class _ToolbarButton extends StatelessWidget {
   final VoidCallback? onLongPress;
   final String? tooltip;
 
-  const _ToolbarButton({
-    this.icon,
-    this.iconWidget,
-    this.onPressed,
-    this.onLongPress,
-    this.tooltip,
-  }) : assert(icon != null || iconWidget != null, 'Either icon or iconWidget must be provided');
+  const _ToolbarButton({this.icon, this.iconWidget, this.onPressed, this.onLongPress, this.tooltip})
+    : assert(icon != null || iconWidget != null, 'Either icon or iconWidget must be provided');
 
   @override
   Widget build(BuildContext context) {
@@ -2321,22 +2162,14 @@ class _ToolbarButton extends StatelessWidget {
           child: Container(
             constraints: const BoxConstraints(minWidth: 28, minHeight: 32),
             alignment: Alignment.center,
-            child: iconWidget ??
-                Icon(
-                  icon,
-                  size: 18,
-                  color: iconColor,
-                ),
+            child: iconWidget ?? Icon(icon, size: 18, color: iconColor),
           ),
         ),
       ),
     );
 
     if (tooltip != null) {
-      child = Tooltip(
-        message: tooltip,
-        child: child,
-      );
+      child = Tooltip(message: tooltip, child: child);
     }
 
     return child;
@@ -2349,15 +2182,11 @@ class _ToolbarButton extends StatelessWidget {
 class MarkdownTextEditingController extends TextEditingController {
   final BuildContext context;
   FocusNode? focusNode;
+
   /// 为 true 时跳过 Markdown 行内渲染，按纯文本输出（代码类笔记使用）
   final bool plainCode;
 
-  MarkdownTextEditingController({
-    required this.context,
-    this.focusNode,
-    super.text,
-    this.plainCode = false,
-  });
+  MarkdownTextEditingController({required this.context, this.focusNode, super.text, this.plainCode = false});
 
   @override
   TextSpan buildTextSpan({required BuildContext context, TextStyle? style, required bool withComposing}) {
@@ -2476,18 +2305,11 @@ class MarkdownTextEditingController extends TextEditingController {
         children: [
           TextSpan(
             text: '🖼️ ![图片]',
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
+            style: baseStyle.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
           ),
           TextSpan(
             text: '($path)',
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.outline,
-              fontFamily: 'monospace',
-              fontSize: 14,
-            ),
+            style: baseStyle.copyWith(color: theme.colorScheme.outline, fontFamily: 'monospace', fontSize: 14),
           ),
         ],
       );
@@ -2516,11 +2338,13 @@ class MarkdownTextEditingController extends TextEditingController {
       return TextSpan(
         children: [
           TextSpan(
-              text: '# ',
-              style: baseStyle.copyWith(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
+            text: '# ',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary.withValues(alpha: 0.6),
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           _parseInlineStylesActive(cleanText, headerStyle, theme),
         ],
       );
@@ -2535,11 +2359,13 @@ class MarkdownTextEditingController extends TextEditingController {
       return TextSpan(
         children: [
           TextSpan(
-              text: '## ',
-              style: baseStyle.copyWith(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold)),
+            text: '## ',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary.withValues(alpha: 0.6),
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           _parseInlineStylesActive(cleanText, headerStyle, theme),
         ],
       );
@@ -2554,11 +2380,13 @@ class MarkdownTextEditingController extends TextEditingController {
       return TextSpan(
         children: [
           TextSpan(
-              text: '### ',
-              style: baseStyle.copyWith(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold)),
+            text: '### ',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary.withValues(alpha: 0.6),
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           _parseInlineStylesActive(cleanText, headerStyle, theme),
         ],
       );
@@ -2574,10 +2402,12 @@ class MarkdownTextEditingController extends TextEditingController {
       return TextSpan(
         children: [
           TextSpan(
-              text: '> ',
-              style: baseStyle.copyWith(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                  fontWeight: FontWeight.bold)),
+            text: '> ',
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary.withValues(alpha: 0.6),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           _parseInlineStylesActive(cleanText, quoteStyle, theme),
         ],
       );
@@ -2590,10 +2420,12 @@ class MarkdownTextEditingController extends TextEditingController {
       return TextSpan(
         children: [
           TextSpan(
-              text: symbol,
-              style: baseStyle.copyWith(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                  fontWeight: FontWeight.bold)),
+            text: symbol,
+            style: baseStyle.copyWith(
+              color: theme.colorScheme.primary.withValues(alpha: 0.6),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           _parseInlineStylesActive(cleanText, baseStyle, theme),
         ],
       );
@@ -2654,28 +2486,29 @@ class MarkdownTextEditingController extends TextEditingController {
           flushBuffer();
           final linkText = match.group(1)!;
           final linkUrl = match.group(2)!;
-          
+
           spans.add(TextSpan(text: '[', style: symbolStyle));
-          spans.add(TextSpan(
-            text: linkText,
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.primary,
-              decoration: TextDecoration.underline,
+          spans.add(
+            TextSpan(
+              text: linkText,
+              style: baseStyle.copyWith(color: theme.colorScheme.primary, decoration: TextDecoration.underline),
             ),
-          ));
+          );
           spans.add(TextSpan(text: ']', style: symbolStyle));
           spans.add(TextSpan(text: '(', style: symbolStyle));
-          spans.add(TextSpan(
-            text: linkUrl,
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.primary.withValues(alpha: 0.7),
-              fontFamily: 'monospace',
-              fontSize: 13,
-              decoration: TextDecoration.underline,
+          spans.add(
+            TextSpan(
+              text: linkUrl,
+              style: baseStyle.copyWith(
+                color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                fontFamily: 'monospace',
+                fontSize: 13,
+                decoration: TextDecoration.underline,
+              ),
             ),
-          ));
+          );
           spans.add(TextSpan(text: ')', style: symbolStyle));
-          
+
           index += match.end;
           continue;
         }
@@ -2695,13 +2528,12 @@ class MarkdownTextEditingController extends TextEditingController {
             url = url.substring(0, url.length - punct.length);
           }
 
-          spans.add(TextSpan(
-            text: url,
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.primary,
-              decoration: TextDecoration.underline,
+          spans.add(
+            TextSpan(
+              text: url,
+              style: baseStyle.copyWith(color: theme.colorScheme.primary, decoration: TextDecoration.underline),
             ),
-          ));
+          );
           if (punct.isNotEmpty) {
             spans.add(TextSpan(text: punct, style: baseStyle));
           }
@@ -2717,10 +2549,12 @@ class MarkdownTextEditingController extends TextEditingController {
           flushBuffer();
           spans.add(TextSpan(text: '**', style: symbolStyle));
           final innerText = text.substring(index + 2, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(fontWeight: FontWeight.bold),
-          ));
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(fontWeight: FontWeight.bold),
+            ),
+          );
           spans.add(TextSpan(text: '**', style: symbolStyle));
           index = end + 2;
           continue;
@@ -2734,10 +2568,12 @@ class MarkdownTextEditingController extends TextEditingController {
           flushBuffer();
           spans.add(TextSpan(text: '*', style: symbolStyle));
           final innerText = text.substring(index + 1, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(fontStyle: FontStyle.italic),
-          ));
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+            ),
+          );
           spans.add(TextSpan(text: '*', style: symbolStyle));
           index = end + 1;
           continue;
@@ -2751,14 +2587,16 @@ class MarkdownTextEditingController extends TextEditingController {
           flushBuffer();
           spans.add(TextSpan(text: '`', style: symbolStyle));
           final innerText = text.substring(index + 1, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(
-              fontFamily: 'monospace',
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              color: theme.colorScheme.primary,
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(
+                fontFamily: 'monospace',
+                backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: theme.colorScheme.primary,
+              ),
             ),
-          ));
+          );
           spans.add(TextSpan(text: '`', style: symbolStyle));
           index = end + 1;
           continue;
@@ -2772,10 +2610,12 @@ class MarkdownTextEditingController extends TextEditingController {
           flushBuffer();
           spans.add(TextSpan(text: '~~', style: symbolStyle));
           final innerText = text.substring(index + 2, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
-          ));
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
+            ),
+          );
           spans.add(TextSpan(text: '~~', style: symbolStyle));
           index = end + 2;
           continue;
@@ -2803,10 +2643,7 @@ class MarkdownTextEditingController extends TextEditingController {
         children: [
           TextSpan(
             text: '🖼️ [图片] ',
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
+            style: baseStyle.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
           ),
           TextSpan(
             text: path.split('/').last,
@@ -2850,7 +2687,10 @@ class MarkdownTextEditingController extends TextEditingController {
       );
       return TextSpan(
         children: [
-          TextSpan(text: '# ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          TextSpan(
+            text: '# ',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ),
           _parseInlineStyles(cleanText, headerStyle, theme),
         ],
       );
@@ -2864,7 +2704,10 @@ class MarkdownTextEditingController extends TextEditingController {
       );
       return TextSpan(
         children: [
-          TextSpan(text: '## ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          TextSpan(
+            text: '## ',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ),
           _parseInlineStyles(cleanText, headerStyle, theme),
         ],
       );
@@ -2878,7 +2721,10 @@ class MarkdownTextEditingController extends TextEditingController {
       );
       return TextSpan(
         children: [
-          TextSpan(text: '### ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          TextSpan(
+            text: '### ',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ),
           _parseInlineStyles(cleanText, headerStyle, theme),
         ],
       );
@@ -2905,7 +2751,10 @@ class MarkdownTextEditingController extends TextEditingController {
               ),
             ),
           ),
-          TextSpan(text: ' ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          TextSpan(
+            text: ' ',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ),
           _parseInlineStyles(cleanText, quoteStyle, theme),
         ],
       );
@@ -2922,13 +2771,13 @@ class MarkdownTextEditingController extends TextEditingController {
               margin: const EdgeInsets.only(right: 8, left: 4),
               width: 5,
               height: 5,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
             ),
           ),
-          TextSpan(text: ' ', style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent)),
+          TextSpan(
+            text: ' ',
+            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+          ),
           _parseInlineStyles(cleanText, baseStyle, theme),
         ],
       );
@@ -2943,10 +2792,7 @@ class MarkdownTextEditingController extends TextEditingController {
         children: [
           TextSpan(
             text: '$number. ',
-            style: baseStyle.copyWith(
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.primary,
-            ),
+            style: baseStyle.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
           ),
           _parseInlineStyles(cleanText, baseStyle, theme),
         ],
@@ -2983,35 +2829,44 @@ class MarkdownTextEditingController extends TextEditingController {
           flushBuffer();
           final linkText = match.group(1)!;
           final linkUrl = match.group(2)!;
-          
-          spans.add(TextSpan(
-            text: '[',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
-          spans.add(TextSpan(
-            text: linkText,
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.primary,
-              decoration: TextDecoration.underline,
+
+          spans.add(
+            TextSpan(
+              text: '[',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
             ),
-          ));
-          spans.add(TextSpan(
-            text: ']',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
-          spans.add(TextSpan(
-            text: '(',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
-          spans.add(TextSpan(
-            text: linkUrl,
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
-          spans.add(TextSpan(
-            text: ')',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
-          
+          );
+          spans.add(
+            TextSpan(
+              text: linkText,
+              style: baseStyle.copyWith(color: theme.colorScheme.primary, decoration: TextDecoration.underline),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: ']',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: '(',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: linkUrl,
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: ')',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
+
           index += match.end;
           continue;
         }
@@ -3031,13 +2886,12 @@ class MarkdownTextEditingController extends TextEditingController {
             url = url.substring(0, url.length - punct.length);
           }
 
-          spans.add(TextSpan(
-            text: url,
-            style: baseStyle.copyWith(
-              color: theme.colorScheme.primary,
-              decoration: TextDecoration.underline,
+          spans.add(
+            TextSpan(
+              text: url,
+              style: baseStyle.copyWith(color: theme.colorScheme.primary, decoration: TextDecoration.underline),
             ),
-          ));
+          );
           if (punct.isNotEmpty) {
             spans.add(TextSpan(text: punct, style: baseStyle));
           }
@@ -3051,19 +2905,25 @@ class MarkdownTextEditingController extends TextEditingController {
         final end = text.indexOf('**', index + 2);
         if (end != -1) {
           flushBuffer();
-          spans.add(TextSpan(
-            text: '**',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
+          spans.add(
+            TextSpan(
+              text: '**',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
           final innerText = text.substring(index + 2, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(fontWeight: FontWeight.bold),
-          ));
-          spans.add(TextSpan(
-            text: '**',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(fontWeight: FontWeight.bold),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: '**',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
           index = end + 2;
           continue;
         }
@@ -3074,19 +2934,25 @@ class MarkdownTextEditingController extends TextEditingController {
         final end = text.indexOf('*', index + 1);
         if (end != -1) {
           flushBuffer();
-          spans.add(TextSpan(
-            text: '*',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
+          spans.add(
+            TextSpan(
+              text: '*',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
           final innerText = text.substring(index + 1, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(fontStyle: FontStyle.italic),
-          ));
-          spans.add(TextSpan(
-            text: '*',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: '*',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
           index = end + 1;
           continue;
         }
@@ -3097,23 +2963,29 @@ class MarkdownTextEditingController extends TextEditingController {
         final end = text.indexOf('`', index + 1);
         if (end != -1) {
           flushBuffer();
-          spans.add(TextSpan(
-            text: '`',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
-          final innerText = text.substring(index + 1, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(
-              fontFamily: 'monospace',
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              color: theme.colorScheme.primary,
+          spans.add(
+            TextSpan(
+              text: '`',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
             ),
-          ));
-          spans.add(TextSpan(
-            text: '`',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
+          );
+          final innerText = text.substring(index + 1, end);
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(
+                fontFamily: 'monospace',
+                backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: '`',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
           index = end + 1;
           continue;
         }
@@ -3124,19 +2996,25 @@ class MarkdownTextEditingController extends TextEditingController {
         final end = text.indexOf('~~', index + 2);
         if (end != -1) {
           flushBuffer();
-          spans.add(TextSpan(
-            text: '~~',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
+          spans.add(
+            TextSpan(
+              text: '~~',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
           final innerText = text.substring(index + 2, end);
-          spans.add(TextSpan(
-            text: innerText,
-            style: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
-          ));
-          spans.add(TextSpan(
-            text: '~~',
-            style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
-          ));
+          spans.add(
+            TextSpan(
+              text: innerText,
+              style: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
+            ),
+          );
+          spans.add(
+            TextSpan(
+              text: '~~',
+              style: baseStyle.copyWith(fontSize: 0, color: Colors.transparent),
+            ),
+          );
           index = end + 2;
           continue;
         }

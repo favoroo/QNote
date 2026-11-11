@@ -197,13 +197,10 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
   void dispose() {
     // 注销悬浮小Q上下文与重载钩子（容器在 didChangeDependencies 已捕获）
     QTargetBridge.instance.unregister(_qContext.signature);
-    _container
-        ?.read(floatingQProvider.notifier)
-        .popOverlayContext(_qContext);
+    _container?.read(floatingQProvider.notifier).popOverlayContext(_qContext);
     _autoSaveTimer?.cancel();
     // PopScope 已保证正常返回前完成保存，这里兜底页面被程序化移除的场景
-    final unsaved = _controller.text != _lastSavedContent &&
-        _controller.text != (_existingNote?.content ?? '');
+    final unsaved = _controller.text != _lastSavedContent && _controller.text != (_existingNote?.content ?? '');
     if (unsaved) {
       JournalService.instance.saveJournal(_date, _controller.text);
       // dispose 中不能修改 Provider，用微任务在容器仍可用时失效缓存
@@ -234,17 +231,12 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _handleBack,
-          ),
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack),
           title: Column(
             children: [
               Text(
                 '${_date.month}月${_date.day}日 · ${_weekdays[_date.weekday - 1]}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               AnimatedSwitcher(
                 duration: AppDurations.fast,
@@ -252,8 +244,8 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
                   _isSaving
                       ? '保存中…'
                       : _hasSavedLatest
-                          ? '已保存'
-                          : '未保存',
+                      ? '已保存'
+                      : '未保存',
                   key: ValueKey('save_${_isSaving}_$_hasSavedLatest'),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: _hasSavedLatest && !_isSaving
@@ -279,9 +271,7 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
             ),
           ],
         ),
-        body: _initialized
-            ? _buildBody(theme)
-            : const Center(child: CircularProgressIndicator()),
+        body: _initialized ? _buildBody(theme) : const Center(child: CircularProgressIndicator()),
       ),
     );
   }
@@ -305,10 +295,7 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
               minLines: 12,
               keyboardType: TextInputType.multiline,
               textCapitalization: TextCapitalization.sentences,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                height: 1.8,
-                letterSpacing: 0.3,
-              ),
+              style: theme.textTheme.bodyLarge?.copyWith(height: 1.8, letterSpacing: 0.3),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -328,10 +315,7 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
                   anchors: editableTextState.contextMenuAnchors,
                   buttonItems: [
                     ...QTextSelectionToolbar.defaultButtonItems(editableTextState),
-                    ContextMenuButtonItem(
-                      label: '给小Q',
-                      onPressed: _sendSelectionToQ,
-                    ),
+                    ContextMenuButtonItem(label: '给小Q', onPressed: _sendSelectionToQ),
                   ],
                 );
               },
@@ -362,9 +346,7 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
           const SizedBox(width: 10),
           Text(
             '${_date.year}年${_date.month}月',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(width: 8),
           if (isToday)
@@ -387,6 +369,5 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
     );
   }
 
-  bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _isSameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 }

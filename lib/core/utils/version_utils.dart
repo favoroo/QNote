@@ -19,8 +19,7 @@ List<int> parseVersion(String version) {
 bool isVersionNewer({required String candidate, required String current}) {
   final candidateParts = parseVersion(candidate);
   final currentParts = parseVersion(current);
-  final length =
-      candidateParts.length > currentParts.length ? candidateParts.length : currentParts.length;
+  final length = candidateParts.length > currentParts.length ? candidateParts.length : currentParts.length;
 
   for (var i = 0; i < length; i++) {
     final remote = i < candidateParts.length ? candidateParts[i] : 0;

@@ -134,11 +134,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
         }
 
         // 星期标签（中文）
-        final weekdayLabels = [
-          (1, '一'),
-          (3, '三'),
-          (5, '五'),
-        ];
+        final weekdayLabels = [(1, '一'), (3, '三'), (5, '五')];
 
         // 计算网格实际宽度
         final gridWidth = weekCount * _cellSize + (weekCount - 1) * _cellGap;
@@ -163,10 +159,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                           child: Align(
                             alignment: Alignment.centerRight,
                             child: Text(
-                              weekdayLabels.firstWhere(
-                                (e) => e.$1 == (row + 1),
-                                orElse: () => (row + 1, ''),
-                              ).$2,
+                              weekdayLabels.firstWhere((e) => e.$1 == (row + 1), orElse: () => (row + 1, '')).$2,
                               style: TextStyle(
                                 fontSize: AppTypography.micro,
                                 color: theme.colorScheme.onSurfaceVariant,
@@ -192,10 +185,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                           left: ml.$3,
                           child: Text(
                             ml.$2,
-                            style: TextStyle(
-                              fontSize: AppTypography.micro,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                            style: TextStyle(fontSize: AppTypography.micro, color: theme.colorScheme.onSurfaceVariant),
                           ),
                         );
                       }),
@@ -291,9 +281,11 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
 
     // 计算 tooltip 全局位置（相对于 heatmap 左上角）
     // 水平：默认显示在单元格右侧，溢出则显示在左侧
-    var tooltipLeft = globalOffset.dx + _weekdayLabelWidth + 8 + (_selectedCol! * (_cellSize + _cellGap)) + _cellSize + 4;
+    var tooltipLeft =
+        globalOffset.dx + _weekdayLabelWidth + 8 + (_selectedCol! * (_cellSize + _cellGap)) + _cellSize + 4;
     if (tooltipLeft + tooltipWidth > screenWidth) {
-      tooltipLeft = globalOffset.dx + _weekdayLabelWidth + 8 + (_selectedCol! * (_cellSize + _cellGap)) - tooltipWidth - 4;
+      tooltipLeft =
+          globalOffset.dx + _weekdayLabelWidth + 8 + (_selectedCol! * (_cellSize + _cellGap)) - tooltipWidth - 4;
     }
     if (tooltipLeft < 0) tooltipLeft = 4;
 
@@ -330,10 +322,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                   return Transform.scale(
                     scale: 0.85 + 0.15 * value,
                     alignment: Alignment.center,
-                    child: Opacity(
-                      opacity: value,
-                      child: child,
-                    ),
+                    child: Opacity(opacity: value, child: child),
                   );
                 },
                 child: Material(
@@ -358,10 +347,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                         const SizedBox(height: 2),
                         Text(
                           scoreStr,
-                          style: TextStyle(
-                            fontSize: AppTypography.caption,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                          style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -381,19 +367,45 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Text('少', style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant)),
+        Text(
+          '少',
+          style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
+        ),
         const SizedBox(width: 6),
-        Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: emptyColor, borderRadius: BorderRadius.circular(2))),
+        Container(
+          width: _cellSize,
+          height: _cellSize,
+          decoration: BoxDecoration(color: emptyColor, borderRadius: BorderRadius.circular(2)),
+        ),
         const SizedBox(width: 2),
-        Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(2))),
+        Container(
+          width: _cellSize,
+          height: _cellSize,
+          decoration: BoxDecoration(color: primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(2)),
+        ),
         const SizedBox(width: 2),
-        Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: primary.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(2))),
+        Container(
+          width: _cellSize,
+          height: _cellSize,
+          decoration: BoxDecoration(color: primary.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(2)),
+        ),
         const SizedBox(width: 2),
-        Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: primary.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(2))),
+        Container(
+          width: _cellSize,
+          height: _cellSize,
+          decoration: BoxDecoration(color: primary.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(2)),
+        ),
         const SizedBox(width: 2),
-        Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: primary.withValues(alpha: 1.0), borderRadius: BorderRadius.circular(2))),
+        Container(
+          width: _cellSize,
+          height: _cellSize,
+          decoration: BoxDecoration(color: primary.withValues(alpha: 1.0), borderRadius: BorderRadius.circular(2)),
+        ),
         const SizedBox(width: 6),
-        Text('多', style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant)),
+        Text(
+          '多',
+          style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
+        ),
       ],
     );
   }

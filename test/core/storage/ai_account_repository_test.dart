@@ -69,9 +69,7 @@ void main() {
 
   test('同一 id 再次 upsert 覆盖而不新增行', () async {
     await repo.upsert(account());
-    await repo.upsert(
-      account(access: 'access-2', status: AiAccount.statusExpired),
-    );
+    await repo.upsert(account(access: 'access-2', status: AiAccount.statusExpired));
 
     final all = await repo.getAll();
     expect(all.length, 1);
@@ -106,11 +104,7 @@ void main() {
     expect(names.contains('auth_mode'), isTrue);
 
     await repo.upsert(account());
-    final logs = await db.query(
-      'sync_log',
-      where: 'table_name = ?',
-      whereArgs: [AiAccountRepository.tableName],
-    );
+    final logs = await db.query('sync_log', where: 'table_name = ?', whereArgs: [AiAccountRepository.tableName]);
     expect(logs, isEmpty, reason: '刷新 token 不能随同步广播到其他设备');
   });
 }

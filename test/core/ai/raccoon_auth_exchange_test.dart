@@ -41,18 +41,14 @@ void main() {
     adapter.exchangeScript = [
       (
         400,
-        {
-          'code': 200035,
-          'message': 'authorization_code_not_found_error',
-          'details': 'authorization code not found',
-        }
+        {'code': 200035, 'message': 'authorization_code_not_found_error', 'details': 'authorization code not found'},
       ),
       (
         200,
         {
           'code': 0,
           'data': {'access_token': 'access-2', 'refresh_token': 'refresh-2'},
-        }
+        },
       ),
     ];
 
@@ -71,23 +67,13 @@ void main() {
     adapter.exchangeScript = [
       (
         400,
-        {
-          'code': 200035,
-          'message': 'authorization_code_not_found_error',
-          'details': 'authorization code not found',
-        }
+        {'code': 200035, 'message': 'authorization_code_not_found_error', 'details': 'authorization code not found'},
       ),
     ];
 
     await expectLater(
       auth.exchangeCode('pRaccoon', 'code-used'),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          '授权码已失效，请重新发起网页登录',
-        ),
-      ),
+      throwsA(isA<FormatException>().having((error) => error.message, 'message', '授权码已失效，请重新发起网页登录')),
     );
     expect(adapter.exchangeCalls, 3);
   });
@@ -99,13 +85,7 @@ void main() {
 
     await expectLater(
       auth.exchangeCode('pRaccoon', 'code-1'),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          contains('forbidden'),
-        ),
-      ),
+      throwsA(isA<FormatException>().having((error) => error.message, 'message', contains('forbidden'))),
     );
     expect(adapter.exchangeCalls, 1);
   });
@@ -117,13 +97,7 @@ void main() {
 
     await expectLater(
       auth.exchangeCode('pRaccoon', 'code-1'),
-      throwsA(
-        isA<FormatException>().having(
-          (error) => error.message,
-          'message',
-          '登录失败：HTTP 200',
-        ),
-      ),
+      throwsA(isA<FormatException>().having((error) => error.message, 'message', '登录失败：HTTP 200')),
     );
     expect(adapter.exchangeCalls, 3);
   });
@@ -161,12 +135,11 @@ class _ExchangeAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 
-  static ResponseBody _json(int status, Map<String, dynamic> body) =>
-      ResponseBody.fromString(
-        jsonEncode(body),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
+  static ResponseBody _json(int status, Map<String, dynamic> body) => ResponseBody.fromString(
+    jsonEncode(body),
+    status,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
 }

@@ -27,11 +27,7 @@ class FinanceDailyData {
   final String date;
   final double income;
   final double expense;
-  FinanceDailyData({
-    required this.date,
-    required this.income,
-    required this.expense,
-  });
+  FinanceDailyData({required this.date, required this.income, required this.expense});
 }
 
 class FinanceStatistics {
@@ -57,11 +53,7 @@ class DietStatistics {
   final int totalMeals;
   final Map<String, int> typeDistribution;
   final Map<String, int> healthDistribution;
-  DietStatistics({
-    required this.totalMeals,
-    required this.typeDistribution,
-    required this.healthDistribution,
-  });
+  DietStatistics({required this.totalMeals, required this.typeDistribution, required this.healthDistribution});
 }
 
 class MoodStatistics {
@@ -244,11 +236,7 @@ String _resolveActivityItem(String raw) {
   return _activityItemAliases[raw] ?? raw;
 }
 
-SleepStatistics calculateSleepStats(
-  List<DiaryRecord> records,
-  DateTime startDate,
-  DateTime endDate,
-) {
+SleepStatistics calculateSleepStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
   final sleepRecords = records.where((r) {
     return r.displayTag == '睡眠' && r.startTime != null && r.endTime != null;
@@ -275,13 +263,7 @@ SleepStatistics calculateSleepStats(
       quality = qualityMatch?.group(1)?.trim();
     }
 
-    rawDaily.add(
-      SleepDailyData(
-        date: _formatDate(r.endTime!),
-        duration: duration,
-        quality: quality,
-      ),
-    );
+    rawDaily.add(SleepDailyData(date: _formatDate(r.endTime!), duration: duration, quality: quality));
   }
 
   final aggregated = <String, SleepDailyData>{};
@@ -294,21 +276,14 @@ SleepStatistics calculateSleepStats(
         quality: d.quality ?? existing.quality,
       );
     } else {
-      aggregated[d.date] = SleepDailyData(
-        date: d.date,
-        duration: d.duration,
-        quality: d.quality,
-      );
+      aggregated[d.date] = SleepDailyData(date: d.date, duration: d.duration, quality: d.quality);
     }
   }
 
-  final dailyData = aggregated.values.toList()
-    ..sort((a, b) => a.date.compareTo(b.date));
+  final dailyData = aggregated.values.toList()..sort((a, b) => a.date.compareTo(b.date));
 
   final totalDuration = dailyData.fold<double>(0, (sum, d) => sum + d.duration);
-  final averageDuration = dailyData.isNotEmpty
-      ? totalDuration / dailyData.length
-      : 0.0;
+  final averageDuration = dailyData.isNotEmpty ? totalDuration / dailyData.length : 0.0;
 
   final qualityDistribution = <String, int>{'极好': 0, '良好': 0, '一般': 0, '较差': 0};
   for (final d in rawDaily) {
@@ -325,11 +300,7 @@ SleepStatistics calculateSleepStats(
   );
 }
 
-FinanceStatistics calculateFinanceStats(
-  List<DiaryRecord> records,
-  DateTime startDate,
-  DateTime endDate,
-) {
+FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
   final financeRecords = records.where((r) => r.displayTag == '记账').toList();
 
@@ -378,9 +349,7 @@ FinanceStatistics calculateFinanceStats(
     }
 
     if (amount == null) {
-      final match = RegExp(
-        r'金额.*?[：:]\s*(\d+(?:\.\d+)?)',
-      ).firstMatch(r.content);
+      final match = RegExp(r'金额.*?[：:]\s*(\d+(?:\.\d+)?)').firstMatch(r.content);
       amount = match != null ? double.parse(match.group(1)!) : 0;
     }
 
@@ -392,9 +361,7 @@ FinanceStatistics calculateFinanceStats(
     if (isExpense == true) {
       totalExpense += amount;
       if (expenseType == null) {
-        final typeMatch = RegExp(
-          r'支出类型[：:]\s*([^ \n，,]+)',
-        ).firstMatch(r.content);
+        final typeMatch = RegExp(r'支出类型[：:]\s*([^ \n，,]+)').firstMatch(r.content);
         expenseType = typeMatch?.group(1)?.trim() ?? '其他';
       }
       expenseByType[expenseType] = (expenseByType[expenseType] ?? 0) + amount;
@@ -403,9 +370,7 @@ FinanceStatistics calculateFinanceStats(
     if (isIncome == true) {
       totalIncome += amount;
       if (incomeType == null) {
-        final typeMatch = RegExp(
-          r'收入类型[：:]\s*([^ \n，,]+)',
-        ).firstMatch(r.content);
+        final typeMatch = RegExp(r'收入类型[：:]\s*([^ \n，,]+)').firstMatch(r.content);
         incomeType = typeMatch?.group(1)?.trim() ?? '其他';
       }
       incomeByType[incomeType] = (incomeByType[incomeType] ?? 0) + amount;
@@ -427,8 +392,7 @@ FinanceStatistics calculateFinanceStats(
     }
   }
 
-  final dailyData = dailyDataMap.values.toList()
-    ..sort((a, b) => a.date.compareTo(b.date));
+  final dailyData = dailyDataMap.values.toList()..sort((a, b) => a.date.compareTo(b.date));
 
   return FinanceStatistics(
     totalIncome: totalIncome,
@@ -441,21 +405,12 @@ FinanceStatistics calculateFinanceStats(
   );
 }
 
-DietStatistics calculateDietStats(
-  List<DiaryRecord> records,
-  DateTime startDate,
-  DateTime endDate,
-) {
+DietStatistics calculateDietStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
   final dietRecords = records.where((r) => r.displayTag == '饮食').toList();
 
   final typeDistribution = <String, int>{};
-  final healthDistribution = <String, int>{
-    '健康': 0,
-    '一般': 0,
-    '不健康': 0,
-    '过于放纵': 0,
-  };
+  final healthDistribution = <String, int>{'健康': 0, '一般': 0, '不健康': 0, '过于放纵': 0};
   final totalMeals = dietRecords.length;
 
   for (final r in dietRecords) {
@@ -465,18 +420,9 @@ DietStatistics calculateDietStats(
     for (final entry in r.tagEntries) {
       if (entry.name == '饮食' || entry.id == 'diet') {
         final fields = entry.fields;
-        final rawItem = _getValFromMap(fields, [
-          'type',
-          'item',
-          '种类',
-          '类别',
-        ])?.toString();
+        final rawItem = _getValFromMap(fields, ['type', 'item', '种类', '类别'])?.toString();
         if (rawItem != null) item = _resolveDietItem(rawItem);
-        final rawHealth = _getValFromMap(fields, [
-          'rating',
-          'health',
-          '评价',
-        ])?.toString();
+        final rawHealth = _getValFromMap(fields, ['rating', 'health', '评价'])?.toString();
         if (rawHealth != null && healthDistribution.containsKey(rawHealth)) {
           health = rawHealth;
         }
@@ -508,11 +454,7 @@ DietStatistics calculateDietStats(
   );
 }
 
-MoodStatistics calculateMoodStats(
-  List<DiaryRecord> records,
-  DateTime startDate,
-  DateTime endDate,
-) {
+MoodStatistics calculateMoodStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
   final moodRecords = records
       .where((r) => (r.displayTag == '状态' || r.displayTag == '健康') && r.bodyState != null)
@@ -559,19 +501,11 @@ MoodStatistics calculateMoodStats(
     }
   }
 
-  final averageSeverity = moodRecords.isNotEmpty
-      ? totalSeverity / moodRecords.length
-      : 0.0;
+  final averageSeverity = moodRecords.isNotEmpty ? totalSeverity / moodRecords.length : 0.0;
 
   final dailyData =
       dailyDataMap.entries
-          .map(
-            (e) => (
-              date: e.key,
-              severity: e.value.severity / e.value.count,
-              symptom: e.value.symptom,
-            ),
-          )
+          .map((e) => (date: e.key, severity: e.value.severity / e.value.count, symptom: e.value.symptom))
           .toList()
         ..sort((a, b) => a.date.compareTo(b.date));
 
@@ -584,11 +518,7 @@ MoodStatistics calculateMoodStats(
   );
 }
 
-ActivityStatistics calculateActivityStats(
-  List<DiaryRecord> records,
-  DateTime startDate,
-  DateTime endDate,
-) {
+ActivityStatistics calculateActivityStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
   final activityRecords = records.where((r) => r.displayTag == '活动').toList();
 
@@ -607,12 +537,7 @@ ActivityStatistics calculateActivityStats(
       if (entry.name == '活动' || entry.id == 'activity') {
         final fields = entry.fields;
         // 优先匹配字段 ID 'type'，再匹配中文标签 '类型'（与饮食统计对齐）
-        final rawItem = _getValFromMap(fields, [
-          'type',
-          'item',
-          '项目',
-          '类型',
-        ])?.toString();
+        final rawItem = _getValFromMap(fields, ['type', 'item', '项目', '类型'])?.toString();
         if (rawItem != null) type = _resolveActivityItem(rawItem);
         final rawDuration = _getValFromMap(fields, ['duration', '时长']);
         if (rawDuration != null) duration = _parseDouble(rawDuration);
@@ -640,9 +565,8 @@ ActivityStatistics calculateActivityStats(
     dailyDataMap[date] = (dailyDataMap[date] ?? 0) + 1;
   }
 
-  final dailyData =
-      dailyDataMap.entries.map((e) => (date: e.key, count: e.value)).toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
+  final dailyData = dailyDataMap.entries.map((e) => (date: e.key, count: e.value)).toList()
+    ..sort((a, b) => a.date.compareTo(b.date));
 
   return ActivityStatistics(
     totalActivities: activityRecords.length,

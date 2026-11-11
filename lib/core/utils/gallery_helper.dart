@@ -23,10 +23,7 @@ class GalleryHelper {
       try {
         final List<AssetEntity>? result = await AssetPicker.pickAssets(
           context,
-          pickerConfig: const AssetPickerConfig(
-            maxAssets: 1,
-            requestType: RequestType.image,
-          ),
+          pickerConfig: const AssetPickerConfig(maxAssets: 1, requestType: RequestType.image),
         );
         if (result == null || result.isEmpty) return null;
         final File? file = await result.first.file;
@@ -61,11 +58,7 @@ class GalleryHelper {
           lockAspectRatio: true,
           hideBottomControls: false,
         ),
-        IOSUiSettings(
-          title: '裁剪头像',
-          aspectRatioLockEnabled: true,
-          resetAspectRatioEnabled: false,
-        ),
+        IOSUiSettings(title: '裁剪头像', aspectRatioLockEnabled: true, resetAspectRatioEnabled: false),
         WebUiSettings(
           context: context,
           presentStyle: WebPresentStyle.dialog,
@@ -85,10 +78,7 @@ class GalleryHelper {
       try {
         final List<AssetEntity>? result = await AssetPicker.pickAssets(
           context,
-          pickerConfig: AssetPickerConfig(
-            maxAssets: maxAssets,
-            requestType: RequestType.image,
-          ),
+          pickerConfig: AssetPickerConfig(maxAssets: maxAssets, requestType: RequestType.image),
         );
         if (result == null || result.isEmpty) return [];
         final List<XFile> xFiles = [];

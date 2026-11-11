@@ -3,12 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
 
 /// 把组件放进限定尺寸的内容区，贴近各页面 `AsyncValue.when(error:)` 的真实用法
-Future<void> _pumpIn(
-  WidgetTester tester,
-  Widget child, {
-  double width = 360,
-  double height = 600,
-}) async {
+Future<void> _pumpIn(WidgetTester tester, Widget child, {double width = 360, double height = 600}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -24,11 +19,7 @@ void main() {
       var retryCount = 0;
       await _pumpIn(
         tester,
-        AppErrorState(
-          error: Exception('database is locked'),
-          action: '加载笔记失败',
-          onRetry: () => retryCount++,
-        ),
+        AppErrorState(error: Exception('database is locked'), action: '加载笔记失败', onRetry: () => retryCount++),
       );
 
       expect(find.text('加载笔记失败'), findsOneWidget);
@@ -41,10 +32,7 @@ void main() {
     });
 
     testWidgets('未传 action 时使用默认文案，避免出现空白标题', (tester) async {
-      await _pumpIn(
-        tester,
-        AppErrorState(error: StateError('boom'), onRetry: () {}),
-      );
+      await _pumpIn(tester, AppErrorState(error: StateError('boom'), onRetry: () {}));
 
       expect(find.text('加载失败'), findsOneWidget);
     });
@@ -52,12 +40,7 @@ void main() {
     testWidgets('compact 态用轻量按钮，适配抽屉与 Stack 局部区域', (tester) async {
       await _pumpIn(
         tester,
-        AppErrorState(
-          error: Exception('network unreachable'),
-          action: '加载历史对话失败',
-          compact: true,
-          onRetry: () {},
-        ),
+        AppErrorState(error: Exception('network unreachable'), action: '加载历史对话失败', compact: true, onRetry: () {}),
       );
 
       expect(find.textContaining('network unreachable'), findsOneWidget);
@@ -72,12 +55,7 @@ void main() {
       for (final compact in [false, true]) {
         await _pumpIn(
           tester,
-          AppErrorState(
-            error: longError,
-            action: '加载记录失败',
-            compact: compact,
-            onRetry: () {},
-          ),
+          AppErrorState(error: longError, action: '加载记录失败', compact: compact, onRetry: () {}),
           width: 320,
         );
 

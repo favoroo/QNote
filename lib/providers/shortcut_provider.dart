@@ -64,7 +64,6 @@ class ShortcutListNotifier extends StateNotifier<List<ShortcutConfig>> {
   }
 }
 
-final shortcutListNotifierProvider =
-    StateNotifierProvider<ShortcutListNotifier, List<ShortcutConfig>>((ref) {
+final shortcutListNotifierProvider = StateNotifierProvider<ShortcutListNotifier, List<ShortcutConfig>>((ref) {
   return ShortcutListNotifier(ref);
 });

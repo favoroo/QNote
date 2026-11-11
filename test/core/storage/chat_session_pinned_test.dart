@@ -31,21 +31,12 @@ void main() {
   }
 
   Future<Map<String, Object?>?> rawRow(String id) async {
-    final rows = await db.query(
-      'chat_sessions',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
+    final rows = await db.query('chat_sessions', where: 'id = ?', whereArgs: [id], limit: 1);
     return rows.isEmpty ? null : rows.first;
   }
 
   Future<List<Map<String, Object?>>> logsOf(String id) {
-    return db.query(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id = ?",
-      whereArgs: [id],
-    );
+    return db.query('sync_log', where: "table_name = 'chat_sessions' AND record_id = ?", whereArgs: [id]);
   }
 
   setUpAll(() async {
@@ -57,11 +48,7 @@ void main() {
 
   setUp(() async {
     await db.delete('chat_sessions', where: 'id LIKE ?', whereArgs: ['cpt_%']);
-    await db.delete(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id LIKE ?",
-      whereArgs: ['cpt_%'],
-    );
+    await db.delete('sync_log', where: "table_name = 'chat_sessions' AND record_id LIKE ?", whereArgs: ['cpt_%']);
   });
 
   test('置顶只改 is_pinned，updated_at 逐字不变', () async {
@@ -87,11 +74,7 @@ void main() {
     final id = testId('sync');
     final session = buildSession(id);
     await repo.insertChatSession(session);
-    await db.delete(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id = ?",
-      whereArgs: [id],
-    );
+    await db.delete('sync_log', where: "table_name = 'chat_sessions' AND record_id = ?", whereArgs: [id]);
 
     await repo.setChatSessionPinned(id, true);
 
@@ -110,13 +93,9 @@ void main() {
   test('对照组：updateChatSession 确实会刷 updatedAt（所以置顶不能复用它）', () async {
     final id = testId('touch');
     await repo.insertChatSession(buildSession(id));
-    final originalUpdatedAt = DateTime.parse(
-      (await rawRow(id))!['updated_at'] as String,
-    );
+    final originalUpdatedAt = DateTime.parse((await rawRow(id))!['updated_at'] as String);
 
-    final updated = await repo.updateChatSession(
-      (await repo.getChatSession(id))!.copyWith(title: '改个名'),
-    );
+    final updated = await repo.updateChatSession((await repo.getChatSession(id))!.copyWith(title: '改个名'));
 
     expect(updated.title, '改个名');
     expect(updated.updatedAt.isAfter(originalUpdatedAt), isTrue);
@@ -128,9 +107,6 @@ void main() {
     // 迁移前的老行 / 旧版本备份：缺键按未置顶
     expect(ChatSession.fromMap(session.toMap()..remove('is_pinned')).isPinned, isFalse);
     // 对端 JSON 直接写 bool 的历史格式
-    expect(
-      ChatSession.fromMap(session.toMap()..['is_pinned'] = false).isPinned,
-      isFalse,
-    );
+    expect(ChatSession.fromMap(session.toMap()..['is_pinned'] = false).isPinned, isFalse);
   });
 }

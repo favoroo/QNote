@@ -12,37 +12,22 @@ void main() {
                 'https://github.com/favoroo/QNote/releases/download/v0.1.48/QNote-v0.1.48-arm64-v8a.apk',
             'size': 32380330,
           },
-          {
-            'name': 'source.zip',
-            'browser_download_url': 'https://example.com/source.zip',
-            'size': 1024,
-          },
+          {'name': 'source.zip', 'browser_download_url': 'https://example.com/source.zip', 'size': 1024},
         ],
       };
 
       final result = UpdateService.extractApkAsset(releaseData);
 
       expect(result, isNotNull);
-      expect(
-        result!.url,
-        'https://github.com/favoroo/QNote/releases/download/v0.1.48/QNote-v0.1.48-arm64-v8a.apk',
-      );
+      expect(result!.url, 'https://github.com/favoroo/QNote/releases/download/v0.1.48/QNote-v0.1.48-arm64-v8a.apk');
       expect(result.size, 32380330);
     });
 
     test('assets 中不包含 .apk 附件时返回 null', () {
       final releaseData = <String, dynamic>{
         'assets': [
-          {
-            'name': 'source.zip',
-            'browser_download_url': 'https://example.com/source.zip',
-            'size': 1024,
-          },
-          {
-            'name': 'source.tar.gz',
-            'browser_download_url': 'https://example.com/source.tar.gz',
-            'size': 2048,
-          },
+          {'name': 'source.zip', 'browser_download_url': 'https://example.com/source.zip', 'size': 1024},
+          {'name': 'source.tar.gz', 'browser_download_url': 'https://example.com/source.tar.gz', 'size': 2048},
         ],
       };
 
@@ -78,11 +63,7 @@ void main() {
     test('APK 附件缺少 browser_download_url 时跳过', () {
       final releaseData = <String, dynamic>{
         'assets': [
-          {
-            'name': 'QNote-v0.1.48-arm64-v8a.apk',
-            'browser_download_url': '',
-            'size': 32380330,
-          },
+          {'name': 'QNote-v0.1.48-arm64-v8a.apk', 'browser_download_url': '', 'size': 32380330},
         ],
       };
 
@@ -185,13 +166,11 @@ void main() {
         'assets': [
           {
             'name': 'v0.1.48.zip',
-            'browser_download_url':
-                'https://gitee.com/favo9/qnote/archive/refs/tags/v0.1.48.zip',
+            'browser_download_url': 'https://gitee.com/favo9/qnote/archive/refs/tags/v0.1.48.zip',
           },
           {
             'name': 'v0.1.48.tar.gz',
-            'browser_download_url':
-                'https://gitee.com/favo9/qnote/archive/refs/tags/v0.1.48.tar.gz',
+            'browser_download_url': 'https://gitee.com/favo9/qnote/archive/refs/tags/v0.1.48.tar.gz',
           },
         ],
       };

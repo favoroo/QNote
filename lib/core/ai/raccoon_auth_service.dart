@@ -2,8 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, protected, visibleForTesting;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, protected, visibleForTesting;
 
 import 'package:qnote_flutter/core/ai/account_auth_service_base.dart';
 import 'package:qnote_flutter/core/ai/account_auth_types.dart';
@@ -23,11 +22,7 @@ class RaccoonLoginHandle {
   final Future<AiAccount> result;
   final void Function() cancel;
 
-  const RaccoonLoginHandle({
-    required this.url,
-    required this.result,
-    required this.cancel,
-  });
+  const RaccoonLoginHandle({required this.url, required this.result, required this.cancel});
 }
 
 /// 商汤小浣熊（xiaohuanxiong.com）订阅账号的登录、刷新与模型目录
@@ -72,23 +67,19 @@ class RaccoonAuthService extends AccountAuthServiceBase {
 
   @override
   @protected
-  Future<List<AiAccount>> Function(String providerId)?
-  get accountsLoaderHook => accountsLoaderForTest;
+  Future<List<AiAccount>> Function(String providerId)? get accountsLoaderHook => accountsLoaderForTest;
 
   @override
   @protected
-  Future<String?> Function(String providerId)? get accessTokenLoaderHook =>
-      accessTokenLoaderForTest;
+  Future<String?> Function(String providerId)? get accessTokenLoaderHook => accessTokenLoaderForTest;
 
   @override
   @protected
-  Future<void> Function(AiAccount account)? get accountSaverHook =>
-      accountSaverForTest;
+  Future<void> Function(AiAccount account)? get accountSaverHook => accountSaverForTest;
 
   @override
   @protected
-  Future<AiAccount> Function(AiAccount account)?
-  get accountRefresherHook => accountRefresherForTest;
+  Future<AiAccount> Function(AiAccount account)? get accountRefresherHook => accountRefresherForTest;
 
   static const String mainOrigin = 'https://xiaohuanxiong.com';
   static const String authBase = '$mainOrigin/api/web/auth/v1';
@@ -115,14 +106,10 @@ class RaccoonAuthService extends AccountAuthServiceBase {
 
   /// 测试注入：绕开数据库直接给账号列表（发信层多账号单测不搭 sqflite）
   @visibleForTesting
-  static Future<List<AiAccount>> Function(String providerId)?
-  accountsLoaderForTest;
+  static Future<List<AiAccount>> Function(String providerId)? accountsLoaderForTest;
 
   /// 某厂商下排在最前的账号（兼容旧调用：单账号场景等价于「那个账号」）
-  Future<AiAccount?> sessionFor(
-    String providerId, {
-    bool forceReload = false,
-  }) async {
+  Future<AiAccount?> sessionFor(String providerId, {bool forceReload = false}) async {
     final accounts = await accountsFor(providerId, forceReload: forceReload);
     return accounts.isEmpty ? null : accounts.first;
   }
@@ -162,10 +149,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   }
 
   @override
-  Future<AiAccount> reloadAccount(
-    String accountId, {
-    required bool force,
-  }) async {
+  Future<AiAccount> reloadAccount(String accountId, {required bool force}) async {
     final stored = await repository.getById(accountId);
     if (stored == null) {
       evictCachedAccount(accountId);
@@ -178,20 +162,13 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     final refreshToken = stored.refreshToken.trim();
     if (refreshToken.isEmpty) {
       await markAccountExpiredById(accountId);
-      throw RaccoonAuthRequiredException(
-        stored.providerId,
-        message: '小浣熊登录已过期，请重新登录',
-      );
+      throw RaccoonAuthRequiredException(stored.providerId, message: '小浣熊登录已过期，请重新登录');
     }
 
     try {
-      final response = await _dio.post<dynamic>(
-        '$authBase/refresh',
-        data: {'refresh_token': refreshToken},
-      );
+      final response = await _dio.post<dynamic>('$authBase/refresh', data: {'refresh_token': refreshToken});
       final access = _tokenFromResponse(response.data, 'access_token');
-      final nextRefresh =
-          _tokenFromResponse(response.data, 'refresh_token') ?? refreshToken;
+      final nextRefresh = _tokenFromResponse(response.data, 'refresh_token') ?? refreshToken;
       if (access == null || access.isEmpty) {
         throw const FormatException('刷新未返回 access_token');
       }
@@ -218,10 +195,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       );
       if (status != null && status >= 400 && status < 500) {
         await markAccountExpiredById(accountId);
-        throw RaccoonAuthRequiredException(
-          stored.providerId,
-          message: '小浣熊登录已失效，请重新登录',
-        );
+        throw RaccoonAuthRequiredException(stored.providerId, message: '小浣熊登录已失效，请重新登录');
       }
       rethrow;
     }
@@ -233,10 +207,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   ///
   /// [accountId] 为空表示「新增一个账号」；不为空表示「重新登录这个账号」
   /// （保留原来的备注与轮换顺序）。
-  Future<RaccoonLoginHandle> startBrowserLogin(
-    String providerId, {
-    String? accountId,
-  }) async {
+  Future<RaccoonLoginHandle> startBrowserLogin(String providerId, {String? accountId}) async {
     AiAccount? account;
     final loopback = await startRaccoonLoopbackLogin(
       // 换取放进回环请求里：失败时浏览器页面直接显示「登录未完成」，
@@ -252,11 +223,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       }
       return signedIn;
     });
-    return RaccoonLoginHandle(
-      url: loopback.url,
-      result: result,
-      cancel: loopback.cancel,
-    );
+    return RaccoonLoginHandle(url: loopback.url, result: result, cancel: loopback.cancel);
   }
 
   /// 授权码换 token
@@ -265,22 +232,13 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   /// 兑换节点，第一次会以 `200035` 或空的 2xx 拒绝，隔一两秒用同一个码再换就能
   /// 成功——现象就是网页登录报错、把同一个回调链接复制出来粘贴反而能登录。
   /// 因此这里对「可能还没生效」的失败做两次短退避重试；确定性拒绝立即抛出。
-  Future<AiAccount> exchangeCode(
-    String providerId,
-    String code, {
-    String? accountId,
-  }) async {
+  Future<AiAccount> exchangeCode(String providerId, String code, {String? accountId}) async {
     final trimmed = code.trim();
     if (trimmed.isEmpty) {
       throw const FormatException('授权码为空');
     }
     final tokens = await _exchangeTokens(trimmed);
-    return _persistLogin(
-      providerId,
-      access: tokens.access,
-      refresh: tokens.refresh,
-      accountId: accountId,
-    );
+    return _persistLogin(providerId, access: tokens.access, refresh: tokens.refresh, accountId: accountId);
   }
 
   /// 换取 access/refresh token（含重试）
@@ -295,9 +253,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
           await wait(attempt);
         } else {
           // 400ms → 1200ms：给厂商侧授权码入库留时间，又不太拖慢失败提示
-          await Future<void>.delayed(
-            Duration(milliseconds: attempt == 1 ? 400 : 1200),
-          );
+          await Future<void>.delayed(Duration(milliseconds: attempt == 1 ? 400 : 1200));
         }
       }
       try {
@@ -315,9 +271,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     throw lastError ?? const FormatException('登录失败：未获取登录凭证');
   }
 
-  Future<({String access, String refresh})> _exchangeTokensOnce(
-    String code,
-  ) async {
+  Future<({String access, String refresh})> _exchangeTokensOnce(String code) async {
     final Response<dynamic> response;
     try {
       response = await _dio.post<dynamic>(
@@ -336,12 +290,9 @@ class RaccoonAuthService extends AccountAuthServiceBase {
         );
       }
       throw _ExchangeFailure(
-        FormatException(
-          _vendorError(payload, '登录失败：HTTP ${status ?? '网络异常'}'),
-        ),
+        FormatException(_vendorError(payload, '登录失败：HTTP ${status ?? '网络异常'}')),
         // 5xx / 429 / 超时 / 连接中断都可能是瞬时抖动；其余 4xx 是确定性拒绝
-        retryable:
-            status == null || status >= 500 || status == 429 || status == 408,
+        retryable: status == null || status >= 500 || status == 429 || status == 408,
         detail:
             'HTTP ${status ?? '-'} code=${vendorCode ?? '-'} '
             '${_vendorError(payload, _preview(payload))}',
@@ -362,9 +313,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     }
     if (access == null || access.isEmpty || refresh == null) {
       throw _ExchangeFailure(
-        FormatException(
-          _vendorError(payload, '登录失败：HTTP ${response.statusCode}'),
-        ),
+        FormatException(_vendorError(payload, '登录失败：HTTP ${response.statusCode}')),
         retryable: true,
         detail:
             'HTTP ${response.statusCode} code=${vendorCode ?? '-'} '
@@ -375,11 +324,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   }
 
   /// 手动兜底：粘贴完整回调链接、JWT，或 `{"access_token":...,"refresh_token":...}`
-  Future<AiAccount> loginWithPastedInput(
-    String providerId,
-    String raw, {
-    String? accountId,
-  }) async {
+  Future<AiAccount> loginWithPastedInput(String providerId, String raw, {String? accountId}) async {
     final text = raw.trim();
     if (text.isEmpty) {
       throw const FormatException('请粘贴回调链接或 Token');
@@ -391,31 +336,17 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       if (decoded is! Map) {
         throw const FormatException('JSON 格式错误');
       }
-      final access = (decoded['access_token'] ?? decoded['accessToken'])
-          ?.toString()
-          .trim();
-      final refresh = (decoded['refresh_token'] ?? decoded['refreshToken'])
-          ?.toString()
-          .trim();
+      final access = (decoded['access_token'] ?? decoded['accessToken'])?.toString().trim();
+      final refresh = (decoded['refresh_token'] ?? decoded['refreshToken'])?.toString().trim();
       if (access == null || access.isEmpty) {
         throw const FormatException('JSON 缺少 access_token');
       }
-      return _persistLogin(
-        providerId,
-        access: _stripBearer(access),
-        refresh: refresh ?? '',
-        accountId: accountId,
-      );
+      return _persistLogin(providerId, access: _stripBearer(access), refresh: refresh ?? '', accountId: accountId);
     }
 
     // 裸 JWT（没有 refresh token，到期后需要重新登录）
     if (text.split('.').length == 3 && !text.contains('://')) {
-      return _persistLogin(
-        providerId,
-        access: _stripBearer(text),
-        refresh: '',
-        accountId: accountId,
-      );
+      return _persistLogin(providerId, access: _stripBearer(text), refresh: '', accountId: accountId);
     }
 
     // 回调链接：office-raccoon://auth/callback?code=... 或 http://127.0.0.1/...
@@ -441,19 +372,14 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     accountId: accountId,
     // 探测只解析 JWT 里的 uid/手机号归属，不必为去重多打一次 user_info；
     // 新账号按 uid/手机号判定为「已登录过的同一账号」时更新那一行，避免堆出多行
-    buildAccount:
-        ({
-          required String accountId,
-          AiAccount? previous,
-          required bool fetchProfile,
-        }) => _accountFromTokens(
-          providerId,
-          accountId: accountId,
-          access: access,
-          refresh: refresh,
-          previous: previous,
-          fetchProfile: fetchProfile,
-        ),
+    buildAccount: ({required String accountId, AiAccount? previous, required bool fetchProfile}) => _accountFromTokens(
+      providerId,
+      accountId: accountId,
+      access: access,
+      refresh: refresh,
+      previous: previous,
+      fetchProfile: fetchProfile,
+    ),
   );
 
   // ── 模型目录 ─────────────────────────────────────────────
@@ -464,10 +390,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       final response = await _dio.get<dynamic>(
         '$llmBase/model_catalog',
         options: Options(
-          headers: {
-            if (token != null && token.trim().isNotEmpty)
-              'Authorization': 'Bearer ${_stripBearer(token)}',
-          },
+          headers: {if (token != null && token.trim().isNotEmpty) 'Authorization': 'Bearer ${_stripBearer(token)}'},
         ),
       );
       final models = _modelsFromCatalog(response.data);
@@ -476,20 +399,13 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       }
       return models;
     } on DioException catch (e) {
-      throw FormatException(
-        _vendorError(
-          e.response?.data,
-          '获取模型目录失败（HTTP ${e.response?.statusCode}）',
-        ),
-      );
+      throw FormatException(_vendorError(e.response?.data, '获取模型目录失败（HTTP ${e.response?.statusCode}）'));
     }
   }
 
   /// 带登录态的模型目录：401 时刷新一次再试
   @override
-  Future<List<AiProviderModel>> fetchModelsForProvider(
-    String providerId,
-  ) async {
+  Future<List<AiProviderModel>> fetchModelsForProvider(String providerId) async {
     // 挑第一个「启用且未过期」的账号：排在最前的那个可能已经被停用或登录失效，
     // 拿它去扫目录只会得到一次必然失败的 401
     final accounts = await accountsFor(providerId, forceReload: true);
@@ -525,16 +441,13 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   /// 服务端不认 token（401 / 200001 / 200003）时强制刷新一次再试，仍被拒才标记
   /// 账号过期——与发信层的 401 处理口径一致，不把「额度查不到」当成「登录失效」。
   @override
-  Future<AccountQuota> fetchQuota(AiAccount account) =>
-      runWithToken(account, _readQuota);
+  Future<AccountQuota> fetchQuota(AiAccount account) => runWithToken(account, _readQuota);
 
   Future<AccountQuota> _readQuota(String token) async {
     int? available;
     Object? balanceError;
     try {
-      available = _pointsOf(
-        await _quotaGet('/api/web/points/v1/balance', token),
-      );
+      available = _pointsOf(await _quotaGet('/api/web/points/v1/balance', token));
     } on AccountAuthTokenRejected {
       rethrow;
     } catch (e) {
@@ -543,9 +456,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     }
     if (available == null) {
       try {
-        available = _pointsOf(
-          await _quotaGet('/api/web/office/v3/setting_info', token),
-        );
+        available = _pointsOf(await _quotaGet('/api/web/office/v3/setting_info', token));
       } on AccountAuthTokenRejected {
         rethrow;
       } catch (e) {
@@ -554,34 +465,24 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       }
     }
     if (available == null) {
-      throw balanceError is FormatException
-          ? balanceError
-          : const FormatException('未返回积分');
+      throw balanceError is FormatException ? balanceError : const FormatException('未返回积分');
     }
 
     // 套餐只影响展示，读不到就留空（不把未知当成 Free）
     var plan = '';
     DateTime? planExpiresAt;
     try {
-      final parsed = _planOf(
-        await _quotaGet('/api/web/auth/v1/entitlement_info', token),
-      );
+      final parsed = _planOf(await _quotaGet('/api/web/auth/v1/entitlement_info', token));
       plan = parsed.plan;
       planExpiresAt = parsed.expiresAt;
     } catch (_) {}
-    return AccountQuota(
-      balance: available,
-      plan: plan,
-      planExpiresAt: planExpiresAt,
-      fetchedAt: DateTime.now(),
-    );
+    return AccountQuota(balance: available, plan: plan, planExpiresAt: planExpiresAt, fetchedAt: DateTime.now());
   }
 
   // ── 手动签到 ─────────────────────────────────────────────
 
   /// 账单列表：签到前后各拍一次，用差额确认到底到账多少积分
-  static const String _billsPath =
-      '/api/web/points/v1/bills?paging.limit=20&paging.offset=0';
+  static const String _billsPath = '/api/web/points/v1/bills?paging.limit=20&paging.offset=0';
 
   /// 手动签到并领取当日积分（只做用户点击触发，不自动执行）
   ///
@@ -590,8 +491,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   /// 新到账，先拍一张「今天已有发放账单」的快照，签到后再对比账单差异；
   /// 快照失败时退化成「接口成功就算已处理」，宁可少报也不虚报积分。
   @override
-  Future<AccountCheckInResult> checkIn(AiAccount account) =>
-      runWithToken(account, _checkInWithToken);
+  Future<AccountCheckInResult> checkIn(AiAccount account) => runWithToken(account, _checkInWithToken);
 
   Future<AccountCheckInResult> _checkInWithToken(String token) async {
     final today = _beijingDateKey(DateTime.now());
@@ -607,9 +507,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       '/api/web/office/v3/setting_info',
       token,
       headers: {
-        'X-Client-Platform': defaultTargetPlatform == TargetPlatform.macOS
-            ? 'desktop-mac'
-            : 'desktop-windows',
+        'X-Client-Platform': defaultTargetPlatform == TargetPlatform.macOS ? 'desktop-mac' : 'desktop-windows',
         'X-Client-Version': 'v1.0.0',
         'X-Raccoon-Language': 'zh',
       },
@@ -618,12 +516,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     final checkedAt = DateTime.now();
     if (beforeKeys == null) {
       // 没有签到前的账单快照：无法判断是否新到账，按「已签到」收尾
-      return AccountCheckInResult(
-        claimed: false,
-        credit: 0,
-        message: '今日已签到',
-        checkedAt: checkedAt,
-      );
+      return AccountCheckInResult(claimed: false, credit: 0, message: '今日已签到', checkedAt: checkedAt);
     }
 
     final bills = await _quotaGet(_billsPath, token);
@@ -637,12 +530,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
       if (name.isNotEmpty && !names.contains(name)) names.add(name);
     }
     if (credit <= 0) {
-      return AccountCheckInResult(
-        claimed: false,
-        credit: 0,
-        message: '今日已签到',
-        checkedAt: checkedAt,
-      );
+      return AccountCheckInResult(claimed: false, credit: 0, message: '今日已签到', checkedAt: checkedAt);
     }
     return AccountCheckInResult(
       claimed: true,
@@ -674,9 +562,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     if (_intOf(item['points']) <= 0) return false;
     if (_vendorDateKey(item['created_at']) != today) return false;
     final bizType = (item['biz_type'] ?? '').toString().trim();
-    return bizType.isEmpty ||
-        bizType == 'daily_grant' ||
-        bizType == 'reward_grant';
+    return bizType.isEmpty || bizType == 'daily_grant' || bizType == 'reward_grant';
   }
 
   /// 账单键：优先用厂商 id，缺失时用「时间 + 积分 + 事件名」兜底
@@ -720,33 +606,20 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   ///
   /// 401 / `code=200001|200003` 表示「登录态不被接受」，交给调用方决定刷新重试；
   /// 其余非零 code 统一转成带厂商文案的 FormatException。
-  Future<dynamic> _quotaGet(
-    String path,
-    String token, {
-    Map<String, String>? headers,
-  }) async {
+  Future<dynamic> _quotaGet(String path, String token, {Map<String, String>? headers}) async {
     final Response<dynamic> response;
     try {
       response = await _dio.get<dynamic>(
         '$mainOrigin$path',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer ${_stripBearer(token)}',
-            ...?headers,
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer ${_stripBearer(token)}', ...?headers}),
       );
     } on DioException catch (e) {
       final payload = e.response?.data;
       final code = _vendorCode(payload);
-      if (e.response?.statusCode == 401 ||
-          code == '200001' ||
-          code == '200003') {
+      if (e.response?.statusCode == 401 || code == '200001' || code == '200003') {
         throw const AccountAuthTokenRejected();
       }
-      throw FormatException(
-        _vendorError(payload, '查询积分失败（HTTP ${e.response?.statusCode}）'),
-      );
+      throw FormatException(_vendorError(payload, '查询积分失败（HTTP ${e.response?.statusCode}）'));
     }
     final payload = response.data;
     final code = _vendorCode(payload);
@@ -771,26 +644,15 @@ class RaccoonAuthService extends AccountAuthServiceBase {
 
   static ({String plan, DateTime? expiresAt}) _planOf(dynamic payload) {
     if (payload is! Map) return (plan: '', expiresAt: null);
-    final office = payload['office'] is Map
-        ? payload['office'] as Map
-        : const {};
-    final codeBlock = payload['code'] is Map
-        ? payload['code'] as Map
-        : const {};
-    final proEnable =
-        office['pro_enable'] == true || codeBlock['pro_enable'] == true;
-    final planType = office['active_plan'] is Map
-        ? (office['active_plan'] as Map)['type']
-        : office['plan_type'];
+    final office = payload['office'] is Map ? payload['office'] as Map : const {};
+    final codeBlock = payload['code'] is Map ? payload['code'] as Map : const {};
+    final proEnable = office['pro_enable'] == true || codeBlock['pro_enable'] == true;
+    final planType = office['active_plan'] is Map ? (office['active_plan'] as Map)['type'] : office['plan_type'];
     final type = planType?.toString().trim() ?? '';
-    final plan = proEnable
-        ? (type.isEmpty || type == 'none' ? 'Pro' : type)
-        : 'Free';
+    final plan = proEnable ? (type.isEmpty || type == 'none' ? 'Pro' : type) : 'Free';
     final rawExpire =
         office['pro_expired_time'] ??
-        (office['active_plan'] is Map
-            ? (office['active_plan'] as Map)['subscription_expired_at']
-            : null);
+        (office['active_plan'] is Map ? (office['active_plan'] as Map)['subscription_expired_at'] : null);
     return (
       plan: plan,
       // 与插件一致：只有付费套餐才展示到期时间，Free 不跟着一个历史时间跑
@@ -807,9 +669,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     if (parsed != null) return parsed;
     final number = int.tryParse(text);
     if (number == null || number <= 0) return null;
-    return DateTime.fromMillisecondsSinceEpoch(
-      number > 100000000000 ? number : number * 1000,
-    );
+    return DateTime.fromMillisecondsSinceEpoch(number > 100000000000 ? number : number * 1000);
   }
 
   // ── 内部 ─────────────────────────────────────────────────
@@ -920,9 +780,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   }
 
   static List<AiProviderModel> _modelsFromCatalog(dynamic payload) {
-    final root = payload is Map && payload['data'] is Map
-        ? payload['data'] as Map
-        : payload;
+    final root = payload is Map && payload['data'] is Map ? payload['data'] as Map : payload;
     if (root is! Map) return const [];
     final categories = root['categories'];
     final result = <AiProviderModel>[];
@@ -936,13 +794,8 @@ class RaccoonAuthService extends AccountAuthServiceBase {
           if (entry is! Map) continue;
           final id = (entry['name'] ?? entry['model_name'])?.toString().trim();
           if (id == null || id.isEmpty || !seen.add(id)) continue;
-          final rawName = (entry['display_name'] ?? entry['description'])
-              ?.toString()
-              .trim();
-          final name =
-              (rawName != null && rawName.isNotEmpty && rawName.length <= 64)
-              ? rawName
-              : id;
+          final rawName = (entry['display_name'] ?? entry['description'])?.toString().trim();
+          final name = (rawName != null && rawName.isNotEmpty && rawName.length <= 64) ? rawName : id;
           result.add(
             AiProviderModel.of(
               id,
@@ -978,8 +831,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   /// 倍率是选模型的主要依据（0 = 当前免费），所以宁可取到一个值也不省略：
   /// 厂商只给 `billing_multiplier` 时就用它。
   static num? _catalogRate(Map<dynamic, dynamic> entry) =>
-      _numOrNull(entry['billing_effective_multiplier']) ??
-      _numOrNull(entry['billing_multiplier']);
+      _numOrNull(entry['billing_effective_multiplier']) ?? _numOrNull(entry['billing_multiplier']);
 
   /// 折扣前的原倍率：只有确实降价了才返回，用于展示「原 0.5×」
   static num? _catalogRateWas(Map<dynamic, dynamic> entry) {
@@ -998,9 +850,7 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   /// 上下文窗口：目录把参数放在 `params` 里，个别版本提到顶层
   static int? _catalogContext(Map<dynamic, dynamic> entry) {
     final params = entry['params'];
-    final fromParams = params is Map
-        ? (params['context_window'] ?? params['contextWindow'])
-        : null;
+    final fromParams = params is Map ? (params['context_window'] ?? params['contextWindow']) : null;
     return _numOrNull(fromParams ?? entry['context_window'])?.floor();
   }
 
@@ -1051,14 +901,10 @@ class RaccoonAuthService extends AccountAuthServiceBase {
     return '';
   }
 
-  static String _extractName(Map<String, dynamic>? claims) =>
-      claims?['name']?.toString().trim() ?? '';
+  static String _extractName(Map<String, dynamic>? claims) => claims?['name']?.toString().trim() ?? '';
 
   static String _hexToDecimal(String value) {
-    final raw = value.trim().replaceFirst(
-      RegExp(r'^0x', caseSensitive: false),
-      '',
-    );
+    final raw = value.trim().replaceFirst(RegExp(r'^0x', caseSensitive: false), '');
     if (raw.isEmpty || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(raw)) return '';
     try {
       return BigInt.parse(raw, radix: 16).toString();
@@ -1081,20 +927,16 @@ class RaccoonAuthService extends AccountAuthServiceBase {
   // ── 测试用纯函数入口（不触库、不联网） ──────────────────
 
   @visibleForTesting
-  static Map<String, dynamic>? decodeJwtForTest(String token) =>
-      _decodeJwtClaims(_stripBearer(token));
+  static Map<String, dynamic>? decodeJwtForTest(String token) => _decodeJwtClaims(_stripBearer(token));
 
   @visibleForTesting
-  static DateTime? jwtExpiryForTest(String token) =>
-      _jwtExpiry(_decodeJwtClaims(_stripBearer(token)));
+  static DateTime? jwtExpiryForTest(String token) => _jwtExpiry(_decodeJwtClaims(_stripBearer(token)));
 
   @visibleForTesting
-  static String extractUidForTest(String token) =>
-      _extractUid(_decodeJwtClaims(_stripBearer(token)));
+  static String extractUidForTest(String token) => _extractUid(_decodeJwtClaims(_stripBearer(token)));
 
   @visibleForTesting
-  static List<AiProviderModel> modelsFromCatalogForTest(dynamic payload) =>
-      _modelsFromCatalog(payload);
+  static List<AiProviderModel> modelsFromCatalogForTest(dynamic payload) => _modelsFromCatalog(payload);
 
   @visibleForTesting
   static String maskPhoneForTest(String raw) => _maskPhone(raw);
@@ -1117,9 +959,5 @@ class _ExchangeFailure implements Exception {
   final bool retryable;
   final String detail;
 
-  const _ExchangeFailure(
-    this.error, {
-    required this.retryable,
-    required this.detail,
-  });
+  const _ExchangeFailure(this.error, {required this.retryable, required this.detail});
 }

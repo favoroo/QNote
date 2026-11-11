@@ -7,7 +7,8 @@ void main() {
     // Content-Type 是 application/json，但正文带 &&&START&&& 包裹，
     // 交给 Dio 默认 JSON transformer 会在 offset 0 抛 FormatException。
     test('解析带 &&&START&&& 包裹的 passport 响应', () {
-      const body = '&&&START&&&{"qs":"","code":70016,"description":"登录验证失败",'
+      const body =
+          '&&&START&&&{"qs":"","code":70016,"description":"登录验证失败",'
           '"securityStatus":0,"_sign":"","sid":"miothealth","result":"error",'
           '"location":"","callback":"https://sts-hlth.io.mi.com/healthapp/sts"}';
 
@@ -19,7 +20,8 @@ void main() {
     });
 
     test('解析扫码接口的成功响应（含尾部 &&&END&&& 与首尾空白）', () {
-      const body = ' &&&START&&&{"code":0,"userId":"123456",'
+      const body =
+          ' &&&START&&&{"code":0,"userId":"123456",'
           '"passToken":"pt_xxx","ssecurity":"c2VjIA==",'
           '"location":"https://sts.io.mi.com/sts?rc=&_cc=3"}&&&END&&& ';
 
@@ -37,24 +39,15 @@ void main() {
     });
 
     test('响应不是 JSON（如被网关劫持成 HTML 页）时抛 FormatException', () {
-      expect(
-        () => MiFitnessAuthService.parsePassportResponse('<html>502 Bad Gateway</html>'),
-        throwsFormatException,
-      );
+      expect(() => MiFitnessAuthService.parsePassportResponse('<html>502 Bad Gateway</html>'), throwsFormatException);
     });
 
     test('空响应体抛 FormatException，而不是静默返回空 Map', () {
-      expect(
-        () => MiFitnessAuthService.parsePassportResponse(''),
-        throwsFormatException,
-      );
+      expect(() => MiFitnessAuthService.parsePassportResponse(''), throwsFormatException);
     });
 
     test('JSON 数组等非对象响应体抛 FormatException', () {
-      expect(
-        () => MiFitnessAuthService.parsePassportResponse('&&&START&&&[1,2,3]'),
-        throwsFormatException,
-      );
+      expect(() => MiFitnessAuthService.parsePassportResponse('&&&START&&&[1,2,3]'), throwsFormatException);
     });
   });
 
@@ -62,18 +55,12 @@ void main() {
     test('按完整名字取值，不会被 miothealth_serviceToken 抢先命中', () {
       final headers = ['miothealth_serviceToken=health_token; Path=/; HttpOnly'];
 
-      expect(
-        MiFitnessAuthService.findCookie(headers, 'miothealth_serviceToken'),
-        equals('health_token'),
-      );
+      expect(MiFitnessAuthService.findCookie(headers, 'miothealth_serviceToken'), equals('health_token'));
       expect(MiFitnessAuthService.findCookie(headers, 'serviceToken'), isNull);
     });
 
     test('同一响应里多个 cookie 各取各的', () {
-      final headers = [
-        'cUserId=abc; Path=/',
-        'passToken=V1:tok; Path=/; Domain=.xiaomi.com',
-      ];
+      final headers = ['cUserId=abc; Path=/', 'passToken=V1:tok; Path=/; Domain=.xiaomi.com'];
 
       expect(MiFitnessAuthService.findCookie(headers, 'cUserId'), equals('abc'));
       expect(MiFitnessAuthService.findCookie(headers, 'passToken'), equals('V1:tok'));
@@ -87,9 +74,7 @@ void main() {
 
   group('MiFitnessAuthService.parseExtensionPragma', () {
     test('解析 pragma 里的 ssecurity 与 nonce', () {
-      final pragma = MiFitnessAuthService.parseExtensionPragma(
-        ['{"ssecurity":"c2Vj","nonce":1234567890}'],
-      );
+      final pragma = MiFitnessAuthService.parseExtensionPragma(['{"ssecurity":"c2Vj","nonce":1234567890}']);
 
       expect(pragma['ssecurity'], equals('c2Vj'));
       expect(pragma['nonce'], equals(1234567890));
@@ -126,13 +111,7 @@ void main() {
 
     test('轮换后的 passToken/cUserId 只走 Set-Cookie 时也能读到', () {
       final login = MiFitnessAuthService.parsePassportLogin(
-        {
-          'code': 0,
-          'userId': '123456',
-          'ssecurity': 'c2Vj',
-          'nonce': 1,
-          'location': 'https://sts.io.mi.com/sts',
-        },
+        {'code': 0, 'userId': '123456', 'ssecurity': 'c2Vj', 'nonce': 1, 'location': 'https://sts.io.mi.com/sts'},
         setCookieHeaders: ['passToken=pt_rotated; Path=/', 'cUserId=cu_new; Path=/'],
         known: MiAuthCredentials(
           userId: '123456',
@@ -170,13 +149,7 @@ void main() {
 
     test('ssecurity/nonce 走 Extension-Pragma 兜底', () {
       final login = MiFitnessAuthService.parsePassportLogin(
-        {
-          'code': 0,
-          'userId': '1',
-          'passToken': 'pt',
-          'cUserId': 'cu',
-          'location': 'https://sts.io.mi.com/sts',
-        },
+        {'code': 0, 'userId': '1', 'passToken': 'pt', 'cUserId': 'cu', 'location': 'https://sts.io.mi.com/sts'},
         pragma: {'ssecurity': 'c2Vj', 'nonce': 42},
       );
 

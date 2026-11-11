@@ -17,11 +17,7 @@ class RaccoonLoginSheet extends StatefulWidget {
   /// 为空表示新增一个账号
   final String? accountId;
 
-  const RaccoonLoginSheet({
-    super.key,
-    required this.providerId,
-    this.accountId,
-  });
+  const RaccoonLoginSheet({super.key, required this.providerId, this.accountId});
 
   @override
   State<RaccoonLoginSheet> createState() => _RaccoonLoginSheetState();
@@ -62,10 +58,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
         return;
       }
       _handle = handle;
-      final launched = await launchUrl(
-        Uri.parse(handle.url),
-        mode: LaunchMode.externalApplication,
-      );
+      final launched = await launchUrl(Uri.parse(handle.url), mode: LaunchMode.externalApplication);
       if (!launched) {
         throw StateError('无法打开浏览器，请复制链接手动打开或改用粘贴登录');
       }
@@ -133,9 +126,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         child: Column(
@@ -146,26 +137,16 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
               child: Container(
                 width: 36,
                 height: 4,
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              '登录商汤小浣熊',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            Text('登录商汤小浣熊', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             Text(
               '登录后小Q使用该账号额度调用小浣熊模型；登录态仅存本机、不随备份同步，'
               '多账号可在上一页轮换。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
             if (!kIsWeb)
@@ -174,11 +155,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
                 child: FilledButton.icon(
                   onPressed: _waiting ? null : _startBrowserLogin,
                   icon: _waiting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.open_in_browser_rounded),
                   label: Text(_waiting ? '等待浏览器授权…' : '浏览器登录'),
                 ),
@@ -190,24 +167,17 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
                   Expanded(
                     child: Text(
                       '授权后自动返回；浏览器无反应时，取消并改用下方粘贴。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                     ),
                   ),
-                  TextButton(
-                    onPressed: _cancelWaiting,
-                    child: const Text('取消'),
-                  ),
+                  TextButton(onPressed: _cancelWaiting, child: const Text('取消')),
                 ],
               ),
             ],
             if (kIsWeb) ...[
               Text(
                 'Web 端无法接收本机回调，请用下方粘贴方式。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ],
             const SizedBox(height: 18),
@@ -218,9 +188,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Text(
                     '或粘贴登录结果',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant),
                   ),
                 ),
                 Expanded(child: Divider(color: colorScheme.outlineVariant)),
@@ -243,11 +211,7 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
               child: OutlinedButton.icon(
                 onPressed: _submittingPaste ? null : _submitPaste,
                 icon: _submittingPaste
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.content_paste_go_rounded),
                 label: const Text('粘贴登录'),
               ),
@@ -261,20 +225,13 @@ class _RaccoonLoginSheetState extends State<RaccoonLoginSheet> {
                   color: colorScheme.errorContainer.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(
-                  _error!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onErrorContainer,
-                  ),
-                ),
+                child: Text(_error!, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onErrorContainer)),
               ),
             ],
             const SizedBox(height: 6),
             Text(
               '若 office-raccoon:// 链接打不开，复制完整地址粘贴到上方。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),

@@ -19,13 +19,7 @@ DailyScore _score({
   required String id,
   required DateTime date,
   int total = 88,
-  Map<String, int> dims = const {
-    'sleep': 90,
-    'diet': 70,
-    'activity': 65,
-    'health': 80,
-    'screen': 55,
-  },
+  Map<String, int> dims = const {'sleep': 90, 'diet': 70, 'activity': 65, 'health': 80, 'screen': 55},
   String summary = '作息规律',
   DateTime? createdAt,
   DateTime? updatedAt,
@@ -53,9 +47,7 @@ void main() {
     databaseFactory = databaseFactoryFfi;
     // 本文件独占一个库目录：flutter test 并发跑多个文件，而 ffi 默认让它们共用
     // 同一个 qnote.db，两个文件同时清表/数行会互相看到对方的数据
-    await databaseFactoryFfi.setDatabasesPath(
-      Directory.systemTemp.createTempSync('qnote_daily_scores_repo').path,
-    );
+    await databaseFactoryFfi.setDatabasesPath(Directory.systemTemp.createTempSync('qnote_daily_scores_repo').path);
   });
 
   final repo = DailyScoreRepository();
@@ -72,27 +64,23 @@ void main() {
     return rows.first['c'] as int;
   }
 
-  Future<List<Map<String, Object?>>> scoreLogs() => db.query(
-    'sync_log',
-    where: "table_name = 'daily_scores'",
-    orderBy: 'id ASC',
-  );
+  Future<List<Map<String, Object?>>> scoreLogs() =>
+      db.query('sync_log', where: "table_name = 'daily_scores'", orderBy: 'id ASC');
 
   group('upsertByDate', () {
     test('新日期落库一条并生成同步日志', () async {
       final saved = await repo.upsertByDate(_score(id: 'a1', date: _day(2)));
       expect(saved.id, '${_idPrefix}a1');
 
-      final rows = await db.query(
-        'daily_scores',
-        where: 'date = ?',
-        whereArgs: ['2020-09-03'],
-      );
+      final rows = await db.query('daily_scores', where: 'date = ?', whereArgs: ['2020-09-03']);
       expect(rows.length, 1);
-      expect(
-        jsonDecode(rows.first['dimension_scores'] as String),
-        {'sleep': 90, 'diet': 70, 'activity': 65, 'health': 80, 'screen': 55},
-      );
+      expect(jsonDecode(rows.first['dimension_scores'] as String), {
+        'sleep': 90,
+        'diet': 70,
+        'activity': 65,
+        'health': 80,
+        'screen': 55,
+      });
 
       final logs = await scoreLogs();
       expect(logs.length, 1);
@@ -102,38 +90,18 @@ void main() {
     });
 
     test('同日期再写不新增行，且保留 id 与 created_at', () async {
-      await repo.upsertByDate(
-        _score(
-          id: 'keep-me',
-          date: _day(3),
-          total: 88,
-          createdAt: DateTime(2020, 8, 1),
-        ),
-      );
+      await repo.upsertByDate(_score(id: 'keep-me', date: _day(3), total: 88, createdAt: DateTime(2020, 8, 1)));
 
       final saved = await repo.upsertByDate(
-        _score(
-          id: 'brand-new-uuid',
-          date: _day(3),
-          total: 61,
-          createdAt: DateTime(2020, 9, 20),
-        ),
+        _score(id: 'brand-new-uuid', date: _day(3), total: 61, createdAt: DateTime(2020, 9, 20)),
       );
 
-      final rows = await db.query(
-        'daily_scores',
-        where: 'date = ?',
-        whereArgs: ['2020-09-04'],
-      );
+      final rows = await db.query('daily_scores', where: 'date = ?', whereArgs: ['2020-09-04']);
       expect(rows.length, 1, reason: '不得像 delete-then-insert 那样多出一行');
       expect(saved.id, '${_idPrefix}keep-me', reason: '主键必须稳定，否则端间同步会分叉');
       expect(saved.createdAt, DateTime(2020, 8, 1), reason: '首次评分时间不能被覆盖');
       expect(saved.totalScore, 61);
-      expect(
-        saved.updatedAt.isAfter(DateTime(2020, 8, 1)),
-        isTrue,
-        reason: 'updatedAt 必须前进',
-      );
+      expect(saved.updatedAt.isAfter(DateTime(2020, 8, 1)), isTrue, reason: 'updatedAt 必须前进');
     });
 
     test('合并后的实体只改目标维度，其余维度按原值写回', () async {
@@ -144,13 +112,7 @@ void main() {
       await repo.upsertByDate(existing.copyWith(dimensionScores: merged));
 
       final read = await repo.getByDate(_day(4));
-      expect(read!.dimensionScores, {
-        'sleep': 90,
-        'diet': 40,
-        'activity': 65,
-        'health': 80,
-        'screen': 55,
-      });
+      expect(read!.dimensionScores, {'sleep': 90, 'diet': 40, 'activity': 65, 'health': 80, 'screen': 55});
       expect(read.totalScore, 88);
     });
   });
@@ -230,20 +192,14 @@ void main() {
     test('删掉当天全部行并写 delete 日志，不碰其他日期', () async {
       await repo.upsertByDate(_score(id: 'd1', date: _day(10)));
       await repo.upsertByDate(_score(id: 'd2', date: _day(11)));
-      await db.insert(
-        'daily_scores',
-        _score(id: 'dup', date: _day(10)).toMap(),
-      );
+      await db.insert('daily_scores', _score(id: 'dup', date: _day(10)).toMap());
 
       final removed = await repo.deleteByDate(_day(10));
       expect(removed, 2, reason: '同日重复行应一并清掉');
       expect(await repo.getByDate(_day(10)), isNull);
       expect(await repo.getByDate(_day(11)), isNotNull);
 
-      final logs = await db.query(
-        'sync_log',
-        where: "table_name = 'daily_scores' AND operation = 'delete'",
-      );
+      final logs = await db.query('sync_log', where: "table_name = 'daily_scores' AND operation = 'delete'");
       expect(logs.length, 2);
     });
 

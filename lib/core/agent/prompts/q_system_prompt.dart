@@ -28,8 +28,7 @@ class QSystemPrompt {
   /// 模型「你看不到画面」并把识图需求导向 `describe_image` —— 网关对不支持图片的模型
   /// 不会报错（实测 glm-5.2 收图仍返回 200，只是把内容编出来），只靠报错兜底拦不住编造
   static String buildSystemPrompt({
-    String personalityPrompt =
-        '你是 QNote 应用内置的全能终端管家与专属助理 —— **小Q**。',
+    String personalityPrompt = '你是 QNote 应用内置的全能终端管家与专属助理 —— **小Q**。',
     String personalityName = '',
     Set<String> enabledOptionalTools = AgentToolRegistry.optionalToolNames,
     bool supportsVisionInput = true,
@@ -45,9 +44,7 @@ class QSystemPrompt {
       optionalRules.add(_generateImageRule);
     }
     if (enabledOptionalTools.contains('describe_image')) {
-      optionalRules.add(
-        supportsVisionInput ? _describeImageWhenCapableRule : _describeImageRule,
-      );
+      optionalRules.add(supportsVisionInput ? _describeImageWhenCapableRule : _describeImageRule);
     }
     // 附件图片条款必须跟着能力走：模型其实看不见时还写「你已能直接看到画面」，
     // 等于授意它照着用户的提问编一段图片描述
@@ -251,8 +248,7 @@ ${optionalRules.isEmpty ? '' : '\n## 5. 联网与媒体工具准则\n${optionalR
     final skills = SkillRegistry.instance.listSkills();
     final buffer = StringBuffer();
     for (final s in skills) {
-      final tag =
-          s['origin'] == AgentSkillOrigin.user ? '（自定义技能）' : '';
+      final tag = s['origin'] == AgentSkillOrigin.user ? '（自定义技能）' : '';
       buffer.writeln('  - `${s['name']}`$tag: ${s['description']}');
     }
     return buffer.toString().trimRight();

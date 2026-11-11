@@ -50,26 +50,21 @@ class WebSearchTool extends AgentTool {
 
   @override
   Map<String, dynamic> get parametersSchema => {
-        'type': 'object',
-        'properties': {
-          'query': {
-            'type': 'string',
-            'description': '搜索关键词。建议包含时间限定词（如"2026"）或具体实体名，'
-                '过长的问题应提炼为关键词组合，而非整句照搬。',
-          },
-          'max_results': {
-            'type': 'integer',
-            'description': '期望返回的结果条数，默认 5，最大 10。',
-          },
-        },
-        'required': ['query'],
-      };
+    'type': 'object',
+    'properties': {
+      'query': {
+        'type': 'string',
+        'description':
+            '搜索关键词。建议包含时间限定词（如"2026"）或具体实体名，'
+            '过长的问题应提炼为关键词组合，而非整句照搬。',
+      },
+      'max_results': {'type': 'integer', 'description': '期望返回的结果条数，默认 5，最大 10。'},
+    },
+    'required': ['query'],
+  };
 
   @override
-  Future<ToolResult> execute(
-    Map<String, dynamic> arguments, {
-    void Function(String progress)? onProgress,
-  }) async {
+  Future<ToolResult> execute(Map<String, dynamic> arguments, {void Function(String progress)? onProgress}) async {
     // 参数解析与校验：query 必填非空；max_results 兼容 int/num/string 并收敛到合法区间
     final query = (arguments['query']?.toString() ?? '').trim();
     if (query.isEmpty) {
@@ -79,7 +74,8 @@ class WebSearchTool extends AgentTool {
 
     onProgress?.call('正在联网搜索：$query');
 
-    final bingUrl = 'https://www.bing.com/search'
+    final bingUrl =
+        'https://www.bing.com/search'
         '?q=${Uri.encodeQueryComponent(query)}'
         '&count=$maxResults&mkt=zh-CN&setlang=zh-CN';
     // Web 端浏览器存在同源限制，必须经公共代理转发；原生端直连（国内会自动重定向到 cn.bing.com）
@@ -103,8 +99,7 @@ class WebSearchTool extends AgentTool {
         return ToolResult.error('搜索服务返回了空响应，请如实告知用户本轮无法联网搜索');
       }
 
-      final document =
-          html_parser.parse(_decodeBytes(bytes, response.headers.value('content-type')));
+      final document = html_parser.parse(_decodeBytes(bytes, response.headers.value('content-type')));
       final results = parseBingResults(document, limit: maxResults);
       if (results.isEmpty) {
         // 区分"真的没有结果"与"页面被拦截/结构变化"，给模型不同的应对提示
@@ -117,27 +112,25 @@ class WebSearchTool extends AgentTool {
               uiDetails: {'type': 'web_search', 'query': query, 'engine': 'bing', 'results': []},
             );
           case _emptyBlocked:
-            return ToolResult.error('搜索请求被 Bing 反爬拦截，本轮无法联网搜索，'
-                '请如实告知用户暂时搜不到，严禁编造结果');
+            return ToolResult.error(
+              '搜索请求被 Bing 反爬拦截，本轮无法联网搜索，'
+              '请如实告知用户暂时搜不到，严禁编造结果',
+            );
           default:
-            return ToolResult.error('Bing 结果页解析失败（页面结构可能已变化），'
-                '本轮无法联网搜索，请如实告知用户，严禁编造结果');
+            return ToolResult.error(
+              'Bing 结果页解析失败（页面结构可能已变化），'
+              '本轮无法联网搜索，请如实告知用户，严禁编造结果',
+            );
         }
       }
 
       onProgress?.call('搜索完成，共 ${results.length} 条结果');
       return ToolResult.success(
         formatResults(query, results),
-        uiDetails: {
-          'type': 'web_search',
-          'query': query,
-          'engine': 'bing',
-          'results': results,
-        },
+        uiDetails: {'type': 'web_search', 'query': query, 'engine': 'bing', 'results': results},
       );
     } on DioException catch (e) {
-      return ToolResult.error(
-          '${_describeDioError(e)}；请如实告知用户本轮无法联网搜索，严禁编造结果');
+      return ToolResult.error('${_describeDioError(e)}；请如实告知用户本轮无法联网搜索，严禁编造结果');
     } catch (e) {
       return ToolResult.error('搜索执行失败：$e；请如实告知用户本轮无法联网搜索，严禁编造结果');
     }
@@ -256,8 +249,7 @@ class WebSearchTool extends AgentTool {
 
   /// 按响应头 charset 解码字节，异常时统一回退 UTF-8 宽容解码（Bing 中文页为 UTF-8）
   static String _decodeBytes(List<int> bytes, String? contentType) {
-    final charset =
-        RegExp(r'charset=([\w-]+)', caseSensitive: false).firstMatch(contentType ?? '')?.group(1);
+    final charset = RegExp(r'charset=([\w-]+)', caseSensitive: false).firstMatch(contentType ?? '')?.group(1);
     final name = charset?.toLowerCase() ?? '';
     try {
       if (name.contains('8859') || name.contains('latin')) return latin1.decode(bytes);

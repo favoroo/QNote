@@ -64,9 +64,11 @@ void main() {
 
     // 模拟系统窗口淘汰后重新读到的小值
     final advanced = await repo.upsertSnapshot(
-      snapshot(day, 2 * 3600 * 1000, apps: [
-        const ScreenAppUsage(packageName: 'com.demo', appName: '演示', timeMs: 2 * 3600 * 1000),
-      ]),
+      snapshot(
+        day,
+        2 * 3600 * 1000,
+        apps: [const ScreenAppUsage(packageName: 'com.demo', appName: '演示', timeMs: 2 * 3600 * 1000)],
+      ),
     );
 
     expect(advanced, isFalse);
@@ -76,13 +78,21 @@ void main() {
 
   test('更大的新值覆盖并刷新明细', () async {
     final day = DateTime(2026, 9, 16);
-    await repo.upsertSnapshot(snapshot(day, 1 * 3600 * 1000, apps: [
-      const ScreenAppUsage(packageName: 'com.a', appName: 'A', timeMs: 1 * 3600 * 1000),
-    ]));
+    await repo.upsertSnapshot(
+      snapshot(
+        day,
+        1 * 3600 * 1000,
+        apps: [const ScreenAppUsage(packageName: 'com.a', appName: 'A', timeMs: 1 * 3600 * 1000)],
+      ),
+    );
 
-    final advanced = await repo.upsertSnapshot(snapshot(day, 4 * 3600 * 1000, apps: [
-      const ScreenAppUsage(packageName: 'com.b', appName: 'B', timeMs: 4 * 3600 * 1000),
-    ]));
+    final advanced = await repo.upsertSnapshot(
+      snapshot(
+        day,
+        4 * 3600 * 1000,
+        apps: [const ScreenAppUsage(packageName: 'com.b', appName: 'B', timeMs: 4 * 3600 * 1000)],
+      ),
+    );
 
     expect(advanced, isTrue);
     final read = await repo.getByDate(ScreenUsageDaily.dateKey(day));
@@ -95,9 +105,11 @@ void main() {
     await repo.upsertSnapshot(snapshot(day, 2 * 3600 * 1000));
 
     await repo.upsertSnapshot(
-      snapshot(day, 2 * 3600 * 1000, apps: [
-        const ScreenAppUsage(packageName: 'com.c', appName: 'C', timeMs: 2 * 3600 * 1000),
-      ]),
+      snapshot(
+        day,
+        2 * 3600 * 1000,
+        apps: [const ScreenAppUsage(packageName: 'com.c', appName: 'C', timeMs: 2 * 3600 * 1000)],
+      ),
     );
 
     final read = await repo.getByDate(ScreenUsageDaily.dateKey(day));
@@ -133,10 +145,7 @@ void main() {
   test('earliestDate 反映最早已采集日，空表返回 null', () async {
     expect(await repo.earliestDate(), isNull);
 
-    await repo.upsertSnapshots([
-      snapshot(DateTime(2026, 9, 8), 1000),
-      snapshot(DateTime(2026, 9, 2), 1000),
-    ]);
+    await repo.upsertSnapshots([snapshot(DateTime(2026, 9, 8), 1000), snapshot(DateTime(2026, 9, 2), 1000)]);
 
     final earliest = await repo.earliestDate();
     expect(earliest, DateTime(2026, 9, 2));

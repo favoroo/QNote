@@ -15,10 +15,7 @@ String formatTokenCount(int value) {
 /// Token 数量的精确展示：123,456
 String formatTokenCountExact(int value) {
   if (value <= 0) return '0';
-  return value.toString().replaceAllMapped(
-        RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-        (match) => '${match[1]},',
-      );
+  return value.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},');
 }
 
 String _trimTrailingZero(String text) {

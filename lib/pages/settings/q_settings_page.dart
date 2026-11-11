@@ -72,11 +72,7 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
       ),
       body: Column(
         children: [
-          SettingsSegmentBar(
-            items: _tabs,
-            selectedIndex: _currentIndex,
-            onChanged: _switchTo,
-          ),
+          SettingsSegmentBar(items: _tabs, selectedIndex: _currentIndex, onChanged: _switchTo),
           Expanded(
             child: SettingsSegmentContent(
               index: _currentIndex,

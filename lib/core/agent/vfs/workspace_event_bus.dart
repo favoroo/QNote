@@ -1,11 +1,7 @@
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 
 /// 工作区文件变更类型
-enum WorkspaceChangeType {
-  created,
-  updated,
-  deleted,
-}
+enum WorkspaceChangeType { created, updated, deleted }
 
 /// 工作区文件变更事件
 class WorkspaceChangeEvent {
@@ -13,11 +9,7 @@ class WorkspaceChangeEvent {
   final WorkspaceChangeType changeType;
   final dynamic payload;
 
-  const WorkspaceChangeEvent({
-    required this.path,
-    required this.changeType,
-    this.payload,
-  });
+  const WorkspaceChangeEvent({required this.path, required this.changeType, this.payload});
 
   @override
   String toString() => 'WorkspaceChangeEvent($changeType, $path)';
@@ -44,20 +36,13 @@ class WorkspaceEventBus {
 
   /// 派发变更事件
   void emit(String path, WorkspaceChangeType type, [dynamic payload]) {
-    final event = WorkspaceChangeEvent(
-      path: path,
-      changeType: type,
-      payload: payload,
-    );
+    final event = WorkspaceChangeEvent(path: path, changeType: type, payload: payload);
     for (final listener in List.from(_listeners)) {
       try {
         listener(event);
       } catch (e) {
         // 单个监听器抛错不能中断其余监听器，但需记录以便排查 UI 状态未刷新问题
-        LoggerService.instance.warning(
-          '工作区变更事件监听器执行失败: path=$path, type=${type.name}, $e',
-          category: LogCategory.ui,
-        );
+        LoggerService.instance.warning('工作区变更事件监听器执行失败: path=$path, type=${type.name}, $e', category: LogCategory.ui);
       }
     }
   }

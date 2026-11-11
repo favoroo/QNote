@@ -5,11 +5,7 @@ import 'package:qnote_flutter/models/diary_record.dart';
 /// 抽成纯函数的原因：跨天归属、满环判定都只依赖记录列表与当前时间，
 /// 放在页面里只能靠起 App 点一点验证；抽出后单测可直接锁住。
 class DiaryProgress {
-  const DiaryProgress({
-    required this.todayCount,
-    required this.target,
-    required this.maxPerDay,
-  });
+  const DiaryProgress({required this.todayCount, required this.target, required this.maxPerDay});
 
   /// 归属今天的记录条数（已过滤删除）。
   final int todayCount;
@@ -69,11 +65,7 @@ Map<String, int> countRecordsByDay(List<DiaryRecord> records) {
 /// 计算今日完整度。
 ///
 /// 当天归属与剔除口径见 [countRecordsByDay]。
-DiaryProgress computeDiaryProgress(
-  List<DiaryRecord> records,
-  DateTime now, {
-  int target = 3,
-}) {
+DiaryProgress computeDiaryProgress(List<DiaryRecord> records, DateTime now, {int target = 3}) {
   final safeTarget = target <= 0 ? 3 : target;
   final today = DateTime(now.year, now.month, now.day);
 
@@ -87,11 +79,7 @@ DiaryProgress computeDiaryProgress(
     }
   }
 
-  return DiaryProgress(
-    todayCount: todayCount,
-    target: safeTarget,
-    maxPerDay: maxPerDay,
-  );
+  return DiaryProgress(todayCount: todayCount, target: safeTarget, maxPerDay: maxPerDay);
 }
 
 String _dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';

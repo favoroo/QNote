@@ -13,11 +13,13 @@ import 'app.dart';
 /// 2. 延迟初始化（QNoteApp.initState 内）：WebDAV 同步检查、通知提醒启动——首帧后后台执行，不阻塞用户。
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.dark,
-    statusBarBrightness: Brightness.light,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+  );
   await preInitializeApp();
   runApp(const ProviderScope(child: QNoteApp()));
 }

@@ -5,8 +5,7 @@ import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 
 // P2-30: 从 StateNotifierProvider 迁移到 NotifierProvider，符合 Riverpod 新推荐写法。
 // NotifierProvider 是同步状态，调用方 ref.watch / ref.read(notifier).setXxx 用法完全兼容。
-final themeModeProvider =
-    NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
 
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   @override
@@ -48,8 +47,7 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
   }
 }
 
-final accentColorProvider =
-    NotifierProvider<AccentColorNotifier, Color>(AccentColorNotifier.new);
+final accentColorProvider = NotifierProvider<AccentColorNotifier, Color>(AccentColorNotifier.new);
 
 class AccentColorNotifier extends Notifier<Color> {
   @override

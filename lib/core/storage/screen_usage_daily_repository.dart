@@ -4,11 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/models/screen_usage_daily.dart';
 
-final screenUsageDailyRepositoryProvider = Provider<ScreenUsageDailyRepository>(
-  (ref) {
-    return ScreenUsageDailyRepository(DatabaseHelper.instance);
-  },
-);
+final screenUsageDailyRepositoryProvider = Provider<ScreenUsageDailyRepository>((ref) {
+  return ScreenUsageDailyRepository(DatabaseHelper.instance);
+});
 
 /// 每日屏幕时长快照仓储
 ///
@@ -50,12 +48,7 @@ class ScreenUsageDailyRepository {
   }
 
   Future<bool> _mergeOne(Transaction txn, ScreenUsageDaily snapshot) async {
-    final rows = await txn.query(
-      table,
-      where: 'date = ?',
-      whereArgs: [snapshot.date],
-      limit: 1,
-    );
+    final rows = await txn.query(table, where: 'date = ?', whereArgs: [snapshot.date], limit: 1);
     final now = DateTime.now().toIso8601String();
 
     if (rows.isEmpty) {
@@ -63,25 +56,16 @@ class ScreenUsageDailyRepository {
       return snapshot.totalTimeMs > 0;
     }
 
-    final existing = ScreenUsageDaily.fromMap(
-      Map<String, dynamic>.from(rows.first),
-    );
+    final existing = ScreenUsageDaily.fromMap(Map<String, dynamic>.from(rows.first));
     final totalAdvanced = snapshot.totalTimeMs > existing.totalTimeMs;
 
     // 明细只在新快照确实更全时替换：总时长前进、或旧明细缺失
-    final appsReplaced =
-        snapshot.topApps.isNotEmpty &&
-        (totalAdvanced || existing.topApps.isEmpty);
+    final appsReplaced = snapshot.topApps.isNotEmpty && (totalAdvanced || existing.topApps.isEmpty);
 
     if (!totalAdvanced && !appsReplaced) {
       // 唯一仍要写的情形：完成标记只能从 0 变 1，不回退
       if (!existing.isComplete && snapshot.isComplete) {
-        await txn.update(
-          table,
-          {'is_complete': 1, 'updated_at': now},
-          where: 'date = ?',
-          whereArgs: [snapshot.date],
-        );
+        await txn.update(table, {'is_complete': 1, 'updated_at': now}, where: 'date = ?', whereArgs: [snapshot.date]);
       }
       return false;
     }
@@ -96,24 +80,14 @@ class ScreenUsageDailyRepository {
       updatedAt: DateTime.now(),
     );
     final values = merged.toMap()..remove('created_at');
-    await txn.update(
-      table,
-      values,
-      where: 'date = ?',
-      whereArgs: [snapshot.date],
-    );
+    await txn.update(table, values, where: 'date = ?', whereArgs: [snapshot.date]);
     return totalAdvanced;
   }
 
   /// 读取指定日期（YYYY-MM-DD）的快照，无记录返回 null
   Future<ScreenUsageDaily?> getByDate(String date) async {
     final db = await _db;
-    final rows = await db.query(
-      table,
-      where: 'date = ?',
-      whereArgs: [date],
-      limit: 1,
-    );
+    final rows = await db.query(table, where: 'date = ?', whereArgs: [date], limit: 1);
     if (rows.isEmpty) {
       return null;
     }
@@ -121,10 +95,7 @@ class ScreenUsageDailyRepository {
   }
 
   /// 读取 [startDate, endDate] 闭区间内的快照，按日期升序
-  Future<List<ScreenUsageDaily>> getRange(
-    String startDate,
-    String endDate,
-  ) async {
+  Future<List<ScreenUsageDaily>> getRange(String startDate, String endDate) async {
     final db = await _db;
     final rows = await db.query(
       table,
@@ -132,9 +103,7 @@ class ScreenUsageDailyRepository {
       whereArgs: [startDate, endDate],
       orderBy: 'date ASC',
     );
-    return rows
-        .map((r) => ScreenUsageDaily.fromMap(Map<String, dynamic>.from(r)))
-        .toList();
+    return rows.map((r) => ScreenUsageDaily.fromMap(Map<String, dynamic>.from(r))).toList();
   }
 
   /// 最早已采集日期，空表返回 null；UI 用它区分「没用手机」与「还没开始记录」

@@ -3,18 +3,10 @@ class DateColorMark {
   final DateTime date;
   final String color;
 
-  DateColorMark({
-    required this.id,
-    required this.date,
-    required this.color,
-  });
+  DateColorMark({required this.id, required this.date, required this.color});
 
   Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'date': date.toIso8601String().split('T').first,
-      'color': color,
-    };
+    return {'id': id, 'date': date.toIso8601String().split('T').first, 'color': color};
   }
 
   factory DateColorMark.fromMap(Map<String, dynamic> map) {
@@ -25,15 +17,7 @@ class DateColorMark {
     );
   }
 
-  DateColorMark copyWith({
-    String? id,
-    DateTime? date,
-    String? color,
-  }) {
-    return DateColorMark(
-      id: id ?? this.id,
-      date: date ?? this.date,
-      color: color ?? this.color,
-    );
+  DateColorMark copyWith({String? id, DateTime? date, String? color}) {
+    return DateColorMark(id: id ?? this.id, date: date ?? this.date, color: color ?? this.color);
   }
 }

@@ -74,17 +74,11 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
       width: 360, // Slightly wider sidebar for better display of nested pages
       backgroundColor: colorScheme.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
+        borderRadius: BorderRadius.only(topRight: Radius.circular(24), bottomRight: Radius.circular(24)),
       ),
       child: ScaffoldMessenger(
         child: ClipRRect(
-          borderRadius: const BorderRadius.only(
-            topRight: Radius.circular(24),
-            bottomRight: Radius.circular(24),
-          ),
+          borderRadius: const BorderRadius.only(topRight: Radius.circular(24), bottomRight: Radius.circular(24)),
           child: PopScope(
             canPop: false,
             onPopInvokedWithResult: (didPop, result) {
@@ -101,10 +95,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
               // 抽屉每次打开都是全新子树，初始栈只能在这里生成：
               // 一级菜单 +（可选）上次停留的入口
               onGenerateInitialRoutes: (navigator, initialRoute) {
-                return [
-                  _menuRoute(),
-                  if (_resumeEntry != null) _entryRoute(_resumeEntry!),
-                ];
+                return [_menuRoute(), if (_resumeEntry != null) _entryRoute(_resumeEntry!)];
               },
               onGenerateRoute: (settings) {
                 if (settings.name == _menuRouteName) return _menuRoute();
@@ -190,10 +181,7 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                               endIndent: 8,
                               color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.45 : 0.9),
                             ),
-                          _DrawerMenuItem(
-                            entry: _menuEntries[i],
-                            onTap: () => _navigateTo(context, _menuEntries[i]),
-                          ),
+                          _DrawerMenuItem(entry: _menuEntries[i], onTap: () => _navigateTo(context, _menuEntries[i])),
                         ],
                       ],
                     ),
@@ -300,13 +288,7 @@ class _MenuEntry {
   final String label;
   final Widget page;
 
-  const _MenuEntry({
-    required this.id,
-    this.icon,
-    this.iconWidget,
-    required this.label,
-    required this.page,
-  });
+  const _MenuEntry({required this.id, this.icon, this.iconWidget, required this.label, required this.page});
 }
 
 /// 已合并入口的旧 id → 新 id。
@@ -340,25 +322,10 @@ const List<_MenuEntry> _menuEntries = [
     page: QSettingsPage(),
   ),
   _MenuEntry(id: 'ai-config', icon: Icons.tune_rounded, label: 'AI 模型配置', page: AiConfigPage()),
-  _MenuEntry(
-    id: 'quick-record',
-    icon: Icons.hexagon_outlined,
-    label: '快捷记录',
-    page: QuickRecordSettingsPage(),
-  ),
+  _MenuEntry(id: 'quick-record', icon: Icons.hexagon_outlined, label: '快捷记录', page: QuickRecordSettingsPage()),
   _MenuEntry(id: 'data', icon: Icons.sync_rounded, label: '数据与同步', page: DataSyncPage()),
-  _MenuEntry(
-    id: 'health',
-    icon: Icons.favorite_border_rounded,
-    label: '健康数据',
-    page: HealthSettingsPage(),
-  ),
-  _MenuEntry(
-    id: 'personalization',
-    icon: Icons.palette_outlined,
-    label: '个性化设置',
-    page: PersonalizationPage(),
-  ),
+  _MenuEntry(id: 'health', icon: Icons.favorite_border_rounded, label: '健康数据', page: HealthSettingsPage()),
+  _MenuEntry(id: 'personalization', icon: Icons.palette_outlined, label: '个性化设置', page: PersonalizationPage()),
   _MenuEntry(id: 'about', icon: Icons.info_outline, label: '关于 QNote', page: AboutPage()),
 ];
 
@@ -375,15 +342,13 @@ class _DrawerMenuItem extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     // 统一品牌色小圆底，压低图标色彩权重，让列表主体保持干净
-    final Widget leading = entry.iconWidget ??
+    final Widget leading =
+        entry.iconWidget ??
         Container(
           width: 36,
           height: 36,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: colorScheme.primaryContainer, shape: BoxShape.circle),
           child: Icon(entry.icon, color: colorScheme.primary, size: 19),
         );
 
@@ -394,10 +359,7 @@ class _DrawerMenuItem extends StatelessWidget {
       leading: leading,
       title: Text(
         entry.label,
-        style: theme.textTheme.bodyLarge?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: colorScheme.onSurface,
-        ),
+        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600, color: colorScheme.onSurface),
       ),
       trailing: Icon(
         Icons.chevron_right,

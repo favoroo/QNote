@@ -28,10 +28,7 @@ class AgentToolConfig {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
         // 只保留合法的可选工具名，防御历史脏数据
-        return _cached = decoded
-            .whereType<String>()
-            .where(AgentToolRegistry.optionalToolNames.contains)
-            .toSet();
+        return _cached = decoded.whereType<String>().where(AgentToolRegistry.optionalToolNames.contains).toSet();
       }
     } catch (_) {}
     return _cached = <String>{};
@@ -59,9 +56,6 @@ class AgentToolConfig {
 
   Future<void> _save(Set<String> disabled) async {
     _cached = disabled;
-    await ConfigRepository.instance.setAppConfig(
-      storageKey,
-      jsonEncode(disabled.toList()),
-    );
+    await ConfigRepository.instance.setAppConfig(storageKey, jsonEncode(disabled.toList()));
   }
 }

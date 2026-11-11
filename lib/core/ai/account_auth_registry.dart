@@ -26,8 +26,7 @@ class AccountAuthRegistry {
   }
 
   /// 是否账号型厂商（基址已含完整聊天路径前缀，端点直接拼 `chat/completions`）
-  static bool isAccountVendor(String? vendorId) =>
-      _services.any((service) => service.vendorId == vendorId);
+  static bool isAccountVendor(String? vendorId) => _services.any((service) => service.vendorId == vendorId);
 
   /// 数据管理页清空/恢复数据后，所有账号服务的进程内缓存都要一起清
   static void clearAllCaches() {

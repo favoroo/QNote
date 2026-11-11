@@ -15,9 +15,7 @@ import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
 Widget _host() {
   final router = GoRouter(
     initialLocation: '/',
-    routes: [
-      GoRoute(path: '/', builder: (_, _) => const SizedBox.shrink()),
-    ],
+    routes: [GoRoute(path: '/', builder: (_, _) => const SizedBox.shrink())],
   );
   return ProviderScope(
     overrides: [routerProvider.overrideWithValue(router)],
@@ -26,11 +24,7 @@ Widget _host() {
       builder: (context, child) => Stack(
         children: [
           child!,
-          Overlay(
-            initialEntries: [
-              OverlayEntry(builder: (_) => const FloatingQOverlay()),
-            ],
-          ),
+          Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
         ],
       ),
     ),
@@ -50,10 +44,7 @@ void _setPanelOpen(WidgetTester tester, bool open) {
 /// 取悬浮层最外层的 IgnorePointer（控制整层禁点）：
 /// 外层距根最近，取全部 IgnorePointer 中深度最小者即可精确定位
 IgnorePointer _outerIgnorePointer(WidgetTester tester) {
-  final outer = find
-      .byType(IgnorePointer)
-      .evaluate()
-      .reduce((a, b) => a.depth < b.depth ? a : b);
+  final outer = find.byType(IgnorePointer).evaluate().reduce((a, b) => a.depth < b.depth ? a : b);
   return outer.widget as IgnorePointer;
 }
 
@@ -118,10 +109,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(_outerIgnorePointer(tester).ignoring, isFalse);
     // 面板全程未重挂载，输入框草稿不丢失
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      '草稿内容',
-    );
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '草稿内容');
   });
 
   group('「给小Q」引用卡片', () {
@@ -129,7 +117,9 @@ void main() {
     void openWithQuote(WidgetTester tester) {
       final context = tester.element(find.byType(FloatingQOverlay));
       final container = ProviderScope.containerOf(context, listen: false);
-      container.read(floatingQProvider.notifier).openWithQuote(
+      container
+          .read(floatingQProvider.notifier)
+          .openWithQuote(
             const QTextQuote(
               source: QQuoteSource.note,
               sourceId: 'n1',
@@ -186,9 +176,7 @@ void main() {
       expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
 
       // 模拟离开笔记编辑页：签名变化使挂起引用作废
-      container
-          .read(floatingQProvider.notifier)
-          .popOverlayContext(noteContext);
+      container.read(floatingQProvider.notifier).popOverlayContext(noteContext);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);

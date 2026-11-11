@@ -176,12 +176,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     await ref.read(todoListProvider.notifier).deleteTodos(idsToDelete);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已删除 $count 项'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已删除 $count 项'), duration: const Duration(seconds: 2)));
       _exitSelectionMode();
     }
   }
@@ -199,30 +196,32 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final todosAsync = ref.watch(todoListProvider);
 
     final folders = foldersAsync.valueOrNull ?? const <Folder>[];
-    final activeFolderId = (selectedFolderId != null &&
-            folders.any((f) => f.id == selectedFolderId))
+    final activeFolderId = (selectedFolderId != null && folders.any((f) => f.id == selectedFolderId))
         ? selectedFolderId
         : (folders.isNotEmpty ? folders.first.id : null);
     final activeFolderIndex = folders.indexWhere((f) => f.id == activeFolderId);
     final safeIndex = activeFolderIndex >= 0 ? activeFolderIndex : 0;
 
     final allTodos = todosAsync.valueOrNull ?? const <Todo>[];
-    final currentFolderTodoIds = allTodos.where((t) {
-      if (t.title.trim().isEmpty) return false;
-      if (activeFolderId != null && t.folderId == activeFolderId) return true;
-      if (t.folderId == null || t.folderId!.isEmpty) {
-        if (activeFolderId == 'todo_default_longterm' || (folders.isNotEmpty && folders[safeIndex].name == '长期')) {
-          return t.isLongTerm;
-        }
-        if (activeFolderId == 'todo_default_today' || safeIndex == 0) {
-          return !t.isLongTerm;
-        }
-      }
-      return false;
-    }).map((t) => t.id).toSet();
+    final currentFolderTodoIds = allTodos
+        .where((t) {
+          if (t.title.trim().isEmpty) return false;
+          if (activeFolderId != null && t.folderId == activeFolderId) return true;
+          if (t.folderId == null || t.folderId!.isEmpty) {
+            if (activeFolderId == 'todo_default_longterm' || (folders.isNotEmpty && folders[safeIndex].name == '长期')) {
+              return t.isLongTerm;
+            }
+            if (activeFolderId == 'todo_default_today' || safeIndex == 0) {
+              return !t.isLongTerm;
+            }
+          }
+          return false;
+        })
+        .map((t) => t.id)
+        .toSet();
 
-    final isCurrentFolderAllSelected = currentFolderTodoIds.isNotEmpty &&
-        currentFolderTodoIds.every((id) => _selectedTodoIds.contains(id));
+    final isCurrentFolderAllSelected =
+        currentFolderTodoIds.isNotEmpty && currentFolderTodoIds.every((id) => _selectedTodoIds.contains(id));
 
     return PopScope(
       canPop: !_isSelectionMode,
@@ -239,8 +238,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             ? null
             : FloatingActionButton(
                 onPressed: () {
-                  final currentFolderId = (selectedFolderId != null &&
-                          folders.any((f) => f.id == selectedFolderId))
+                  final currentFolderId = (selectedFolderId != null && folders.any((f) => f.id == selectedFolderId))
                       ? selectedFolderId
                       : (folders.isNotEmpty ? folders.first.id : null);
                   _addNewTodo(currentFolderId);
@@ -256,11 +254,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           backgroundColor: colorScheme.surface,
           elevation: 0,
           leading: _isSelectionMode
-              ? IconButton(
-                  icon: const Icon(Icons.close),
-                  tooltip: '退出选择',
-                  onPressed: _exitSelectionMode,
-                )
+              ? IconButton(icon: const Icon(Icons.close), tooltip: '退出选择', onPressed: _exitSelectionMode)
               : IconButton(
                   icon: const Icon(Icons.menu),
                   onPressed: () {
@@ -268,9 +262,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     rootScaffoldKey.currentState?.openDrawer();
                   },
                 ),
-          title: Text(
-            _isSelectionMode ? '已选择 ${_selectedTodoIds.length} 项' : '待办',
-          ),
+          title: Text(_isSelectionMode ? '已选择 ${_selectedTodoIds.length} 项' : '待办'),
           actions: [
             if (_isSelectionMode)
               TextButton(
@@ -287,10 +279,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 },
                 child: Text(
                   isCurrentFolderAllSelected ? '取消全选' : '全选',
-                  style: TextStyle(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
                 ),
               )
             else ...[
@@ -319,11 +308,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   key: const ValueKey('todo_batch_bar'),
                   decoration: BoxDecoration(
                     color: colorScheme.surface,
-                    border: Border(
-                      top: BorderSide(
-                        color: colorScheme.outlineVariant.withValues(alpha: 0.15),
-                      ),
-                    ),
+                    border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.15))),
                     boxShadow: [
                       BoxShadow(
                         color: colorScheme.shadow.withValues(alpha: 0.05),
@@ -340,18 +325,14 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                         children: [
                           Text(
                             '已选 ${_selectedTodoIds.length} 项',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           FilledButton(
                             onPressed: _selectedTodoIds.isEmpty ? null : _handleBatchDelete,
                             style: FilledButton.styleFrom(
                               backgroundColor: colorScheme.error,
                               foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -383,8 +364,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 return const Center(child: Text('暂无分类'));
               }
 
-              final activeFolderId = (selectedFolderId != null &&
-                      folders.any((f) => f.id == selectedFolderId))
+              final activeFolderId = (selectedFolderId != null && folders.any((f) => f.id == selectedFolderId))
                   ? selectedFolderId
                   : folders.first.id;
 
@@ -392,9 +372,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               final safeIndex = currentIndex >= 0 ? currentIndex : 0;
 
               // 监听外部切换或保持 pageController 同步
-              if (!_isSwitchingFolder &&
-                  _pageController.hasClients &&
-                  _pageController.page?.round() != safeIndex) {
+              if (!_isSwitchingFolder && _pageController.hasClients && _pageController.page?.round() != safeIndex) {
                 _pageController.jumpToPage(safeIndex);
               }
 
@@ -475,13 +453,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                           return false;
                         }).toList();
 
-                        return _buildTodoList(
-                          context,
-                          folder.id,
-                          todosAsync,
-                          activeTodos,
-                          completedTodos,
-                        );
+                        return _buildTodoList(context, folder.id, todosAsync, activeTodos, completedTodos);
                       },
                     ),
                   ),
@@ -489,11 +461,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => AppErrorState(
-              error: e,
-              action: '加载分类失败',
-              onRetry: () => ref.invalidate(todoFolderListProvider),
-            ),
+            error: (e, _) =>
+                AppErrorState(error: e, action: '加载分类失败', onRetry: () => ref.invalidate(todoFolderListProvider)),
           ),
         ),
       ),
@@ -547,8 +516,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             final item = list.removeAt(oldIndex);
             list.insert(newIndex, item);
             final allTodosList = todosAsync.valueOrNull ?? [];
-            final otherTodos =
-                allTodosList.where((t) => t.isCompleted || t.folderId != folderId).toList();
+            final otherTodos = allTodosList.where((t) => t.isCompleted || t.folderId != folderId).toList();
             ref.read(todoListProvider.notifier).reorderTodos([...list, ...otherTodos]);
           },
           itemBuilder: (context, index) {
@@ -574,26 +542,16 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               ),
             );
           },
-          footer: completedTodos.isEmpty
-              ? null
-              : _buildCompletedSection(context, completedTodos, folderId),
+          footer: completedTodos.isEmpty ? null : _buildCompletedSection(context, completedTodos, folderId),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => AppErrorState(
-        error: e,
-        action: '加载待办失败',
-        onRetry: () => ref.invalidate(todoListProvider),
-      ),
+      error: (e, _) => AppErrorState(error: e, action: '加载待办失败', onRetry: () => ref.invalidate(todoListProvider)),
     );
   }
 
   /// 构建已完成待办折叠区域
-  Widget _buildCompletedSection(
-    BuildContext context,
-    List<Todo> completedTodos,
-    String folderId,
-  ) {
+  Widget _buildCompletedSection(BuildContext context, List<Todo> completedTodos, String folderId) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -647,8 +605,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             sizeCurve: AppCurves.emphasized,
             firstCurve: AppCurves.exit,
             secondCurve: AppCurves.emphasized,
-            crossFadeState:
-                _isCompletedCollapsed ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+            crossFadeState: _isCompletedCollapsed ? CrossFadeState.showFirst : CrossFadeState.showSecond,
             alignment: Alignment.topCenter,
             firstChild: const SizedBox(width: double.infinity),
             secondChild: _keepCompletedItems
@@ -665,8 +622,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                           animateIn: false,
                           isSelectionMode: _isSelectionMode,
                           isSelected: _selectedTodoIds.contains(todo.id),
-                          onTap: () =>
-                              _showTodoBottomSheet(context, todo: todo, folderId: folderId),
+                          onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
                           onToggleComplete: () {
                             ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
                           },
@@ -692,16 +648,13 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   }
 
   /// 唤起底部小窗（用于添加或编辑待办）
-  void _showTodoBottomSheet(
-    BuildContext context, {
-    Todo? todo,
-    String? folderId,
-  }) {
+  void _showTodoBottomSheet(BuildContext context, {Todo? todo, String? folderId}) {
     // 弹窗为模态，常规交互不会重入；此守卫仅拦截小组件「+」等异步触发路径的极端时序
     if (_isTodoSheetOpen) return;
     final folders = ref.read(todoFolderListProvider).valueOrNull ?? [];
     final selectedFolderId = ref.read(selectedTodoFolderIdProvider);
-    final currentFolderId = folderId ??
+    final currentFolderId =
+        folderId ??
         ((selectedFolderId != null && folders.any((f) => f.id == selectedFolderId))
             ? selectedFolderId
             : (folders.isNotEmpty ? folders.first.id : null));
@@ -715,19 +668,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         todo: todo,
         folderId: currentFolderId,
         folders: folders,
-        onSaveAdd: ({
-          required String title,
-          String? reminderTime,
-          String repeatRule = 'none',
-          String? folderId,
-        }) {
+        onSaveAdd: ({required String title, String? reminderTime, String repeatRule = 'none', String? folderId}) {
           if (title.trim().isEmpty) return;
-          ref.read(todoListProvider.notifier).addTodo(
-                title: title.trim(),
-                folderId: folderId,
-                reminderTime: reminderTime,
-                repeatRule: repeatRule,
-              );
+          ref
+              .read(todoListProvider.notifier)
+              .addTodo(title: title.trim(), folderId: folderId, reminderTime: reminderTime, repeatRule: repeatRule);
         },
         onSaveEdit: ({required Todo updatedTodo}) {
           if (updatedTodo.title.trim().isEmpty) return;
@@ -743,18 +688,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final folders = ref.read(todoFolderListProvider).valueOrNull ?? [];
     final items = <ActionMenuItem>[
       ActionMenuItem(
-        iconWidget: QIcon(
-          size: 20,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+        iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.primary),
         label: '给小Q',
         onTap: () => _quoteTodoToQ(todo),
       ),
-      ActionMenuItem(
-        icon: Icons.checklist_outlined,
-        label: '批量管理',
-        onTap: () => _enterSelectionMode(todo.id),
-      ),
+      ActionMenuItem(icon: Icons.checklist_outlined, label: '批量管理', onTap: () => _enterSelectionMode(todo.id)),
       ActionMenuItem(
         icon: Icons.repeat,
         label: todo.isRecurring ? '重复：${todo.repeatRuleLabel}' : '设置重复',
@@ -778,12 +716,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           label: '移动到分类',
           onTap: () => _showMoveFolderDialog(context, todo, folders),
         ),
-      ActionMenuItem(
-        icon: Icons.delete_outline,
-        label: '删除',
-        isDestructive: true,
-        onTap: () => _confirmDelete(todo),
-      ),
+      ActionMenuItem(icon: Icons.delete_outline, label: '删除', isDestructive: true, onTap: () => _confirmDelete(todo)),
     ];
 
     ActionMenu.show(context: context, key: key, items: items);
@@ -795,16 +728,20 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final title = todo.title.trim();
     final desc = todo.description.trim();
     final due = todo.dueDate;
-    ref.read(floatingQProvider.notifier).openWithQuote(QTextQuote(
-          source: QQuoteSource.todo,
-          sourceId: todo.id,
-          sourceTitle: title.isEmpty ? '一条待办' : title,
-          quotedText: desc.isNotEmpty ? desc : title,
-          locationDesc: due == null
-              ? null
-              : '截止 ${due.month.toString().padLeft(2, '0')}-${due.day.toString().padLeft(2, '0')} '
-                  '${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}',
-        ));
+    ref
+        .read(floatingQProvider.notifier)
+        .openWithQuote(
+          QTextQuote(
+            source: QQuoteSource.todo,
+            sourceId: todo.id,
+            sourceTitle: title.isEmpty ? '一条待办' : title,
+            quotedText: desc.isNotEmpty ? desc : title,
+            locationDesc: due == null
+                ? null
+                : '截止 ${due.month.toString().padLeft(2, '0')}-${due.day.toString().padLeft(2, '0')} '
+                      '${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}',
+          ),
+        );
   }
 
   /// 设置待办重复周期
@@ -822,9 +759,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     await showModalBottomSheet(
       context: context,
       backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
@@ -841,11 +776,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                       const SizedBox(width: 8),
                       Text(
                         '重复周期',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                       ),
                     ],
                   ),
@@ -884,18 +815,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   }
 
   /// 移动分类对话框
-  Future<void> _showMoveFolderDialog(
-    BuildContext context,
-    Todo todo,
-    List<Folder> folders,
-  ) async {
+  Future<void> _showMoveFolderDialog(BuildContext context, Todo todo, List<Folder> folders) async {
     final theme = Theme.of(context);
     await showModalBottomSheet(
       context: context,
       backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
@@ -912,11 +837,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                       const SizedBox(width: 8),
                       Text(
                         '移动到分类',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                       ),
                     ],
                   ),
@@ -964,18 +885,14 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
       builder: (ctx) {
         return Consumer(
           builder: (context, ref, child) {
             final folders = ref.watch(todoFolderListProvider).valueOrNull ?? [];
             return SafeArea(
               child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.7,
-                ),
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1039,9 +956,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                                   tooltip: isOnlyOne ? '至少保留一个分类' : '删除分类',
                                   onPressed: isOnlyOne
                                       ? () {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('至少保留一个分类')),
-                                          );
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(const SnackBar(content: Text('至少保留一个分类')));
                                         }
                                       : () => _confirmDeleteFolder(context, folder),
                                 ),
@@ -1071,20 +988,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '分类名称',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: '分类名称', border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('创建'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('创建')),
         ],
       ),
     );
@@ -1103,20 +1011,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '新名称',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: '新名称', border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('保存'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('保存')),
         ],
       ),
     );
@@ -1133,10 +1032,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         title: const Text('删除分类'),
         content: Text('删除「${folder.name}」？该分类下的待办会一并删除。'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
@@ -1148,9 +1044,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     if (confirmed == true) {
       final success = await ref.read(todoFolderListProvider.notifier).deleteFolder(folder.id);
       if (!success && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('至少保留一个分类')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('至少保留一个分类')));
       }
     }
   }
@@ -1174,14 +1068,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         title: const Text('删除待办'),
         content: Text('删除「${todo.title.isEmpty ? '待办' : todo.title}」？'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
         ],
       ),
     );

@@ -100,10 +100,7 @@ class DailyScoreService {
     saved = await _repository.upsertByDate(
       existing.copyWith(
         totalScore: totalScore == null ? existing.totalScore : clampScore(totalScore),
-        dimensionScores: mergeDimensionScores(
-          existing.dimensionScores,
-          _clampValues(dimensionScores),
-        ),
+        dimensionScores: mergeDimensionScores(existing.dimensionScores, _clampValues(dimensionScores)),
         summary: trimmedSummary.isEmpty ? existing.summary : trimmedSummary,
         suggestions: trimmedSuggestions.isEmpty ? existing.suggestions : trimmedSuggestions,
         recordCount: recordCount ?? existing.recordCount,
@@ -135,10 +132,7 @@ class DailyScoreService {
     }
 
     final scored = await _repository.getLatestByDateRange(start, end);
-    final outcomes = scored
-        .map((score) => applyScoreAdjust(score, spec))
-        .where((outcome) => outcome.changed)
-        .toList();
+    final outcomes = scored.map((score) => applyScoreAdjust(score, spec)).where((outcome) => outcome.changed).toList();
     final missingDays = spanDays - scored.length;
 
     if (dryRun || outcomes.isEmpty) {
@@ -152,11 +146,7 @@ class DailyScoreService {
 
     await _repository.upsertBatch(outcomes.map((outcome) => outcome.after).toList());
     // 整批只广播一次：逐天 emit 会让监听方对同一批改动重复重查几十次
-    WorkspaceEventBus.instance.emit(
-      '/stats/daily_scores.json',
-      WorkspaceChangeType.updated,
-      outcomes.length,
-    );
+    WorkspaceEventBus.instance.emit('/stats/daily_scores.json', WorkspaceChangeType.updated, outcomes.length);
     return ScoreAdjustRangeResult(
       outcomes: outcomes,
       scoredDays: scored.length,
@@ -172,11 +162,7 @@ class DailyScoreService {
       created ? WorkspaceChangeType.created : WorkspaceChangeType.updated,
       saved,
     );
-    WorkspaceEventBus.instance.emit(
-      '/stats/daily_scores.json',
-      WorkspaceChangeType.updated,
-      saved,
-    );
+    WorkspaceEventBus.instance.emit('/stats/daily_scores.json', WorkspaceChangeType.updated, saved);
   }
 
   Map<String, int> _clampValues(Map<String, int>? incoming) {

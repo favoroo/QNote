@@ -6,12 +6,7 @@ import 'dart:typed_data';
 /// [audio] 为 null 表示这一段没有可用音频：用户选了系统语音、或在线合成失败
 /// （此时 [error] 带上原因，由调用方决定是降级还是终止）。
 class SpeechSegment {
-  SpeechSegment({
-    required this.index,
-    required this.text,
-    this.audio,
-    this.error,
-  });
+  SpeechSegment({required this.index, required this.text, this.audio, this.error});
 
   /// 片段在本场朗读中的序号（0 为首段）
   final int index;
@@ -108,14 +103,7 @@ class SpeechQueue {
       final index = _playCursor;
       final outcome = await _outcomeAt(index);
       if (_isCancelled()) return;
-      await _play(
-        SpeechSegment(
-          index: index,
-          text: _texts[index],
-          audio: outcome.audio,
-          error: outcome.error,
-        ),
-      );
+      await _play(SpeechSegment(index: index, text: _texts[index], audio: outcome.audio, error: outcome.error));
       _playCursor = index + 1;
       _pump();
     }

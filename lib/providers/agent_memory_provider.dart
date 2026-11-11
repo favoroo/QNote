@@ -4,8 +4,7 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
 
 /// 小Q长期记忆列表（固定包含 user / agent 两个分类的文档，内容可能为空）
-final agentMemoryListProvider =
-    AsyncNotifierProvider<AgentMemoryNotifier, List<AgentMemoryDocument>>(() {
+final agentMemoryListProvider = AsyncNotifierProvider<AgentMemoryNotifier, List<AgentMemoryDocument>>(() {
   return AgentMemoryNotifier();
 });
 
@@ -25,17 +24,12 @@ class AgentMemoryNotifier extends AsyncNotifier<List<AgentMemoryDocument>> {
   Future<List<AgentMemoryDocument>> build() async {
     // addListener 内部按引用去重，build 重复执行不会重复注册
     WorkspaceEventBus.instance.addListener(_onWorkspaceChange);
-    ref.onDispose(
-      () => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange),
-    );
+    ref.onDispose(() => WorkspaceEventBus.instance.removeListener(_onWorkspaceChange));
     return ConfigRepository.instance.getAllAgentMemories();
   }
 
   /// 按分类取当前文档（构建失败或加载中时返回空文档兜底）
-  AgentMemoryDocument _documentOf(
-    List<AgentMemoryDocument>? docs,
-    String category,
-  ) {
+  AgentMemoryDocument _documentOf(List<AgentMemoryDocument>? docs, String category) {
     final matched = docs?.where((d) => d.category == category).firstOrNull;
     return matched ?? AgentMemoryDocument(category: category);
   }
@@ -47,9 +41,7 @@ class AgentMemoryNotifier extends AsyncNotifier<List<AgentMemoryDocument>> {
     final docs = state.valueOrNull;
     final doc = _documentOf(docs, category);
     final updated = doc.copyWith(
-      content: doc.content.trim().isEmpty
-          ? '- $entry'
-          : '${doc.content.trimRight()}\n- $entry',
+      content: doc.content.trim().isEmpty ? '- $entry' : '${doc.content.trimRight()}\n- $entry',
     );
     await _save(updated);
   }
@@ -63,9 +55,7 @@ class AgentMemoryNotifier extends AsyncNotifier<List<AgentMemoryDocument>> {
     if (!content.contains(oldLine)) {
       throw Exception('未找到该记忆条目');
     }
-    final updated = doc.copyWith(
-      content: content.replaceFirst(oldLine, newLine).trim(),
-    );
+    final updated = doc.copyWith(content: content.replaceFirst(oldLine, newLine).trim());
     await _save(updated);
   }
 
@@ -73,11 +63,7 @@ class AgentMemoryNotifier extends AsyncNotifier<List<AgentMemoryDocument>> {
   Future<void> deleteEntry(String category, String text) async {
     final doc = _documentOf(state.valueOrNull, category);
     final line = text.trim().startsWith('- ') ? text.trim() : '- ${text.trim()}';
-    final lines = doc.content
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty && l != line)
-        .toList();
+    final lines = doc.content.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty && l != line).toList();
     await _save(doc.copyWith(content: lines.join('\n')));
   }
 

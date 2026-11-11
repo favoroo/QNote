@@ -12,11 +12,13 @@ const List<({int state, String label, Color color})> _sleepStates = [
   (state: 4, label: '清醒', color: Color(0xFF94A3B8)),
 ];
 
-Color _stateColor(int state) =>
-    _sleepStates.firstWhere((s) => s.state == state, orElse: () => (state: 0, label: '未知', color: const Color(0xFFCBD5E1))).color;
+Color _stateColor(int state) => _sleepStates
+    .firstWhere((s) => s.state == state, orElse: () => (state: 0, label: '未知', color: const Color(0xFFCBD5E1)))
+    .color;
 
-String _stateLabel(int state) =>
-    _sleepStates.firstWhere((s) => s.state == state, orElse: () => (state: 0, label: '未知', color: const Color(0xFFCBD5E1))).label;
+String _stateLabel(int state) => _sleepStates
+    .firstWhere((s) => s.state == state, orElse: () => (state: 0, label: '未知', color: const Color(0xFFCBD5E1)))
+    .label;
 
 String _hm(int minutes) => minutes <= 0 ? '--' : '${minutes ~/ 60}h${minutes % 60}m';
 
@@ -32,11 +34,12 @@ class SleepDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stages = metrics
-        .parseSleepStages()
-        .where((s) => ((s['end'] as num?)?.toInt() ?? 0) > ((s['start'] as num?)?.toInt() ?? 0))
-        .toList()
-      ..sort((a, b) => ((a['start'] as num?)?.toInt() ?? 0).compareTo((b['start'] as num?)?.toInt() ?? 0));
+    final stages =
+        metrics
+            .parseSleepStages()
+            .where((s) => ((s['end'] as num?)?.toInt() ?? 0) > ((s['start'] as num?)?.toInt() ?? 0))
+            .toList()
+          ..sort((a, b) => ((a['start'] as num?)?.toInt() ?? 0).compareTo((b['start'] as num?)?.toInt() ?? 0));
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -46,19 +49,9 @@ class SleepDetail extends StatelessWidget {
           subtitle: '入睡与醒来取当天最长的睡眠段',
           child: HealthStatRow(
             children: [
-              HealthStatTile(
-                label: '总时长',
-                value: _hm(metrics.sleepDurationMinutes),
-                hint: '含午睡等全部睡眠段',
-              ),
-              HealthStatTile(
-                label: '入睡',
-                value: HealthDailyMetrics.sleepTimeToHHmm(metrics.sleepStartTime) ?? '--',
-              ),
-              HealthStatTile(
-                label: '醒来',
-                value: HealthDailyMetrics.sleepTimeToHHmm(metrics.sleepEndTime) ?? '--',
-              ),
+              HealthStatTile(label: '总时长', value: _hm(metrics.sleepDurationMinutes), hint: '含午睡等全部睡眠段'),
+              HealthStatTile(label: '入睡', value: HealthDailyMetrics.sleepTimeToHHmm(metrics.sleepStartTime) ?? '--'),
+              HealthStatTile(label: '醒来', value: HealthDailyMetrics.sleepTimeToHHmm(metrics.sleepEndTime) ?? '--'),
               HealthStatTile(
                 label: '评分',
                 value: metrics.sleepScore?.toString() ?? '--',
@@ -124,9 +117,9 @@ class SleepDetail extends StatelessWidget {
   }
 
   Widget _emptyNote(BuildContext context) => Text(
-        '暂无分期数据',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-      );
+    '暂无分期数据',
+    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+  );
 
   int _minutesByLabel(List<Map<String, dynamic>> stages, String label) {
     var total = 0;
@@ -139,14 +132,13 @@ class SleepDetail extends StatelessWidget {
   }
 
   int _stateOfLabel(String label) => switch (label) {
-        '深睡' => 1,
-        '浅睡' => 2,
-        '快速眼动' => 5,
-        _ => 4,
-      };
+    '深睡' => 1,
+    '浅睡' => 2,
+    '快速眼动' => 5,
+    _ => 4,
+  };
 
-  String? _percentOf(int part, int total) =>
-      total <= 0 || part <= 0 ? null : '占比 ${(part / total * 100).round()}%';
+  String? _percentOf(int part, int total) => total <= 0 || part <= 0 ? null : '占比 ${(part / total * 100).round()}%';
 
   Color? _scoreColor(int? score) {
     if (score == null) return null;
@@ -183,9 +175,7 @@ class _Timeline extends StatelessWidget {
                 for (final s in stages)
                   Expanded(
                     flex: (((s['end'] as num).toInt() - (s['start'] as num).toInt()) / 1).round().clamp(1, 100000),
-                    child: Container(
-                      color: _stateColor((s['state'] as num?)?.toInt() ?? 0),
-                    ),
+                    child: Container(color: _stateColor((s['state'] as num?)?.toInt() ?? 0)),
                   ),
               ],
             ),
@@ -195,18 +185,12 @@ class _Timeline extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              _hhmm(first),
-              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
+            Text(_hhmm(first), style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
             Text(
               '共 ${_hm((total / 60).round())}',
               style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
-            Text(
-              _hhmm(last),
-              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
+            Text(_hhmm(last), style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
           ],
         ),
       ],

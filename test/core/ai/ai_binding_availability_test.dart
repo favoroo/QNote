@@ -13,31 +13,20 @@ import 'package:qnote_flutter/models/ai_route_group.dart';
 void main() {
   final now = DateTime(2026, 1, 1);
 
-  AiProvider provider(
-    String id, {
-    List<String> models = const ['m1'],
-    bool enabled = true,
-  }) =>
-      AiProvider(
-        id: id,
-        name: id,
-        providerType: 'openai',
-        baseUrl: 'https://$id.example.com/v1',
-        apiKeys: const ['sk-test'],
-        models: models.map((m) => AiProviderModel.of(m)).toList(),
-        enabled: enabled,
-        createdAt: now,
-        updatedAt: now,
-      );
+  AiProvider provider(String id, {List<String> models = const ['m1'], bool enabled = true}) => AiProvider(
+    id: id,
+    name: id,
+    providerType: 'openai',
+    baseUrl: 'https://$id.example.com/v1',
+    apiKeys: const ['sk-test'],
+    models: models.map((m) => AiProviderModel.of(m)).toList(),
+    enabled: enabled,
+    createdAt: now,
+    updatedAt: now,
+  );
 
-  AiRouteGroup group(String id, List<RouteGroupMember> members) => AiRouteGroup(
-        id: id,
-        name: id,
-        strategy: RouteStrategy.rotate,
-        members: members,
-        createdAt: now,
-        updatedAt: now,
-      );
+  AiRouteGroup group(String id, List<RouteGroupMember> members) =>
+      AiRouteGroup(id: id, name: id, strategy: RouteStrategy.rotate, members: members, createdAt: now, updatedAt: now);
 
   RouteGroupMember member(String providerId, String modelName) =>
       RouteGroupMember(providerId: providerId, modelName: modelName);
@@ -54,7 +43,9 @@ void main() {
 
   test('模型被逐条停用（移出 models）才算真失效', () {
     const ref = AiModelRef(providerId: 'p1', modelName: 'm1');
-    final withoutModel = [provider('p1', models: const ['m2'])];
+    final withoutModel = [
+      provider('p1', models: const ['m2']),
+    ];
 
     expect(isBindingUsable(ref, withoutModel, const []), isFalse);
     expect(isBindingResolvable(ref, withoutModel, const []), isFalse);
@@ -67,7 +58,9 @@ void main() {
 
   test('路由组：成员厂商被停用时组当前不可用，但组绑定保留', () {
     final ref = AiModelRef.routeGroup('g1');
-    final groups = [group('g1', [member('p1', 'm1')])];
+    final groups = [
+      group('g1', [member('p1', 'm1')]),
+    ];
     final disabled = [provider('p1', enabled: false)];
 
     expect(isBindingUsable(ref, disabled, groups), isFalse);
@@ -86,7 +79,9 @@ void main() {
 
     expect(isBindingResolvable(ref, [provider('p1')], const []), isFalse);
 
-    final groups = [group('g1', [member('p1', 'm-gone')])];
+    final groups = [
+      group('g1', [member('p1', 'm-gone')]),
+    ];
     expect(isBindingResolvable(ref, [provider('p1')], groups), isFalse);
   });
 }

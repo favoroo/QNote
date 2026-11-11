@@ -5,13 +5,7 @@ import 'package:qnote_flutter/models/daily_score.dart';
 /// 造一条五维齐全的评分，默认总分 88
 DailyScore _score({
   int total = 88,
-  Map<String, int> dims = const {
-    'sleep': 90,
-    'diet': 70,
-    'activity': 65,
-    'health': 80,
-    'screen': 55,
-  },
+  Map<String, int> dims = const {'sleep': 90, 'diet': 70, 'activity': 65, 'health': 80, 'screen': 55},
 }) => DailyScore(
   id: 'score-1',
   date: DateTime(2026, 9, 3),
@@ -49,10 +43,7 @@ void main() {
     });
 
     test('原记录只有三维时合并后仍是四维，不被补齐成五维', () {
-      final merged = mergeDimensionScores(
-        const {'sleep': 90, 'diet': 70, 'health': 80},
-        const {'activity': 66},
-      );
+      final merged = mergeDimensionScores(const {'sleep': 90, 'diet': 70, 'health': 80}, const {'activity': 66});
       expect(merged.length, 4);
       expect(merged.containsKey('screen'), isFalse);
     });
@@ -60,10 +51,7 @@ void main() {
 
   group('applyScoreAdjust 加减分', () {
     test('delta -5 且全选时总分与五维各自减 5', () {
-      final outcome = applyScoreAdjust(
-        _score(),
-        const ScoreAdjustSpec(delta: -5, fields: kAllScoreFields),
-      );
+      final outcome = applyScoreAdjust(_score(), const ScoreAdjustSpec(delta: -5, fields: kAllScoreFields));
       expect(outcome.after.totalScore, 83);
       expect(outcome.after.dimensionScores['sleep'], 85);
       expect(outcome.after.dimensionScores['screen'], 50);
@@ -71,10 +59,7 @@ void main() {
     });
 
     test('触到上限时钳位到 100 并标记 clamped', () {
-      final outcome = applyScoreAdjust(
-        _score(total: 95),
-        const ScoreAdjustSpec(delta: 10, fields: {ScoreField.total}),
-      );
+      final outcome = applyScoreAdjust(_score(total: 95), const ScoreAdjustSpec(delta: 10, fields: {ScoreField.total}));
       expect(outcome.after.totalScore, 100);
       expect(outcome.clamped, isTrue);
       expect(outcome.changes.single.clamped, isTrue);
@@ -101,10 +86,7 @@ void main() {
 
   group('applyScoreAdjust 设为固定值', () {
     test('只勾 screen 时总分完全不变', () {
-      final outcome = applyScoreAdjust(
-        _score(),
-        const ScoreAdjustSpec(setValue: 40, fields: {ScoreField.screen}),
-      );
+      final outcome = applyScoreAdjust(_score(), const ScoreAdjustSpec(setValue: 40, fields: {ScoreField.screen}));
       expect(outcome.after.totalScore, 88);
       expect(outcome.after.dimensionScores['screen'], 40);
       expect(outcome.after.dimensionScores['diet'], 70);
@@ -112,10 +94,7 @@ void main() {
     });
 
     test('全选时总分与五维都被设为同一值', () {
-      final outcome = applyScoreAdjust(
-        _score(),
-        const ScoreAdjustSpec(setValue: 80, fields: kAllScoreFields),
-      );
+      final outcome = applyScoreAdjust(_score(), const ScoreAdjustSpec(setValue: 80, fields: kAllScoreFields));
       expect(outcome.after.totalScore, 80);
       expect(outcome.after.dimensionScores.values.every((v) => v == 80), isTrue);
     });
@@ -130,10 +109,7 @@ void main() {
     });
 
     test('固定值越界被钳位', () {
-      final outcome = applyScoreAdjust(
-        _score(),
-        const ScoreAdjustSpec(setValue: 170, fields: {ScoreField.diet}),
-      );
+      final outcome = applyScoreAdjust(_score(), const ScoreAdjustSpec(setValue: 170, fields: {ScoreField.diet}));
       expect(outcome.after.dimensionScores['diet'], 100);
       expect(outcome.clamped, isTrue);
     });
@@ -142,10 +118,7 @@ void main() {
   group('不变量', () {
     test('summary/suggestions/recordCount 与改前一致', () {
       final existing = _score();
-      final outcome = applyScoreAdjust(
-        existing,
-        const ScoreAdjustSpec(delta: -5, fields: kAllScoreFields),
-      );
+      final outcome = applyScoreAdjust(existing, const ScoreAdjustSpec(delta: -5, fields: kAllScoreFields));
       expect(outcome.after.summary, existing.summary);
       expect(outcome.after.suggestions, existing.suggestions);
       expect(outcome.after.recordCount, existing.recordCount);
@@ -165,15 +138,9 @@ void main() {
     test('缺失天数与触界天数按需出现', () {
       final outcomes = [
         applyScoreAdjust(_score(), const ScoreAdjustSpec(delta: -5, fields: {ScoreField.total})),
-        applyScoreAdjust(
-          _score(total: 98),
-          const ScoreAdjustSpec(delta: 5, fields: {ScoreField.total}),
-        ),
+        applyScoreAdjust(_score(total: 98), const ScoreAdjustSpec(delta: 5, fields: {ScoreField.total})),
       ];
-      expect(
-        describeScoreAdjustPreview(outcomes, missingDays: 2),
-        '命中 2 天 · 该区间无评分 2 天（不会被改动） · 1 天已到上下限',
-      );
+      expect(describeScoreAdjustPreview(outcomes, missingDays: 2), '命中 2 天 · 该区间无评分 2 天（不会被改动） · 1 天已到上下限');
     });
 
     test('无缺失与触界时只报命中天数', () {

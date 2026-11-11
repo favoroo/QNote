@@ -790,7 +790,8 @@ description: 生活决策备选单：基于《高性价比人生指南》(HowToL
       {
         'name': 'life-decision-guide',
         'path': '/skills/life-decision-guide.md',
-        'description': '生活决策备选单：基于《高性价比人生指南》(HowToLiveBetter) 的循证建议查询——寿命/精力/时间/金钱/人身自由/法律红线/慢性病/看病/紧急情况，按问题匹配章节并用 fetch_url 拉取原文回答',
+        'description':
+            '生活决策备选单：基于《高性价比人生指南》(HowToLiveBetter) 的循证建议查询——寿命/精力/时间/金钱/人身自由/法律红线/慢性病/看病/紧急情况，按问题匹配章节并用 fetch_url 拉取原文回答',
         'origin': AgentSkillOrigin.builtin,
       },
       // 用户技能追加在内置之后，由 Agent/UI 按需加载；归档技能默认不可见
@@ -945,15 +946,31 @@ description: 生活决策备选单：基于《高性价比人生指南》(HowToL
 
   /// 内置技能别名（getSkillContent 的模糊匹配名，同样禁止用户技能占用）
   static const Set<String> _builtinAliasNames = {
-    'todo', 'todos', 'note', 'notes', 'timeline', 'journal',
-    'folder', 'folders', 'settings', 'config', 'stats', 'statistics',
-    'frontend', 'web-design', 'web', 'design', 'ui',
-    'life', 'live-better', 'how-to-live', 'howtolivebetter',
+    'todo',
+    'todos',
+    'note',
+    'notes',
+    'timeline',
+    'journal',
+    'folder',
+    'folders',
+    'settings',
+    'config',
+    'stats',
+    'statistics',
+    'frontend',
+    'web-design',
+    'web',
+    'design',
+    'ui',
+    'life',
+    'live-better',
+    'how-to-live',
+    'howtolivebetter',
   };
 
   /// 名称是否被内置技能（含别名）保留
-  bool isReservedName(String name) =>
-      builtinSkillNames.contains(name) || _builtinAliasNames.contains(name);
+  bool isReservedName(String name) => builtinSkillNames.contains(name) || _builtinAliasNames.contains(name);
 
   /// 是否为内置技能主名
   bool isBuiltinSkill(String name) => builtinSkillNames.contains(name);

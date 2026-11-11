@@ -40,7 +40,10 @@ void main() {
             role: 'tool',
             content: '已生成',
             toolName: 'generate_image',
-            uiDetails: {'type': 'generate_image', 'paths': [imagePath]},
+            uiDetails: {
+              'type': 'generate_image',
+              'paths': [imagePath],
+            },
           ),
         ],
         createdAt: DateTime.now(),
@@ -49,8 +52,7 @@ void main() {
     );
   }
 
-  Future<bool> exists(String fileName) =>
-      File(p.join(aiDir.path, fileName)).exists();
+  Future<bool> exists(String fileName) => File(p.join(aiDir.path, fileName)).exists();
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -74,11 +76,7 @@ void main() {
 
   setUp(() async {
     await db.delete('chat_sessions', where: 'id LIKE ?', whereArgs: ['gc_%']);
-    await db.delete(
-      'sync_log',
-      where: "table_name = 'chat_sessions' AND record_id LIKE ?",
-      whereArgs: ['gc_%'],
-    );
+    await db.delete('sync_log', where: "table_name = 'chat_sessions' AND record_id LIKE ?", whereArgs: ['gc_%']);
     await db.delete('notes', where: 'id LIKE ?', whereArgs: ['gc_%']);
     for (final entity in aiDir.listSync()) {
       await entity.delete();
@@ -136,11 +134,7 @@ void main() {
 
     await repo.hardDeleteChatSession(testId('noteOwner'));
 
-    expect(
-      await exists('in_note.png'),
-      isTrue,
-      reason: '会话删了但笔记还在显示这张图',
-    );
+    expect(await exists('in_note.png'), isTrue, reason: '会话删了但笔记还在显示这张图');
   });
 
   test('同批删除两个共用一张图的会话后，图片被彻底回收', () async {
@@ -148,10 +142,7 @@ void main() {
     await insertSessionWithImage(testId('pairA'), path);
     await insertSessionWithImage(testId('pairB'), path);
 
-    final report = await repo.hardDeleteChatSessions([
-      testId('pairA'),
-      testId('pairB'),
-    ]);
+    final report = await repo.hardDeleteChatSessions([testId('pairA'), testId('pairB')]);
 
     expect(report.deletedSessions, 2);
     expect(report.deletedImageFiles, 1);
@@ -189,9 +180,7 @@ void main() {
   test('空键集合与目录不存在时安全返回', () async {
     expect((await gc.deleteFilesForKeys({})).deletedFiles, 0);
 
-    gc.aiImagesDirOverride = Directory(
-      p.join(aiDir.path, 'not_exist_dir'),
-    );
+    gc.aiImagesDirOverride = Directory(p.join(aiDir.path, 'not_exist_dir'));
     final missing = await gc.deleteUnreferencedAiImages();
     expect(missing.deletedFiles, 0);
     expect((await gc.inventoryAiImages()).fileCount, 0);
@@ -210,10 +199,6 @@ void main() {
     expect(inventory.orphanCount, 0, reason: '老路径前缀不同但同文件名，仍算在用');
 
     await repo.hardDeleteChatSession(testId('moved'));
-    expect(
-      await exists('moved.png'),
-      isFalse,
-      reason: '引用它的会话删掉后，按文件名仍能对上并回收',
-    );
+    expect(await exists('moved.png'), isFalse, reason: '引用它的会话删掉后，按文件名仍能对上并回收');
   });
 }
