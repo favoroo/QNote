@@ -87,6 +87,26 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   _RecordTimeDragState? _cardDrag;
   OverlayEntry? _cardDragOverlay;
 
+  /// 记录按钮的 Key：打开面板时量它的全局 Rect，作为容器变形的起点。
+  final GlobalKey _recordFabKey = GlobalKey();
+
+  /// 每条记录卡片本体的 Key：发送后「弹窗变卡片」要量新卡片的落点。
+  final Map<String, GlobalKey> _recordCardKeys = {};
+
+  /// 面板打开期间按钮暂时隐藏（它已经变成面板本身）。
+  bool _recordFabHidden = false;
+
+  /// 正在作为飞行目标的记录：盖板落位前先隐藏，避免卡片提前从底下露出来。
+  String? _hiddenMorphRecordId;
+
+  /// 只播辉光、不播长高的记录（盖板落位后使用）。
+  String? _glowOnlyRecordId;
+  Timer? _glowClearTimer;
+
+  /// 面板打开期间产生的庆祝胶囊先入队，等路由彻底结束再播，避免在面板背后
+  /// 播完或彩带盖住飞行过程。
+  CheerEvent? _pendingCheer;
+
   /// 拖动吸附反馈节流：快速拖动时每帧都变档，避免连续震动糊成一片。
   int _lastDragHapticMs = 0;
 
@@ -717,6 +737,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _removeCardDragOverlay();
     _cardDrag = null;
     _recordHandleKeys.clear();
+    _glowClearTimer?.cancel();
     _cheerTimer?.cancel();
     _cheerExitTimer?.cancel();
     _insertClearTimer?.cancel();
@@ -1123,6 +1144,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     String? sub,
     required CheerLevel level,
   }) {
+    // 面板还开着（尤其正在播「弹窗变卡片」）时先压住：胶囊会被面板挡住，
+    // 彩带层又会盖住飞行。等路由彻底结束再由 _flushPendingCheer 播。
+    if (_recordSheetOpen) {
+      _cheerSeq++;
+      _pendingCheer = CheerEvent(
+        id: _cheerSeq,
+        title: title,
+        sub: sub,
+        level: level,
+      );
+      return;
+    }
     _cheerTimer?.cancel();
     _cheerExitTimer?.cancel();
     _cheerSeq++;
@@ -1145,6 +1178,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       // 只置「该走了」，实际移除等胶囊自己把退场播完，避免动画被腰斩。
       setState(() => _cheerLeaving = true);
       _cheerExitTimer = Timer(const Duration(milliseconds: 400), _dismissCheer);
+    });
+  }
+
+  /// 面板关掉后把入队的庆祝补播出来；等一帧让落位/收尾动画先站稳。
+  void _flushPendingCheer() {
+    final cheer = _pendingCheer;
+    if (cheer == null) return;
+    _pendingCheer = null;
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      _showCheer(title: cheer.title, sub: cheer.sub, level: cheer.level);
     });
   }
 
@@ -1816,6 +1860,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   ///
   /// 草稿活在 `diaryComposeDraftProvider` 里而不是面板 State 里，所以这里不需要
   /// 传递任何东西：时间线上选好的时间、上次没填完的内容，面板自己会读。
+  ///
+  /// 页面在台前时把记录按钮的 Rect 交给面板做容器变形起点；发送成功后还要
+  /// 负责把时间线滚到新记录、量出卡片落点，让面板本身飞过去。
   Future<void> _openRecordSheet({WidgetAction? action}) async {
     // 面板是模态路由，遮罩挡住了底下的按钮，正常点不到第二次；
     // 但快捷入口（悬浮球 / 小组件）是外部信号，可能连发两次。
@@ -1824,11 +1871,141 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     }
     _recordSheetOpen = true;
     HapticFeedback.lightImpact();
+
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    // IndexedStack 里其他 tab 的页面不可见，按钮位置没有意义，直接走整卡淡入。
+    final anchor = TickerMode.valuesOf(context).enabled ? _recordFabAnchor() : null;
+    final useMorph = anchor != null && !reduceMotion;
+    if (useMorph) {
+      setState(() => _recordFabHidden = true);
+    }
+
     try {
-      await DiaryRecordSheet.show(context, action: action);
+      await DiaryRecordSheet.show(
+        context,
+        action: action,
+        originAnchor: useMorph ? anchor : null,
+        readAnchor: useMorph ? _recordFabAnchor : null,
+        onSaved: useMorph ? _prepareRecordCardMorph : null,
+      );
     } finally {
       _recordSheetOpen = false;
+      if (mounted) {
+        setState(() {
+          _recordFabHidden = false;
+          // 飞行被返回键/异常打断时，卡片不能永远藏着。
+          _hiddenMorphRecordId = null;
+        });
+        _flushPendingCheer();
+      }
     }
+  }
+
+  RecordFabAnchor? _recordFabAnchor() {
+    final box = _recordFabKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize) {
+      return null;
+    }
+    return RecordFabAnchor(
+      rect: box.localToGlobal(Offset.zero) & box.size,
+      selection: ref.read(diaryInputTimeProvider),
+      hasDraft: !ref.read(diaryComposeDraftProvider).isEmpty,
+    );
+  }
+
+  /// 面板保存后：把时间线滚到新记录、量出卡片 Rect，作为「弹窗变卡片」的落点。
+  ///
+  /// 只对单条记录做（固定事件一次多条时落点不唯一）。量不到、卡片不在视口里
+  /// 就返回 null，面板退回原来的插入动画。
+  Future<RecordCardMorphTarget?> _prepareRecordCardMorph(
+    List<String> recordIds,
+  ) async {
+    if (recordIds.length != 1 || !_recordSheetOpen) {
+      return null;
+    }
+    final id = recordIds.first;
+    // 等 provider 更新后的第一帧，确认新卡片已经进了 ListView 的构建范围。
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_recordSheetOpen) {
+      return null;
+    }
+
+    final allRecords = ref.read(diaryListProvider).valueOrNull ?? const <DiaryRecord>[];
+    final record = allRecords.where((r) => r.id == id).firstOrNull;
+    if (record == null) {
+      return null;
+    }
+
+    // 只跳不飘：面板还压在上面，不要让目标卡片在飞行途中继续移动。
+    _scrollToTime(
+      record.getDisplayTime(),
+      smooth: false,
+      recordsByDate: _buildRecordsByDate(allRecords),
+    );
+
+    Rect? rect;
+    for (var attempt = 0; attempt < 4 && rect == null; attempt++) {
+      await WidgetsBinding.instance.endOfFrame;
+      rect = _recordCardRect(id);
+      if (rect == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      }
+    }
+    if (rect == null || !mounted || !_recordSheetOpen) {
+      return null;
+    }
+
+    // 目标必须在时间线视口里，否则盖板会飞到屏幕外（被列表裁掉的卡片）。
+    final viewportBox = _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox != null && viewportBox.attached && viewportBox.hasSize) {
+      final viewportRect =
+          viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+      if (!viewportRect.overlaps(rect)) {
+        return null;
+      }
+    }
+
+    setState(() => _hiddenMorphRecordId = id);
+    // 隐藏只改透明度、不改布局；等这一帧落定再开始飞。
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_recordSheetOpen) {
+      if (mounted) {
+        setState(() => _hiddenMorphRecordId = null);
+      }
+      return null;
+    }
+
+    return RecordCardMorphTarget(
+      initialRect: rect,
+      readRect: () => _recordCardRect(id),
+      onLanded: () => _handleMorphLanded(id),
+    );
+  }
+
+  /// 盖板落到新卡片上：揭开真实卡片，并给一圈很淡的主色柔光。
+  void _handleMorphLanded(String recordId) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      if (_hiddenMorphRecordId == recordId) {
+        _hiddenMorphRecordId = null;
+      }
+      _glowOnlyRecordId = recordId;
+      _insertingRecordIds.add(recordId);
+    });
+    _glowClearTimer?.cancel();
+    _glowClearTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _insertingRecordIds.remove(recordId);
+        if (_glowOnlyRecordId == recordId) {
+          _glowOnlyRecordId = null;
+        }
+      });
+    });
   }
 
   Future<void> _handleJournalTap() async {
@@ -2610,42 +2787,57 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                       ),
                                     ...recordsInInterval.map(
                                       (record) => RepaintBoundary(
-                                        child: _InsertingItemWrapper(
-                                          isInserting:
-                                              _insertingRecordIds.contains(
-                                                record.id,
-                                              ),
-                                          child: _CollapsingItemWrapper(
-                                            isCollapsing:
-                                                _deletingRecordIds.contains(
+                                        child: Opacity(
+                                          // 发送后飞行期间先藏起来，等盖板落位再揭开；
+                                          // 只改透明度，卡片仍占位，目标 Rect 可以照量。
+                                          opacity:
+                                              _hiddenMorphRecordId == record.id
+                                              ? 0
+                                              : 1,
+                                          child: _InsertingItemWrapper(
+                                            isInserting:
+                                                _insertingRecordIds.contains(
                                                   record.id,
                                                 ),
-                                            child: DiaryItem(
-                                              record: record,
-                                              timeDragHandleKey: _handleKeyFor(
-                                                record.id,
-                                              ),
-                                              isTimeDragging:
-                                                  _cardDrag?.record.id ==
-                                                  record.id,
-                                              onTap: () => _handleEdit(record),
-                                              onEdit: _handleEdit,
-                                              onDelete: _handleDelete,
-                                              onQuoteToQ: _quoteRecordToQ,
-                                              onAiExtract: () =>
-                                                  _handleAiExtract(record),
-                                              onAiExtractLongPress: () =>
-                                                  _handleAiExtractModelSelect(
-                                                    record,
+                                            // 飞行落位只补一圈辉光，不再从 0 长高。
+                                            animateSize:
+                                                _glowOnlyRecordId != record.id,
+                                            child: _CollapsingItemWrapper(
+                                              isCollapsing:
+                                                  _deletingRecordIds.contains(
+                                                    record.id,
                                                   ),
-                                              isExtracting:
-                                                  _extractingRecordId ==
+                                              child: DiaryItem(
+                                                record: record,
+                                                cardKey: _recordCardKeyFor(
                                                   record.id,
-                                              onUndo: () => _undoExtract(record),
-                                              isUndoable: _undoRecords
-                                                  .containsKey(record.id),
-                                              undoAnimation:
-                                                  _undoControllers[record.id],
+                                                ),
+                                                timeDragHandleKey: _handleKeyFor(
+                                                  record.id,
+                                                ),
+                                                isTimeDragging:
+                                                    _cardDrag?.record.id ==
+                                                    record.id,
+                                                onTap: () => _handleEdit(record),
+                                                onEdit: _handleEdit,
+                                                onDelete: _handleDelete,
+                                                onQuoteToQ: _quoteRecordToQ,
+                                                onAiExtract: () =>
+                                                    _handleAiExtract(record),
+                                                onAiExtractLongPress: () =>
+                                                    _handleAiExtractModelSelect(
+                                                      record,
+                                                    ),
+                                                isExtracting:
+                                                    _extractingRecordId ==
+                                                    record.id,
+                                                onUndo: () =>
+                                                    _undoExtract(record),
+                                                isUndoable: _undoRecords
+                                                    .containsKey(record.id),
+                                                undoAnimation:
+                                                    _undoControllers[record.id],
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -2698,7 +2890,22 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                 Positioned(
                   left: 16,
                   bottom: _fabBottom,
-                  child: DiaryRecordFab(onTap: _openRecordSheet),
+                  child: IgnorePointer(
+                    ignoring: _recordFabHidden,
+                    child: AnimatedOpacity(
+                      // 面板打开期间按钮本身已经变成面板，先淡出；关闭退场结束
+                      // 后再淡入，和变形容器最后落在按钮上的那一帧接上。
+                      opacity: _recordFabHidden ? 0 : 1,
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 90),
+                      curve: Curves.easeOutCubic,
+                      child: DiaryRecordFab(
+                        key: _recordFabKey,
+                        onTap: _openRecordSheet,
+                      ),
+                    ),
+                  ),
                 ),
                 // 记完即时庆祝胶囊：按钮行上方居中浮现，不挡时间线主体。
                 if (_cheerEvent != null)
@@ -2874,6 +3081,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   /// 为每条记录复用同一个把手 Key；记录被 ListView 回收后再次构建仍能命中。
   GlobalKey _handleKeyFor(String recordId) {
     return _recordHandleKeys.putIfAbsent(recordId, () => GlobalKey());
+  }
+
+  /// 卡片本体的 Key；同一条记录跨 ListView 回收/重建仍是同一个。
+  GlobalKey _recordCardKeyFor(String recordId) {
+    return _recordCardKeys.putIfAbsent(recordId, () => GlobalKey());
+  }
+
+  /// 卡片当前的全局 Rect（发送后飞行落点用）。
+  Rect? _recordCardRect(String recordId) {
+    final box =
+        _recordCardKeys[recordId]?.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize) {
+      return null;
+    }
+    return box.localToGlobal(Offset.zero) & box.size;
   }
 
   /// 判断长按位置是否落在某条记录的左侧节点把手上。
@@ -3856,15 +4078,27 @@ class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper>
 /// 新记录卡片的入场：从上方「长出来」+ 淡入上移 + 一圈淡出的主色辉光。
 ///
 /// [isInserting] 只在记录面板刚写下这条时为 true。延迟 [_kInsertRevealDelay] 是
-/// 为让位：记录面板保存后还要播 320ms 的 ✓ 才降下去（见 `DiaryRecordSheet._savedFeedbackDuration`），
-/// 卡片立刻升起会被面板整个盖住，动画等于白做。
+/// 为让位：记录面板保存后还要播 320ms 的 ✓ 再花 180ms 退场（见
+/// `DiaryRecordSheet._savedFeedbackDuration`），卡片立刻升起会被面板整个盖住，
+/// 动画等于白做；440ms 让卡片在面板完全消失前 60ms 开始升起，形成交接。
+///
+/// [animateSize] 为 false 时只保留辉光：发送后的「弹窗变卡片」由盖板落位负责
+/// 出现，卡片本身已经是全高的，不能再从 0 长一遍。
 ///
 /// 辉光画在卡片外层而不是铺一层色块盖在内容上 —— 覆盖式高亮会把卡片文字压暗，
 /// 而新增记录恰恰是用户最需要看清内容的时候。
 class _InsertingItemWrapper extends StatefulWidget {
-  const _InsertingItemWrapper({required this.isInserting, required this.child});
+  const _InsertingItemWrapper({
+    required this.isInserting,
+    this.animateSize = true,
+    required this.child,
+  });
 
   final bool isInserting;
+
+  /// 是否播放「长高 + 淡入」；false 时只播辉光。
+  final bool animateSize;
+
   final Widget child;
 
   @override
@@ -3872,8 +4106,8 @@ class _InsertingItemWrapper extends StatefulWidget {
 }
 
 /// 入场时长与让位延迟。
-const Duration _kInsertDuration = Duration(milliseconds: 340);
-const Duration _kInsertRevealDelay = Duration(milliseconds: 360);
+const Duration _kInsertDuration = Duration(milliseconds: 400);
+const Duration _kInsertRevealDelay = Duration(milliseconds: 440);
 
 class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
     with SingleTickerProviderStateMixin {
@@ -3897,23 +4131,40 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
     _controller = AnimationController(
       vsync: this,
       duration: _kInsertDuration,
-      value: shouldPlay ? 0 : 1,
+      value: shouldPlay && widget.animateSize ? 0 : 1,
     );
     _grow = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
     _fade = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0, 0.7, curve: Curves.easeOut),
+      curve: const Interval(0, 0.6, curve: Curves.easeOut),
     );
-    // 后 65% 用来把辉光收掉：落位那一刻最亮，收尾时不留痕迹
+    // 后 75% 用来把辉光收掉：落位那一刻最亮，收尾时不留痕迹
     _glow = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.35, 1, curve: Curves.easeOut),
+      curve: const Interval(0.25, 1, curve: Curves.easeOut),
     );
 
-    if (shouldPlay) {
+    if (shouldPlay && widget.animateSize) {
       _startTimer = Timer(_kInsertRevealDelay, () {
         if (mounted) _controller.forward();
       });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _InsertingItemWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 「弹窗变卡片」落位时卡片已经在位，只补一次辉光：从 0 跑到 1，
+    // 但不经过 SizeTransition，高度不会被重新拉一遍。
+    if (!oldWidget.isInserting && widget.isInserting && !widget.animateSize) {
+      final reduceMotion = WidgetsBinding
+          .instance
+          .platformDispatcher
+          .accessibilityFeatures
+          .disableAnimations;
+      if (!reduceMotion) {
+        _controller.forward(from: 0);
+      }
     }
   }
 
@@ -3927,6 +4178,36 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
+    final content = AnimatedBuilder(
+      animation: _glow,
+      builder: (context, child) {
+        // 只留一圈很淡的主色光晕：新卡片是「亮了一下」，不是霓虹灯。
+        final strength = 1 - _glow.value;
+        final alpha = strength * 0.24;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: alpha <= 0.01
+                ? const []
+                : [
+                    BoxShadow(
+                      color: primary.withValues(alpha: alpha),
+                      blurRadius: 18,
+                      spreadRadius: 2 * strength,
+                    ),
+                  ],
+          ),
+          child: child,
+        );
+      },
+      child: widget.child,
+    );
+
+    // 飞行落位：卡片已经在位，只让辉光亮一下，不能再套一层长高/淡入。
+    if (!widget.animateSize) {
+      return content;
+    }
+
     return SizeTransition(
       sizeFactor: _grow,
       alignment: Alignment.topCenter,
@@ -3934,31 +4215,10 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
         opacity: _fade,
         child: SlideTransition(
           position: Tween<Offset>(
-            begin: const Offset(0, 0.06),
+            begin: const Offset(0, 0.05),
             end: Offset.zero,
           ).animate(_grow),
-          child: AnimatedBuilder(
-            animation: _glow,
-            builder: (context, child) {
-              final strength = (1 - _glow.value) * 0.32;
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: strength <= 0.01
-                      ? const []
-                      : [
-                          BoxShadow(
-                            color: primary.withValues(alpha: strength),
-                            blurRadius: 14,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                ),
-                child: child,
-              );
-            },
-            child: widget.child,
-          ),
+          child: content,
         ),
       ),
     );

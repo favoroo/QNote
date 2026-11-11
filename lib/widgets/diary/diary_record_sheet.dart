@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,37 +32,160 @@ import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
+import 'package:qnote_flutter/widgets/diary/diary_record_fab.dart';
+
+/// 记录面板的动效时长与曲线。
+///
+/// 有按钮锚点时走真正的容器变形：面板的 Rect、圆角、底色、描边、阴影和按钮
+/// 用同一条时间线；没有锚点（外部快捷入口 / 减弱动效）时退回整卡缩放淡入。
+/// 发送后还有第二段独立动画：面板先变空白盖板，再飞到新卡片的位置落下。
+const Duration _kMorphEnterDuration = Duration(milliseconds: 460);
+const Duration _kMorphExitDuration = Duration(milliseconds: 320);
+const Duration _kCardFlightDuration = Duration(milliseconds: 480);
+const Duration _kCardLandingExitDuration = Duration(milliseconds: 240);
+const Curve _kMorphEnterCurve = Curves.easeInOutCubicEmphasized;
+const Curve _kMorphExitCurve = Curves.easeInCubic;
+const Curve _kCardFlightCurve = Curves.easeInOutCubicEmphasized;
+
+/// 无锚点时的退路：整卡缩放上浮。
+const Duration _kDialogEnterDuration = Duration(milliseconds: 360);
+const Duration _kDialogExitDuration = Duration(milliseconds: 180);
+const Curve _kDialogEnterCurve = Cubic(0.05, 0.7, 0.1, 1);
+const Curve _kDialogExitCurve = Curves.easeInCubic;
+
+/// 面板卡片圆角与时间线卡片圆角：容器变形的两端。
+const double _kSheetRadius = 24;
+const double _kTimelineCardRadius = 16;
+
+/// 打开面板时记录按钮的位置与状态，作为容器变形的起点。
+class RecordFabAnchor {
+  const RecordFabAnchor({
+    required this.rect,
+    this.selection,
+    this.hasDraft = false,
+  });
+
+  /// 按钮在屏幕上的全局 Rect；选中时间时是胶囊宽度。
+  final Rect rect;
+
+  /// 按钮上当前选中的时间；为空表示纯加号圆钮。
+  final TimelineTimeSelectEvent? selection;
+
+  /// 是否有未保存草稿（按钮右上角的小圆点）。
+  final bool hasDraft;
+}
+
+/// 发送后「面板变成新卡片」的落位目标。
+class RecordCardMorphTarget {
+  const RecordCardMorphTarget({
+    required this.initialRect,
+    required this.readRect,
+    required this.onLanded,
+  });
+
+  /// 首次量到的目标 Rect；列表/键盘继续变化时由 [readRect] 给实时值。
+  final Rect initialRect;
+
+  /// 每帧读取目标卡片的最新全局 Rect；卡片被 ListView 回收时返回 null。
+  final Rect? Function() readRect;
+
+  /// 盖板落位那一刻回调：页面在这里揭开真实卡片并播放柔光。
+  final VoidCallback onLanded;
+}
 
 /// 「记录事件」面板：时间线左下角记录按钮弹出的填写面板。
 ///
-/// 由原来的常驻底部输入条改造而来 —— 常驻一条厚重的输入栏会长期压掉时间线一大块，
-/// 改成按需升起的面板后，时间线是主角，记录能力在需要时才铺开。
+/// 由原来的常驻底部输入条改造而来 —— 常驻一条厚重的输入栏会长期压掉时间线一大块。
+/// 现在以居中悬浮卡片的形式出现：不贴屏幕底边，键盘弹起时整张卡片上移，
+/// 视线不需要在屏幕上下两端来回跳。
 ///
-/// 面板分两级，默认只露轻量区（时间、标签、图片、文本），标签字段表单与固定事件
-/// 收在「更多字段」里；给标签填字段时（如睡眠、记账）会自动展开这一级，
-/// 否则必填校验会卡在一个用户看不见的表单上。
+/// 弹层有两条路径：
+/// - 从时间线记录按钮打开时，按钮本身以容器变形的形式长大成卡片（见
+///   [_RecordDialogTransition]），关闭时再原路收回按钮；
+/// - 外部快捷入口 / 减弱动效时退回整卡缩放上浮，内容再错峰晚一拍落位。
+///
+/// 结构自上而下就是记录的填写顺序：确认时间 → 挑标签 → 补固定事件/字段 → 写正文发送。
+/// 固定事件与标签字段常驻可见，不做二级折叠：睡眠、记账这类必填项一旦被藏起来，
+/// 保存校验就会卡在一个用户看不见的表单上。
 class DiaryRecordSheet extends ConsumerStatefulWidget {
-  const DiaryRecordSheet({super.key, this.initialAction});
+  const DiaryRecordSheet({
+    super.key,
+    this.initialAction,
+    this.surfaceKey,
+    this.focusAfterEntrance = false,
+    this.entryDelay = Duration.zero,
+    this.onSaved,
+  });
 
   /// 由悬浮球 / 桌面小组件带进来的动作（记录、拍照、相册），面板起来后自动执行。
   final WidgetAction? initialAction;
 
-  /// 从底部升起记录面板。
+  /// 卡片外框的 Key。路由用它逐帧测量弹窗的最终 Rect，驱动容器变形。
+  final GlobalKey? surfaceKey;
+
+  /// 变形入场期间先不聚焦：键盘若在容器还没落定前弹起，会把卡片顶走。
+  final bool focusAfterEntrance;
+
+  /// 内容错峰入场的延迟：变形时等容器先让出空间，内容再亮。
+  final Duration entryDelay;
+
+  /// 保存成功后的回调（参数是真正落库的记录 id）。
   ///
-  /// 草稿存在 [diaryComposeDraftProvider] 里而不是面板 State 里，所以误触遮罩或
-  /// 下滑关闭都不会丢字，重新打开接着填。
-  static Future<void> show(BuildContext context, {WidgetAction? action}) {
-    return showModalBottomSheet<void>(
-      context: context,
-      // 挂到根 Navigator：日记页在底部导航的分支里，用默认的嵌套 Navigator
-      // 会让面板被压在导航栏上方，遮罩也盖不住导航栏（还能顺手切走 tab）。
-      useRootNavigator: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.35),
-      builder: (_) => DiaryRecordSheet(initialAction: action),
+  /// 页面趁发送键上的 ✓ 还在播时把时间线滚到新记录、量好卡片 Rect，
+  /// 返回「弹窗变卡片」的落位目标；返回 null 就按原来的插入动画收尾。
+  final Future<RecordCardMorphTarget?> Function(List<String> recordIds)? onSaved;
+
+  /// 弹出记录面板。
+  ///
+  /// 草稿存在 [diaryComposeDraftProvider] 里而不是面板 State 里，所以误触遮罩、
+  /// 点右上角关闭都不会丢字，重新打开接着填。
+  static Future<void> show(
+    BuildContext context, {
+    WidgetAction? action,
+    RecordFabAnchor? originAnchor,
+    RecordFabAnchor? Function()? readAnchor,
+    Future<RecordCardMorphTarget?> Function(List<String> recordIds)? onSaved,
+  }) async {
+    // 挂到根 Navigator：日记页在底部导航的分支里，用默认的嵌套 Navigator
+    // 会让卡片被压在导航栏上方，遮罩也盖不住导航栏（还能顺手切走 tab）。
+    final navigator = Navigator.of(context, rootNavigator: true);
+    // 和 showDialog 一样把当前主题抓进路由：面板挂在根 Navigator 上，
+    // 页面级 Theme 覆盖不会因为换了导航器而丢掉。
+    final themes = InheritedTheme.capture(from: context, to: navigator.context);
+    final theme = Theme.of(context);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final useMorph = originAnchor != null && !reduceMotion;
+    final surfaceKey = GlobalKey();
+
+    final route = _RecordDialogRoute(
+      surfaceKey: surfaceKey,
+      theme: theme,
+      originAnchor: originAnchor,
+      readAnchor: readAnchor,
+      useMorph: useMorph,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      // 变形路径的遮罩画在页面里，和容器用同一条时间线；路由自带的半透明
+      // barrier 会和它叠成两层，也会让出场时长失去单独控制。
+      barrierColor: useMorph ? Colors.transparent : Colors.black.withValues(alpha: 0.4),
+      reduceMotion: reduceMotion,
+      pageBuilder: (_, _, _) => themes.wrap(
+        // showDialog 的 useSafeArea 默认会包一层 SafeArea，换成自定义路由
+        // 后要自己补上，否则刘海/Home Indicator 区域会被卡片压到。
+        SafeArea(
+          child: DiaryRecordSheet(
+            initialAction: action,
+            surfaceKey: surfaceKey,
+            focusAfterEntrance: useMorph,
+            entryDelay: useMorph ? const Duration(milliseconds: 180) : Duration.zero,
+            onSaved: onSaved,
+          ),
+        ),
+      ),
     );
+    navigator.push<void>(route);
+    // 等退场动画真正播完再返回：页面要在这之后才把按钮放出来，
+    // 否则按钮会在卡片还没缩回去时提前从底下冒出来。
+    await route.done;
   }
 
   @override
@@ -69,21 +194,25 @@ class DiaryRecordSheet extends ConsumerStatefulWidget {
 
 class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     with TickerProviderStateMixin {
-  /// 「更多字段」是否展开（标签字段表单 + 固定事件行）。
-  bool _showMoreFields = false;
-
-  /// 保存成功后在保存按钮上短暂显示 ✓，让「已记下」这件事有个落地感。
+  /// 保存成功后在发送键上短暂显示 ✓，让「已记下」这件事有个落地感。
   bool _savedOk = false;
 
   /// 面板内容的错峰入场（头部 → 中段 → 底部依次浮现）。
   ///
-  /// 只补「内容第一次亮出来」的那一段：面板本身由路由的上升动画负责，
-  /// 这一层让内容比面板晚一点点、错开一点点落位，看起来是「面板推上来，
+  /// 只补「内容第一次亮出来」的那一段：面板本身由路由的容器变形负责，
+  /// 这一层让内容比容器晚一点点、错开一点点落位，看起来是「卡片先长出来，
   /// 内容才坐定」，而不是一整块贴图平移。
   late final AnimationController _entryController;
 
-  /// ✓ 的停留时长。页面侧 `_kInsertAnimationDelay` 与它对齐：
-  /// 记录先入库、时间线先播插入动画，面板要等这段时间过去再让开。
+  /// 变形容器长大到差不多时再亮内容；外部入口不需要延迟。
+  Timer? _entryStartTimer;
+
+  /// 变形入场期间延后聚焦，避免键盘先把卡片顶走。
+  Timer? _focusTimer;
+
+  /// ✓ 的停留时长。没有飞行目标时，页面侧 `_kInsertRevealDelay` 与它对齐：
+  /// 记录先入库、时间线先播插入动画，面板要等这段时间过去再让路；
+  /// 走「弹窗变卡片」时，✓ 结束后直接进入 480ms 飞行，不再等插入动画。
   static const Duration _savedFeedbackDuration = Duration(milliseconds: 320);
 
   bool _isExtracting = false;
@@ -171,26 +300,38 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       duration: const Duration(milliseconds: 420),
     );
     // 等一帧再播：面板刚 insert 时还没有尺寸，立刻 forward 会让错峰动画
-    // 跑在首帧布局之前，看起来像是内容「闪」出来的。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (MediaQuery.disableAnimationsOf(context)) {
-        _entryController.value = 1;
-      } else {
-        _entryController.forward();
-      }
-    });
-    // 选中的标签本来带着字段表单，而表单收在「更多字段」里：重新打开面板时
-    // 一并把它展开，否则用户会看到一个「明明是睡眠却填不了入睡时间」的面板。
-    _showMoreFields = _hasFormFields(_draft);
+    // 跑在首帧布局之前，看起来像是内容「闪」出来的。容器变形时再晚一拍，
+    // 等按钮先长出一块空间，内容再亮。
+    if (widget.entryDelay > Duration.zero) {
+      _entryStartTimer = Timer(widget.entryDelay, _startEntryReveal);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startEntryReveal());
+    }
     // 打开即聚焦：记录面板的主路径是打字，让键盘先到位。
-    _textFocusNode.requestFocus();
+    // 变形入场时等卡片基本落定再聚焦，否则键盘会在飞行途中把目标 Rect 顶走。
+    if (widget.focusAfterEntrance) {
+      _focusTimer = Timer(const Duration(milliseconds: 280), () {
+        if (mounted) _textFocusNode.requestFocus();
+      });
+    } else {
+      _textFocusNode.requestFocus();
+    }
     final action = widget.initialAction;
     if (action != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _handleWidgetAction(action);
       });
+    }
+  }
+
+  /// 内容错峰入场的起点；减弱动效直接落终态。
+  void _startEntryReveal() {
+    if (!mounted) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _entryController.value = 1;
+    } else {
+      _entryController.forward();
     }
   }
 
@@ -229,19 +370,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     );
   }
 
-  /// 草稿里是否有需要展开「更多字段」的标签（不吃字段的自定义标签不值得展开）。
-  bool _hasFormFields(DiaryComposeDraft draft) {
-    final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-    return draft.tagEntries.any((entry) {
-      final config = shortcuts
-          .where((s) => s.id == entry.id || s.name == entry.name)
-          .firstOrNull;
-      return config != null && config.fields.isNotEmpty;
-    });
-  }
-
   @override
   void dispose() {
+    _entryStartTimer?.cancel();
+    _focusTimer?.cancel();
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     _textFocusNode.dispose();
@@ -492,7 +624,6 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       _preExtractText = null;
       _activeFormTagId = null;
       _selectedFixedEventIds.clear();
-      _showMoreFields = false;
     });
   }
 
@@ -521,11 +652,6 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     currentEntries.add(TagEntry(id: config.id, name: config.name, fields: {}));
     if (config.hasPopup) {
       _activeFormTagId = config.id;
-    }
-    // 带字段的标签（睡眠、记账…）选中后表单是必填的，但表单收在「更多字段」里：
-    // 这里顺手把它展开，用户才会看到那个刚刚出现的必填项。
-    if (config.fields.isNotEmpty && !_showMoreFields) {
-      setState(() => _showMoreFields = true);
     }
 
     if (config.id == 'sleep') {
@@ -1960,7 +2086,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             updatedAt: now,
           );
 
-          await notifier.addDiary(
+          final saved = await notifier.addDiary(
             title: record.title,
             content: record.content,
             tags: record.tags,
@@ -1972,7 +2098,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
             tagEntries: record.tagEntries,
             photos: record.photos,
           );
-          insertedIds.add(record.id);
+          // 必须用落库后返回的 id：addDiary 内部会重新生成 id，
+          // 拿本地 record.id 去播报，页面永远匹配不到那条卡片。
+          insertedIds.add(saved.id);
         }
       }
 
@@ -1981,7 +2109,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       _undoController.stop();
       _resetDraftState();
       _announceInserted(insertedIds);
-      await _dismissAfterSaved();
+      await _showSavedFeedbackAndPop();
       return;
     }
 
@@ -2175,7 +2303,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       updatedAt: now,
     );
 
-    await notifier.addDiary(
+    final saved = await notifier.addDiary(
       title: record.title,
       content: record.content,
       tags: record.tags,
@@ -2193,11 +2321,44 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     _undoController.stop();
     _resetDraftState();
 
-    // 使用新记录的显示时间（可能为 startTime 或 endTime），以保证精准滚动到新发送的事件位置
-    ref.read(diaryScrollToTimeProvider.notifier).state = record.getDisplayTime();
-    _announceInserted([record.id]);
+    // 页面趁 ✓ 还在播的时候把时间线滚到新记录并量好卡片 Rect；
+    // 拿得到目标就让面板本身飞过去，拿不到就退回原来的插入动画。
+    final morphFuture = widget.onSaved == null
+        ? null
+        : widget.onSaved!(<String>[saved.id]);
+    _beginSavedFeedback();
 
-    await _dismissAfterSaved();
+    RecordCardMorphTarget? morph;
+    if (morphFuture != null) {
+      morph = await morphFuture;
+    }
+    if (!mounted) return;
+
+    if (morph == null) {
+      // 使用新记录的显示时间（可能为 startTime 或 endTime），保证精准滚到新事件位置
+      ref.read(diaryScrollToTimeProvider.notifier).state = record.getDisplayTime();
+      _announceInserted(<String>[saved.id]);
+    }
+
+    await Future<void>.delayed(_savedFeedbackDuration);
+    if (!mounted) return;
+
+    if (morph != null) {
+      final route = ModalRoute.of(context);
+      if (route is _RecordDialogRoute && route.startCardMorph(morph)) {
+        // 路由会在盖板落位后自己 pop，这里不能再 pop
+        return;
+      }
+      // 路由不支持飞行（理论上不会发生）：补一次插入信号，按普通路径收尾。
+      _announceInserted(<String>[saved.id]);
+    }
+
+    Navigator.of(context).maybePop();
+    // 兜底：万一 pop 没生效（比如宿主把面板换成了别的关闭方式），
+    // ✓ 不能永远挂在按钮上。
+    if (mounted) {
+      setState(() => _savedOk = false);
+    }
   }
 
   /// 保存成功后清空草稿：Provider 里的那份也要清，否则下次打开面板会「复活」已保存的内容。
@@ -2211,20 +2372,23 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       _preExtractText = null;
       _activeFormTagId = null;
       _selectedFixedEventIds.clear();
-      _showMoreFields = false;
     });
   }
 
-  /// 保存成功的收尾：先在保存按钮上把 ✓ 播完，再把面板降下去。
+  /// 保存成功的即时反馈：收起键盘，在发送键上亮 ✓。
+  void _beginSavedFeedback() {
+    if (!mounted) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _savedOk = true);
+  }
+
+  /// 没有「弹窗变卡片」目标时的收尾：✓ 播完再收起面板。
   ///
-  /// 不能立刻 pop —— 记录已经写库、时间线那边马上会播「新卡片升起」的动画，
-  /// 面板要在这之后才让开位置。页面侧对应的是 `_kInsertAnimationDelay`，
-  /// 两边靠这个时长对齐（改一处要同步改另一处）。
-  Future<void> _dismissAfterSaved() async {
-    if (mounted) {
-      FocusScope.of(context).unfocus();
-      setState(() => _savedOk = true);
-    }
+  /// 页面侧 `_kInsertRevealDelay`（440ms）与它对齐：320ms 的 ✓ + 180ms 退场，
+  /// 新卡片会在面板完全消失前 60ms 开始升起，形成一次交接。走「飞向卡片」时
+  /// 由路由在盖板落位后自己 pop，不经过这里。
+  Future<void> _showSavedFeedbackAndPop() async {
+    _beginSavedFeedback();
     await Future<void>.delayed(_savedFeedbackDuration);
     if (!mounted) {
       return;
@@ -2293,20 +2457,6 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   Widget build(BuildContext context) {
     final selectedDate = ref.watch(selectedDateProvider);
 
-    // 快捷键列表是异步来的：面板刚打开时（尤其冷启动）它可能还没有值，
-    // initState 里那次判断会得出「标签没有字段」的错误结论。等它到位再看一眼，
-    // 否则睡眠/记账这类必填表单会被折叠在「更多字段」后面，用户根本填不了。
-    ref.listen<AsyncValue<List<ShortcutConfig>>>(shortcutListProvider, (
-      previous,
-      next,
-    ) {
-      if (_showMoreFields || !next.hasValue) {
-        return;
-      }
-      if (_hasFormFields(_draft)) {
-        setState(() => _showMoreFields = true);
-      }
-    });
     ref.listen<DateTime>(selectedDateProvider, (previous, next) {
       if (previous != null &&
           (previous.year != next.year ||
@@ -2368,34 +2518,16 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final theme = Theme.of(context);
     final shortcuts = ref.watch(shortcutListProvider);
 
-    return _SheetSurface(child: _buildSheetContent(theme, shortcuts, selectedDate));
-  }
-
-  /// 把面板的入场动画切一段出来给某个区块用（0 → 0.64 的窗口，尾部与下一段重叠）。
-  ///
-  /// Fade/Slide 都是把 child 透传的过渡件，所以入场期间逐帧重建的只有这两个
-  /// 过渡节点，区块内容本身不会跟着重建。
-  Widget _reveal({required double begin, required Widget child}) {
-    final animation = CurvedAnimation(
-      parent: _entryController,
-      curve: Interval(begin, math.min(1.0, begin + 0.64), curve: Curves.easeOutCubic),
-    );
-    return FadeTransition(
-      opacity: animation,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.06),
-          end: Offset.zero,
-        ).animate(animation),
-        child: child,
-      ),
+    return _SheetSurface(
+      surfaceKey: widget.surfaceKey,
+      child: _buildSheetContent(theme, shortcuts, selectedDate),
     );
   }
 
-  /// 面板内容：轻量区（时间 / 标签 / 图片 / 文本）+ 收在「更多字段」里的重表单。
+  /// 卡片内容：头部（时间 + 关闭）→ 标签 → 固定事件/字段 → 附件与 AI → 正文与发送。
   ///
-  /// 自上而下就是记录的填写顺序：先确认记在什么时候，再挑标签，最后写字。
-  /// 文本输入压在最靠近键盘的位置，因为它是最常动的一个。
+  /// 只有中间那段跟着内容滚：时间、关闭、输入和发送始终钉在卡片里。
+  /// 键盘把卡片压矮时先让字段表单让位，发送键不会被挤出屏幕。
   Widget _buildSheetContent(
     ThemeData theme,
     AsyncValue<List<ShortcutConfig>> shortcuts,
@@ -2403,133 +2535,104 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
   ) {
     final fixedEvents = ref.watch(fixedEventListProvider);
     final allRecords = ref.watch(diaryListProvider).valueOrNull ?? [];
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
 
-    return SafeArea(
-      top: false,
-      bottom: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        // 拉伸：让「更多字段」展开区在收起时也能占满宽度，
-        // 高度从 0 长出来的动画才不会带着宽度一起抽一下。
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 8),
-          // 拖拽把手：面板可以下滑关闭，得有个能看出「可以拽」的视觉提示。
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.32),
-                borderRadius: BorderRadius.circular(2),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Reveal(
+          controller: _entryController,
+          begin: 0,
+          child: _buildHeader(theme, selectedDate),
+        ),
+        _Reveal(
+          controller: _entryController,
+          begin: 0.08,
+          child: _buildShortcutRow(theme, shortcuts),
+        ),
+        Flexible(
+          child: _Reveal(
+            controller: _entryController,
+            begin: 0.16,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildFixedEventRow(theme, fixedEvents, selectedDate, allRecords),
+                  _buildFormFieldsArea(theme),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          _reveal(begin: 0, child: _buildHeader(theme, selectedDate)),
-          _reveal(begin: 0.16, child: _buildShortcutRow(theme, shortcuts)),
-          // 让位给键盘：表单区是唯一可以「让」的部分，标签与输入框的位置不能动。
-          Flexible(
-            child: _reveal(
-              begin: 0.16,
-              child: AnimatedSize(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
-                alignment: Alignment.topCenter,
-                child: _showMoreFields
-                    ? SingleChildScrollView(
-                        key: const ValueKey('more-fields'),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildFixedEventRow(
-                              theme,
-                              fixedEvents,
-                              selectedDate,
-                              allRecords,
-                            ),
-                            _buildFormFieldsArea(theme),
-                          ],
-                        ),
-                      )
-                    : const SizedBox(height: 0, key: ValueKey('less-fields')),
-              ),
-            ),
+        ),
+        _Reveal(
+          controller: _entryController,
+          begin: 0.24,
+          child: _buildMediaRow(theme),
+        ),
+        if (_activeDraft.selectedPhotos.isNotEmpty)
+          _Reveal(
+            controller: _entryController,
+            begin: 0.24,
+            child: _buildPhotoPreview(theme),
           ),
-          _reveal(begin: 0.32, child: _buildMediaRow(theme)),
-          if (_activeDraft.selectedPhotos.isNotEmpty)
-            _reveal(begin: 0.32, child: _buildPhotoPreview(theme)),
-          _reveal(
-            begin: 0.32,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: _buildInputAndActions(theme),
-            ),
+        _Reveal(
+          controller: _entryController,
+          begin: 0.32,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: _buildInputAndActions(theme),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  /// 头部：时间编辑组 + 取消 / 保存。
+  /// 头部：时间胶囊组在左，圆形关闭键在右。
+  ///
+  /// 时间是这条记录的锚点，给最大的字号和实心底色；保存动作已经交给输入行末尾的
+  /// 发送键，这里只留「退出」，不再和发送键抢决策。
   Widget _buildHeader(ThemeData theme, DateTime selectedDate) {
-    final canSave = !_isSaveDisabled;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 6),
       child: Row(
         children: [
           Expanded(child: _buildTimeRangeEditor(theme, selectedDate)),
-          const SizedBox(width: 4),
-          TextButton(
-            onPressed: _isSending ? null : () => Navigator.of(context).maybePop(),
-            style: TextButton.styleFrom(
-              minimumSize: const Size(0, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              foregroundColor: theme.colorScheme.onSurfaceVariant,
-            ),
-            // 不叫「取消」：草稿会留在 diaryComposeDraftProvider 里，关掉不等于丢弃。
-            // 真正的丢弃入口是输入框里的红色 ×（它会连时间线选中的时间一起清掉）。
-            child: const Text('关闭'),
-          ),
-          const SizedBox(width: 4),
-          FilledButton(
-            onPressed: canSave && !_isSending ? _handleSend : null,
-            style: FilledButton.styleFrom(
-              elevation: 0,
-              minimumSize: const Size(0, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              transitionBuilder: (child, animation) => ScaleTransition(
-                scale: animation,
-                child: FadeTransition(opacity: animation, child: child),
-              ),
-              child: _savedOk
-                  ? const Icon(
-                      Icons.check_rounded,
-                      key: ValueKey('saved'),
-                      size: 18,
-                    )
-                  : const Text('保存', key: ValueKey('save')),
-            ),
-          ),
+          const SizedBox(width: 10),
+          _buildCloseButton(theme),
         ],
       ),
     );
   }
 
-  /// 保存按钮的可用性。
-  ///
-  /// 与 [_buildInputAndActions] 里的判断同源（必填校验 + 是否为空 + 压缩中），
-  /// 但抽到这里是因为保存按钮搬到了头部，不能再从输入行里读。
+  Widget _buildCloseButton(ThemeData theme) {
+    return Semantics(
+      button: true,
+      label: '关闭',
+      child: GestureDetector(
+        onTap: _isSending ? null : () => Navigator.of(context).maybePop(),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          key: const ValueKey('record-close'),
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.close_rounded,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 发送键的可用性：必填校验 + 草稿是否为空 + 图片是否还在压缩。
   bool get _isSaveDisabled {
     final draft = _activeDraft;
     final consumptionEntry = draft.tagEntries
@@ -2646,7 +2749,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
       data: (templates) {
         if (templates.isEmpty) return const SizedBox.shrink();
         return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: Row(
             children: [
               Expanded(
@@ -2750,27 +2853,20 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
 
     if (visibleEntries.isEmpty) return const SizedBox.shrink();
 
+    // 外层已经是滚动区，这里不能再套 scroll + 限高：手机上会变成里外两层都能滚，
+    // 手指落在表单上时不知道该滚哪一个。
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-      child: Container(
-        constraints: const BoxConstraints(maxHeight: 360),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-            ),
-          ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: visibleEntries.map((pair) {
-              return _buildTagFormSection(theme, pair.value, pair.key);
-            }).toList(),
-          ),
+      alignment: Alignment.topCenter,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: visibleEntries.map((pair) {
+            return _buildTagFormSection(theme, pair.value, pair.key);
+          }).toList(),
         ),
       ),
     );
@@ -3483,7 +3579,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     AsyncValue<List<ShortcutConfig>> shortcuts,
   ) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 4, 2),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
       child: Row(
         children: [
           Expanded(
@@ -3567,58 +3663,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               ),
             ),
           ),
-          // 「更多字段」开关：标签字段表单与固定事件行收在它后面。
-          // 做成胶囊而不是纯箭头，是因为它是本次改造里唯一「藏起来的功能」，
-          // 得让人一眼知道有东西可以展开。
-          GestureDetector(
-            onTap: () => setState(() => _showMoreFields = !_showMoreFields),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              height: 32,
-              margin: const EdgeInsets.only(left: 4, right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: _showMoreFields
-                    ? theme.colorScheme.primary.withValues(alpha: 0.12)
-                    : theme.colorScheme.surfaceContainerHighest.withValues(
-                        alpha: 0.3,
-                      ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: _showMoreFields
-                      ? Colors.transparent
-                      : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '更多字段',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: _showMoreFields
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  AnimatedRotation(
-                    turns: _showMoreFields ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 280),
-                    curve: Curves.easeInOutCubic,
-                    child: Icon(
-                      Icons.keyboard_arrow_down,
-                      size: 16,
-                      color: _showMoreFields
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          // 「更多字段」开关已撤掉：固定事件与标签字段现在常驻在下方滚动区，
+          // 不再有需要主动展开的第二级。
         ],
       ),
     );
@@ -3641,229 +3687,301 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     }
   }
 
-  /// 时间编辑组：开始时间胶囊 + （有结束时间时的）结束时间胶囊 ＋ 分隔符。
+  /// 时间编辑组：开始时间胶囊、结束时间胶囊（或「+ 结束时间」）。
   ///
-  /// 从原来的「时间 + 图片」行里拆出来放进面板头部：时间是记录的主键，
-  /// 应该和「保存」挨着，而不是跟图片按钮挤在一行末尾。
+  /// 用内容宽而不是等分半行：两个时间都很短，等分会把它们撑成两条大色块，
+  /// 和下面的标签、附件钮不成比例，也把「关闭」挤到很远的地方。
+  /// 跨天补记会带上 MM-dd 前缀，宽度不够时这一行自己横向滚动，不会溢出。
   Widget _buildTimeRangeEditor(ThemeData theme, DateTime selectedDate) {
-    return Row(
-      children: [
-        Expanded(
-          child: GestureDetector(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildTimePill(
+            theme,
             onTap: _pickStartTime,
-            child: Container(
-              height: 36,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.access_time_rounded,
-                    size: 14,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        _formatTime(
-                          selectedDate,
-                          _activeDraft.startTime,
-                          offset: _activeDraft.startOffset,
-                        ),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                          fontSize: 12,
-                        ),
-                        maxLines: 1,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            label: _formatTime(
+              selectedDate,
+              _activeDraft.startTime,
+              offset: _activeDraft.startOffset,
             ),
           ),
-        ),
-        if (_activeDraft.endTime != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              '-',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
+          if (_activeDraft.endTime != null) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '–',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          )
-        else
-          const SizedBox(width: 8),
-        Expanded(
-          child: _activeDraft.endTime != null
-              ? Container(
-                  height: 36,
-                  padding: const EdgeInsets.only(left: 8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: _pickEndTime,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.access_time_rounded,
-                                size: 14,
-                                color: theme.colorScheme.primary,
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    _formatTime(
-                                      selectedDate,
-                                      _activeDraft.endTime!,
-                                      offset: _activeDraft.endOffset,
-                                    ),
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.primary,
-                                      fontSize: 12,
-                                    ),
-                                    maxLines: 1,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _clearEndTime,
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
-                          child: Icon(
-                            Icons.close,
-                            size: 14,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : GestureDetector(
-                  onTap: _pickEndTime,
-                  child: Container(
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.add,
-                          size: 14,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '结束时间',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-        ),
-      ],
+            _buildTimePill(
+              theme,
+              onTap: _pickEndTime,
+              onClear: _clearEndTime,
+              label: _formatTime(
+                selectedDate,
+                _activeDraft.endTime!,
+                offset: _activeDraft.endOffset,
+              ),
+            ),
+          ] else ...[
+            const SizedBox(width: 8),
+            _buildAddEndPill(theme),
+          ],
+        ],
+      ),
     );
   }
 
-  /// 相册 / 相机两个圆钮。图片不是每次记录都用，单独一行放在标签下方，
-  /// 不跟文本输入抢最靠近键盘的那条黄金位置。
+  /// 时间药丸。传 [onClear] 时右侧多一个 ×，用来取消结束时间。
+  Widget _buildTimePill(
+    ThemeData theme, {
+    required VoidCallback onTap,
+    required String label,
+    VoidCallback? onClear,
+  }) {
+    final scheme = theme.colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        padding: EdgeInsets.only(left: 12, right: onClear == null ? 12 : 2),
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(19),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.access_time_rounded, size: 15, color: scheme.primary),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: scheme.primary,
+                // 等宽数字：调时间时胶囊宽度不会跟着数字跳动
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+              maxLines: 1,
+            ),
+            if (onClear != null)
+              GestureDetector(
+                onTap: onClear,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 15,
+                    color: scheme.primary,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 未设置结束时间时的「+ 结束时间」：描边而不是实心，
+  /// 一眼能分出「已经确定的值」和「还可以补的值」。
+  Widget _buildAddEndPill(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    return GestureDetector(
+      onTap: _pickEndTime,
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(19),
+          border: Border.all(color: scheme.outlineVariant, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_rounded, size: 15, color: scheme.primary),
+            const SizedBox(width: 4),
+            Text(
+              '结束时间',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: scheme.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 附件与 AI 工具栏：相册、相机在左，AI 提取靠右。
+  ///
+  /// 提取从输入行挪到这里，是为了把输入行末尾那个最顺手的位置让给发送键 ——
+  /// 「写完就发」是主路径，「写完再让 AI 拆成结构化字段」是支路，不该占主路的位置。
   Widget _buildMediaRow(ThemeData theme) {
     final canAddPhoto = _activeDraft.selectedPhotos.length < 3;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+      padding: const EdgeInsets.fromLTRB(16, 2, 12, 2),
       child: Row(
         children: [
-          GestureDetector(
+          _buildMediaButton(
+            theme,
+            icon: Icons.image_outlined,
             onTap: canAddPhoto ? _pickImageFromGallery : null,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.image_outlined,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  ),
-                  if (_activeDraft.selectedPhotos.isNotEmpty)
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          '${_activeDraft.selectedPhotos.length}',
-                          style: TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onPrimary,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            badge: _activeDraft.selectedPhotos.length,
           ),
           const SizedBox(width: 8),
-          GestureDetector(
+          _buildMediaButton(
+            theme,
+            icon: Icons.camera_alt_outlined,
             onTap: canAddPhoto ? _pickImageFromCamera : null,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.camera_alt_outlined,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
-            ),
           ),
+          const Spacer(),
+          _buildAiExtractButton(theme),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMediaButton(
+    ThemeData theme, {
+    required IconData icon,
+    VoidCallback? onTap,
+    int badge = 0,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: onTap == null ? 0.45 : 1,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primaryContainer,
+            shape: BoxShape.circle,
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.primary),
+              if (badge > 0)
+                Positioned(
+                  top: 3,
+                  right: 3,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '$badge',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// AI 提取钮：纯图标，和相册 / 相机同一排、同样大小。
+  ///
+  /// 不写字：这一行都是图标动作，多一个文字胶囊会把「附件」和「AI」读成两种控件，
+  /// 也把行宽撑开。语义靠 ✨ 本身和长按换模型承载。
+  Widget _buildAiExtractButton(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final draft = _activeDraft;
+    final aiTempsAsync = ref.watch(aiTemperaturesProvider);
+    final extractImages =
+        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
+    final isExtractButtonEnabled =
+        draft.inputText.trim().isNotEmpty ||
+        (extractImages && draft.selectedPhotos.isNotEmpty);
+
+    // 撤销态和提取态都算「可点」：撤销自然能点，提取中再点一次是停止。
+    final enabled = _canUndo || _isExtracting || isExtractButtonEnabled;
+
+    return Semantics(
+      button: true,
+      label: _canUndo ? '撤销提取' : 'AI 提取',
+      child: GestureDetector(
+        key: const ValueKey('record-ai-extract'),
+        onTap: _canUndo ? _undoExtract : _handleAiExtract,
+        onLongPress: _canUndo ? null : _showModelMenu,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: enabled ? 1 : 0.45,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _canUndo
+                  ? scheme.error.withValues(alpha: 0.12)
+                  : scheme.primaryContainer,
+              shape: BoxShape.circle,
+            ),
+            child: _canUndo
+                ? AnimatedBuilder(
+                    animation: _undoController,
+                    builder: (context, child) => SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CustomPaint(
+                            painter: _UndoCountdownPainter(
+                              progress: _undoController.value,
+                              color: scheme.error,
+                            ),
+                            size: const Size(22, 22),
+                          ),
+                          child!,
+                        ],
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.undo_rounded,
+                      size: 14,
+                      color: scheme.error,
+                    ),
+                  )
+                : _isExtracting
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _extractPhase == _ExtractPhase.sending
+                          ? scheme.primary
+                          : scheme.tertiary,
+                    ),
+                  )
+                : Icon(
+                    Icons.auto_awesome,
+                    size: 20,
+                    color: scheme.primary,
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -3875,7 +3993,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     final isImageExtracting = _isExtracting && extractImages;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       child: SizedBox(
         height: 56,
         child: ListView.separated(
@@ -3984,18 +4102,17 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
     );
   }
 
+  /// 输入行：正文 + 发送键。
+  ///
+  /// 发送是这条动线的终点，占住输入框右侧最顺手的位置；AI 提取挪到上一行工具栏，
+  /// 不再和「写完就发」抢这个位置。
   Widget _buildInputAndActions(ThemeData theme) {
     final draft = _activeDraft;
+    // 输入框里的红色 × 是否出现，取决于「有没有东西可清」：时间线上的选时也算。
     final timeSelect = ref.watch(diaryInputTimeProvider);
-    final aiTempsAsync = ref.watch(aiTemperaturesProvider);
-    final extractImages =
-        aiTempsAsync.valueOrNull?.timelineOptimization.extractImages ?? false;
-    final isExtractButtonEnabled =
-        draft.inputText.trim().isNotEmpty ||
-        (extractImages && draft.selectedPhotos.isNotEmpty);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(16, 4, 12, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -4109,80 +4226,66 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet>
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: _canUndo ? _undoExtract : _handleAiExtract,
-            onLongPress: _canUndo ? null : _showModelMenu,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: _canUndo
-                    ? theme.colorScheme.error.withValues(alpha: 0.08)
-                    : theme.colorScheme.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: _canUndo
-                  ? AnimatedBuilder(
-                      animation: _undoController,
-                      builder: (context, child) {
-                        return Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            SizedBox(
-                              width: 40,
-                              height: 40,
-                              child: CustomPaint(
-                                painter: _UndoCountdownPainter(
-                                  progress: _undoController.value,
-                                  color: theme.colorScheme.error,
-                                ),
-                              ),
-                            ),
-                            child!,
-                          ],
-                        );
-                      },
-                      child: Icon(
-                        Icons.undo,
-                        size: 18,
-                        color: theme.colorScheme.error,
-                      ),
-                    )
-                  : _isExtracting
-                  ? Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: _extractPhase == _ExtractPhase.sending
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.tertiary,
-                        ),
-                      ),
-                    )
-                  : Center(
-                      child: Icon(
-                        Icons.auto_awesome,
-                        size: 20,
-                        color: isExtractButtonEnabled
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant.withValues(
-                                alpha: 0.4,
-                              ),
-                      ),
-                    ),
-            ),
-          ),
+          const SizedBox(width: 10),
+          _buildSendButton(theme),
         ],
+      ),
+    );
+  }
+
+  /// 发送键：草稿为空或必填未通过时禁用，保存成功后短暂变成 ✓ 再收起卡片。
+  Widget _buildSendButton(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final canSend = !_isSaveDisabled && !_isSending;
+
+    return SizedBox(
+      width: 46,
+      height: 46,
+      child: FilledButton(
+        key: const ValueKey('record-send'),
+        onPressed: canSend ? _handleSend : null,
+        style: FilledButton.styleFrom(
+          padding: EdgeInsets.zero,
+          elevation: 0,
+          shape: const CircleBorder(),
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
+          disabledBackgroundColor: scheme.surfaceContainerHighest.withValues(
+            alpha: 0.7,
+          ),
+          disabledForegroundColor: scheme.onSurfaceVariant.withValues(
+            alpha: 0.45,
+          ),
+        ),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          switchInCurve: Curves.easeOutBack,
+          transitionBuilder: (child, animation) => ScaleTransition(
+            scale: animation,
+            child: FadeTransition(opacity: animation, child: child),
+          ),
+          child: _savedOk
+              ? const Icon(
+                  Icons.check_rounded,
+                  key: ValueKey('saved'),
+                  size: 22,
+                )
+              : _isSending
+              ? SizedBox(
+                  key: const ValueKey('sending'),
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                )
+              : const Icon(
+                  Icons.arrow_upward_rounded,
+                  key: ValueKey('send'),
+                  size: 22,
+                ),
+        ),
       ),
     );
   }
@@ -4233,69 +4336,693 @@ class _UndoCountdownPainter extends CustomPainter {
   }
 }
 
-/// 面板外框：圆角、投影与裁剪。
+/// 卡片外框：居中、限宽、圆角与柔和投影。
+///
+/// 用 [Dialog] 而不是自绘遮罩，是为了直接拿到它的键盘避让：`Dialog` 会把
+/// `viewInsets` 加到 insetPadding 上，键盘升起时整张卡片上移、可用高度变小，
+/// 不再需要像底部面板时代那样手工算 `screenHeight - keyboard - safeArea`。
 class _SheetSurface extends StatelessWidget {
-  const _SheetSurface({required this.child});
+  const _SheetSurface({this.surfaceKey, required this.child});
+
+  /// 量卡片最终 Rect 用的 Key（容器变形）。
+  final GlobalKey? surfaceKey;
 
   final Widget child;
 
+  /// 桌面/平板上不铺成一整条，手机上 16 的左右边距刚好还能看见底下的时间线。
+  static const double _maxWidth = 520;
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 20,
-            offset: const Offset(0, -8),
+    final scheme = Theme.of(context).colorScheme;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ConstrainedBox(
+        key: surfaceKey,
+        constraints: const BoxConstraints(minWidth: 280, maxWidth: _maxWidth),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: 0.16),
+                blurRadius: 32,
+                offset: const Offset(0, 12),
+              ),
+            ],
           ),
-        ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: child,
+          ),
+        ),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: _SheetKeyboardShell(child: child),
     );
   }
 }
 
-/// 面板底部的保底留白（安全区与键盘都为 0 时，比如桌面网页端）。
-const double _kMinBottomInset = 8;
-
-/// 键盘与底部安全区避让外壳。
+/// 面板内容的错峰入场：从同一个控制器上切一段窗口出来（尾部与下一段重叠）。
 ///
-/// `showModalBottomSheet` 不会自己避开键盘，也不吃 home indicator 的安全区，
-/// 两者都要补；但 `viewInsets` 在键盘升降期间逐帧变化，如果让内容子树直接依赖它，
-/// 整块面板（含表单、输入框）会跟着逐帧重建。所以约束留在这一层，
-/// 内容经 child 传入复用 Element，只按新约束重新布局。
-class _SheetKeyboardShell extends StatelessWidget {
-  const _SheetKeyboardShell({required this.child});
+/// Fade/Slide 都是把 child 透传的过渡件，入场期间逐帧重建的只有这两个节点，
+/// 区块内容本身不会跟着重建。动画对象在 State 里建好、dispose 释放 ——
+/// 如果放在 build 里临时 new，会把状态监听一次次挂到控制器上（打字每次
+/// setState 都加一份），既不干净也会拖慢长会话。
+class _Reveal extends StatefulWidget {
+  const _Reveal({
+    required this.controller,
+    required this.begin,
+    required this.child,
+  });
 
+  final Animation<double> controller;
+  final double begin;
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final keyboardHeight = MediaQuery.viewInsetsOf(context).bottom;
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final safeAreaTop = MediaQuery.paddingOf(context).top;
+  State<_Reveal> createState() => _RevealState();
+}
 
-    // 键盘不升起时按安全区垫底，升起时键盘已经盖住了安全区，取大者即可。
-    // 保底 8px：桌面/网页上安全区是 0，输入框会贴着屏幕下沿，太挤。
-    final bottomInset = math.max(
-      math.max(keyboardHeight, safeBottom),
-      _kMinBottomInset,
+class _RevealState extends State<_Reveal> {
+  late final CurvedAnimation _animation;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _animation = CurvedAnimation(
+      parent: widget.controller,
+      curve: Interval(
+        widget.begin,
+        math.min(1.0, widget.begin + 0.64),
+        curve: Curves.easeOutCubic,
+      ),
     );
-    // 顶部留出状态栏与一点呼吸空间，面板不贴死屏幕顶端。
-    final maxAvailableHeight = screenHeight - bottomInset - safeAreaTop - 24;
-    final maxHeight = math.max(160.0, math.min(680.0, maxAvailableHeight));
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(_animation);
+  }
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        child: child,
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _animation,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
+}
+
+/// 记录卡片的路由。
+///
+/// 有按钮锚点时入场/退场是真正的容器变形（[buildTransitions] 里交给
+/// [_RecordDialogTransition]），发送后还能从面板飞向新卡片；没有锚点时退回
+/// 整卡缩放淡入，退场比入场更快，不拖住时间线。
+///
+/// [done] 在退场动画真正播完（或路由被销毁）时完成：页面要等到这一刻再把
+/// 记录按钮放出来，否则按钮会在卡片还没缩回去时提前从底下冒出来。
+class _RecordDialogRoute extends RawDialogRoute<void> {
+  _RecordDialogRoute({
+    required super.pageBuilder,
+    required super.barrierLabel,
+    required super.barrierColor,
+    required this.reduceMotion,
+    required this.useMorph,
+    required this.theme,
+    required this.surfaceKey,
+    required this.originAnchor,
+    required this.readAnchor,
+  }) : super(
+         barrierDismissible: true,
+         transitionDuration: reduceMotion
+             ? Duration.zero
+             : (useMorph ? _kMorphEnterDuration : _kDialogEnterDuration),
+       );
+
+  /// 系统开启「减弱动效」时直接落终态。
+  final bool reduceMotion;
+  final bool useMorph;
+  final ThemeData theme;
+  final GlobalKey surfaceKey;
+  final RecordFabAnchor? originAnchor;
+  final RecordFabAnchor? Function()? readAnchor;
+
+  final GlobalKey<_RecordDialogTransitionState> _transitionKey = GlobalKey();
+  final Completer<void> _done = Completer<void>();
+
+  /// 发送落位后改用更短的退场，让盖板尽快把卡片让出来。
+  Duration? _landingExitDuration;
+
+  Future<void> get done => _done.future;
+
+  @override
+  Duration get reverseTransitionDuration {
+    if (reduceMotion) return Duration.zero;
+    return _landingExitDuration ??
+        (useMorph ? _kMorphExitDuration : _kDialogExitDuration);
+  }
+
+  /// 面板保存成功、并且页面量到了目标卡片时调用。
+  bool startCardMorph(RecordCardMorphTarget target) {
+    final state = _transitionKey.currentState;
+    if (state == null) return false;
+    return state.startCardMorph(target);
+  }
+
+  /// 盖板已经压在目标卡片上，接下来用短退场把盖板和遮罩一起淡掉。
+  void prepareLandingExit() {
+    _landingExitDuration = _kCardLandingExitDuration;
+  }
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (!useMorph) {
+      return _DialogEntrance(animation: animation, child: child);
+    }
+    return _RecordDialogTransition(
+      key: _transitionKey,
+      animation: animation,
+      route: this,
+      child: child,
+    );
+  }
+
+  @override
+  TickerFuture didPush() {
+    final future = super.didPush();
+    animation?.addStatusListener(_handleAnimationStatus);
+    return future;
+  }
+
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.dismissed) {
+      _completeDone();
+    }
+  }
+
+  void _completeDone() {
+    if (!_done.isCompleted) {
+      _done.complete();
+    }
+  }
+
+  @override
+  void dispose() {
+    animation?.removeStatusListener(_handleAnimationStatus);
+    _completeDone();
+    super.dispose();
+  }
+}
+
+/// 按钮 ↔ 弹窗的容器变形，以及发送后「弹窗变卡片」的飞行落位。
+///
+/// 打开时容器从按钮 Rect 长到卡片 Rect；卡片的目标 Rect 每帧从 [Key] 上实时
+/// 读取，所以键盘弹起、内容长高时容器会跟着走。窗口内用
+/// `OverflowBox + Transform.translate` 把整页内容按最终坐标放进变形窗口，
+/// 净偏移正好抵消，量到的始终是卡片的最终屏幕位置。
+///
+/// 发送时面板先淡成一张空白盖板，再飞到页面量好的卡片 Rect 上；落位瞬间
+/// 页面揭开真实卡片，盖板和遮罩一起淡出。
+class _RecordDialogTransition extends StatefulWidget {
+  const _RecordDialogTransition({
+    super.key,
+    required this.animation,
+    required this.route,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final _RecordDialogRoute route;
+  final Widget child;
+
+  @override
+  State<_RecordDialogTransition> createState() => _RecordDialogTransitionState();
+}
+
+class _RecordDialogTransitionState extends State<_RecordDialogTransition>
+    with SingleTickerProviderStateMixin {
+  /// 按钮 ↔ 卡片的 Rect/圆角/配色进度。
+  late final CurvedAnimation _rectProgress;
+
+  /// 遮罩淡入淡出。
+  late final CurvedAnimation _scrimProgress;
+
+  /// 内容与按钮幽灵的交叉淡入：入场时幽灵先退、内容交给面板自己的 _Reveal；
+  /// 收回时反过来，内容先退、幽灵最后落在按钮位置。
+  late final CurvedAnimation _crossFade;
+
+  /// 发送后飞向卡片的独立控制器（路由动画此时已经停在 1）。
+  late final AnimationController _cardController;
+  late final Animation<double> _cardProgress;
+
+  Rect? _cardFrom;
+  RecordCardMorphTarget? _cardTarget;
+  bool _landing = false;
+
+  /// 内容裁切后 Key 可能暂时量不到（收回后段已经不再画内容），留一份上次的。
+  Rect? _lastSheetRect;
+
+  @override
+  void initState() {
+    super.initState();
+    _rectProgress = CurvedAnimation(
+      parent: widget.animation,
+      curve: _kMorphEnterCurve,
+      reverseCurve: _kMorphExitCurve,
+    );
+    _scrimProgress = CurvedAnimation(
+      parent: widget.animation,
+      curve: const Interval(0, 0.5, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.3, 1, curve: Curves.easeIn),
+    );
+    _crossFade = CurvedAnimation(
+      parent: widget.animation,
+      curve: const Interval(0, 0.3, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.3, 1, curve: Curves.easeIn),
+    );
+    _cardController = AnimationController(
+      vsync: this,
+      duration: _kCardFlightDuration,
+    );
+    _cardProgress = CurvedAnimation(
+      parent: _cardController,
+      curve: _kCardFlightCurve,
+    );
+    _cardController.addStatusListener(_handleCardStatus);
+  }
+
+  @override
+  void dispose() {
+    _cardController.removeStatusListener(_handleCardStatus);
+    _cardController.dispose();
+    _rectProgress.dispose();
+    _scrimProgress.dispose();
+    _crossFade.dispose();
+    super.dispose();
+  }
+
+  /// 面板保存后飞向新卡片；路由动画已经结束，用独立控制器驱动。
+  bool startCardMorph(RecordCardMorphTarget target) {
+    if (!mounted || _cardTarget != null) return false;
+    final from = _readSheetRect() ?? _lastSheetRect;
+    if (from == null) return false;
+    setState(() {
+      _cardFrom = from;
+      _cardTarget = target;
+    });
+    _cardController.forward();
+    return true;
+  }
+
+  void _handleCardStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    final target = _cardTarget;
+    if (target == null || _landing) return;
+    // 先让页面把真实卡片揭开（盖板还压在上面，看不到跳变），再淡出盖板。
+    target.onLanded();
+    if (!mounted) return;
+    widget.route.prepareLandingExit();
+    setState(() => _landing = true);
+    Navigator.of(context).pop();
+  }
+
+  Rect? _readSheetRect() {
+    final box = widget.route.surfaceKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      // 飞行/落位期间锁住返回与遮罩点击，避免面板中途关掉后卡片一直藏着。
+      canPop: _cardTarget == null,
+      child: Theme(
+        data: widget.route.theme,
+        // 发送飞行时路由动画已经停在 1，只有这个控制器在跑；
+        // 不监听它的话容器会停在起飞点（第一版就是漏了这一步）。
+        child: AnimatedBuilder(
+          animation: _cardController,
+          builder: (context, _) => LayoutBuilder(
+            builder: (context, constraints) {
+              final size = constraints.biggest;
+              final sheetRect = _readSheetRect();
+              if (sheetRect != null) {
+                _lastSheetRect = sheetRect;
+              }
+
+              if (_landing) {
+                return _buildLanding();
+              }
+              if (_cardTarget != null) {
+                return _buildCardFlight(size);
+              }
+              return _buildAnchorMorph(sheetRect, size);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 打开/关闭：按钮与卡片之间的容器变形。
+  Widget _buildAnchorMorph(Rect? sheetRect, Size size) {
+    final origin = widget.route.originAnchor!;
+    final isReversing = widget.animation.status == AnimationStatus.reverse;
+    final liveAnchor = widget.route.readAnchor?.call() ?? origin;
+    // 收回时 FAB 可能已经因为发送清空选择而变回 44 圆钮，目标 Rect 要实时读。
+    final anchor = isReversing ? liveAnchor : origin;
+    final style = DiaryRecordFabStyle.resolve(
+      widget.route.theme,
+      hasSelection: anchor.selection != null,
+    );
+    final scheme = widget.route.theme.colorScheme;
+    final target = sheetRect ?? _lastSheetRect ?? origin.rect;
+
+    // 入场完成：容器/幽灵撤掉，内容窗口铺满全屏并停止裁切。
+    // 面板 widget 必须始终待在同一个带 Key 的窗口里 —— 直接把它挪到
+    // Stack 的另一层会让 Element 重新挂载，输入框和焦点会被重置。
+    // 窗口铺满全屏还有个好处：键盘把卡片顶上去后，整张卡仍然可点，
+    // 不会因为窗口停在旧位置把下半截切在命中区域外。
+    if (!isReversing && widget.animation.status == AnimationStatus.completed) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildScrim(1, allowDismiss: true),
+          _buildContentWindow(
+            Offset.zero & size,
+            0,
+            1,
+            size,
+            clip: false,
+          ),
+        ],
+      );
+    }
+
+    final t = _rectProgress.value;
+    final rect = Rect.lerp(anchor.rect, target, t)!;
+    final radius = lerpDouble(DiaryRecordFab.radius, _kSheetRadius, t)!;
+    final color = Color.lerp(style.background, scheme.surface, t)!;
+    final borderColor = style.border?.top.color;
+    final border = borderColor == null || t >= 0.999
+        ? null
+        : Border.all(
+            color: borderColor.withValues(alpha: borderColor.a * (1 - t)),
+            width: style.border!.top.width,
+          );
+    final shadow = _lerpShadow(
+      style.boxShadow.first,
+      _dialogShadow(widget.route.theme),
+      t,
+    );
+
+    // 入场内容不套外层淡入：面板自己的 _Reveal 已经把内容错峰点亮了。
+    final contentOpacity = isReversing ? _crossFade.value : 1.0;
+    final ghostOpacity = 1 - _crossFade.value;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildScrim(
+          _scrimProgress.value,
+          allowDismiss: !isReversing && widget.animation.value > 0.4,
+        ),
+        _buildContainer(
+          rect: rect,
+          radius: radius,
+          color: color,
+          border: border,
+          shadows: [shadow],
+        ),
+        _buildContentWindow(
+          rect,
+          radius,
+          contentOpacity,
+          size,
+          interactive: !isReversing,
+        ),
+        if (ghostOpacity > 0.001)          Positioned.fromRect(
+            key: const ValueKey('record-sheet-ghost'),
+            rect: anchor.rect,
+            child: Opacity(
+              opacity: ghostOpacity,
+              child: DiaryRecordFabPreview(
+                selection: anchor.selection,
+                hasDraft: anchor.hasDraft,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 发送后：面板先淡成空白盖板，再飞到目标卡片的位置。
+  Widget _buildCardFlight(Size size) {
+    final target = _cardTarget!;
+    final to = target.readRect() ?? target.initialRect;
+    final from = _cardFrom!;
+    final t = _cardProgress.value;
+    final rect = Rect.lerp(from, to, t)!;
+    final radius = lerpDouble(_kSheetRadius, _kTimelineCardRadius, t)!;
+    final fadeOut = const Interval(0, 0.3, curve: Curves.easeOut).transform(t);
+    final contentOpacity = (1 - fadeOut).clamp(0.0, 1.0).toDouble();
+    // 盖板越接近卡片，阴影越轻；落到卡片上时完全交给卡片自己的阴影。
+    final shadow = _lerpShadow(
+      _dialogShadow(widget.route.theme),
+      const BoxShadow(color: Colors.transparent),
+      t,
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildScrim(_scrimProgress.value, allowDismiss: false),
+        _buildContainer(
+          rect: rect,
+          radius: radius,
+          color: widget.route.theme.colorScheme.surface,
+          border: null,
+          shadows: [shadow],
+        ),
+        _buildContentWindow(
+          rect,
+          radius,
+          contentOpacity,
+          size,
+          interactive: false,
+        ),
+      ],
+    );
+  }
+
+  /// 落位：盖板已经压在真实卡片上，和遮罩一起淡出，把卡片内容让出来。
+  Widget _buildLanding() {
+    final target = _cardTarget!;
+    final rect = target.readRect() ?? target.initialRect;
+    final fade = Curves.easeOutCubic.transform(widget.animation.value);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildScrim(fade, allowDismiss: false),
+        Positioned.fromRect(
+          key: const ValueKey('record-sheet-landing-slot'),
+          rect: rect,
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: fade,
+              child: DecoratedBox(
+                key: const ValueKey('record-sheet-landing'),
+                decoration: BoxDecoration(
+                  color: widget.route.theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(_kTimelineCardRadius),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 自绘遮罩。
+  ///
+  /// 变形路径把路由的 barrier 设成透明，遮罩跟着容器一起动；[allowDismiss]
+  /// 为 false 时仍然吃掉点击（空回调），防止穿透到下面的时间线。
+  Widget _buildScrim(double opacity, {required bool allowDismiss}) {
+    return Positioned.fill(
+      key: const ValueKey('record-sheet-scrim'),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: allowDismiss ? () => Navigator.of(context).maybePop() : () {},
+        child: ColoredBox(
+          color: Colors.black.withValues(
+            alpha: 0.4 * opacity.clamp(0.0, 1.0).toDouble(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 变形容器的底色/圆角/描边/阴影。
+  Widget _buildContainer({
+    required Rect rect,
+    required double radius,
+    required Color color,
+    required Border? border,
+    required List<BoxShadow> shadows,
+  }) {
+    return Positioned.fromRect(
+      key: const ValueKey('record-sheet-morph-slot'),
+      rect: rect,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          key: const ValueKey('record-sheet-morph'),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(radius),
+            border: border,
+            boxShadow: shadows,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 把整页面板内容裁进变形窗口。
+  ///
+  /// [OverflowBox] 让面板仍按最终全屏尺寸布局，[Transform.translate] 再把
+  /// 整页平移回全屏原点——外层 Positioned 的偏移和这里的平移恰好抵消，所以
+  /// 窗口怎么变都不会触发面板重新布局，量到的卡片 Rect 也始终是最终值。
+  ///
+  /// 这个窗口在入场、保持、收回、飞行全程都留在同一层（带固定 Key），
+  /// 只改 Rect / 圆角 / 裁切开关；否则面板 Element 会被重新挂载，输入焦点
+  /// 和本地草稿状态会在动画切换的那一帧被重置。
+  Widget _buildContentWindow(
+    Rect rect,
+    double radius,
+    double opacity,
+    Size size, {
+    bool clip = true,
+    bool interactive = true,
+  }) {
+    return Positioned.fromRect(
+      key: const ValueKey('record-sheet-window'),
+      rect: rect,
+      child: IgnorePointer(
+        // 收回/飞行途中内容已经不可见，不能再让点击命中面板里的按钮。
+        ignoring: !interactive,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          clipBehavior: clip ? Clip.antiAlias : Clip.none,
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: size.width,
+            maxWidth: size.width,
+            minHeight: size.height,
+            maxHeight: size.height,
+            child: Transform.translate(
+              offset: -rect.topLeft,
+              child: Opacity(
+                opacity: opacity.clamp(0.0, 1.0).toDouble(),
+                child: RepaintBoundary(child: widget.child),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+BoxShadow _dialogShadow(ThemeData theme) {
+  return BoxShadow(
+    color: theme.colorScheme.shadow.withValues(alpha: 0.16),
+    blurRadius: 32,
+    offset: const Offset(0, 12),
+  );
+}
+
+BoxShadow _lerpShadow(BoxShadow from, BoxShadow to, double t) {
+  return BoxShadow(
+    color: Color.lerp(from.color, to.color, t)!,
+    offset: Offset.lerp(from.offset, to.offset, t)!,
+    blurRadius: lerpDouble(from.blurRadius, to.blurRadius, t)!,
+    spreadRadius: lerpDouble(from.spreadRadius, to.spreadRadius, t)!,
+  );
+}
+
+/// 面板入场/退场：整卡缩放 + 上浮 + 淡入。
+///
+/// 缩放用 M3 的「强调减速」曲线（起步快、尾段极缓），卡片像是被轻轻放到
+/// 屏幕中央，而不是「啪」地出现。动画对象在 initState 建好、dispose 释放，
+/// 避免每次 build 都往路由动画上挂监听。
+class _DialogEntrance extends StatefulWidget {
+  const _DialogEntrance({required this.animation, required this.child});
+
+  final Animation<double> animation;
+  final Widget child;
+
+  @override
+  State<_DialogEntrance> createState() => _DialogEntranceState();
+}
+
+class _DialogEntranceState extends State<_DialogEntrance> {
+  late final CurvedAnimation _motion;
+  late final CurvedAnimation _fade;
+  late final Animation<double> _scale;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _motion = CurvedAnimation(
+      parent: widget.animation,
+      curve: _kDialogEnterCurve,
+      reverseCurve: _kDialogExitCurve,
+    );
+    // 透明度比缩放更早到位：卡片先「看得见」，再靠缩放收尾，观感更稳。
+    _fade = CurvedAnimation(
+      parent: widget.animation,
+      curve: const Interval(0, 0.6, curve: Curves.easeOut),
+      // 退场时在动画走到 0.4 之前就淡完，剩下的位移不可见，收得干脆。
+      reverseCurve: const Interval(0.4, 1, curve: Curves.easeIn),
+    );
+    _scale = Tween<double>(begin: 0.92, end: 1).animate(_motion);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.035),
+      end: Offset.zero,
+    ).animate(_motion);
+  }
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    _fade.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: ScaleTransition(
+        scale: _scale,
+        child: SlideTransition(position: _slide, child: widget.child),
       ),
     );
   }

@@ -36,6 +36,13 @@ class DiaryItem extends StatefulWidget {
   /// 是否正在被拖动调整时间：原卡片淡出并轻微缩小，突出跟手浮层。
   final bool isTimeDragging;
 
+  /// 卡片本体的 Key（可选）。
+  ///
+  /// 页面在「发送后弹窗飞到新卡片」的动画里要按记录 id 量卡片的全局 Rect，
+  /// 所以把 Key 的所有权交给页面；卡片长按菜单的锚点也复用同一个 Key。
+  /// 不传时退回组件内部自建的 Key，其他调用方无需改动。
+  final GlobalKey? cardKey;
+
   const DiaryItem({
     super.key,
     required this.record,
@@ -51,6 +58,7 @@ class DiaryItem extends StatefulWidget {
     this.undoAnimation,
     this.timeDragHandleKey,
     this.isTimeDragging = false,
+    this.cardKey,
   });
 
   @override
@@ -59,6 +67,9 @@ class DiaryItem extends StatefulWidget {
 
 class _DiaryItemState extends State<DiaryItem> {
   final _cardKey = GlobalKey();
+
+  /// 页面传入时用页面的 Key（同一条记录跨重建仍是同一个），否则用内部 Key。
+  GlobalKey get _effectiveCardKey => widget.cardKey ?? _cardKey;
 
   DiaryRecord get record => widget.record;
   VoidCallback? get onTap => widget.onTap;
@@ -126,7 +137,7 @@ class _DiaryItemState extends State<DiaryItem> {
     HapticFeedback.lightImpact();
     ActionMenu.show(
       context: context,
-      key: _cardKey,
+      key: _effectiveCardKey,
       items: [
         if (onQuoteToQ != null)
           ActionMenuItem(
@@ -609,7 +620,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     borderRadius: 16,
                     strokeWidth: 2,
                     child: Container(
-                      key: _cardKey,
+                      key: _effectiveCardKey,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surface,

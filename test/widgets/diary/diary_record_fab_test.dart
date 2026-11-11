@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/widgets/diary/diary_record_fab.dart';
 
@@ -87,6 +88,35 @@ void main() {
     expect(timeX, lessThan(closeX));
   });
 
+  testWidgets('选中态底色不透明，时间线文字不会透到胶囊上', (tester) async {
+    // 项目主题的 primaryContainer 是带 alpha 的强调色，直接铺底会让时间线上
+    // 滚过的文字透上来。所以这里用真实主题跑，而不是 MaterialApp 默认主题。
+    final container = _container(
+      selection: TimelineTimeSelectEvent(
+        const TimeOfDay(hour: 14, minute: 30),
+        date: _today(),
+      ),
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.lightTheme(const Color(0xFF0B57D0)),
+          home: Scaffold(body: Center(child: DiaryRecordFab(onTap: () {}))),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final fabBox = tester.widget<AnimatedContainer>(
+      find.byType(AnimatedContainer),
+    );
+    final decoration = fabBox.decoration! as BoxDecoration;
+    expect(decoration.color!.a, 1.0);
+  });
+
   testWidgets('区间选择显示起止时间', (tester) async {
     final container = _container(
       selection: TimelineTimeSelectEvent(
@@ -138,6 +168,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(container.read(diaryInputTimeProvider), isNull);
     expect(tapped, isTrue, reason: '清除不应顺手打开面板');
+  });
+
+  testWidgets('展开时宽度随时间增长，点 × 后立刻回缩', (tester) async {
+    final container = _container(
+      selection: TimelineTimeSelectEvent(
+        const TimeOfDay(hour: 14, minute: 30),
+        date: _today(),
+      ),
+    );
+    addTearDown(container.dispose);
+
+    await _pumpFab(tester, container);
+    final expandedWidth = tester.getSize(find.byType(AnimatedSize)).width;
+    expect(expandedWidth, greaterThan(44));
+
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+
+    // 退场标签改为绝对定位、不再撑宽度：回缩在点击后的第一批帧就开始了，
+    // 不会先等 360ms 的淡出播完再动。
+    expect(
+      tester.getSize(find.byType(AnimatedSize)).width,
+      lessThan(expandedWidth),
+    );
+
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(AnimatedSize)).width, 44);
   });
 
   testWidgets('有未保存草稿时右上角出现圆点', (tester) async {

@@ -19,6 +19,49 @@ class _EmptyDiaryList extends DiaryListNotifier {
   Future<List<DiaryRecord>> build() async => const [];
 }
 
+/// 发送落位测试用的假 notifier：不碰 sqflite，返回一个固定的落库 id。
+class _MorphDiaryList extends DiaryListNotifier {
+  @override
+  Future<List<DiaryRecord>> build() async => const [];
+
+  @override
+  Future<DiaryRecord> addDiary({
+    required String title,
+    String content = '',
+    int mood = 3,
+    String weather = '',
+    List<String> tags = const [],
+    String? folderId,
+    DateTime? time,
+    DateTime? startTime,
+    DateTime? endTime,
+    String displayTag = '',
+    Map<String, dynamic>? bodyState,
+    List<TagEntry> tagEntries = const [],
+    List<String> photos = const [],
+  }) async {
+    final now = DateTime.now();
+    return DiaryRecord(
+      id: 'saved-1',
+      title: title,
+      content: content,
+      time: time ?? now,
+      startTime: startTime,
+      endTime: endTime,
+      tags: tags,
+      displayTag: displayTag,
+      bodyState: bodyState,
+      tagEntries: tagEntries,
+      photos: photos,
+      folderId: folderId,
+      mood: mood,
+      weather: weather,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+}
+
 class _SeedDraftNotifier extends DiaryComposeDraftNotifier {
   _SeedDraftNotifier(this._seed);
 
@@ -52,6 +95,25 @@ ShortcutConfig _sleepShortcut() {
   );
 }
 
+List<Override> _overrides({
+  List<ShortcutConfig> shortcuts = const [],
+  List<FixedEventTemplate> fixedEvents = const [],
+  DiaryComposeDraft? draft,
+  TimelineTimeSelectEvent? selection,
+  DiaryListNotifier Function() diaryList = _EmptyDiaryList.new,
+}) {
+  return [
+    shortcutListProvider.overrideWith((ref) async => shortcuts),
+    fixedEventListProvider.overrideWith((ref) async => fixedEvents),
+    aiTemperaturesProvider.overrideWith((ref) async => null),
+    diaryListProvider.overrideWith(diaryList),
+    if (draft != null)
+      diaryComposeDraftProvider.overrideWith(() => _SeedDraftNotifier(draft)),
+    if (selection != null)
+      diaryInputTimeProvider.overrideWith((ref) => selection),
+  ];
+}
+
 Future<void> _pumpSheet(
   WidgetTester tester, {
   List<ShortcutConfig> shortcuts = const [],
@@ -61,47 +123,65 @@ Future<void> _pumpSheet(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
-        shortcutListProvider.overrideWith((ref) async => shortcuts),
-        fixedEventListProvider.overrideWith((ref) async => fixedEvents),
-        aiTemperaturesProvider.overrideWith((ref) async => null),
-        diaryListProvider.overrideWith(_EmptyDiaryList.new),
-        if (draft != null)
-          diaryComposeDraftProvider.overrideWith(() => _SeedDraftNotifier(draft)),
-        if (selection != null)
-          diaryInputTimeProvider.overrideWith((ref) => selection),
-      ],
+      overrides: _overrides(
+        shortcuts: shortcuts,
+        fixedEvents: fixedEvents,
+        draft: draft,
+        selection: selection,
+      ),
       child: const MaterialApp(home: Scaffold(body: DiaryRecordSheet())),
     ),
   );
   await tester.pumpAndSettle();
 }
 
+/// 带按钮锚点打开面板的测试宿主；[origin] 就是假记录按钮的全局 Rect。
+Future<void> _pumpRouteHost(WidgetTester tester, {required Rect origin}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: _overrides(),
+      child: MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => DiaryRecordSheet.show(
+                context,
+                originAnchor: RecordFabAnchor(rect: origin),
+                readAnchor: () => RecordFabAnchor(rect: origin),
+              ),
+              child: const Text('打开记录'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 void main() {
-  testWidgets('默认轻量态：有时间和文本输入，重表单收在「更多字段」后面', (tester) async {
+  testWidgets('固定事件与结束时间入口默认就可见，没有「更多字段」这一级', (tester) async {
     await _pumpSheet(tester, fixedEvents: [_template()]);
 
-    expect(find.text('关闭'), findsOneWidget);
-    expect(find.text('保存'), findsOneWidget);
-    expect(find.text('更多字段'), findsOneWidget);
+    // 固定事件常驻，不需要先点开任何折叠
+    expect(find.text('晨跑'), findsOneWidget);
+    expect(find.text('结束时间'), findsOneWidget);
+    expect(find.text('更多字段'), findsNothing);
+
+    // 动作入口全部就位：工具栏的 AI 提取（纯图标）+ 输入行末尾的发送键
+    expect(find.byKey(const ValueKey('record-ai-extract')), findsOneWidget);
+    expect(find.text('AI 提取'), findsNothing, reason: '提取钮只留图标，不带文字');
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+    // 头部不再有「保存 / 关闭」两个文字按钮，只留右上角圆形关闭键
+    expect(find.text('保存'), findsNothing);
+    expect(find.text('关闭'), findsNothing);
+    expect(find.byKey(const ValueKey('record-close')), findsOneWidget);
+
     expect(find.byType(TextField), findsOneWidget);
-    // 图片与相机入口常驻
     expect(find.byIcon(Icons.image_outlined), findsOneWidget);
     expect(find.byIcon(Icons.camera_alt_outlined), findsOneWidget);
-    // 固定事件尚未展开
-    expect(find.text('晨跑'), findsNothing);
   });
 
-  testWidgets('点「更多字段」后固定事件行出现', (tester) async {
-    await _pumpSheet(tester, fixedEvents: [_template()]);
-
-    await tester.tap(find.text('更多字段'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('晨跑'), findsOneWidget);
-  });
-
-  testWidgets('标签自带字段时自动展开，必填表单不会藏在折叠区里', (tester) async {
+  testWidgets('标签自带字段时就地展开，不需要额外点击', (tester) async {
     await _pumpSheet(
       tester,
       shortcuts: [_sleepShortcut()],
@@ -111,24 +191,23 @@ void main() {
       ),
     );
 
-    // 没有点过「更多字段」，字段表单就已经在
     expect(find.text('入睡时间'), findsOneWidget);
   });
 
-  testWidgets('空草稿时保存按钮禁用', (tester) async {
+  testWidgets('空草稿时发送键禁用', (tester) async {
     await _pumpSheet(tester);
 
     final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '保存'),
+      find.byKey(const ValueKey('record-send')),
     );
     expect(button.onPressed, isNull);
   });
 
-  testWidgets('有内容时保存按钮可用，关闭按钮不丢草稿', (tester) async {
+  testWidgets('有内容时发送键可用，草稿回填到输入框', (tester) async {
     await _pumpSheet(tester, draft: DiaryComposeDraft(id: 'd1', inputText: '喝了杯咖啡'));
 
     final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '保存'),
+      find.byKey(const ValueKey('record-send')),
     );
     expect(button.onPressed, isNotNull);
     expect(find.text('喝了杯咖啡'), findsOneWidget, reason: '草稿要回填到输入框');
@@ -151,5 +230,139 @@ void main() {
 
     expect(find.textContaining('14:30'), findsOneWidget);
     expect(find.textContaining('12:00'), findsNothing);
+  });
+
+  testWidgets('点右上角圆形关闭键收起卡片', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _overrides(),
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => DiaryRecordSheet.show(context),
+                child: const Text('打开记录'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开记录'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DiaryRecordSheet), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('record-close')));
+    await tester.pumpAndSettle();
+    expect(find.byType(DiaryRecordSheet), findsNothing);
+  });
+
+  testWidgets('从按钮位置容器变形入场：起点在按钮，随后长成卡片', (tester) async {
+    const origin = Rect.fromLTWH(16, 500, 44, 44);
+    await _pumpRouteHost(tester, origin: origin);
+
+    await tester.tap(find.text('打开记录'));
+    await tester.pump(); // 插入路由 + 首帧
+
+    final morph = find.byKey(const ValueKey('record-sheet-morph'));
+    expect(morph, findsOneWidget);
+    final first = tester.getRect(morph);
+    expect(first.center.dx, closeTo(origin.center.dx, 2));
+    expect(first.center.dy, closeTo(origin.center.dy, 2));
+
+    await tester.pump(const Duration(milliseconds: 220));
+    final mid = tester.getRect(morph);
+    expect(mid.width, greaterThan(first.width + 40));
+
+    await tester.pumpAndSettle();
+    expect(find.byType(DiaryRecordSheet), findsOneWidget);
+    // 入场结束容器撤掉，改由未裁切的内容窗口直接画卡片。
+    expect(find.byKey(const ValueKey('record-sheet-morph')), findsNothing);
+  });
+
+  testWidgets('关闭时容器反向收回按钮位置', (tester) async {
+    const origin = Rect.fromLTWH(16, 500, 44, 44);
+    await _pumpRouteHost(tester, origin: origin);
+
+    await tester.tap(find.text('打开记录'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('record-sheet-morph')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('record-close')));
+    await tester.pump();
+
+    final morph = find.byKey(const ValueKey('record-sheet-morph'));
+    expect(morph, findsOneWidget);
+    final start = tester.getRect(morph);
+
+    await tester.pump(const Duration(milliseconds: 160));
+    final mid = tester.getRect(morph);
+    // 收回途中：比按钮宽、比卡片窄，说明是在连续插值而不是瞬移。
+    expect(mid.width, greaterThan(origin.width));
+    expect(mid.width, lessThan(start.width - 20));
+
+    await tester.pumpAndSettle();
+    expect(find.byType(DiaryRecordSheet), findsNothing);
+    expect(find.byKey(const ValueKey('record-sheet-morph')), findsNothing);
+  });
+
+  testWidgets('发送后面板飞向目标卡片，落位回调后收起', (tester) async {
+    const origin = Rect.fromLTWH(16, 760, 44, 44);
+    const target = Rect.fromLTWH(120, 260, 220, 120);
+    List<String>? savedIds;
+    var landed = false;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _overrides(
+          diaryList: _MorphDiaryList.new,
+          draft: DiaryComposeDraft(id: 'd1', inputText: '走了 8000 步'),
+        ),
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => DiaryRecordSheet.show(
+                  context,
+                  originAnchor: const RecordFabAnchor(rect: origin),
+                  readAnchor: () => const RecordFabAnchor(rect: origin),
+                  onSaved: (ids) async {
+                    savedIds = ids;
+                    return RecordCardMorphTarget(
+                      initialRect: target,
+                      readRect: () => target,
+                      onLanded: () => landed = true,
+                    );
+                  },
+                ),
+                child: const Text('打开记录'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开记录'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('record-send')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 360)); // ✓ 播完，飞行启动
+    await tester.pump(const Duration(milliseconds: 180)); // 飞行途中
+
+    // 回调拿到的是 addDiary 返回的落库 id，而不是面板自己造的临时 id。
+    expect(savedIds, <String>['saved-1']);
+    final morph = find.byKey(const ValueKey('record-sheet-morph'));
+    expect(morph, findsOneWidget);
+    final mid = tester.getRect(morph);
+    // 目标卡片在面板左侧，飞行途中容器已经离开屏幕中心向左走。
+    expect(mid.center.dx, lessThan(tester.getSize(find.byType(Scaffold)).width / 2));
+
+    await tester.pumpAndSettle();
+    expect(landed, isTrue);
+    expect(find.byType(DiaryRecordSheet), findsNothing);
+    expect(find.byKey(const ValueKey('record-sheet-morph')), findsNothing);
   });
 }
