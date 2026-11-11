@@ -2025,6 +2025,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   Widget _buildPopupMenuItem(String text, String prefix, BuildContext context) {
     return InkWell(
+      borderRadius: BorderRadius.circular(8),
       onTap: () {
         _hideHeadingMenu();
         _toggleBlockPrefix(prefix);

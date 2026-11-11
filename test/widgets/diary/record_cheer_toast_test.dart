@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
@@ -177,6 +178,43 @@ void main() {
 
         expect(tester.takeException(), isNull, reason: '$brightness 下渲染异常');
       }
+    });
+  });
+
+  group('RecordCheerToast 深色模式表面', () {
+    Future<void> pumpTheme(WidgetTester tester, ThemeData theme) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            body: Center(child: RecordCheerToast(event: _event())),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    Material capsule(WidgetTester tester) =>
+        tester.widget<Material>(find.descendant(of: find.byType(RecordCheerToast), matching: find.byType(Material)));
+
+    testWidgets('深色下胶囊保持深色，不再用近白的反色表面', (tester) async {
+      final theme = AppTheme.darkTheme(AppTheme.primaryDefault);
+      await pumpTheme(tester, theme);
+
+      final material = capsule(tester);
+      expect(material.color, theme.colorScheme.surfaceContainerHighest);
+      expect(material.color, isNot(theme.colorScheme.inverseSurface));
+      expect(material.color!.computeLuminance(), lessThan(0.2));
+
+      final title = tester.widget<Text>(find.text('今日完整！'));
+      expect(title.style?.color, theme.colorScheme.onSurface);
+    });
+
+    testWidgets('浅色下保留原有的深色反色胶囊', (tester) async {
+      final theme = AppTheme.lightTheme(AppTheme.primaryDefault);
+      await pumpTheme(tester, theme);
+
+      expect(capsule(tester).color, theme.colorScheme.inverseSurface);
     });
   });
 }

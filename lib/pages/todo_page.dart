@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/utils/reorder_gesture.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/models/todo.dart';
@@ -59,6 +60,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
   // 底部添加/编辑弹窗打开守卫：小组件「+」触发时若弹窗已在，避免叠加弹出第二个
   bool _isTodoSheetOpen = false;
+
+  // 排序拖拽状态：长按拾起后「原地松手」仍要弹操作菜单，所以要记住起拖下标，
+  // 并用原始指针轨迹判断手指到底有没有移动过（拖过再拖回原位不算原地松手）。
+  int? _reorderStartIndex;
+  Offset? _pointerDownPosition;
+  bool _pointerMoved = false;
 
   @override
   void initState() {
@@ -331,7 +338,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                             onPressed: _selectedTodoIds.isEmpty ? null : _handleBatchDelete,
                             style: FilledButton.styleFrom(
                               backgroundColor: colorScheme.error,
-                              foregroundColor: Colors.white,
+                              foregroundColor: colorScheme.onError,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                             ),
                             child: Row(
@@ -505,44 +512,74 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
         final scrollController = _getScrollController(folderId);
 
-        return ReorderableListView.builder(
-          scrollController: scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
-          itemCount: activeTodos.length,
-          onReorderItem: (oldIndex, newIndex) {
-            if (oldIndex < 0 || oldIndex >= activeTodos.length) return;
-            if (newIndex < 0 || newIndex > activeTodos.length) return;
-            final list = List<Todo>.from(activeTodos);
-            final item = list.removeAt(oldIndex);
-            list.insert(newIndex, item);
-            final allTodosList = todosAsync.valueOrNull ?? [];
-            final otherTodos = allTodosList.where((t) => t.isCompleted || t.folderId != folderId).toList();
-            ref.read(todoListProvider.notifier).reorderTodos([...list, ...otherTodos]);
-          },
-          itemBuilder: (context, index) {
-            final todo = activeTodos[index];
-            return RepaintBoundary(
-              key: ValueKey(todo.id),
-              child: _TodoItem(
-                key: ValueKey('todo_item_${todo.id}'),
-                todo: todo,
-                index: index,
-                isDraggable: !_isSelectionMode,
-                isSelectionMode: _isSelectionMode,
-                isSelected: _selectedTodoIds.contains(todo.id),
-                onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
-                onToggleComplete: () {
-                  ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
-                },
-                onLongPress: (globalKey) {
-                  _showActionMenu(context, todo, globalKey);
-                },
-                onDelete: () => _confirmDelete(todo),
-                onSelectToggle: () => _toggleSelectTodo(todo.id),
-              ),
-            );
-          },
-          footer: completedTodos.isEmpty ? null : _buildCompletedSection(context, completedTodos, folderId),
+        return Listener(
+          onPointerDown: _handleListPointerDown,
+          onPointerMove: _handleListPointerMove,
+          child: ReorderableListView.builder(
+            scrollController: scrollController,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+            // 关掉框架默认手柄：桌面/Web 分支会额外画一个 Icons.drag_handle 叠在
+            // 行尾（与本页自绘手柄重复），移动端分支则把整行包进
+            // ReorderableDelayedDragStartListener，会与长按弹菜单的识别器在
+            // 500ms 处正面冲突。排序改由 _TodoItem 自行接管（见该组件）。
+            buildDefaultDragHandles: false,
+            itemCount: activeTodos.length,
+            onReorderStart: (index) {
+              _reorderStartIndex = index;
+              // 拾起反馈：拖拽浮层由 ReorderableListView 负责，这里补触感
+              HapticFeedback.mediumImpact();
+            },
+            onReorderEnd: (index) {
+              final startIndex = _reorderStartIndex;
+              final moved = _pointerMoved;
+              final anchor = _pointerDownPosition;
+              _reorderStartIndex = null;
+              _pointerMoved = false;
+              _pointerDownPosition = null;
+              // 长按拾起后原地松手 → 按「长按手势」弹操作菜单（原有长按菜单不变）。
+              // 桌面/Web 仍由行尾手柄负责拖拽、卡片自身长按负责菜单，不走这条路径。
+              if (useDragHandleFor(Theme.of(context).platform)) return;
+              if (startIndex == null) return;
+              final isLongPress = isLongPressRelease(pointerMoved: moved, landedElsewhere: index != startIndex);
+              if (!isLongPress) return;
+              if (startIndex < 0 || startIndex >= activeTodos.length) return;
+              _showActionMenu(context, activeTodos[startIndex], anchor: anchor);
+            },
+            onReorderItem: (oldIndex, newIndex) {
+              if (oldIndex < 0 || oldIndex >= activeTodos.length) return;
+              if (newIndex < 0 || newIndex > activeTodos.length) return;
+              final list = List<Todo>.from(activeTodos);
+              final item = list.removeAt(oldIndex);
+              list.insert(newIndex, item);
+              final allTodosList = todosAsync.valueOrNull ?? [];
+              final otherTodos = allTodosList.where((t) => t.isCompleted || t.folderId != folderId).toList();
+              ref.read(todoListProvider.notifier).reorderTodos([...list, ...otherTodos]);
+            },
+            itemBuilder: (context, index) {
+              final todo = activeTodos[index];
+              return RepaintBoundary(
+                key: ValueKey(todo.id),
+                child: _TodoItem(
+                  key: ValueKey('todo_item_${todo.id}'),
+                  todo: todo,
+                  index: index,
+                  isDraggable: !_isSelectionMode,
+                  isSelectionMode: _isSelectionMode,
+                  isSelected: _selectedTodoIds.contains(todo.id),
+                  onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
+                  onToggleComplete: () {
+                    ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
+                  },
+                  onLongPress: (globalKey) {
+                    _showActionMenu(context, todo, key: globalKey);
+                  },
+                  onDelete: () => _confirmDelete(todo),
+                  onSelectToggle: () => _toggleSelectTodo(todo.id),
+                ),
+              );
+            },
+            footer: completedTodos.isEmpty ? null : _buildCompletedSection(context, completedTodos, folderId),
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -627,7 +664,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                             ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
                           },
                           onLongPress: (globalKey) {
-                            _showActionMenu(context, todo, globalKey);
+                            _showActionMenu(context, todo, key: globalKey);
                           },
                           onDelete: () => _confirmDelete(todo),
                           onSelectToggle: () => _toggleSelectTodo(todo.id),
@@ -684,7 +721,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     ).whenComplete(() => _isTodoSheetOpen = false);
   }
 
-  void _showActionMenu(BuildContext context, Todo todo, GlobalKey key) {
+  /// 弹待办操作菜单。
+  ///
+  /// [key] 与 [anchor] 二选一：常规长按用卡片自身的 [key] 定位；
+  /// 「长按拾起后原地松手」时卡片可能正被拖拽浮层替换，改用手指落点定位。
+  void _showActionMenu(BuildContext context, Todo todo, {GlobalKey? key, Offset? anchor}) {
     final folders = ref.read(todoFolderListProvider).valueOrNull ?? [];
     final items = <ActionMenuItem>[
       ActionMenuItem(
@@ -719,7 +760,26 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       ActionMenuItem(icon: Icons.delete_outline, label: '删除', isDestructive: true, onTap: () => _confirmDelete(todo)),
     ];
 
-    ActionMenu.show(context: context, key: key, items: items);
+    if (anchor != null) {
+      ActionMenu.showAt(context: context, position: anchor, items: items);
+    } else if (key != null) {
+      ActionMenu.show(context: context, key: key, items: items);
+    }
+  }
+
+  /// 记录按压起点：拖拽排序识别器赢下手势竞技场后不再向业务层吐移动事件，
+  /// 而 [Listener] 走原始指针路由、不参与竞技场，能稳定拿到全程位移。
+  void _handleListPointerDown(PointerDownEvent event) {
+    _pointerDownPosition = event.position;
+    _pointerMoved = false;
+  }
+
+  void _handleListPointerMove(PointerMoveEvent event) {
+    final origin = _pointerDownPosition;
+    if (origin == null || _pointerMoved) return;
+    if ((event.position - origin).distance > kReorderMoveThreshold) {
+      _pointerMoved = true;
+    }
   }
 
   /// 「给小Q」：把该条待办引用给悬浮小Q

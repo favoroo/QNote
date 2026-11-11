@@ -125,6 +125,28 @@ int diaryTimelineNodeIndex(DateTime time) {
   return time.hour * 2 + (time.minute >= 30 ? 1 : 0);
 }
 
+/// 时间线选中态下，行内「记录加号」应该挂在哪一个时刻上。
+///
+/// 单选时就是选中的那一刻；区间时取区间末端所在的半小时节点（`xx:00` / `xx:30`），
+/// 也就是最后一条被选中的线。区间末端如果精确到分钟、没有落在节点上（记录面板里
+/// 可以手填时间），加号仍贴在包含它的那条已选中的线上；如果整个区间都落在两个
+/// 节点之间，则退回区间起点 —— 此时起点会以专用节点渲染，是页面上最后一条选中线。
+///
+/// [start]、[end] 需要带日期；[end] 为空表示单选。返回值同样带日期，
+/// 调用方可直接与节点时刻比较，只在日期一致时渲染加号。
+DateTime resolveTimelineRecordAnchor({required DateTime start, DateTime? end}) {
+  if (end == null) {
+    return start;
+  }
+  // 区间末端的半小时节点；DateTime 构造器会把秒与毫秒归零。
+  final endNode = DateTime(end.year, end.month, end.day, end.hour, end.minute >= 30 ? 30 : 0);
+  if (!endNode.isBefore(start)) {
+    return endNode;
+  }
+  // 端点落在同一个半小时内，没有正好位于节点上的选中线。
+  return start;
+}
+
 /// 拖动浮层中的记录预览文案。
 ///
 /// 优先展示正文，正文为空时退回标题；两者都为空时按图片数量展示

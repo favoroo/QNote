@@ -584,6 +584,29 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(time, date: date);
   }
 
+  /// 行内记录加号要挂到的时刻：单选是选中点，区间是末端所在的半小时节点。
+  ///
+  /// 返回 null 表示当前没有选中；调用方拿它和每一行的时刻比较，只有相等的那
+  /// 一行会渲染加号，避免区间选中时每一条绿线都冒出一个按钮。
+  DateTime? _resolveTimelineRecordAnchor(TimelineTimeSelectEvent? selection) {
+    if (selection == null) {
+      return null;
+    }
+    final start = DateTime(
+      selection.date.year,
+      selection.date.month,
+      selection.date.day,
+      selection.time.hour,
+      selection.time.minute,
+    );
+    if (selection.endTime == null) {
+      return resolveTimelineRecordAnchor(start: start);
+    }
+    final endDate = selection.endDate ?? selection.date;
+    final end = DateTime(endDate.year, endDate.month, endDate.day, selection.endTime!.hour, selection.endTime!.minute);
+    return resolveTimelineRecordAnchor(start: start, end: end);
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -1610,7 +1633,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   ///
   /// 页面在台前时把记录按钮的 Rect 交给面板做容器变形起点；发送成功后还要
   /// 负责把时间线滚到新记录、量出卡片落点，让面板本身飞过去。
-  Future<void> _openRecordSheet({WidgetAction? action}) async {
+  Future<void> _openRecordSheet({
+    WidgetAction? action,
+    RecordFabAnchor? originAnchor,
+    RecordFabAnchor? Function()? readAnchor,
+  }) async {
     // 面板是模态路由，遮罩挡住了底下的按钮，正常点不到第二次；
     // 但快捷入口（悬浮球 / 小组件）是外部信号，可能连发两次。
     if (_recordSheetOpen) {
@@ -1621,7 +1648,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     // IndexedStack 里其他 tab 的页面不可见，按钮位置没有意义，直接走整卡淡入。
-    final anchor = TickerMode.valuesOf(context).enabled ? _recordFabAnchor() : null;
+    // 行内加号显式传入自己的锚点，走同一个变形入口。
+    final anchor = originAnchor ?? (TickerMode.valuesOf(context).enabled ? _recordFabAnchor() : null);
     final useMorph = anchor != null && !reduceMotion;
     if (useMorph) {
       setState(() => _recordFabHidden = true);
@@ -1632,7 +1660,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         context,
         action: action,
         originAnchor: useMorph ? anchor : null,
-        readAnchor: useMorph ? _recordFabAnchor : null,
+        // 从行内加号打开时，收尾目标可能随选择变化而不在原位，交给调用方决定。
+        readAnchor: useMorph ? (readAnchor ?? _recordFabAnchor) : null,
         onSaved: useMorph ? _prepareRecordCardMorph : null,
       );
     } finally {
@@ -1646,6 +1675,62 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         _flushPendingCheer();
       }
     }
+  }
+
+  /// 点时间线行内的记录加号：以该按钮为起点升起记录面板。
+  ///
+  /// 面板读的是同一份 [diaryInputTimeProvider]，所以这里不需要再传时间；
+  /// 只把按钮 Rect 交过去，让容器从线末端长出来。
+  void _handleTimelineRecordTap(Rect? rect) {
+    final selection = ref.read(diaryInputTimeProvider);
+    if (selection == null) {
+      return;
+    }
+    final anchorRect = rect;
+    if (anchorRect == null) {
+      _openRecordSheet();
+      return;
+    }
+    _openRecordSheet(
+      originAnchor: RecordFabAnchor(
+        rect: anchorRect,
+        selection: selection,
+        hasDraft: !ref.read(diaryComposeDraftProvider).isEmpty,
+        compact: true,
+      ),
+      readAnchor: () {
+        final current = ref.read(diaryInputTimeProvider);
+        // 保存成功后选择被清空、行内加号也随之消失；时间若被改到别处，
+        // 原按钮也早已不在原位。两种情况都交回左下角常驻记录钮收尾，
+        // 避免幽灵落在一个已经不存在的按钮上。
+        if (current == null || !_isSameTimelineSelection(current, selection)) {
+          return _recordFabAnchor();
+        }
+        return RecordFabAnchor(
+          rect: anchorRect,
+          selection: current,
+          hasDraft: !ref.read(diaryComposeDraftProvider).isEmpty,
+          compact: true,
+        );
+      },
+    );
+  }
+
+  /// 两次时间选择是否完全一致（日期、起止时间都要相同）。
+  bool _isSameTimelineSelection(TimelineTimeSelectEvent a, TimelineTimeSelectEvent b) {
+    bool sameTime(TimeOfDay? x, TimeOfDay? y) {
+      if (x == null || y == null) {
+        return x == null && y == null;
+      }
+      return x.hour == y.hour && x.minute == y.minute;
+    }
+
+    bool sameDate(DateTime x, DateTime y) => x.year == y.year && x.month == y.month && x.day == y.day;
+
+    return sameDate(a.date, b.date) &&
+        sameTime(a.time, b.time) &&
+        sameTime(a.endTime, b.endTime) &&
+        (a.endTime == null || sameDate(a.endDate ?? a.date, b.endDate ?? b.date));
   }
 
   RecordFabAnchor? _recordFabAnchor() {
@@ -1930,6 +2015,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     final diaryListAsync = ref.watch(diaryListProvider);
     final selectEvent = ref.watch(diaryInputTimeProvider);
     final currentInputTime = ref.watch(currentInputTimeProvider);
+    final timelineRecordAnchor = _resolveTimelineRecordAnchor(selectEvent);
 
     if (diaryListAsync is AsyncData && !_hasPerformedInitialScroll) {
       _hasPerformedInitialScroll = true;
@@ -2309,6 +2395,23 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                 final isStandardNodeCurrentTime =
                                     _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
 
+                                // 专用节点（当前输入时刻 / 当前时刻）也可能落在选中区间里，
+                                // 加号只挂在区间末端那一行，用时刻精确比对即可。
+                                final dedicatedSelectedDateTime = DateTime(
+                                  date.year,
+                                  date.month,
+                                  date.day,
+                                  currentInputTime.hour,
+                                  currentInputTime.minute,
+                                );
+                                final dedicatedNowDateTime = DateTime(
+                                  date.year,
+                                  date.month,
+                                  date.day,
+                                  now.hour,
+                                  now.minute,
+                                );
+
                                 childWidget = Column(
                                   key: (isNowInThisInterval && _isToday(date)) ? _currentTimeNodeKey : null,
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2322,6 +2425,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                       isCurrentTime: isStandardNodeCurrentTime,
                                       onTap: () => _handleNodeTap(date, time),
                                       onDoubleTap: () => _handleNodeDoubleTap(date, time),
+                                      onRecordTap: timelineRecordAnchor == nodeStartDateTime
+                                          ? _handleTimelineRecordTap
+                                          : null,
                                     ),
                                     if (showDedicatedSelectedNode)
                                       _SelectedTimeNode(
@@ -2332,6 +2438,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                                 now.minute == currentInputTime.minute),
                                         onTap: () => _handleNodeTap(date, currentInputTime),
                                         onDoubleTap: () => _handleNodeDoubleTap(date, currentInputTime),
+                                        onRecordTap: timelineRecordAnchor == dedicatedSelectedDateTime
+                                            ? _handleTimelineRecordTap
+                                            : null,
                                       ),
                                     if (showDedicatedSelectedCurrentTimeNode)
                                       _SelectedTimeNode(
@@ -2339,6 +2448,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                         isCurrentTime: true,
                                         onTap: () => _handleNodeTap(date, now),
                                         onDoubleTap: () => _handleNodeDoubleTap(date, now),
+                                        onRecordTap: timelineRecordAnchor == dedicatedNowDateTime
+                                            ? _handleTimelineRecordTap
+                                            : null,
                                       ),
                                     if (showDedicatedCurrentTimeNode)
                                       _CurrentTimeNode(
@@ -2418,9 +2530,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                     ignoring: _recordFabHidden,
                     child: AnimatedOpacity(
                       // 面板打开期间按钮本身已经变成面板，先淡出；关闭退场结束
-                      // 后再淡入，和变形容器最后落在按钮上的那一帧接上。
+                      // 后再回来。
                       opacity: _recordFabHidden ? 0 : 1,
-                      duration: MediaQuery.disableAnimationsOf(context)
+                      // 只有「打开」方向做 90ms 淡出：它的作用是把按钮让给变形容器，
+                      // 慢一点也不露馅。关闭方向必须瞬时换回：
+                      // 退场最后一帧的幽灵按钮和真实按钮像素完全一致（同一套配色、
+                      // 圆角、排版，容器也正好落在按钮 Rect 上），同一帧直接换回来才
+                      // 是无缝的；若在这里再让 1 从 0 爬到 1，幽灵先被路由一起撤掉，
+                      // 就会空出一拍再亮起来 —— 圆形态下按钮本体和背景同色，看不出来，
+                      // 胶囊态下时间文字是高对比的，就成了肉眼可见的「闪一下」。
+                      duration: MediaQuery.disableAnimationsOf(context) || !_recordFabHidden
                           ? Duration.zero
                           : const Duration(milliseconds: 90),
                       curve: Curves.easeOutCubic,
@@ -2519,7 +2638,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     if (index != -1 && index % _itemsPerDay != 0) {
       final dayOffset = index ~/ _itemsPerDay;
       final date = _indexToDate(dayOffset);
-      if (_isDateExpanded(date)) {
+      // 只有区间真的换了节点才重建：拖动期间手指每移动一像素都会回调，
+      // 而同一个 30 分钟节点常常横跨几十次回调，无脑 setState 等于把整页
+      // （含 5880 槽位的时间线）按手指采样率重建。
+      if (_isDateExpanded(date) && index != _dragEndIndex) {
         setState(() {
           _dragEndIndex = index;
         });
@@ -2967,7 +3089,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
           // 列表发生滚动后，手指下方的节点发生改变，动态更新选择范围！
           final index = _pointToItemIndex(_lastDragPosition!);
-          if (index != -1 && index % _itemsPerDay != 0) {
+          if (index != -1 && index % _itemsPerDay != 0 && index != _dragEndIndex) {
             final dayOffset = index ~/ _itemsPerDay;
             final date = _indexToDate(dayOffset);
             if (_isDateExpanded(date)) {

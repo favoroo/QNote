@@ -1,3 +1,4 @@
+import 'package:qnote_flutter/core/ai/anthropic_protocol.dart';
 import 'package:qnote_flutter/models/reasoning_effort.dart';
 
 /// 请求体里「思考强度」的参数形态
@@ -23,6 +24,9 @@ enum _ReasoningParamStyle {
 
   /// Gemini 2.5：`thinkingConfig.thinkingBudget`
   geminiThinkingBudget,
+
+  /// Anthropic Messages：`thinking: {type: enabled, budget_tokens}`（预算由协议模块给）
+  anthropicThinking,
 }
 
 /// 单个模型的「思考强度」能力：支持哪些档位、参数写到哪里
@@ -76,6 +80,8 @@ class ModelReasoningCapability {
         return '按 thinkingLevel 发送，只区分低/高';
       case _ReasoningParamStyle.geminiThinkingBudget:
         return '按 thinkingBudget 发送';
+      case _ReasoningParamStyle.anthropicThinking:
+        return '按 thinking.budget_tokens 发送';
     }
   }
 
@@ -108,6 +114,9 @@ class ModelReasoningCapability {
         return 'thinkingLevel: ${_geminiIsHigh(effort) ? 'high' : 'low'}';
       case _ReasoningParamStyle.geminiThinkingBudget:
         return 'thinkingBudget: ${_budgetFor(effort)}';
+      case _ReasoningParamStyle.anthropicThinking:
+        final budget = anthropicThinkingBudget(effort.wireName);
+        return budget == null ? 'thinking: 不发送（关闭）' : 'thinking.budget_tokens: $budget';
     }
   }
 
@@ -141,7 +150,8 @@ class ModelReasoningCapability {
 
   /// 解析模型能力；null 表示该模型不支持配置思考强度
   ///
-  /// 匹配顺序即协议优先级：原生 Gemini > OpenRouter > 各厂商 OpenAI 兼容字段。
+  /// 匹配顺序即协议优先级：原生 Gemini > Anthropic Messages > OpenRouter >
+  /// 各厂商 OpenAI 兼容字段。
   static ModelReasoningCapability? resolve({
     required String modelName,
     String providerType = 'openai',
@@ -174,7 +184,15 @@ class ModelReasoningCapability {
       return null;
     }
 
-    // 2. OpenRouter：统一 reasoning.effort，不跟随各厂商私有字段
+    // 2. Anthropic Messages：思考预算写在顶层 thinking.budget_tokens 下
+    if (providerType == 'anthropic') {
+      // 未命中已知族时返回 null（界面不展示入口），由 forUi 的通用兜底接手
+      return _claudeThinking.hasMatch(name)
+          ? const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.anthropicThinking)
+          : null;
+    }
+
+    // 3. OpenRouter：统一 reasoning.effort，不跟随各厂商私有字段
     if (vendorId == 'openrouter') {
       return _openRouterReasoningModels.hasMatch(name)
           ? const ModelReasoningCapability._([
@@ -185,7 +203,7 @@ class ModelReasoningCapability {
           : null;
     }
 
-    // 3. OpenAI 兼容协议：各家把「思考」塞进不同顶层字段
+    // 4. OpenAI 兼容协议：各家把「思考」塞进不同顶层字段
     // gpt-5-chat 是非推理对话模型，不接受 reasoning_effort
     if (_gpt5Chat.hasMatch(name)) {
       return null;
@@ -240,6 +258,11 @@ class ModelReasoningCapability {
         isGeneric: true,
       );
     }
+    if (providerType == 'anthropic') {
+      // Messages 协议下未收录的模型也按 thinking.budget_tokens 发（同族形态一致），
+      // 不认该字段的接入点由 400 降级兜住
+      return const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.anthropicThinking, isGeneric: true);
+    }
     return const ModelReasoningCapability._(_defaultLevels, _ReasoningParamStyle.openAiEffort, isGeneric: true);
   }
 
@@ -285,7 +308,8 @@ class ModelReasoningCapability {
     } else if (_style == _ReasoningParamStyle.openRouterReasoning) {
       body['reasoning'] = {'effort': effort.wireName};
     }
-    // Gemini 两种形态由 [geminiThinkingConfig] 负责，不写顶层字段
+    // Gemini 与 Anthropic 的形态各自由 [geminiThinkingConfig] /
+    // `anthropic_protocol.buildAnthropicBody` 负责，不写顶层字段
   }
 
   /// Gemini 的 `thinkingConfig`；调用方合并进 `generationConfig`
@@ -369,4 +393,7 @@ class ModelReasoningCapability {
     r'gpt-5|gpt-oss|(?:^|/)(?:o1|o3|o4)(?:-|$)|claude|gemini|glm|qwen|'
     r'deepseek-reasoner|kimi-k2|minimax-m2',
   );
+
+  /// Anthropic Messages 协议下的 Claude 模型：3.7 起支持 extended thinking
+  static final RegExp _claudeThinking = RegExp(r'claude-(?:3[-.]7|[4-9]|fable|opus|sonnet|haiku)');
 }

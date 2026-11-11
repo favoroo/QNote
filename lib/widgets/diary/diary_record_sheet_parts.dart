@@ -257,9 +257,20 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
   /// 遮罩淡入淡出。
   late final CurvedAnimation _scrimProgress;
 
-  /// 内容与按钮幽灵的交叉淡入：入场时幽灵先退、内容交给面板自己的 _Reveal；
-  /// 收回时反过来，内容先退、幽灵最后落在按钮位置。
+  /// 内容与按钮幽灵的交叉淡入：入场时幽灵先退、内容交给面板自己的 _Reveal。
+  ///
+  /// 退场只用来算幽灵的透明度（幽灵 = 1 - 本动画），窗口收在 [0.25, 0.5]：
+  /// 容器一旦离开按钮收得很快（[_kMorphExitCurve]），幽灵若早早亮起来，时间是
+  /// 高对比文字，就会「浮」在还没收小的卡片上，看着像按钮先闪出来一次。压到
+  /// 容器基本落到按钮之后再淡入，才像「内容最后落进按钮里」。
   late final CurvedAnimation _crossFade;
+
+  /// 退场时面板内容的淡出进度。
+  ///
+  /// 和 [_crossFade] 分开是为了让内容比幽灵更早收口：容器收回曲线起步快，
+  /// 两条内容一前一后地留着，后半段就会在按钮大小的窗口里残留压扁的半透明
+  /// 卡片内容。入场方向不用它（面板自己的 _Reveal 负责错峰点亮）。
+  late final CurvedAnimation _contentFade;
 
   /// 发送后飞向卡片的独立控制器（路由动画此时已经停在 1）。
   late final AnimationController _cardController;
@@ -284,7 +295,14 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
     _crossFade = CurvedAnimation(
       parent: widget.animation,
       curve: const Interval(0, 0.3, curve: Curves.easeOut),
-      reverseCurve: const Interval(0.3, 1, curve: Curves.easeIn),
+      // flipped：幽灵取的是 1 - 本值，flipped 之后幽灵自己才是一条正向的
+      // easeInOutCubic（否则幽灵会变成「先窜一半再慢慢爬」）。
+      reverseCurve: Interval(0.25, 0.5, curve: Curves.easeInOutCubic.flipped),
+    );
+    _contentFade = CurvedAnimation(
+      parent: widget.animation,
+      curve: _kMorphEnterCurve,
+      reverseCurve: _kContentExitCurve,
     );
     _cardController = AnimationController(vsync: this, duration: _kCardFlightDuration);
     _cardProgress = CurvedAnimation(parent: _cardController, curve: _kCardFlightCurve);
@@ -298,6 +316,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
     _rectProgress.dispose();
     _scrimProgress.dispose();
     _crossFade.dispose();
+    _contentFade.dispose();
     super.dispose();
   }
 
@@ -372,7 +391,11 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
     final liveAnchor = widget.route.readAnchor?.call() ?? origin;
     // 收回时 FAB 可能已经因为发送清空选择而变回 44 圆钮，目标 Rect 要实时读。
     final anchor = isReversing ? liveAnchor : origin;
-    final style = DiaryRecordFabStyle.resolve(widget.route.theme, hasSelection: anchor.selection != null);
+    final style = DiaryRecordFabStyle.resolve(
+      widget.route.theme,
+      hasSelection: anchor.selection != null,
+      compact: anchor.compact,
+    );
     final scheme = widget.route.theme.colorScheme;
     final target = sheetRect ?? _lastSheetRect ?? origin.rect;
 
@@ -405,7 +428,8 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
     final shadow = _lerpShadow(style.boxShadow.first, _dialogShadow(widget.route.theme), t);
 
     // 入场内容不套外层淡入：面板自己的 _Reveal 已经把内容错峰点亮了。
-    final contentOpacity = isReversing ? _crossFade.value : 1.0;
+    // 收回时内容走自己那条更早收口的曲线，幽灵按钮仍按 _crossFade 落在最后。
+    final contentOpacity = isReversing ? _contentFade.value : 1.0;
     final ghostOpacity = 1 - _crossFade.value;
 
     return Stack(
@@ -420,7 +444,11 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
             rect: anchor.rect,
             child: Opacity(
               opacity: ghostOpacity,
-              child: DiaryRecordFabPreview(selection: anchor.selection, hasDraft: anchor.hasDraft),
+              child: DiaryRecordFabPreview(
+                selection: anchor.selection,
+                hasDraft: anchor.hasDraft,
+                compact: anchor.compact,
+              ),
             ),
           ),
       ],

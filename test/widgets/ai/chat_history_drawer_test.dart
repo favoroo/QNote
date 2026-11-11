@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/ai/chat_history_drawer.dart';
+import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
 
 /// 与 app.dart 的 `AppTheme.lightTheme(accentColor)` 用法保持一致，取代表性强调色
 const Color _accent = Color(0xFF4C6EF5);
@@ -227,11 +228,11 @@ void main() {
     testWidgets('从节头进入批量态：行首换勾选框、行尾菜单入口消失', (tester) async {
       await _pumpDrawer(tester);
 
-      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byType(AppCheckbox), findsNothing);
       await tester.tap(find.byIcon(Icons.grid_view).first);
       await _settle(tester);
 
-      expect(find.byType(Checkbox), findsWidgets);
+      expect(find.byType(AppCheckbox), findsWidgets);
       expect(find.byIcon(Icons.more_horiz), findsNothing);
     });
 
@@ -262,7 +263,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.grid_view).first);
       await _settle(tester);
 
-      await tester.tap(find.byType(Checkbox).first);
+      await tester.tap(find.byType(AppCheckbox).first);
       await _settle(tester);
       expect(find.text('删除 (1)'), findsOneWidget);
     });

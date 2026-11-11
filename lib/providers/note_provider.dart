@@ -95,26 +95,20 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     state = AsyncData(await repo.search(keyword));
   }
 
-  Future<void> moveNoteToFolder(String noteId, String? folderId) async {
-    final repo = ref.read(noteRepositoryProvider);
-    final note = await repo.getById(noteId);
-    if (note != null) {
-      final updated = note.copyWith(folderId: folderId, clearFolderId: folderId == null);
-      await repo.update(updated);
-      // 内存替换
-      state = AsyncData((state.valueOrNull ?? []).map((n) => n.id == noteId ? updated : n).toList());
-    }
-  }
-
+  /// 批量保存重排结果。
+  ///
+  /// 调用方必须先在传入的 Note 上设置好 `folderId` / `sortOrder`。
+  /// 先落库成功再更新内存：写失败时界面不会先动、库却还是旧值。
   Future<void> reorderNotes(List<Note> reordered) async {
-    final repo = ref.read(noteRepositoryProvider);
-    final currentList = state.valueOrNull ?? [];
-    final updatedList = currentList.map((note) {
-      return reordered.firstWhere((n) => n.id == note.id, orElse: () => note);
-    }).toList();
+    if (reordered.isEmpty) return;
 
-    state = AsyncData(updatedList);
+    final repo = ref.read(noteRepositoryProvider);
     await repo.batchUpdate(reordered);
+
+    final currentList = state.valueOrNull;
+    if (currentList == null) return;
+    final replacements = <String, Note>{for (final note in reordered) note.id: note};
+    state = AsyncData([for (final note in currentList) replacements[note.id] ?? note]);
   }
 }
 

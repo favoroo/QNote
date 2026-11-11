@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
@@ -107,12 +108,13 @@ class PersonalizationPage extends ConsumerWidget {
                               duration: AppDurations.fast,
                               curve: AppCurves.standard,
                               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                              // 选中时白色对勾缩放淡入，选中态更直观
+                              // 选中时对勾缩放淡入，选中态更直观；对勾颜色按色块亮度自适应，
+                              // 否则荧光黄绿等浅色块上的白勾几乎看不见
                               child: AnimatedScale(
                                 scale: isSelected ? 1.0 : 0.0,
                                 duration: AppDurations.fast,
                                 curve: AppCurves.standard,
-                                child: const Icon(Icons.check_rounded, size: 20, color: Colors.white),
+                                child: Icon(Icons.check_rounded, size: 20, color: AppContrast.onColor(color)),
                               ),
                             ),
                           ),

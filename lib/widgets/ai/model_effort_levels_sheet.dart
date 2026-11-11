@@ -169,7 +169,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(
                         color: badgeColor.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         _sourceLabel,

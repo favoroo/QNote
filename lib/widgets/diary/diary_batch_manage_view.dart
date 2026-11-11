@@ -5,14 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
-import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
+import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_range_picker.dart';
+import 'package:qnote_flutter/widgets/unified_image.dart';
 
 class DiaryBatchManageView extends ConsumerStatefulWidget {
   final List<String>? initialTags;
@@ -68,10 +70,13 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     _loadError = null;
     try {
       final repo = ref.read(diaryRepositoryProvider);
+      // 全量读库只做一次：没有日期筛选时，「统计标签」和「取记录」要的是同一批
+      // 数据，读两遍等于把同一份记录从 sqflite 解两遍 —— 记录上千条时这是进页面
+      // 首帧里最实在的一笔开销。
+      final allRecords = (withTags || _dateRange == null) ? await repo.getAll() : null;
       if (withTags) {
-        final allRecords = await repo.getAll();
         final tags = <String>{};
-        for (final r in allRecords) {
+        for (final r in allRecords!) {
           tags.addAll(r.tags);
         }
         _allTags = tags.toList()..sort();
@@ -83,7 +88,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
         final end = DateTime(_dateRange!.end.year, _dateRange!.end.month, _dateRange!.end.day, 23, 59, 59);
         records = await repo.getByDateRange(start, end);
       } else {
-        records = await repo.getAll();
+        // 复制一份再排序：不能就地改动读库返回的列表
+        records = List<DiaryRecord>.of(allRecords!);
       }
 
       if (_selectedTags.isNotEmpty) {
@@ -919,18 +925,29 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       body: Column(
         children: [
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 160),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildFilterCard(theme, colorScheme),
-                  const SizedBox(height: 16),
-                  _buildListHeader(theme, colorScheme),
-                  const SizedBox(height: 12),
-                  _buildRecordList(theme, colorScheme),
-                ],
-              ),
+            // 记录列表走 SliverList 懒加载：这一页曾用
+            // `SingleChildScrollView + Column(_filteredRecords.map(...))`，
+            // 进页面那一帧要把库里「全部」记录（无上限，几千条也有）连同照片、
+            // 标签、健康摘要一起建成 widget，转场掉帧就掉在这里。改成 sliver 后
+            // 首帧只建视口内的几条，滚动时按需补齐。
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFilterCard(theme, colorScheme),
+                        const SizedBox(height: 16),
+                        _buildListHeader(theme, colorScheme),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                ),
+                _buildRecordSliver(theme, colorScheme),
+              ],
             ),
           ),
           _buildBottomBar(theme, colorScheme),
@@ -1128,10 +1145,11 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                isAllSelected ? Icons.check_box : Icons.check_box_outline_blank,
-                size: 14,
-                color: colorScheme.primary,
+              AppCheckbox(
+                value: isAllSelected,
+                size: 16,
+                activeColor: colorScheme.primary,
+                inactiveColor: colorScheme.primary,
               ),
               const SizedBox(width: 4),
               Text(
@@ -1145,33 +1163,51 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     );
   }
 
-  Widget _buildRecordList(ThemeData theme, ColorScheme colorScheme) {
+  /// 记录列表（懒加载 sliver）。
+  ///
+  /// 之前这里是 `Column(children: _filteredRecords.map(...))`：进页面那一帧要把
+  /// 库里全部记录（无上限，几千条也有）连同照片、标签、健康摘要一起建成 widget，
+  /// 转场掉帧正是掉在这一帧。换成 builder 后首帧只建视口内的几条，滚动按需补齐；
+  /// 选中态变化（`setState`）也只重建可见的几条。
+  /// SliverChildBuilderDelegate 默认给每条加了 RepaintBoundary，列表项不再自己套。
+  Widget _buildRecordSliver(ThemeData theme, ColorScheme colorScheme) {
     if (_loading && _filteredRecords.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
-        child: Center(child: CircularProgressIndicator()),
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 60),
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
     final error = _loadError;
     if (error != null) {
-      return AppErrorState(error: error, action: '读取记录失败', onRetry: _loadRecords);
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: AppErrorState(error: error, action: '读取记录失败', onRetry: _loadRecords),
+        ),
+      );
     }
     if (_filteredRecords.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Center(
-          child: Text('无匹配记录', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+          child: Center(
+            child: Text('无匹配记录', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
+          ),
         ),
       );
     }
 
-    return Column(
-      children: _filteredRecords.map((record) {
-        final isSelected = _selectedIds.contains(record.id);
-        final tagColor = _tagColor(record.displayTag);
-        // P1-25: 隔离每条记录的重绘，选中态变化时不影响其他记录
-        return RepaintBoundary(
-          child: Padding(
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 160),
+      sliver: SliverList.builder(
+        itemCount: _filteredRecords.length,
+        itemBuilder: (context, index) {
+          final record = _filteredRecords[index];
+          final isSelected = _selectedIds.contains(record.id);
+          final tagColor = _tagColor(record.displayTag);
+          return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: GestureDetector(
               onTap: () => _toggleSelect(record.id),
@@ -1187,10 +1223,10 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      isSelected ? Icons.check_box : Icons.check_box_outline_blank,
-                      color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                      size: 20,
+                    AppCheckbox(
+                      value: isSelected,
+                      activeColor: colorScheme.primary,
+                      inactiveColor: colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1310,9 +1346,9 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                 ),
               ),
             ),
-          ),
-        );
-      }).toList(),
+          );
+        },
+      ),
     );
   }
 
@@ -1339,7 +1375,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                 onPressed: _selectedIds.isEmpty ? null : _handleBatchDelete,
                 style: FilledButton.styleFrom(
                   backgroundColor: _isConfirming ? Colors.amber.shade700 : colorScheme.error,
-                  foregroundColor: Colors.white,
+                  // 确认态底色是琥珀色，白字对比度仅约 2:1，需按底色亮度换深色字
+                  foregroundColor: _isConfirming ? AppContrast.onColor(Colors.amber.shade700) : colorScheme.onError,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                 ),
                 child: Row(

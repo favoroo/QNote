@@ -63,6 +63,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    # 厂商图标：目录声明不递归包含子目录，必须单独列出
+    - assets/images/vendors/
   fonts:
     - family: Inter
       fonts:

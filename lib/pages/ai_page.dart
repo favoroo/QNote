@@ -1754,7 +1754,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_box_outlined, size: 14, color: theme.colorScheme.secondary),
+                      Icon(Icons.checklist_rounded, size: 14, color: theme.colorScheme.secondary),
                       const SizedBox(width: 4),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 100),

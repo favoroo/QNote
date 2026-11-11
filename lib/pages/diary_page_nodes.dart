@@ -40,6 +40,34 @@ class _RecordTimeDragState {
   TimelineTimeShift shift;
 }
 
+/// 节点行右端的「就地记录」加号槽位。
+///
+/// 放在节点行的 [Stack] 右端：视觉上压在 1px 时间线的末端，选中时淡入并轻微
+/// 放大，取消选择时原路缩回。空态是一个 0 尺寸占位，不参与命中。
+class _TimelineRecordButtonSlot extends StatelessWidget {
+  const _TimelineRecordButtonSlot({required this.onTap});
+
+  /// 为空表示当前行不是选中区间的末端。
+  final ValueChanged<Rect?>? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return AnimatedSwitcher(
+      duration: reduceMotion ? Duration.zero : AppDurations.normal,
+      switchInCurve: AppCurves.emphasized,
+      switchOutCurve: AppCurves.exit,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: Tween<double>(begin: 0.7, end: 1).animate(animation), child: child),
+      ),
+      child: onTap == null
+          ? const SizedBox.shrink(key: ValueKey('timeline-record-slot-empty'))
+          : DiaryInlineRecordButton(key: const ValueKey('timeline-record-slot-button'), onTap: onTap!),
+    );
+  }
+}
+
 class _EmptyTimeNode extends StatelessWidget {
   final TimeOfDay time;
   final bool isSelected;
@@ -48,6 +76,9 @@ class _EmptyTimeNode extends StatelessWidget {
   final bool isCurrentTime;
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
+
+  /// 本行是选中区间的末端时，在时间线右端显示「就地记录」加号。
+  final ValueChanged<Rect?>? onRecordTap;
 
   const _EmptyTimeNode({
     super.key,
@@ -58,6 +89,7 @@ class _EmptyTimeNode extends StatelessWidget {
     this.isCurrentTime = false,
     required this.onTap,
     this.onDoubleTap,
+    this.onRecordTap,
   });
 
   @override
@@ -82,85 +114,91 @@ class _EmptyTimeNode extends StatelessWidget {
       child: Container(
         height: 44.0,
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
-        child: Row(
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            SizedBox(
-              width: 48,
-              child: Center(
-                child: AnimatedContainer(
+            Row(
+              children: [
+                SizedBox(
+                  width: 48,
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: AppDurations.normal,
+                      curve: Curves.easeOut,
+                      width: circleSize,
+                      height: circleSize,
+                      decoration: BoxDecoration(
+                        color: circleColor,
+                        shape: BoxShape.circle,
+                        boxShadow: isSelected && !isSingleSelected
+                            ? [
+                                BoxShadow(
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                                  blurRadius: 8,
+                                  spreadRadius: 2,
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: isSelected && !isSingleSelected
+                          ? Center(
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(color: theme.colorScheme.onPrimary, shape: BoxShape.circle),
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+                AnimatedDefaultTextStyle(
                   duration: AppDurations.normal,
                   curve: Curves.easeOut,
-                  width: circleSize,
-                  height: circleSize,
-                  decoration: BoxDecoration(
-                    color: circleColor,
-                    shape: BoxShape.circle,
-                    boxShadow: isSelected && !isSingleSelected
-                        ? [
-                            BoxShadow(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              spreadRadius: 2,
-                            ),
-                          ]
-                        : null,
+                  style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : (isCurrentTime ? distinctColor : theme.colorScheme.onSurfaceVariant),
+                    fontWeight: isSelected || isCurrentTime ? FontWeight.bold : FontWeight.w500,
+                    fontSize: isSelected ? 13 : 12,
                   ),
-                  child: isSelected && !isSingleSelected
-                      ? Center(
-                          child: Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(color: theme.colorScheme.onPrimary, shape: BoxShape.circle),
-                          ),
-                        )
-                      : null,
+                  child: Text(timeStr),
                 ),
-              ),
-            ),
-            AnimatedDefaultTextStyle(
-              duration: AppDurations.normal,
-              curve: Curves.easeOut,
-              style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
-                color: isSelected
-                    ? theme.colorScheme.primary
-                    : (isCurrentTime ? distinctColor : theme.colorScheme.onSurfaceVariant),
-                fontWeight: isSelected || isCurrentTime ? FontWeight.bold : FontWeight.w500,
-                fontSize: isSelected ? 13 : 12,
-              ),
-              child: Text(timeStr),
-            ),
-            if (isCurrentTime) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: labelColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '当前时间',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: labelColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 9,
+                if (isCurrentTime) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: labelColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '当前时间',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: labelColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: AnimatedContainer(
+                    duration: AppDurations.normal,
+                    curve: Curves.easeOut,
+                    height: 1,
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : (isCurrentTime
+                              ? distinctColor.withValues(alpha: 0.2)
+                              : theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
                   ),
                 ),
-              ),
-            ],
-            const SizedBox(width: 12),
-            Expanded(
-              child: AnimatedContainer(
-                duration: AppDurations.normal,
-                curve: Curves.easeOut,
-                height: 1,
-                color: isSelected
-                    ? theme.colorScheme.primary
-                    : (isCurrentTime
-                          ? distinctColor.withValues(alpha: 0.2)
-                          : theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
-              ),
+                const SizedBox(width: 16),
+              ],
             ),
-            const SizedBox(width: 16),
+            Positioned(right: 0, top: 0, bottom: 0, child: _TimelineRecordButtonSlot(onTap: onRecordTap)),
           ],
         ),
       ),
@@ -174,7 +212,16 @@ class _SelectedTimeNode extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap;
 
-  const _SelectedTimeNode({required this.time, this.isCurrentTime = false, required this.onTap, this.onDoubleTap});
+  /// 本行是选中区间的末端时，在时间线右端显示「就地记录」加号。
+  final ValueChanged<Rect?>? onRecordTap;
+
+  const _SelectedTimeNode({
+    required this.time,
+    this.isCurrentTime = false,
+    required this.onTap,
+    this.onDoubleTap,
+    this.onRecordTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -190,51 +237,57 @@ class _SelectedTimeNode extends StatelessWidget {
       child: Container(
         height: 44.0,
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
-        child: Row(
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            SizedBox(
-              width: 48,
-              child: Center(
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
-                ),
-              ),
-            ),
-            if (isCurrentTime) ...[
-              Icon(Icons.access_time_rounded, size: 14, color: labelColor),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              timeStr,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-            if (isCurrentTime) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: labelColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '当前时间',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: labelColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 9,
+            Row(
+              children: [
+                SizedBox(
+                  width: 48,
+                  child: Center(
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+                    ),
                   ),
                 ),
-              ),
-            ],
-            const SizedBox(width: 12),
-            Expanded(child: Container(height: 1, color: theme.colorScheme.primary)),
-            const SizedBox(width: 16),
+                if (isCurrentTime) ...[
+                  Icon(Icons.access_time_rounded, size: 14, color: labelColor),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  timeStr,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                if (isCurrentTime) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: labelColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '当前时间',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: labelColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 12),
+                Expanded(child: Container(height: 1, color: theme.colorScheme.primary)),
+                const SizedBox(width: 16),
+              ],
+            ),
+            Positioned(right: 0, top: 0, bottom: 0, child: _TimelineRecordButtonSlot(onTap: onRecordTap)),
           ],
         ),
       ),

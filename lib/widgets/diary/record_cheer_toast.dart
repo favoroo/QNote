@@ -139,20 +139,32 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
   }
 
   Widget _capsule(ThemeData theme, ColorScheme scheme, CheerEvent event, double iconT, bool reduceMotion) {
+    final isDark = theme.brightness == Brightness.dark;
+    // 深色主题的 inverseSurface 语义是「反色」，实际是近白色（#E2E2E9）。
+    // 直接铺在胶囊上会在暗色页面里变成一块亮斑，所以深色下改用抬升一层的
+    // 容器色：保留浮起的层级，但表面与文字都留在深色体系内。
+    final background = isDark ? scheme.surfaceContainerHighest : scheme.inverseSurface;
+    final foreground = isDark ? scheme.onSurface : scheme.onInverseSurface;
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+      // 深色下底色与页面底只差一档，补一圈浅色细描边把胶囊边界交代清楚。
+      side: isDark ? BorderSide(color: scheme.onSurface.withValues(alpha: 0.12)) : BorderSide.none,
+    );
+
     return AnimatedGradientBorder(
       isAnimating: event.isCheer && !reduceMotion && !_leaving,
       borderRadius: 20,
       strokeWidth: 1.6,
       child: Material(
         elevation: 0,
-        color: scheme.inverseSurface,
-        borderRadius: BorderRadius.circular(20),
+        color: background,
+        shape: shape,
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: event.isCheer ? 16 : 14, vertical: event.isCheer ? 10 : 8),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _CheerIcon(event: event, progress: iconT),
+              _CheerIcon(event: event, progress: iconT, color: isDark ? scheme.primary : scheme.inversePrimary),
               const SizedBox(width: 8),
               Flexible(
                 child: Column(
@@ -163,10 +175,7 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
                       event.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onInverseSurface,
-                      ),
+                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600, color: foreground),
                     ),
                     if (event.sub != null) ...[
                       const SizedBox(height: 2),
@@ -174,9 +183,7 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
                         event.sub!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: scheme.onInverseSurface.withValues(alpha: 0.75),
-                        ),
+                        style: theme.textTheme.labelSmall?.copyWith(color: foreground.withValues(alpha: 0.75)),
                       ),
                     ],
                   ],
@@ -234,18 +241,23 @@ class _Breathe extends StatelessWidget {
 ///
 /// 共用父级 controller 而不是自己再起一个：两条时间轴不同步会互相错乱。
 class _CheerIcon extends StatelessWidget {
-  const _CheerIcon({required this.event, required this.progress});
+  const _CheerIcon({required this.event, required this.progress, required this.color});
 
   final CheerEvent event;
   final double progress;
 
+  /// 由父级按深浅色挑好的前景色。
+  ///
+  /// 深色下不能用 inversePrimary：它在暗色主题里是深蓝（#0058BE），
+  /// 落在深色胶囊上几乎没有对比度。
+  final Color color;
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final icon = Icon(
       event.isCheer ? Icons.celebration_rounded : Icons.check_circle_rounded,
       size: event.isCheer ? 18 : 16,
-      color: scheme.inversePrimary,
+      color: color,
     );
     if (progress >= 1) {
       return icon;

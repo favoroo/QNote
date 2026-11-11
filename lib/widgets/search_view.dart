@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
+import 'package:qnote_flutter/core/utils/search_rows.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/widgets/search_highlight.dart';
@@ -87,6 +88,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
     final theme = Theme.of(context);
     final hasResults = _diaryResults.isNotEmpty || _noteResults.isNotEmpty;
     final showEmpty = _query.isNotEmpty && !_isSearching && !hasResults;
+    final rows = buildSearchRows(diaryCount: _diaryResults.length, noteCount: _noteResults.length);
 
     return Scaffold(
       appBar: AppBar(
@@ -131,36 +133,43 @@ class _SearchViewState extends ConsumerState<SearchView> {
             ? KeyedSubtree(key: const ValueKey('search_empty'), child: _buildEmptyState(theme))
             : KeyedSubtree(
                 key: const ValueKey('search_results'),
-                child: ListView(
-                  children: [
-                    if (_diaryResults.isNotEmpty) ...[
-                      _buildSectionHeader(theme, '日记', Icons.book),
-                      ..._diaryResults.map(
-                        (d) => _DiaryResultTile(
+                // 搜索结果条数没有上限（repo.search 不带 limit），列表必须懒加载：
+                // 这里过去是 `ListView(children: [...全部结果])`，每次搜索（300ms
+                // 防抖后的 setState）都要把所有结果连同关键词高亮重建一遍。
+                // 行号 → 分组下标的换算在 buildSearchRows 里（有单测覆盖）。
+                child: ListView.builder(
+                  itemCount: rows.length,
+                  itemBuilder: (context, index) {
+                    final row = rows[index];
+                    switch (row.kind) {
+                      case SearchRowKind.diaryHeader:
+                        return _buildSectionHeader(theme, '日记', Icons.book);
+                      case SearchRowKind.diaryResult:
+                        final d = _diaryResults[row.index];
+                        return _DiaryResultTile(
                           diary: d,
                           query: _query,
                           onTap: () {
                             widget.onResultSelected?.call(d);
                             Navigator.of(context).pop(d);
                           },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    if (_noteResults.isNotEmpty) ...[
-                      _buildSectionHeader(theme, '笔记', Icons.note),
-                      ..._noteResults.map(
-                        (n) => _NoteResultTile(
+                        );
+                      case SearchRowKind.gap:
+                        return const SizedBox(height: 8);
+                      case SearchRowKind.noteHeader:
+                        return _buildSectionHeader(theme, '笔记', Icons.note);
+                      case SearchRowKind.noteResult:
+                        final n = _noteResults[row.index];
+                        return _NoteResultTile(
                           note: n,
                           query: _query,
                           onTap: () {
                             widget.onResultSelected?.call(n);
                             Navigator.of(context).pop(n);
                           },
-                        ),
-                      ),
-                    ],
-                  ],
+                        );
+                    }
+                  },
                 ),
               ),
       ),

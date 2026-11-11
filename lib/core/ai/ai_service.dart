@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
+import 'package:qnote_flutter/core/ai/anthropic_protocol.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -123,8 +124,15 @@ class AiService {
     if (config.provider == 'gemini' && cleanedBaseUrl.isEmpty) {
       cleanedBaseUrl = 'https://generativelanguage.googleapis.com';
     }
+    // Anthropic 同理：官方接口是内置默认值，同时把「粘了完整端点」的地址归一化，
+    // 否则会拼出 …/v1/v1/messages
+    if (config.provider == 'anthropic') {
+      cleanedBaseUrl = anthropicBaseUrl(cleanedBaseUrl.isEmpty ? anthropicDefaultBaseUrl : cleanedBaseUrl);
+    }
 
-    if ((!config.usesAccountAuth && config.apiKey.isEmpty) || cleanedBaseUrl.isEmpty) {
+    // 免密钥服务（本机 Ollama/LM Studio、免费网关）没有凭证也能发信
+    final keyless = vendorAllowsKeyless(config.vendorId);
+    if ((!config.usesAccountAuth && config.apiKey.isEmpty && !keyless) || cleanedBaseUrl.isEmpty) {
       throw ArgumentError('AI配置不完整：缺少 apiKey 或 baseUrl');
     }
 
@@ -157,6 +165,17 @@ class AiService {
         _dio.options.headers.remove('x-goog-api-key');
       }
       _dio.options.headers.remove('Authorization');
+      _dio.options.headers.remove('x-api-key');
+    } else if (config.provider == 'anthropic') {
+      if (config.apiKey.isNotEmpty) {
+        _dio.options.headers['x-api-key'] = config.apiKey;
+      } else {
+        _dio.options.headers.remove('x-api-key');
+      }
+      // Messages 接口固定要求版本头，缺了会被直接拒绝
+      _dio.options.headers['anthropic-version'] = anthropicApiVersion;
+      _dio.options.headers.remove('Authorization');
+      _dio.options.headers.remove('x-goog-api-key');
     } else {
       // 订阅账号型的 token 每次发信前由 _beginSend 现取并逐请求覆写；
       // 这里不写 "Bearer " 空头，避免日志与诊断里出现无意义凭证
@@ -166,6 +185,8 @@ class AiService {
         _dio.options.headers.remove('Authorization');
       }
       _dio.options.headers.remove('x-goog-api-key');
+      _dio.options.headers.remove('x-api-key');
+      _dio.options.headers.remove('anthropic-version');
     }
 
     LoggerService.instance.logAI(
@@ -517,14 +538,18 @@ class AiService {
   Map<String, dynamic>? _authOverride(String? key, AiConfig config) {
     if (key == null) return null;
     if (config.provider == 'gemini') {
-      return {'x-goog-api-key': key, 'Authorization': null};
+      return {'x-goog-api-key': key, 'Authorization': null, 'x-api-key': null};
+    }
+    // Anthropic Messages：x-api-key + 版本头，且必须清掉 Bearer（两者同发会被拒）
+    if (config.provider == 'anthropic') {
+      return anthropicAuthHeaders(key);
     }
     // 账号型厂商的鉴权头由厂商自己给（AutoClaw 的 X-Authorization、Loomy 的
     // token + Authorization 双头），接口形态差异不散落在发信层
     if (AccountAuthRegistry.isAccountVendor(config.vendorId)) {
       return AccountAuthRegistry.forVendor(config.vendorId).requestHeaders(key, model: config.modelName);
     }
-    return {'Authorization': 'Bearer $key', 'x-goog-api-key': null};
+    return {'Authorization': 'Bearer $key', 'x-goog-api-key': null, 'x-api-key': null};
   }
 
   /// 把请求头里的凭证换成掩码后再打印（失败诊断用）
@@ -890,6 +915,9 @@ class AiService {
 
         if (activeConfig.provider == 'gemini') {
           content = data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
+        } else if (activeConfig.provider == 'anthropic') {
+          // Messages 的正文在 content[] 里，与 OpenAI 的 choices[].message 不同源
+          content = anthropicExtractText(data);
         } else {
           final choice = data['choices']?[0];
           final message = choice?['message'] as Map<String, dynamic>?;
@@ -1002,6 +1030,17 @@ class AiService {
       details: '模型=${_config!.modelName}, 消息数=${messages.length}, 工具数=${tools?.length ?? 0}',
     );
 
+    // Anthropic Messages 协议本次不含工具调用（tool_use / tool_result 与流式
+    // input_json_delta 是另一套状态机）：这里不发 tools，按纯文本对话降级并留痕，
+    // 让「工具没反应」在日志里可解释，而不是静默失败
+    if (_config!.provider == 'anthropic') {
+      LoggerService.instance.logAI(
+        'Anthropic Messages 协议暂不支持工具调用，本轮按纯文本对话降级',
+        level: LogLevel.warning,
+        details: '模型=${_config!.modelName}, 请求里的工具数=${tools?.length ?? 0}',
+      );
+    }
+
     int retryCount = 0;
     // 订阅账号型：401 只刷新一次 token
     var authRetried = false;
@@ -1074,6 +1113,33 @@ class AiService {
 
             try {
               final json = jsonDecode(data) as Map<String, dynamic>;
+              final isAnthropic = activeConfig.provider == 'anthropic';
+
+              if (isAnthropic) {
+                final streamError = anthropicStreamError(json);
+                if (streamError != null) {
+                  throw Exception('AI Stream Error: $streamError');
+                }
+                streamUsage = mergeAnthropicUsage(json, streamUsage);
+
+                // 1. 思考增量（extended thinking 的 thinking_delta）
+                final thinking = anthropicStreamReasoning(json);
+                if (thinking != null) {
+                  partiallyStreamed = true;
+                  yield AiToolStreamChunk.reasoning(thinking);
+                }
+
+                // 2. 正文增量；工具调用本协议不支持，这里只处理文本
+                final anthropicText = anthropicStreamText(json);
+                if (anthropicText != null) {
+                  accumulatedResponse.write(anthropicText);
+                  hasDeliveredText = true;
+                  partiallyStreamed = true;
+                  yield AiToolStreamChunk.text(anthropicText);
+                }
+                continue;
+              }
+
               // 捕获商汤等服务商在流式第一包中下发的 JSON 错误对象。
               // 必须保留**整个** error 对象而不是只取 message：网关的 `code: 8`
               // （rps 突发）与 `EndpointTPMExceeded`（额度耗尽）要靠 code 分流，
@@ -1317,18 +1383,30 @@ class AiService {
 
             try {
               final json = jsonDecode(data) as Map<String, dynamic>;
-              if (json.containsKey('error')) {
-                final errObj = json['error'];
-                final errMsg = errObj is Map ? (errObj['message'] ?? errObj.toString()) : errObj.toString();
-                throw Exception('AI Stream Error: $errMsg');
-              }
+              final isAnthropic = activeConfig.provider == 'anthropic';
+              if (isAnthropic) {
+                // Messages 的错误是独立的 error 事件；输入/输出 token 也拆在两帧里
+                final streamError = anthropicStreamError(json);
+                if (streamError != null) {
+                  throw Exception('AI Stream Error: $streamError');
+                }
+                streamUsage = mergeAnthropicUsage(json, streamUsage);
+              } else {
+                if (json.containsKey('error')) {
+                  final errObj = json['error'];
+                  final errMsg = errObj is Map ? (errObj['message'] ?? errObj.toString()) : errObj.toString();
+                  throw Exception('AI Stream Error: $errMsg');
+                }
 
-              final chunkUsage = AiTokenUsage.fromResponse(json);
-              if (chunkUsage != null) streamUsage = chunkUsage;
+                final chunkUsage = AiTokenUsage.fromResponse(json);
+                if (chunkUsage != null) streamUsage = chunkUsage;
+              }
 
               String? text;
               if (activeConfig.provider == 'gemini') {
                 text = json['candidates']?[0]?['content']?['parts']?[0]?['text'];
+              } else if (isAnthropic) {
+                text = anthropicStreamText(json);
               } else {
                 text = json['choices']?[0]?['delta']?['content'];
               }
@@ -1408,6 +1486,9 @@ class AiService {
           ? 'v1beta/models/${config.modelName}:streamGenerateContent?alt=sse'
           : 'v1beta/models/${config.modelName}:generateContent';
     }
+    if (config.provider == 'anthropic') {
+      return 'v1/messages';
+    }
     // 账号型厂商的基址本身已含完整聊天路径前缀，直接拼 chat/completions
     if (AccountAuthRegistry.isAccountVendor(config.vendorId)) {
       return 'chat/completions';
@@ -1422,6 +1503,12 @@ class AiService {
   /// 绝对端点：路由组切换成员时 baseUrl 会变，必须用绝对地址发请求，
   /// 否则会沿用 dio 上一次写入的全局 baseUrl 打到上一个成员的地址上。
   String _absoluteEndpoint(AiConfig config, {bool stream = false}) {
+    // Anthropic 的地址要按根 URL 归一化（用户常把 …/v1/messages 整段粘进来），
+    // 用通用的 base + 相对路径拼接会得到 …/v1/v1/messages
+    if (config.provider == 'anthropic') {
+      final base = _cleanUrl(config.baseUrl);
+      return anthropicChatEndpoint(base.isEmpty ? anthropicDefaultBaseUrl : base);
+    }
     final base = _cleanUrl(config.baseUrl);
     return '$base/${_relativeChatEndpoint(config, stream: stream)}';
   }
@@ -1496,6 +1583,9 @@ class AiService {
   String get _generateContentEndpoint {
     if (_config!.provider == 'gemini') {
       return 'v1beta/models/${_config!.modelName}:generateContent';
+    }
+    if (_config!.provider == 'anthropic') {
+      return 'v1/messages';
     }
     if (AccountAuthRegistry.isAccountVendor(_config!.vendorId)) {
       return 'chat/completions';
@@ -1655,12 +1745,50 @@ class AiService {
       }
     }
 
+    // Messages 与 OpenAI 的差异集中在「system 提顶层、内容块用 image、max_tokens
+    // 必填」三点，转换全部在 anthropic_protocol 里做，这里只切换协议
+    if (config.provider == 'anthropic') {
+      return _buildAnthropicChatBody(config: config, messages: formattedMessages, stream: stream);
+    }
+
     final bodyMap = _buildBaseBody(config: config, messages: formattedMessages, stream: stream, tools: tools);
     if (isOmni) {
       bodyMap['sessionId'] = DateTime.now().millisecondsSinceEpoch.toString();
       bodyMap['output_modalities'] = ['text'];
     }
     return bodyMap;
+  }
+
+  /// 组装 Messages 请求体
+  ///
+  /// 思考档位走 `thinking.budget_tokens`：[_reasoningParamsSupported] 为 false 时
+  /// 不发（与 OpenAI 兼容端点被拒后关参数同一开关），模型能力表说不支持该档位时
+  /// 也不发，避免明知道会 400 还把对话打挂。
+  Map<String, dynamic> _buildAnthropicChatBody({
+    required AiConfig config,
+    required List<dynamic> messages,
+    bool stream = false,
+    int? maxTokens,
+  }) {
+    return buildAnthropicBody(
+      model: config.modelName,
+      messages: messages,
+      temperature: _temperature,
+      maxTokens: maxTokens ?? _maxTokens,
+      stream: stream,
+      thinkingEffort: _reasoningParamsSupported ? _anthropicEffortFor(config) : null,
+    );
+  }
+
+  /// Messages 请求要用的思考档位（wireName）；「自动」时沿用厂商默认值
+  String? _anthropicEffortFor(AiConfig config) {
+    final explicit = config.reasoningEffort;
+    if (explicit != null) {
+      final capability = _reasoningCapabilityFor(config);
+      if (capability != null && !capability.supports(explicit)) return null;
+      return explicit.wireName;
+    }
+    return _legacyEffortFor(config);
   }
 
   /// 构建 OpenAI 兼容接口的基础请求体，统一注入通用参数。
@@ -1907,6 +2035,14 @@ class AiService {
           },
           'generationConfig': _geminiGenerationConfig(_config!, responseMimeType: 'application/json'),
         };
+      } else if (_config!.provider == 'anthropic') {
+        requestBody = _buildAnthropicChatBody(
+          config: _config!,
+          messages: [
+            {'role': 'system', 'content': systemPrompt},
+            {'role': 'user', 'content': userMessageText},
+          ],
+        );
       } else {
         final isOmni = _config!.modelName.toLowerCase().contains('omni');
         final formattedMessages = [
@@ -2174,6 +2310,27 @@ class AiService {
       };
     }
 
+    // Messages 的图片是 image.source.base64，但这里仍按 OpenAI 形态喂进去，
+    // 由 anthropic_protocol 统一转换，避免两处各写一份图片结构
+    if (_config!.provider == 'anthropic') {
+      return _buildAnthropicChatBody(
+        config: _config!,
+        messages: [
+          {'role': 'system', 'content': systemPrompt},
+          {
+            'role': 'user',
+            'content': [
+              if (userMessageText.isNotEmpty) {'type': 'text', 'text': userMessageText},
+              {
+                'type': 'image_url',
+                'image_url': {'url': 'data:$mimeType;base64,$imageBase64'},
+              },
+            ],
+          },
+        ],
+      );
+    }
+
     final isOmni = _config!.modelName.toLowerCase().contains('omni');
     if (isOmni) {
       return {
@@ -2254,6 +2411,27 @@ class AiService {
       };
     }
 
+    // Messages 没有 response_format，JSON 全靠提示词约束（各调用点的提示词本就
+    // 要求「只返回 JSON」），因此这里只做结构化转换，不额外注入字段
+    if (_config!.provider == 'anthropic') {
+      return _buildAnthropicChatBody(
+        config: _config!,
+        messages: [
+          {'role': 'system', 'content': systemPrompt},
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': userMessageText},
+              {
+                'type': 'image_url',
+                'image_url': {'url': 'data:$mimeType;base64,$imageBase64'},
+              },
+            ],
+          },
+        ],
+      );
+    }
+
     final isOmni = _config!.modelName.toLowerCase().contains('omni');
     if (isOmni) {
       return {
@@ -2329,6 +2507,10 @@ class AiService {
       return '';
     }
 
+    if (_config!.provider == 'anthropic') {
+      return anthropicExtractText(data);
+    }
+
     final choices = data['choices'];
     if (choices is List && choices.isNotEmpty) {
       final message = choices[0]?['message'];
@@ -2356,6 +2538,13 @@ class AiService {
   /// 从响应数据中提取 finish_reason，用于检测 max_tokens 截断
   String? _extractFinishReason(dynamic data) {
     if (data is! Map<String, dynamic>) return null;
+    // Messages 用 stop_reason；`max_tokens` 与 OpenAI 的 `length` 同义，
+    // 调用方的截断判断按这两个字面量比较
+    if (_config?.provider == 'anthropic') {
+      final reason = anthropicExtractStopReason(data);
+      // 归一成 OpenAI 口径：截断判断只认 'length'
+      return reason == 'max_tokens' ? 'length' : reason;
+    }
     final choices = data['choices'];
     if (choices is List && choices.isNotEmpty) {
       return choices[0]?['finish_reason']?.toString();
@@ -2818,6 +3007,14 @@ class AiService {
         },
         'generationConfig': _geminiGenerationConfig(_config!, responseMimeType: 'application/json'),
       };
+    } else if (_config!.provider == 'anthropic') {
+      requestBody = _buildAnthropicChatBody(
+        config: _config!,
+        messages: [
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': userPrompt},
+        ],
+      );
     } else {
       final isOmni = _config!.modelName.toLowerCase().contains('omni');
       final formattedMessages = [
@@ -2912,6 +3109,23 @@ class AiService {
         'generationConfig': _geminiGenerationConfig(config, temperature: 0.1, maxTokens: 200),
       };
       endpoint = 'v1beta/models/${config.modelName}:generateContent';
+    } else if (config.provider == 'anthropic') {
+      requestBody = _buildAnthropicChatBody(
+        config: config,
+        messages: [
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': '请问这张图片里写了数字多少？直接回答数字即可，不要有其他解释。'},
+              {
+                'type': 'image_url',
+                'image_url': {'url': 'data:image/png;base64,$imageBase64'},
+              },
+            ],
+          },
+        ],
+        maxTokens: 200,
+      );
     } else {
       final isOmni = config.modelName.toLowerCase().contains('omni');
       List<dynamic> contentList;

@@ -450,4 +450,49 @@ void main() {
       expect(offset, 12 + 80 + 18 * 48 + 24);
     });
   });
+
+  group('resolveTimelineRecordAnchor', () {
+    test('单选直接落在选中时刻', () {
+      expect(resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 19, 30)), DateTime(2026, 11, 11, 19, 30));
+      expect(
+        resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 22, 13)),
+        DateTime(2026, 11, 11, 22, 13),
+        reason: '非半小时的选中时刻由专用节点渲染，加号仍跟着它',
+      );
+    });
+
+    test('区间取末端所在的半小时节点', () {
+      expect(
+        resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 19, 30), end: DateTime(2026, 11, 11, 21, 0)),
+        DateTime(2026, 11, 11, 21, 0),
+      );
+      expect(
+        resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 19, 30), end: DateTime(2026, 11, 11, 21, 10)),
+        DateTime(2026, 11, 11, 21, 0),
+        reason: '末端不是整半点时，加号贴在包含它的节点上',
+      );
+      expect(
+        resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 19, 30), end: DateTime(2026, 11, 11, 21, 40)),
+        DateTime(2026, 11, 11, 21, 30),
+      );
+    });
+
+    test('区间完全落在两个节点之间时退回起点', () {
+      expect(
+        resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 22, 5), end: DateTime(2026, 11, 11, 22, 13)),
+        DateTime(2026, 11, 11, 22, 5),
+      );
+    });
+
+    test('跨天区间取结束日期的节点', () {
+      expect(
+        resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 23, 30), end: DateTime(2026, 11, 12, 0, 0)),
+        DateTime(2026, 11, 12, 0, 0),
+      );
+      expect(
+        resolveTimelineRecordAnchor(start: DateTime(2026, 11, 11, 23, 30), end: DateTime(2026, 11, 12, 1, 10)),
+        DateTime(2026, 11, 12, 1, 0),
+      );
+    });
+  });
 }

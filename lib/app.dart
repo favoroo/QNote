@@ -385,6 +385,14 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
               canPop: false,
               onPopInvokedWithResult: (didPop, result) {
                 if (didPop) return;
+                // 悬浮小Q弹窗打开时，返回键先最小化成气泡（会话保留）；
+                // 有模态弹窗时让模态自己处理，别把面板收走
+                if (floatingQModalCount.value == 0 &&
+                    ref.read(floatingQProvider).panelMode == FloatingQPanelMode.panel) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  ref.read(floatingQProvider.notifier).minimizePanel();
+                  return;
+                }
                 final router = GoRouter.of(context);
                 final location = router.routerDelegate.currentConfiguration.uri.toString();
                 final shellRoutes = ['/diary', '/notes', '/todo', '/ai', '/statistics'];
@@ -393,16 +401,22 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
                 }
                 router.pop();
               },
-              child: Stack(
-                children: [
-                  child ?? const SizedBox.shrink(),
-                  // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
-                  // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
-                  // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
-                  // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
-                  // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
-                  Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
-                ],
+              // 记录全局点按位置：悬浮小Q打开时从手指/按钮处容器变形展开。
+              // Listener 不参与手势竞技场，不会影响子树的点击与滚动
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (event) => ref.read(floatingQProvider.notifier).recordPointerDown(event.position),
+                child: Stack(
+                  children: [
+                    child ?? const SizedBox.shrink(),
+                    // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
+                    // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
+                    // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
+                    // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
+                    // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
+                    Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
+                  ],
+                ),
               ),
             ),
           ),

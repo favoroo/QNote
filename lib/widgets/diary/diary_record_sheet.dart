@@ -51,6 +51,15 @@ const Curve _kMorphEnterCurve = Curves.easeInOutCubicEmphasized;
 const Curve _kMorphExitCurve = Curves.easeInCubic;
 const Curve _kCardFlightCurve = Curves.easeInOutCubicEmphasized;
 
+/// 退场时面板内容的淡出窗口。
+///
+/// 容器的收回曲线（[_kMorphExitCurve]）起步很快：退场时间只走了三成，窗口就
+/// 已经很接近按钮大小了。内容如果按幽灵那条交叉淡入的节奏走（到 0.3 才归零），
+/// 后半段就会在缩到按钮大小的窗口里残留一层被压扁的半透明卡片内容 —— 看着像
+/// 按钮里闪了一下旧内容。所以内容单独用一条更早收口的曲线：0.6 之前就走完，
+/// 把 0.6～0.3 这段留白让给幽灵按钮淡入。
+const Curve _kContentExitCurve = Interval(0.6, 1, curve: Curves.easeInCubic);
+
 /// 无锚点时的退路：整卡缩放上浮。
 const Duration _kDialogEnterDuration = Duration(milliseconds: 360);
 const Duration _kDialogExitDuration = Duration(milliseconds: 180);
@@ -63,7 +72,7 @@ const double _kTimelineCardRadius = 16;
 
 /// 打开面板时记录按钮的位置与状态，作为容器变形的起点。
 class RecordFabAnchor {
-  const RecordFabAnchor({required this.rect, this.selection, this.hasDraft = false});
+  const RecordFabAnchor({required this.rect, this.selection, this.hasDraft = false, this.compact = false});
 
   /// 按钮在屏幕上的全局 Rect；选中时间时是胶囊宽度。
   final Rect rect;
@@ -73,6 +82,12 @@ class RecordFabAnchor {
 
   /// 是否有未保存草稿（按钮右上角的小圆点）。
   final bool hasDraft;
+
+  /// 起点是否为时间线行内的紧凑小圆钮。
+  ///
+  /// 紧凑态的按钮更小、实心主色，幽灵预览只画加号；不区分的话，面板收起时
+  /// 会按左下角大按钮的排版去画时间与 ×，在 28 的圆里被裁成一条细缝。
+  final bool compact;
 }
 
 /// 发送后「面板变成新卡片」的落位目标。

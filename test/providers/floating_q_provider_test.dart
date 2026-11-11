@@ -280,6 +280,156 @@ void main() {
     });
   });
 
+  group('临时会话留存与气泡', () {
+    QPageContext pageContext(String signature, {String? label}) =>
+        QPageContext(type: QContextType.notesList, signature: signature, displayLabel: label ?? signature);
+
+    test('最小化成气泡，重新打开保留草稿', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openPanel();
+      notifier.updateDraft('继续改这一段');
+      notifier.minimizePanel();
+
+      var state = container.read(floatingQProvider);
+      expect(state.panelMode, FloatingQPanelMode.bubble);
+      expect(state.draftText, '继续改这一段');
+
+      notifier.openPanel();
+      state = container.read(floatingQProvider);
+      expect(state.panelMode, FloatingQPanelMode.panel);
+      expect(state.draftText, '继续改这一段');
+      expect(state.unreadReply, isFalse);
+    });
+
+    test('无内容时最小化直接隐藏，不产生空气泡', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openPanel();
+      notifier.minimizePanel();
+
+      expect(container.read(floatingQProvider).panelMode, FloatingQPanelMode.hidden);
+    });
+
+    test('切页时暂存当前会话，回到原页面恢复成气泡', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+      final diary = pageContext('page:diary', label: '时间线');
+      final notes = pageContext('page:notes', label: '笔记库');
+
+      notifier.setBaseContext(diary);
+      notifier.openPanel();
+      notifier.updateDraft('日记草稿');
+      notifier.setBaseContext(notes);
+
+      var state = container.read(floatingQProvider);
+      expect(state.contextSignature, 'page:notes');
+      expect(state.panelMode, FloatingQPanelMode.hidden);
+      expect(state.draftText, isEmpty);
+
+      notifier.setBaseContext(diary);
+      state = container.read(floatingQProvider);
+      expect(state.contextSignature, 'page:diary');
+      expect(state.panelMode, FloatingQPanelMode.bubble);
+      expect(state.draftText, '日记草稿');
+    });
+
+    test('外部分享使用独立会话，不污染页面草稿', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+      final notes = pageContext('page:notes', label: '笔记库');
+
+      notifier.setBaseContext(notes);
+      notifier.openPanel();
+      notifier.updateDraft('页面草稿');
+
+      notifier.openWithQuote(
+        const QTextQuote(source: QQuoteSource.external, sourceId: '', sourceTitle: '系统分享', quotedText: '外部内容'),
+      );
+      var state = container.read(floatingQProvider);
+      expect(state.contextSignature, 'external:share');
+      expect(state.draftText, isEmpty);
+
+      notifier.setBaseContext(notes);
+      state = container.read(floatingQProvider);
+      expect(state.contextSignature, 'page:notes');
+      expect(state.panelMode, FloatingQPanelMode.bubble);
+      expect(state.draftText, '页面草稿');
+    });
+
+    test('彻底关闭只清空当前页面的会话', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+      final a = pageContext('page:a');
+      final b = pageContext('page:b');
+
+      notifier.setBaseContext(a);
+      notifier.openPanel();
+      notifier.updateDraft('A 的草稿');
+
+      notifier.setBaseContext(b);
+      notifier.openPanel();
+      notifier.updateDraft('B 的草稿');
+      notifier.dismissActiveSession();
+
+      var state = container.read(floatingQProvider);
+      expect(state.panelMode, FloatingQPanelMode.hidden);
+      expect(state.draftText, isEmpty);
+
+      notifier.setBaseContext(a);
+      state = container.read(floatingQProvider);
+      expect(state.panelMode, FloatingQPanelMode.bubble);
+      expect(state.draftText, 'A 的草稿');
+
+      notifier.setBaseContext(b);
+      state = container.read(floatingQProvider);
+      expect(state.panelMode, FloatingQPanelMode.hidden);
+      expect(state.draftText, isEmpty);
+    });
+
+    test('临时会话最多保留 5 个页面，最旧的被淘汰', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      for (var i = 0; i <= 5; i++) {
+        notifier.setBaseContext(pageContext('page:$i'));
+        notifier.openPanel();
+        notifier.updateDraft('d$i');
+      }
+
+      // 第 6 个页面把最旧的 page:0 挤掉
+      notifier.setBaseContext(pageContext('page:0'));
+      var state = container.read(floatingQProvider);
+      expect(state.panelMode, FloatingQPanelMode.hidden);
+      expect(state.draftText, isEmpty);
+
+      notifier.setBaseContext(pageContext('page:5'));
+      state = container.read(floatingQProvider);
+      expect(state.panelMode, FloatingQPanelMode.bubble);
+      expect(state.draftText, 'd5');
+    });
+
+    test('空会话展开全页面返回 null 并收起临时会话', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openPanel();
+      final session = await notifier.promoteActiveSession();
+
+      expect(session, isNull);
+      expect(container.read(floatingQProvider).panelMode, FloatingQPanelMode.hidden);
+    });
+  });
+
   group('外部分享内容注入块', () {
     test('正常文本组装为注入块且不给 read_file 指引', () {
       final block = FloatingQNotifier.buildExternalQuoteBlock(

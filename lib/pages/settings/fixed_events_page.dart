@@ -906,6 +906,7 @@ class FixedEventsPageState extends ConsumerState<FixedEventsPage> {
                 if (field.type == 'select' && field.options.isNotEmpty)
                   DropdownButtonFormField<String>(
                     initialValue: field.options.contains(currentValue as String?) ? currentValue : null,
+                    borderRadius: BorderRadius.circular(12),
                     decoration: InputDecoration(
                       hintText: '选择${field.label}',
                       isDense: true,

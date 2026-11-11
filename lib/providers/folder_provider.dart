@@ -96,25 +96,19 @@ class FolderListNotifier extends AsyncNotifier<List<Folder>> {
     }
   }
 
-  Future<void> moveFolderToParent(String folderId, String? parentId) async {
-    final repo = ref.read(folderRepositoryProvider);
-    final folder = await repo.getById(folderId);
-    if (folder != null) {
-      final updated = folder.copyWith(parentId: parentId, clearParentId: parentId == null);
-      await repo.update(updated);
-      // 内存替换
-      state = AsyncData((state.valueOrNull ?? []).map((f) => f.id == folderId ? updated : f).toList());
-    }
-  }
-
+  /// 批量保存重排结果。
+  ///
+  /// 调用方必须先在传入的 Folder 上设置好 `parentId` / `sortOrder`。
+  /// 先落库成功再更新内存：写失败时界面不会先动、库却还是旧值。
   Future<void> reorderFolders(List<Folder> reordered) async {
-    final repo = ref.read(folderRepositoryProvider);
-    final currentList = state.valueOrNull ?? [];
-    final updatedList = currentList.map((folder) {
-      return reordered.firstWhere((f) => f.id == folder.id, orElse: () => folder);
-    }).toList();
+    if (reordered.isEmpty) return;
 
-    state = AsyncData(updatedList);
+    final repo = ref.read(folderRepositoryProvider);
     await repo.batchUpdate(reordered);
+
+    final currentList = state.valueOrNull;
+    if (currentList == null) return;
+    final replacements = <String, Folder>{for (final folder in reordered) folder.id: folder};
+    state = AsyncData([for (final folder in currentList) replacements[folder.id] ?? folder]);
   }
 }

@@ -289,6 +289,47 @@ void main() {
     expect(find.byKey(const ValueKey('record-sheet-morph')), findsNothing);
   });
 
+  testWidgets('收回途中：面板内容先淡掉，幽灵等容器落到按钮才亮', (tester) async {
+    // 退场是「内容淡出 → 空容器收回按钮 → 幽灵落进按钮」三段。顺序错了就会看到
+    // 两种闪：内容在缩小的窗口里残留半透明残影，或时间文字提前浮在卡片上。
+    const origin = Rect.fromLTWH(16, 500, 44, 44);
+    await _pumpRouteHost(tester, origin: origin);
+
+    await tester.tap(find.text('打开记录'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('record-close')));
+    await tester.pump();
+
+    double contentOpacity() => tester
+        .widget<Opacity>(
+          find.descendant(of: find.byKey(const ValueKey('record-sheet-window')), matching: find.byType(Opacity)).first,
+        )
+        .opacity;
+
+    double ghostOpacity() => tester
+        .widget<Opacity>(
+          find.descendant(of: find.byKey(const ValueKey('record-sheet-ghost')), matching: find.byType(Opacity)).first,
+        )
+        .opacity;
+
+    // 约三成（100ms）时容器已收掉大半，内容必须已经淡完
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.getRect(find.byKey(const ValueKey('record-sheet-morph'))).width, lessThan(300));
+    expect(contentOpacity(), lessThan(0.05), reason: '内容不能留在缩小后的窗口里');
+
+    // 约五成半（180ms）：容器基本落到按钮，幽灵这时才刚开始淡入
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(ghostOpacity(), lessThan(0.3), reason: '幽灵不能提前浮在还没收小的卡片上');
+
+    // 约七成半（240ms）：幽灵已经落满，最后一帧和真实按钮像素一致，才能无缝换回
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(ghostOpacity(), greaterThan(0.9));
+
+    await tester.pumpAndSettle();
+    expect(find.byType(DiaryRecordSheet), findsNothing);
+  });
+
   testWidgets('发送后面板飞向目标卡片，落位回调后收起', (tester) async {
     const origin = Rect.fromLTWH(16, 760, 44, 44);
     const target = Rect.fromLTWH(120, 260, 220, 120);

@@ -154,6 +154,12 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   bool _localCompleted = false;
   bool _isCompleting = false;
 
+  /// 卡片当前是否处于「左滑露出删除钮」状态。
+  ///
+  /// 直接读控制器值：卡片主体被 [AnimatedBuilder] 复用为 child 后，主体不再
+  /// 随动画每帧重建，所以不能依赖 build 时的局部变量判断。
+  bool get _isSlidOpen => _slideAnimController.value > 0.01;
+
   /// 已播放过入场动画的待办 id。ListView 懒构建、PageView 切页都会重新
   /// initState，若每次都从 0 播入场，滚动时条目会不停「弹进来」。
   static final Set<String> _entrancePlayed = <String>{};
@@ -266,12 +272,9 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final todo = widget.todo;
-    final isDone = todo.isCompleted || _localCompleted;
     final isSelectionMode = widget.isSelectionMode;
-    final isSelected = widget.isSelected;
 
-    return SizeTransition(
+    final Widget card = SizeTransition(
       sizeFactor: _heightFactor,
       alignment: const Alignment(-1.0, -1.0),
       child: FadeTransition(
@@ -280,6 +283,11 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
           scale: _scaleAnimation,
           child: AnimatedBuilder(
             animation: _slideAnimation,
+            // 卡片主体作为 child 传入：左滑动画每帧只重建这层 Stack / Transform /
+            // 删除钮，卡片本体（复选框、标题、辅助信息、拖拽把手）复用同一份
+            // Element，不跟着每帧重跑一遍整卡布局。之前 builder 里内联重建整卡，
+            // 滑动时等于每帧把一张待办卡完整重排一次，条目一多就明显掉帧。
+            child: _buildCardBody(theme, colorScheme, isDark),
             builder: (context, child) {
               final slideProgress = _slideAnimation.value;
               final currentOffset = -_kMaxSlideExtent * slideProgress;
@@ -355,239 +363,244 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                 }
                               }
                             },
-                      child: Transform.translate(
-                        offset: Offset(isSelectionMode ? 0 : currentOffset, 0),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: isSelectionMode && isSelected
-                                ? colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08)
-                                : (isDark ? colorScheme.surfaceContainer : colorScheme.surfaceContainerLow),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isSelectionMode && isSelected
-                                  ? colorScheme.primary
-                                  : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
-                              width: isSelectionMode && isSelected ? 1.8 : 1.0,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: colorScheme.shadow.withValues(alpha: 0.02),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            child: Row(
-                              children: [
-                                // 多选复选框 vs 小米风格圆形复选框
-                                if (isSelectionMode)
-                                  GestureDetector(
-                                    key: const ValueKey('todo_select_detector'),
-                                    onTap: () {
-                                      HapticFeedback.selectionClick();
-                                      widget.onSelectToggle?.call();
-                                    },
-                                    behavior: HitTestBehavior.opaque,
-                                    child: AnimatedContainer(
-                                      key: const ValueKey('todo_select_checkbox'),
-                                      duration: AppMotion.duration(context, AppDurations.fast),
-                                      curve: AppCurves.standard,
-                                      width: 22,
-                                      height: 22,
-                                      margin: const EdgeInsets.only(right: 10),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(11),
-                                        color: isSelected ? colorScheme.primary : Colors.transparent,
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? colorScheme.primary
-                                              : colorScheme.outline.withValues(alpha: 0.6),
-                                          width: 2.0,
-                                        ),
-                                      ),
-                                      child: isSelected ? const Icon(Icons.check, size: 15, color: Colors.white) : null,
-                                    ),
-                                  )
-                                else
-                                  GestureDetector(
-                                    key: const ValueKey('todo_done_detector'),
-                                    onTap: _handleToggleComplete,
-                                    behavior: HitTestBehavior.opaque,
-                                    child: AnimatedContainer(
-                                      key: const ValueKey('todo_done_checkbox'),
-                                      duration: AppMotion.duration(context, AppDurations.medium),
-                                      curve: AppCurves.standard,
-                                      width: 20,
-                                      height: 20,
-                                      margin: const EdgeInsets.only(right: 10),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: isDone
-                                              ? (isDark ? Colors.white30 : colorScheme.outline.withValues(alpha: 0.4))
-                                              : colorScheme.outline.withValues(alpha: 0.5),
-                                          width: 1.8,
-                                        ),
-                                        color: isDone
-                                            ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
-                                            : Colors.transparent,
-                                      ),
-                                      child: isDone
-                                          ? TweenAnimationBuilder<double>(
-                                              tween: Tween(begin: 0.0, end: 1.0),
-                                              duration: AppMotion.duration(context, AppDurations.medium),
-                                              curve: AppCurves.spring,
-                                              builder: (context, value, child) {
-                                                return Transform.scale(scale: value, child: child);
-                                              },
-                                              child: Icon(
-                                                Icons.check,
-                                                size: 14,
-                                                color: isDark ? Colors.white70 : colorScheme.primary,
-                                              ),
-                                            )
-                                          : null,
-                                    ),
-                                  ),
-                                // 待办标题与辅助状态（选择模式下点击整张卡片切换选中，正常模式下点击唤出编辑弹窗，长按唤出操作菜单）
-                                Expanded(
-                                  child: GestureDetector(
-                                    key: _cardKey,
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () {
-                                      if (isSelectionMode) {
-                                        HapticFeedback.selectionClick();
-                                        widget.onSelectToggle?.call();
-                                      } else if (isSlidOpen) {
-                                        _closeSlide();
-                                      } else {
-                                        widget.onTap();
-                                      }
-                                    },
-                                    onLongPress: () {
-                                      if (isSelectionMode) {
-                                        HapticFeedback.selectionClick();
-                                        widget.onSelectToggle?.call();
-                                      } else if (isSlidOpen) {
-                                        _closeSlide();
-                                      } else {
-                                        widget.onLongPress(_cardKey);
-                                      }
-                                    },
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          todo.title.isEmpty ? '待办事项' : todo.title,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
-                                            fontSize: 15.5,
-                                            color: isDone
-                                                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
-                                                : colorScheme.onSurface,
-                                          ),
-                                        ),
-                                        if (todo.isRecurring ||
-                                            todo.reminderTime != null ||
-                                            todo.description.isNotEmpty) ...[
-                                          const SizedBox(height: 4),
-                                          Row(
-                                            children: [
-                                              if (todo.isRecurring) ...[
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                                  margin: const EdgeInsets.only(right: 6),
-                                                  decoration: BoxDecoration(
-                                                    color: colorScheme.primary.withValues(alpha: 0.1),
-                                                    borderRadius: BorderRadius.circular(4),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(Icons.repeat, size: 11, color: colorScheme.primary),
-                                                      const SizedBox(width: 3),
-                                                      Text(
-                                                        todo.repeatRuleLabel,
-                                                        style: TextStyle(
-                                                          fontSize: 10.5,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: colorScheme.primary,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                              if (todo.reminderTime != null) ...[
-                                                Icon(
-                                                  Icons.alarm,
-                                                  size: 12,
-                                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                                ),
-                                                const SizedBox(width: 3),
-                                                Text(
-                                                  todo.reminderTime!,
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 6),
-                                              ],
-                                              if (todo.description.isNotEmpty)
-                                                Expanded(
-                                                  child: Text(
-                                                    todo.description,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: theme.textTheme.bodySmall?.copyWith(
-                                                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                                      fontSize: 11,
-                                                    ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                if (widget.isDraggable && !isSelectionMode)
-                                  ReorderableDragStartListener(
-                                    index: widget.index,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(left: 8),
-                                      child: SizedBox(
-                                        width: 28,
-                                        height: 28,
-                                        child: Center(
-                                          child: Icon(
-                                            Icons.drag_indicator,
-                                            size: 18,
-                                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      child: Transform.translate(offset: Offset(isSelectionMode ? 0 : currentOffset, 0), child: child),
                     ),
                   ],
                 ),
               );
             },
           ),
+        ),
+      ),
+    );
+
+    // 移动端：整行长按拾起即可拖拽排序，拇指不必再瞄准行尾的小图标。
+    // 桌面/Web 仍走行尾手柄（鼠标按下即拖，见 _buildCardBody），故不包这一层。
+    if (widget.isDraggable && !isSelectionMode && !useDragHandleFor(theme.platform)) {
+      return ReorderableDelayedDragStartListener(index: widget.index, child: card);
+    }
+    return card;
+  }
+
+  /// 待办卡片本体（不含左滑位移与删除钮）。
+  ///
+  /// 单独拆出来是为了能作为 [AnimatedBuilder] 的 `child` 复用：左滑动画期间
+  /// 卡片内容本身不随进度变化，没必要每帧重排。判断「是否已滑开」改成读控制器
+  /// 当前值（[_isSlidOpen]），不再依赖 build 时算出来的局部变量。
+  Widget _buildCardBody(ThemeData theme, ColorScheme colorScheme, bool isDark) {
+    final todo = widget.todo;
+    final isDone = todo.isCompleted || _localCompleted;
+    final isSelectionMode = widget.isSelectionMode;
+    final isSelected = widget.isSelected;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelectionMode && isSelected
+            ? colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08)
+            : (isDark ? colorScheme.surfaceContainer : colorScheme.surfaceContainerLow),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isSelectionMode && isSelected
+              ? colorScheme.primary
+              : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
+          width: isSelectionMode && isSelected ? 1.8 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(color: colorScheme.shadow.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            // 多选复选框 vs 小米风格圆形复选框
+            if (isSelectionMode)
+              GestureDetector(
+                key: const ValueKey('todo_select_detector'),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  widget.onSelectToggle?.call();
+                },
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  key: const ValueKey('todo_select_checkbox'),
+                  duration: AppMotion.duration(context, AppDurations.fast),
+                  curve: AppCurves.standard,
+                  width: 22,
+                  height: 22,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(11),
+                    color: isSelected ? colorScheme.primary : Colors.transparent,
+                    border: Border.all(
+                      color: isSelected ? colorScheme.primary : colorScheme.outline.withValues(alpha: 0.6),
+                      width: 2.0,
+                    ),
+                  ),
+                  child: isSelected ? Icon(Icons.check, size: 15, color: colorScheme.onPrimary) : null,
+                ),
+              )
+            else
+              GestureDetector(
+                key: const ValueKey('todo_done_detector'),
+                onTap: _handleToggleComplete,
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  key: const ValueKey('todo_done_checkbox'),
+                  duration: AppMotion.duration(context, AppDurations.medium),
+                  curve: AppCurves.standard,
+                  width: 20,
+                  height: 20,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isDone
+                          ? (isDark ? Colors.white30 : colorScheme.outline.withValues(alpha: 0.4))
+                          : colorScheme.outline.withValues(alpha: 0.5),
+                      width: 1.8,
+                    ),
+                    color: isDone
+                        ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
+                        : Colors.transparent,
+                  ),
+                  child: isDone
+                      ? TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: AppMotion.duration(context, AppDurations.medium),
+                          curve: AppCurves.spring,
+                          builder: (context, value, child) {
+                            return Transform.scale(scale: value, child: child);
+                          },
+                          child: Icon(Icons.check, size: 14, color: isDark ? Colors.white70 : colorScheme.primary),
+                        )
+                      : null,
+                ),
+              ),
+            // 待办标题与辅助状态（选择模式下点击整张卡片切换选中，正常模式下点击唤出编辑弹窗，长按唤出操作菜单）
+            Expanded(
+              child: GestureDetector(
+                key: _cardKey,
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (isSelectionMode) {
+                    HapticFeedback.selectionClick();
+                    widget.onSelectToggle?.call();
+                  } else if (_isSlidOpen) {
+                    _closeSlide();
+                  } else {
+                    widget.onTap();
+                  }
+                },
+                // 移动端整行长按已交给「拾起拖拽」识别器；这里再挂长按识别器，
+                // 两者都在 500ms 判定并互相把对方踢出竞技场，菜单与拖拽只能随机生效。
+                onLongPress: (!useDragHandleFor(theme.platform) && !isSelectionMode)
+                    ? null
+                    : () {
+                        if (isSelectionMode) {
+                          HapticFeedback.selectionClick();
+                          widget.onSelectToggle?.call();
+                        } else if (_isSlidOpen) {
+                          _closeSlide();
+                        } else {
+                          widget.onLongPress(_cardKey);
+                        }
+                      },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      todo.title.isEmpty ? '待办事项' : todo.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
+                        fontSize: 15.5,
+                        color: isDone ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5) : colorScheme.onSurface,
+                      ),
+                    ),
+                    if (todo.isRecurring || todo.reminderTime != null || todo.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (todo.isRecurring) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.repeat, size: 11, color: colorScheme.primary),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    todo.repeatRuleLabel,
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          if (todo.reminderTime != null) ...[
+                            Icon(Icons.alarm, size: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                            const SizedBox(width: 3),
+                            Text(
+                              todo.reminderTime!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          if (todo.description.isNotEmpty)
+                            Expanded(
+                              child: Text(
+                                todo.description,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // 桌面/Web 保留行尾手柄：鼠标按下即拖，比按住 500ms 顺手
+            if (widget.isDraggable && !isSelectionMode && useDragHandleFor(theme.platform))
+              ReorderableDragStartListener(
+                index: widget.index,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Center(
+                      child: Icon(
+                        Icons.drag_indicator,
+                        size: 18,
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

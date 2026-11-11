@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:qnote_flutter/core/ai/anthropic_protocol.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 
 class ModelFetchService {
@@ -25,6 +26,10 @@ class ModelFetchService {
     // 如果是 Gemini 并且 baseUrl 为空，使用官方 API 端点
     if (vendorId == 'gemini' && cleanedBaseUrl.isEmpty) {
       cleanedBaseUrl = 'https://generativelanguage.googleapis.com';
+    }
+    // Anthropic 同理：官方基址内置，同时把「粘了完整端点」的地址归一化
+    if (vendorId == 'anthropic') {
+      cleanedBaseUrl = anthropicBaseUrl(cleanedBaseUrl.isEmpty ? anthropicDefaultBaseUrl : cleanedBaseUrl);
     }
 
     String path = modelsEndpoint.trim();
@@ -82,6 +87,10 @@ class ModelFetchService {
         headers['Authorization'] = 'Bearer ${apiKey.trim()}';
       } else if (authType == 'query' && apiKey != null) {
         queryParameters['key'] = apiKey.trim();
+      } else if (authType == 'x_api_key' && apiKey != null) {
+        // Anthropic Messages 的模型列表同样用 x-api-key + 版本头鉴权
+        headers['x-api-key'] = apiKey.trim();
+        headers['anthropic-version'] = anthropicApiVersion;
       }
     }
 

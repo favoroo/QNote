@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -183,6 +184,13 @@ class _DiaryItemState extends State<DiaryItem> {
 
   /// 正文与图片相对标签 pill 的左侧缩进，避免视觉上“凸出”在标签外
   static const _contentIndent = 4.0;
+
+  // 正文解析用的正则提到类静态：这几条过去写在 `_buildSingleTagContent` 的循环里，
+  // 等于每张卡片每次重建都重新编译一遍（时间线一屏十几张卡、滚动时反复重建），
+  // 正则编译本身不便宜。内容和语义完全一致，只是不再重复构造。
+  static final _keyNoisePattern = RegExp(r'[\s\(_\)（）\-:]+');
+  static final _fieldPairPattern = RegExp(r'([^:：,，;；|｜]+)([:：])\s*([^,，;；|｜]+)([,，;；|｜]?)');
+  static final _edgeSeparatorPattern = RegExp(r'^[，,;；|｜\s]+|[，,;；|｜\s]+$');
 
   IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
 
@@ -488,250 +496,253 @@ class _DiaryItemState extends State<DiaryItem> {
     final tagColor = _tagColor(record.displayTag);
     final hasMultipleTags = record.tagEntries.length > 1;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 48,
-            child: Stack(
-              alignment: Alignment.topCenter,
-              children: [
-                Positioned(
-                  top: 0,
-                  bottom: 0,
-                  child: Container(width: 2, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                ),
-                Positioned(
-                  top: 0,
-                  child: Semantics(
-                    label: '长按拖动调整时间',
-                    child: SizedBox(
-                      key: widget.timeDragHandleKey,
-                      width: 48,
-                      height: 48,
-                      child: Stack(
-                        alignment: Alignment.topCenter,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: AnimatedScale(
-                              scale: isTimeDragging ? 1.12 : 1,
+    // 轴线画在 Row 之外、由 Stack 拉满整卡高度，而不是给整张卡片套
+    // IntrinsicHeight：后者会让每张卡多付一次完整的内在尺寸测量（时间线视口里
+    // 常有十几张卡，滚动与拖动时每帧都要付），而 Stack 的 Positioned 只按已有
+    // 高度铺开，没有额外布局 pass。
+    return Stack(
+      children: [
+        // 竖轴线：48 宽的左栏居中，2 宽 → 左边距 23
+        Positioned(
+          left: 23,
+          top: 0,
+          bottom: 0,
+          child: Container(width: 2, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 48,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Semantics(
+                  label: '长按拖动调整时间',
+                  child: SizedBox(
+                    key: widget.timeDragHandleKey,
+                    width: 48,
+                    height: 48,
+                    child: Stack(
+                      alignment: Alignment.topCenter,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: AnimatedScale(
+                            scale: isTimeDragging ? 1.12 : 1,
+                            duration: const Duration(milliseconds: 140),
+                            curve: Curves.easeOut,
+                            child: AnimatedContainer(
                               duration: const Duration(milliseconds: 140),
-                              curve: Curves.easeOut,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 140),
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface,
-                                  shape: BoxShape.circle,
-                                  border: isTimeDragging
-                                      ? Border.all(color: tagColor.withValues(alpha: 0.55), width: 1.5)
-                                      : null,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: isTimeDragging
-                                          ? tagColor.withValues(alpha: 0.28)
-                                          : Colors.black.withValues(alpha: 0.05),
-                                      blurRadius: isTimeDragging ? 10 : 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Center(
-                                  child: Container(
-                                    width: 24,
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      color: tagColor.withValues(alpha: 0.1),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(_tagIcon(record.displayTag), size: 14, color: tagColor),
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface,
+                                shape: BoxShape.circle,
+                                border: isTimeDragging
+                                    ? Border.all(color: tagColor.withValues(alpha: 0.55), width: 1.5)
+                                    : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: isTimeDragging
+                                        ? tagColor.withValues(alpha: 0.28)
+                                        : Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: isTimeDragging ? 10 : 4,
+                                    offset: const Offset(0, 2),
                                   ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: tagColor.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(_tagIcon(record.displayTag), size: 14, color: tagColor),
                                 ),
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 16, right: 12),
-              child: GestureDetector(
-                onTap: onTap,
-                // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q」，普通卡片含「给小Q/编辑/删除」）
-                onLongPress: _showActionMenu,
-                behavior: HitTestBehavior.opaque,
-                child: AnimatedOpacity(
-                  opacity: isTimeDragging ? 0.24 : 1,
-                  duration: const Duration(milliseconds: 140),
-                  child: AnimatedScale(
-                    scale: isTimeDragging ? 0.97 : 1,
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16, right: 12),
+                child: GestureDetector(
+                  onTap: onTap,
+                  // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q」，普通卡片含「给小Q/编辑/删除」）
+                  onLongPress: _showActionMenu,
+                  behavior: HitTestBehavior.opaque,
+                  child: AnimatedOpacity(
+                    opacity: isTimeDragging ? 0.24 : 1,
                     duration: const Duration(milliseconds: 140),
-                    curve: Curves.easeOut,
-                    child: AnimatedGradientBorder(
-                      isAnimating: isExtracting,
-                      borderRadius: 16,
-                      strokeWidth: 2,
-                      child: Container(
-                        key: _effectiveCardKey,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isExtracting ? Colors.transparent : tagColor.withValues(alpha: 0.15),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: tagColor.withValues(alpha: 0.03),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
+                    child: AnimatedScale(
+                      scale: isTimeDragging ? 0.97 : 1,
+                      duration: const Duration(milliseconds: 140),
+                      curve: Curves.easeOut,
+                      child: AnimatedGradientBorder(
+                        isAnimating: isExtracting,
+                        borderRadius: 16,
+                        strokeWidth: 2,
+                        child: Container(
+                          key: _effectiveCardKey,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isExtracting ? Colors.transparent : tagColor.withValues(alpha: 0.15),
                             ),
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.01),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            SingleChildScrollView(
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildHeader(
-                                    theme,
-                                    tagColor,
-                                    categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
-                                        ? record.displayTag
-                                        : null,
-                                  ),
-                                  if (_isHealthDailySummary)
-                                    _buildHealthDailySummaryCard(theme, tagColor)
-                                  else if (hasMultipleTags)
-                                    _buildMultiTagSections(theme)
-                                  else ...[
-                                    _buildTagAndFieldsRow(theme, tagColor),
-                                    _buildSingleTagContent(theme, tagColor),
-                                  ],
-                                  if (record.photos.isNotEmpty)
-                                    Builder(
-                                      builder: (context) {
-                                        final screenWidth = MediaQuery.of(context).size.width;
-                                        final maxWidth = screenWidth - 132 - _contentIndent;
-                                        const spacing = 6.0;
-                                        final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
-                                        return Padding(
-                                          padding: const EdgeInsets.only(left: _contentIndent, top: 4),
-                                          child: Wrap(
-                                            spacing: spacing,
-                                            runSpacing: spacing,
-                                            children: record.photos.asMap().entries.map((entry) {
-                                              final index = entry.key;
-                                              final photo = entry.value;
-                                              return GestureDetector(
-                                                behavior: HitTestBehavior.opaque,
-                                                onTap: () {
-                                                  Navigator.of(context).push(
-                                                    MaterialPageRoute(
-                                                      builder: (_) => FullScreenImageGallery(
-                                                        images: record.photos,
-                                                        initialIndex: index,
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                                child: UnifiedImage(
-                                                  imagePath: photo,
-                                                  width: itemWidth,
-                                                  height: itemWidth,
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                              );
-                                            }).toList(),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                ],
+                            boxShadow: [
+                              BoxShadow(
+                                color: tagColor.withValues(alpha: 0.03),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
                               ),
-                            ),
-                            if (onAiExtract != null && !_isHealthDailySummary)
-                              Positioned(
-                                bottom: -22,
-                                right: -24,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: isUndoable ? onUndo : onAiExtract,
-                                  onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        color: theme.colorScheme.surface,
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: (isUndoable ? theme.colorScheme.error : tagColor).withValues(
-                                              alpha: 0.2,
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.01),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              SingleChildScrollView(
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildHeader(
+                                      theme,
+                                      tagColor,
+                                      categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
+                                          ? record.displayTag
+                                          : null,
+                                    ),
+                                    if (_isHealthDailySummary)
+                                      _buildHealthDailySummaryCard(theme, tagColor)
+                                    else if (hasMultipleTags)
+                                      _buildMultiTagSections(theme)
+                                    else ...[
+                                      _buildTagAndFieldsRow(theme, tagColor),
+                                      _buildSingleTagContent(theme, tagColor),
+                                    ],
+                                    if (record.photos.isNotEmpty)
+                                      Builder(
+                                        builder: (context) {
+                                          final screenWidth = MediaQuery.of(context).size.width;
+                                          final maxWidth = screenWidth - 132 - _contentIndent;
+                                          const spacing = 6.0;
+                                          final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
+                                          return Padding(
+                                            padding: const EdgeInsets.only(left: _contentIndent, top: 4),
+                                            child: Wrap(
+                                              spacing: spacing,
+                                              runSpacing: spacing,
+                                              children: record.photos.asMap().entries.map((entry) {
+                                                final index = entry.key;
+                                                final photo = entry.value;
+                                                return GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
+                                                  onTap: () {
+                                                    Navigator.of(context).push(
+                                                      MaterialPageRoute(
+                                                        builder: (_) => FullScreenImageGallery(
+                                                          images: record.photos,
+                                                          initialIndex: index,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: UnifiedImage(
+                                                    imagePath: photo,
+                                                    width: itemWidth,
+                                                    height: itemWidth,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                );
+                                              }).toList(),
                                             ),
-                                            blurRadius: 6,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
+                                          );
+                                        },
                                       ),
-                                      child: isUndoable
-                                          ? (undoAnimation != null
-                                                ? AnimatedBuilder(
-                                                    animation: undoAnimation!,
-                                                    builder: (context, child) {
-                                                      return Stack(
-                                                        alignment: Alignment.center,
-                                                        children: [
-                                                          SizedBox(
-                                                            width: 28,
-                                                            height: 28,
-                                                            child: CustomPaint(
-                                                              painter: _UndoCountdownPainter(
-                                                                progress: undoAnimation!.value,
-                                                                color: theme.colorScheme.error,
+                                  ],
+                                ),
+                              ),
+                              if (onAiExtract != null && !_isHealthDailySummary)
+                                Positioned(
+                                  bottom: -22,
+                                  right: -24,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: isUndoable ? onUndo : onAiExtract,
+                                    onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.surface,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: (isUndoable ? theme.colorScheme.error : tagColor).withValues(
+                                                alpha: 0.2,
+                                              ),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: isUndoable
+                                            ? (undoAnimation != null
+                                                  ? AnimatedBuilder(
+                                                      animation: undoAnimation!,
+                                                      builder: (context, child) {
+                                                        return Stack(
+                                                          alignment: Alignment.center,
+                                                          children: [
+                                                            SizedBox(
+                                                              width: 28,
+                                                              height: 28,
+                                                              child: CustomPaint(
+                                                                painter: _UndoCountdownPainter(
+                                                                  progress: undoAnimation!.value,
+                                                                  color: theme.colorScheme.error,
+                                                                ),
                                                               ),
                                                             ),
-                                                          ),
-                                                          child!,
-                                                        ],
-                                                      );
-                                                    },
-                                                    child: Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
-                                                  )
-                                                : Icon(Icons.undo, size: 14, color: theme.colorScheme.error))
-                                          : isExtracting
-                                          ? Center(
-                                              child: SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child: CircularProgressIndicator(strokeWidth: 2.0, color: tagColor),
-                                              ),
-                                            )
-                                          : Icon(Icons.auto_awesome, size: 16, color: tagColor),
+                                                            child!,
+                                                          ],
+                                                        );
+                                                      },
+                                                      child: Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
+                                                    )
+                                                  : Icon(Icons.undo, size: 14, color: theme.colorScheme.error))
+                                            : isExtracting
+                                            ? Center(
+                                                child: SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(strokeWidth: 2.0, color: tagColor),
+                                                ),
+                                              )
+                                            : Icon(Icons.auto_awesome, size: 16, color: tagColor),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -739,9 +750,9 @@ class _DiaryItemState extends State<DiaryItem> {
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -799,7 +810,10 @@ class _DiaryItemState extends State<DiaryItem> {
             ),
             child: Text(
               categoryTag,
-              style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: AppContrast.onColor(primaryTagColor),
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -889,10 +903,13 @@ class _DiaryItemState extends State<DiaryItem> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showIcon) ...[Icon(icon, size: 12, color: Colors.white), const SizedBox(width: 4)],
+            if (showIcon) ...[Icon(icon, size: 12, color: AppContrast.onColor(color)), const SizedBox(width: 4)],
             Text(
               entry.name,
-              style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: AppContrast.onColor(color),
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -1048,7 +1065,7 @@ class _DiaryItemState extends State<DiaryItem> {
     };
 
     String normalizeKey(String key) {
-      return key.trim().toLowerCase().replaceAll(RegExp(r'[\s\(_\)（）\-:]+'), '');
+      return key.trim().toLowerCase().replaceAll(_keyNoisePattern, '');
     }
 
     for (final entry in record.tagEntries) {
@@ -1086,8 +1103,7 @@ class _DiaryItemState extends State<DiaryItem> {
       }
 
       // 支持逗号、分号及竖线(| / ｜)拆分多项属性与详细指标
-      final regExp = RegExp(r'([^:：,，;；|｜]+)([:：])\s*([^,，;；|｜]+)([,，;；|｜]?)');
-      final matches = regExp.allMatches(trimmedLine);
+      final matches = _fieldPairPattern.allMatches(trimmedLine);
 
       if (matches.isEmpty) {
         displayLines.add(trimmedLine);
@@ -1129,7 +1145,7 @@ class _DiaryItemState extends State<DiaryItem> {
       }
 
       if (lastIndex < trimmedLine.length) {
-        final suffix = trimmedLine.substring(lastIndex).trim().replaceAll(RegExp(r'^[，,;；|｜\s]+|[，,;；|｜\s]+$'), '');
+        final suffix = trimmedLine.substring(lastIndex).trim().replaceAll(_edgeSeparatorPattern, '');
         if (suffix.isNotEmpty) {
           final normSuffix = normalizeKey(suffix);
           bool suffixShouldSkip = false;

@@ -1,15 +1,20 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:qnote_flutter/core/router/app_router.dart';
+
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/chat_image_dedupe.dart';
+import 'package:qnote_flutter/core/utils/q_bubble_layout.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
@@ -17,21 +22,66 @@ import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
 import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
-import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
-import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
+import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
-/// 全局小Q快捷对话面板。
+part 'floating_q_bubble.dart';
+part 'floating_q_panel.dart';
+
+// ==========================================
+// 悬浮小Q：居中弹窗 + 可拖动气泡
+//
+// 同一套容器在「触发点 / 气泡 / 弹窗」三种尺寸间变形：
+// - 打开：从最近一次点按位置（或气泡 Rect）长成居中弹窗；
+// - 最小化：弹窗缩成气泡，内容先淡出、幽灵气泡最后落位；
+// - 关闭（×）：轻量缩放淡出，会话彻底丢弃。
+//
+// 弹窗挂在 MaterialApp.builder 的全局 Stack 上，覆盖所有路由页面。
+// ==========================================
+
+/// 打开变形：容器从触发点长到弹窗，走 M3 强调型空间曲线。
+const Duration _kMorphOpenDuration = Duration(milliseconds: 460);
+
+/// 最小化变形：比打开更快，不拖住用户继续编辑。
+const Duration _kMorphCloseDuration = Duration(milliseconds: 320);
+
+/// × 彻底关闭的缩放淡出。
+const Duration _kDialogExitDuration = Duration(milliseconds: 220);
+
+/// 气泡松手磁吸回边的时长。
+const Duration _kBubbleSnapDuration = Duration(milliseconds: 220);
+
+/// 弹窗圆角（与记录面板保持同一视觉语言）。
+const double _kDialogRadius = 24;
+
+/// 弹窗最大宽高：手机铺满左右 16 边距，桌面/平板不无限拉宽。
+const double _kDialogMaxWidth = 560;
+const double _kDialogMaxHeight = 640;
+const double _kDialogMinHeight = 240;
+const double _kDialogVerticalMargin = 24;
+
+/// 气泡尺寸与贴边留白。
+///
+/// 尺寸与落点算法统一放在 `lib/core/utils/q_bubble_layout.dart`：那里把「避开
+/// 导航栏 + 右下角悬浮按钮行」写成可单测的常量与纯函数，避免再次出现
+/// 「气泡压住时间线智能提取按钮」这类只能靠真机发现的叠压问题。
+const double _kBubbleSize = kQBubbleSize;
+
+/// 默认气泡位置需越过底部导航栏与页面右下角的悬浮按钮行。
+const double _kBubbleDefaultBottomGap = kQBubbleDefaultBottomGap;
+
+/// 全局小Q快捷对话层。
 ///
 /// 挂载于 MaterialApp.builder 的 Stack 上层，覆盖所有路由页面（含编辑器）。
-/// 面板由底部导航栏中央停靠按钮长按唤起，或由「给小Q」选区菜单、
-/// 外部分享自动唤起。模态弹窗打开时淡出隐藏。
+/// 弹窗由底部导航栏中央按钮长按唤起，或由「给小Q」选区菜单、外部分享自动唤起。
+/// 模态弹窗打开时淡出隐藏。
 class FloatingQOverlay extends ConsumerStatefulWidget {
   const FloatingQOverlay({super.key});
 
@@ -39,8 +89,40 @@ class FloatingQOverlay extends ConsumerStatefulWidget {
   ConsumerState<FloatingQOverlay> createState() => _FloatingQOverlayState();
 }
 
-class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
-  static const double _edgeMargin = 12;
+class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with TickerProviderStateMixin {
+  /// 量弹窗卡片最终 Rect 的 Key（容器变形目标）。
+  final GlobalKey _surfaceKey = GlobalKey();
+
+  late final AnimationController _morphController;
+  late final CurvedAnimation _rectProgress;
+  late final CurvedAnimation _scrimProgress;
+  late final CurvedAnimation _ghostProgress;
+
+  /// × 关闭时独立的退出控制器：变形动画此时可能停在 1。
+  late final AnimationController _exitController;
+
+  /// 正在播放「弹窗 → 气泡」的反向变形。
+  bool _minimizing = false;
+
+  /// 正在播放 × 的缩放淡出。
+  bool _closing = false;
+
+  /// 打开变形起点（点按位置或气泡 Rect），在动画开始时固定。
+  Rect? _openOrigin;
+
+  /// 内容窗口暂时量不到弹窗 Rect 时（首帧/收回后段）留一份上次值。
+  Rect? _lastDialogRect;
+
+  /// 拖动气泡期间的实时位置（松手后清空，交给 provider 的最终位置）。
+  Offset? _liveBubblePosition;
+
+  Size _lastSize = Size.zero;
+  EdgeInsets _lastPadding = EdgeInsets.zero;
+  double _lastKeyboardInset = 0;
+  bool _reduceMotion = false;
+
+  /// 路由变化导致的隐藏：直接落终态，不在新页面上方播放退场动画。
+  bool _navigationHiding = false;
 
   GoRouter? _router;
   late final VoidCallback _routeListener;
@@ -52,6 +134,28 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
   @override
   void initState() {
     super.initState();
+    _morphController = AnimationController(
+      vsync: this,
+      duration: _kMorphOpenDuration,
+      reverseDuration: _kMorphCloseDuration,
+    )..addStatusListener(_handleMorphStatus);
+    _rectProgress = CurvedAnimation(
+      parent: _morphController,
+      curve: AppCurves.emphasizedSpatial,
+      reverseCurve: AppCurves.exit,
+    );
+    _scrimProgress = CurvedAnimation(
+      parent: _morphController,
+      curve: const Interval(0, 0.45, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.25, 1, curve: Curves.easeIn),
+    );
+    _ghostProgress = CurvedAnimation(
+      parent: _morphController,
+      curve: const Interval(0, 0.25, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.55, 0.9, curve: Curves.easeOut),
+    );
+    _exitController = AnimationController(vsync: this, duration: _kDialogExitDuration)
+      ..addStatusListener(_handleExitStatus);
 
     _router = ref.read(routerProvider);
     _location = _router!.routerDelegate.currentConfiguration.uri.toString();
@@ -62,12 +166,17 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
       // 避免 setState / 修改 Provider 在 build 期抛异常
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || uri == _location) return;
+        // 页面已经切走：弹窗/气泡直接落终态，不要跨页面播放退场
+        _navigationHiding = true;
         setState(() => _location = uri);
-        // 路由变化同步基础上下文：签名变化即驱动会话重置（切页丢失历史）；
-        // 同时收起面板（面板不跨页面跟随，缩短全屏点击层的存活时间）
+        // 路由变化同步基础上下文：签名变化驱动临时会话 park/restore；
+        // 同时把新页面若有会话自动收成气泡（弹窗不跨页面跟随）
         ref.read(floatingQProvider.notifier)
           ..setBaseContext(QPageContext.fromLocation(uri))
           ..closePanel();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _navigationHiding = false;
+        });
       });
     };
     _router!.routerDelegate.addListener(_routeListener);
@@ -82,81 +191,81 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
   void dispose() {
     _panelSelection.dispose();
     _router?.routerDelegate.removeListener(_routeListener);
+    _morphController.removeStatusListener(_handleMorphStatus);
+    _exitController.removeStatusListener(_handleExitStatus);
+    _morphController.dispose();
+    _exitController.dispose();
+    _rectProgress.dispose();
+    _scrimProgress.dispose();
+    _ghostProgress.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // 精确订阅：流式期间 provider 以约 60ms 节奏刷新消息/流式文本，
-    // 这里只关心面板开关，避免整条悬浮层（含面板输入框）被高频重建，
-    // 否则 Web 端中文输入法组合态会被反复打断（删字复活、光标错乱）
-    final panelOpen = ref.watch(floatingQProvider.select((s) => s.panelOpen));
-    final anchorAlignment = ref.watch(floatingQProvider.select((s) => s.anchorAlignment));
-    final size = MediaQuery.sizeOf(context);
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+  void _handleMorphStatus(AnimationStatus status) {
+    if (status != AnimationStatus.dismissed || !_minimizing) return;
+    // 气泡落到目标位置：先补上默认位置，再切真实气泡，避免下一帧跳位
+    _ensureBubblePosition();
+    setState(() => _minimizing = false);
+  }
 
-    return ValueListenableBuilder<int>(
-      valueListenable: floatingQModalCount,
-      builder: (context, modalCount, _) {
-        // 模态弹窗（对话框/底部弹层）打开时隐藏悬浮层。
-        // 改用淡出+禁点而非整层卸载：隐藏/恢复获得淡入淡出过渡，
-        // 面板开着时弹出补充提问框也不再丢失输入框文本
-        final layerHidden = modalCount > 0;
+  void _handleExitStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    setState(() => _closing = false);
+    _exitController.reset();
+  }
 
-        return IgnorePointer(
-          ignoring: layerHidden,
-          child: AnimatedOpacity(
-            opacity: layerHidden ? 0 : 1,
-            duration: AppDurations.normal,
-            curve: Curves.easeOut,
-            child: Stack(
-              children: [
-                // 面板打开时的全屏透明点击层：点面板外收起面板（任务继续后台执行）；
-                // 常驻 + IgnorePointer 切换，避免面板收起动画期间瞬间失去点击遮挡
-                Positioned.fill(
-                  child: IgnorePointer(
-                    ignoring: !panelOpen,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => ref.read(floatingQProvider.notifier).closePanel(),
-                    ),
-                  ),
-                ),
-                // 对话面板：弹出时自底边向上生长淡入，
-                // 收起时缩回淡出，动画结束才卸载（autofocus 输入框每次打开重新挂载）
-                Positioned(
-                  left: _edgeMargin,
-                  right: _edgeMargin,
-                  // 钳制上限：即使 inset 异常残留，面板也不会被推出屏幕外
-                  bottom: math.min(keyboardInset, size.height * 0.55) + 12,
-                  child: AnimatedSwitcher(
-                    duration: AppDurations.normal,
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeIn,
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: ScaleTransition(
-                        // 以触发按钮的底边锚点缩放：视觉上从长按的按钮位置向上展开
-                        alignment: anchorAlignment,
-                        scale: Tween<double>(begin: 0.88, end: 1).animate(animation),
-                        child: child,
-                      ),
-                    ),
-                    child: panelOpen
-                        ? SizedBox(
-                            key: const ValueKey('panel'),
-                            width: double.infinity,
-                            child: _FloatingQPanel(onUndo: _handleUndo, panelSelection: _panelSelection),
-                          )
-                        : const SizedBox.shrink(key: ValueKey('panel-hidden')),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  /// 打开：从气泡（或最近点按位置）容器变形到居中弹窗。
+  void _startOpen({required bool fromBubble}) {
+    _minimizing = false;
+    _closing = false;
+    if (_reduceMotion) {
+      _morphController.value = 1;
+      return;
+    }
+    _openOrigin = fromBubble ? _bubbleRect(_lastSize, _lastPadding, _lastKeyboardInset) : _tapOriginRect();
+    _morphController.forward(from: 0);
+  }
+
+  /// 最小化：弹窗反向缩成气泡（内容先收口，幽灵最后落位）。
+  void _startMinimize() {
+    if (_reduceMotion) {
+      _morphController.value = 0;
+      _ensureBubblePosition();
+      setState(() => _minimizing = false);
+      return;
+    }
+    setState(() => _minimizing = true);
+    _morphController.reverse();
+  }
+
+  /// × 彻底关闭：轻量缩放淡出，会话已由 provider 清空。
+  void _startClose() {
+    _minimizing = false;
+    if (_reduceMotion) {
+      _morphController.value = 0;
+      return;
+    }
+    setState(() => _closing = true);
+    _exitController.forward(from: 0);
+  }
+
+  /// 最小化时若还没有气泡位置，落到默认右下角（导航栏上方）
+  void _ensureBubblePosition() {
+    if (ref.read(floatingQProvider).bubblePosition != null) return;
+    final position = _defaultBubblePosition(_lastSize, _lastPadding, _lastKeyboardInset);
+    ref
+        .read(floatingQProvider.notifier)
+        .setBubblePosition(_clampBubblePosition(position, _lastSize, _lastPadding, _lastKeyboardInset));
+  }
+
+  void _handleMinimize() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    ref.read(floatingQProvider.notifier).minimizePanel();
+  }
+
+  void _handleBubbleTap() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    ref.read(floatingQProvider.notifier).openPanel();
   }
 
   /// 撤回小Q本会话的全部修改并提示结果
@@ -172,887 +281,367 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> {
       Toast.success(toastContext, '已撤回小Q的 $restored 处修改');
     }
   }
-}
 
-// ---------------------------------------------------------------------------
-// 快捷对话面板
-// ---------------------------------------------------------------------------
-class _FloatingQPanel extends ConsumerStatefulWidget {
-  final Future<void> Function() onUndo;
-  final ValueNotifier<String?> panelSelection;
+  /// × 关闭：执行中或还有可撤回修改时先二次确认，避免误关后无法撤回。
+  Future<void> _handleClose() async {
+    final state = ref.read(floatingQProvider);
+    if (state.runActive || state.pendingUndoCount > 0) {
+      final dialogContext = rootNavigatorKey.currentContext;
+      if (dialogContext == null || !dialogContext.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: dialogContext,
+        builder: (context) => AlertDialog(
+          title: const Text('结束本次对话？'),
+          content: Text(state.runActive ? '小Q 正在处理任务，关闭会中止本次任务。' : '小Q 已修改 ${state.pendingUndoCount} 处内容，关闭后将无法在这里撤回。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('结束对话')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    ref.read(floatingQProvider.notifier).dismissActiveSession();
+  }
 
-  const _FloatingQPanel({required this.onUndo, required this.panelSelection});
-
-  @override
-  ConsumerState<_FloatingQPanel> createState() => _FloatingQPanelState();
-}
-
-class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
-  static const double _panelMaxHeight = 380;
+  /// 展开全页面：把临时对话提升为正式会话，再进入 /ai 继续聊。
+  Future<void> _handleExpand() async {
+    final notifier = ref.read(floatingQProvider.notifier);
+    if (ref.read(floatingQProvider).runActive) {
+      Toast.info(context, '小Q正在处理任务，结束或中止后再展开');
+      return;
+    }
+    try {
+      await notifier.promoteActiveSession();
+      if (!mounted) return;
+      // 不能用 context.push：本浮层挂在 MaterialApp.builder 的 Stack 上，位于路由
+      // Navigator 之外，context 里没有 GoRouter 的 InheritedWidget，会直接抛
+      // 「No GoRouter found in context」。initState 已缓存 router 实例，走它。
+      final router = _router;
+      if (router == null) {
+        Toast.error(context, '展开失败：导航未就绪，请重试');
+        return;
+      }
+      router.push('/ai');
+    } catch (e) {
+      if (mounted) {
+        Toast.error(context, '展开失败：$e');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // 精确订阅上下文徽章文案：流式刷新（约 60ms 一次）不重建面板外壳，
-    // 输入行 TextField 因此保持稳定（Web 端中文 IME 组合态不被打断）
-    final contextLabel = ref.watch(
-      floatingQProvider.select((s) => s.contextLabel ?? s.effectiveContext?.displayLabel ?? '当前页面'),
-    );
-    // 外部分享场景：内容来自第三方应用，与当前页面无关，不展示位置徽章
-    final externalShareMode = ref.watch(floatingQProvider.select((s) => s.externalShareMode));
+    // 精确订阅：流式期间 provider 以约 60ms 节奏刷新消息/流式文本，
+    // 这里只关心形态与气泡状态，避免整条悬浮层被高频重建。
+    final mode = ref.watch(floatingQProvider.select((s) => s.panelMode));
+    final runActive = ref.watch(floatingQProvider.select((s) => s.runActive));
+    final unread = ref.watch(floatingQProvider.select((s) => s.unreadReply));
+    final bubblePosition = ref.watch(floatingQProvider.select((s) => s.bubblePosition));
 
-    return Material(
-      color: theme.colorScheme.surface,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.large),
-        side: BorderSide(color: theme.colorScheme.outlineVariant, width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: _panelMaxHeight),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(theme, externalShareMode ? '小Q' : '小Q · $contextLabel'),
-            Divider(height: 1, color: theme.colorScheme.outlineVariant),
-            Flexible(child: _PanelMessages(panelSelection: widget.panelSelection)),
-            // 撤回横幅自管显隐（内部按 phase 判定），常驻面板不自动消失
-            _PanelUndoBanner(onUndo: widget.onUndo),
-            // 「给小Q」引用卡片自管显隐（无挂起引用时不占位）
-            const _PanelQuoteCard(),
-            // 分享图片附件条自管显隐（无附件时不占位）
-            const _PanelImageAttachments(),
-            Divider(height: 1, color: theme.colorScheme.outlineVariant),
-            const _PanelInputRow(),
-          ],
-        ),
-      ),
-    );
-  }
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    _lastSize = size;
+    _lastPadding = padding;
+    _lastKeyboardInset = keyboardInset;
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
 
-  Widget _buildHeader(ThemeData theme, String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
-      child: Row(
-        children: [
-          const QAvatar(size: 22, withBackground: true),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          // 自动朗读开关：与语音设置页同一真源，随手切换不必跳设置
-          const AutoReadToggleButton(),
-          // 手动开启新对话（会话按界面自动隔离，这里是主动重置）
-          Tooltip(
-            message: '开启新对话',
-            child: IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              color: theme.colorScheme.onSurfaceVariant,
-              onPressed: () => ref.read(floatingQProvider.notifier).newConversation(),
-            ),
-          ),
-          // 展开到 /ai 全页面（完整对话体验）
-          Tooltip(
-            message: '展开全页面',
-            child: IconButton(
-              icon: const Icon(Icons.open_in_full_rounded, size: 18),
-              color: theme.colorScheme.onSurfaceVariant,
-              onPressed: () {
-                ref.read(floatingQProvider.notifier).closePanel();
-                context.push('/ai');
+    ref.listen<FloatingQPanelMode>(floatingQProvider.select((s) => s.panelMode), (prev, next) {
+      if (prev == next) return;
+      if (_navigationHiding) {
+        _morphController.value = next == FloatingQPanelMode.panel ? 1 : 0;
+        _minimizing = false;
+        _closing = false;
+        return;
+      }
+      if (next == FloatingQPanelMode.panel) {
+        _startOpen(fromBubble: prev == FloatingQPanelMode.bubble);
+      } else if (next == FloatingQPanelMode.bubble) {
+        _startMinimize();
+      } else if (next == FloatingQPanelMode.hidden) {
+        _startClose();
+      }
+    });
+
+    return ValueListenableBuilder<int>(
+      valueListenable: floatingQModalCount,
+      builder: (context, modalCount, _) {
+        // 模态弹窗（对话框/底部弹层）打开时隐藏悬浮层。
+        // 改用淡出+禁点而非整层卸载：隐藏/恢复获得淡入淡出过渡，
+        // 面板开着时弹出补充提问框也不再丢失输入框文本。
+        final layerHidden = modalCount > 0;
+
+        return IgnorePointer(
+          ignoring: layerHidden,
+          child: AnimatedOpacity(
+            opacity: layerHidden ? 0 : 1,
+            duration: AppDurations.normal,
+            curve: Curves.easeOut,
+            child: AnimatedBuilder(
+              animation: Listenable.merge([_morphController, _exitController]),
+              builder: (context, _) {
+                final showDialog = _closing || _minimizing || mode == FloatingQPanelMode.panel;
+                final showBubble = mode == FloatingQPanelMode.bubble && !_minimizing && !_closing;
+                return Stack(
+                  children: [
+                    if (showDialog) ..._buildDialogLayers(size, padding, keyboardInset, bubblePosition),
+                    if (showBubble)
+                      _FloatingQBubble(
+                        key: const ValueKey('floating-q-bubble'),
+                        position: _bubblePosition(size, padding, keyboardInset, bubblePosition),
+                        working: runActive,
+                        unread: unread,
+                        onTap: _handleBubbleTap,
+                        onDragUpdate: (position) {
+                          final clamped = _clampBubblePosition(position, size, padding, keyboardInset);
+                          setState(() => _liveBubblePosition = clamped);
+                        },
+                        onDragEnd: () {
+                          final current =
+                              _liveBubblePosition ?? _bubblePosition(size, padding, keyboardInset, bubblePosition);
+                          final snapped = _snapBubble(current, size);
+                          setState(() => _liveBubblePosition = null);
+                          ref.read(floatingQProvider.notifier).setBubblePosition(snapped);
+                        },
+                      ),
+                  ],
+                );
               },
             ),
           ),
-          Tooltip(
-            message: '收起',
-            child: IconButton(
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
-              color: theme.colorScheme.onSurfaceVariant,
-              onPressed: () => ref.read(floatingQProvider.notifier).closePanel(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 撤回横幅：任务完成后常驻展示（见 [_PanelUndoBanner]）
-}
-
-/// 消息区：会话消息 + 流式占位（状态文案与流式正文互斥展示）。
-///
-/// 独立订阅 provider：流式期间（约 60ms 一次）只有本组件重建，
-/// 面板外壳与输入行保持稳定，输入框 IME 组合态不被打断
-class _PanelMessages extends ConsumerStatefulWidget {
-  final ValueNotifier<String?> panelSelection;
-
-  const _PanelMessages({required this.panelSelection});
-
-  @override
-  ConsumerState<_PanelMessages> createState() => _PanelMessagesState();
-}
-
-class _PanelMessagesState extends ConsumerState<_PanelMessages> {
-  final _listController = ScrollController();
-
-  /// 是否自动贴底跟随；流式期间用户向上拖动查看历史后暂停，
-  /// 拖回底部附近自动恢复（与 ThoughtTailScrollView 同一套约定）
-  bool _follow = true;
-
-  bool get _isNearBottom =>
-      !_listController.hasClients || _listController.position.maxScrollExtent - _listController.offset < 24;
-
-  @override
-  void dispose() {
-    _listController.dispose();
-    super.dispose();
-  }
-
-  /// 贴底仅在跟随态执行：jumpTo 会先终止当前滚动活动，流式期间每 60ms
-  /// 一次的无条件贴底会持续打断用户拖拽，表现为回复时列表滑不动
-  void _scrollToBottom({bool force = false}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_listController.hasClients) return;
-      if (!force && !_follow) return;
-      _listController.jumpTo(_listController.position.maxScrollExtent);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final fq = ref.watch(floatingQProvider);
-
-    // 消息流或流式状态变化（正文、状态文案、实时思考内容）时滚到底部：
-    // 新消息落地是离散事件，强制恢复跟随并贴底；流式增量仅在跟随态贴底
-    ref.listen<FloatingQState>(floatingQProvider, (prev, next) {
-      final newMessage = prev?.messages.length != next.messages.length;
-      if (newMessage ||
-          prev?.streamingText != next.streamingText ||
-          prev?.statusText != next.statusText ||
-          prev?.streamingThought != next.streamingThought) {
-        if (newMessage) _follow = true;
-        _scrollToBottom(force: newMessage);
-      }
-    });
-
-    final children = <Widget>[];
-
-    // 生图卡片已展示过的图片键：面板气泡用纯 Text 渲染正文，模型回显的
-    // `![image](<路径>)` 需要按同一套规则剥离，否则会把原始标记文本露出来
-    final generatedImageKeys = collectGeneratedImageKeys(fq.messages);
-
-    for (final message in fq.messages) {
-      // 生图结果直接以图片卡预览；其余工具中间消息不在快捷面板展示
-      //（进行中的操作由状态行实时表达）
-      if (message.role == 'tool') {
-        final imageCard = _buildGeneratedImageCard(theme, message);
-        if (imageCard != null) children.add(_buildEntrance(imageCard));
-        continue;
-      }
-      final displayContent = message.role == 'assistant'
-          ? stripRedundantImageMarkdown(message.content, generatedImageKeys)
-          : message.content;
-      // Agent 每轮发起工具调用前会生成「正文为空、仅承载 tool_calls」的 assistant
-      // 中转消息（与 AI 主页面 isChatTimelineVisibleMessage 过滤的是同一类消息），
-      // 快捷面板不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
-      if (displayContent.trim().isEmpty) continue;
-      children.add(_buildEntrance(_buildBubble(theme, message, displayContent)));
-      // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
-      if (message.role == 'assistant' &&
-          message.uiDetails?['type'] == 'turn_limit' &&
-          message.uiDetails?['handled'] != true) {
-        children.add(
-          AgentTurnLimitActions(
-            enabled: fq.phase != FloatingQPhase.working,
-            onContinue: () => ref.read(floatingQProvider.notifier).continueTask(),
-            onPause: () => ref.read(floatingQProvider.notifier).pauseTask(),
-          ),
-        );
-      }
-    }
-
-    if (fq.statusText != null) {
-      children.add(_buildEntrance(_buildStatusLine(theme, fq.statusText!, fq.streamingStartedAt)));
-      // 思考中状态行下方挂实时思考尾随区（模型返回思考增量时才出现）
-      final liveThought = fq.streamingThought;
-      if (liveThought != null && liveThought.trim().isNotEmpty) {
-        children.add(_buildEntrance(_buildThoughtTail(theme, liveThought.trim())));
-      }
-    } else if (fq.streamingText != null && fq.streamingText!.isNotEmpty) {
-      children.add(
-        _buildEntrance(
-          _buildAssistantBubble(theme, stripRedundantImageMarkdown(fq.streamingText!, generatedImageKeys)),
-        ),
-      );
-    }
-
-    if (children.isEmpty) {
-      final externalShareMode = ref.watch(floatingQProvider.select((s) => s.externalShareMode));
-      final effectiveContext = ref.watch(floatingQProvider.select((s) => s.effectiveContext));
-      final emptyPrompt = externalShareMode
-          ? '让小Q整理或提炼这段内容。'
-          : (effectiveContext?.emptyPromptHint ?? QPageContext.fallback.emptyPromptHint);
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        child: Text(
-          emptyPrompt,
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.4),
-        ),
-      );
-    }
-
-    return SelectionArea(
-      // 跟踪面板内选中文本，供面板内「给小Q」工具栏引用
-      onSelectionChanged: (selection) {
-        widget.panelSelection.value = selection?.plainText;
-      },
-      contextMenuBuilder: (context, selectableRegionState) {
-        final selectedText = widget.panelSelection.value;
-        final hasSelection = selectedText != null && selectedText.isNotEmpty;
-        return QTextSelectionToolbar(
-          anchors: selectableRegionState.contextMenuAnchors,
-          buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems.where((item) => item.type != ContextMenuButtonType.custom),
-            if (hasSelection)
-              ContextMenuButtonItem(
-                label: '给小Q',
-                onPressed: () {
-                  selectableRegionState.hideToolbar();
-                  ref
-                      .read(floatingQProvider.notifier)
-                      .openWithQuote(
-                        QTextQuote(
-                          source: QQuoteSource.chat,
-                          sourceId: '',
-                          sourceTitle: '对话内容',
-                          quotedText: selectedText,
-                        ),
-                      );
-                },
-              ),
-          ],
         );
       },
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification is ScrollUpdateNotification && notification.dragDetails != null) {
-            _follow = false; // 用户主动拖动即暂停贴底跟随
-          }
-          if (_isNearBottom) _follow = true; // 拖回底部附近自动恢复
-          return false;
-        },
-        child: ListView(
-          controller: _listController,
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          children: children,
-        ),
-      ),
     );
   }
 
-  /// 新内容入场微动画：淡入 + 轻微上移归位。
-  ///
-  /// tween 终值恒定，仅在气泡/状态行首次挂载时播放一次；流式期间约 60ms
-  /// 一次的高频重建复用同一 Element，不会重复触发动画，也不产生持续重建
-  Widget _buildEntrance(Widget child) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: AppDurations.fast,
-      curve: Curves.easeOut,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.translate(
-          // 位移只作用于绘制阶段，不影响布局，避免列表抖动
-          offset: Offset(0, 8 * (1 - t)),
-          child: child,
-        ),
-      ),
-      child: child,
-    );
-  }
+  // ==========================================
+  // 变形层
+  // ==========================================
 
-  /// 生图工具结果卡：在快捷面板中直接预览生成的图片
-  ///
-  /// 仅渲染 generate_image 成功且带路径的结果，其余工具消息返回 null 由调用方跳过。
-  Widget? _buildGeneratedImageCard(ThemeData theme, ChatMessage message) {
-    if (message.toolName != 'generate_image' || message.isError == true) {
-      return null;
-    }
-    final paths = (message.uiDetails?['paths'] as List?)?.whereType<String>().toList() ?? const [];
-    if (paths.isEmpty) return null;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8, right: 48),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppRadius.medium),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (index, path) in paths.indexed)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 180),
-                  child: ChatImageView(
-                    imagePath: path,
-                    galleryImages: paths,
-                    galleryIndex: index,
-                    borderRadius: const BorderRadius.all(Radius.circular(6)),
-                    onSendToQ: _sendImageToQ,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 「给小Q」：把面板里的图片挂到附件区，供用户就这张图继续追问
-  void _sendImageToQ(String path) {
-    HapticFeedback.lightImpact();
-    ref.read(floatingQProvider.notifier).addAttachedImage(path);
-    Toast.info(context, '已添加到附件');
-  }
-
-  Widget _buildBubble(ThemeData theme, ChatMessage message, String displayContent) {
-    if (message.role == 'user') {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8, left: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary,
-            borderRadius: BorderRadius.circular(AppRadius.medium),
-          ),
-          child: Text(displayContent, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onPrimary)),
-        ),
-      );
-    }
-    return _buildAssistantBubble(theme, displayContent);
-  }
-
-  Widget _buildAssistantBubble(ThemeData theme, String content) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8, right: 48),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppRadius.medium),
-        ),
-        child: Text(content, style: theme.textTheme.bodyMedium),
-      ),
-    );
-  }
-
-  /// 等待态状态行：状态文案 + 思考形变无限符号动画 + 已用时递增计数
-  /// （遵循小Q等待态显示规范，不用闪烁光标）
-  Widget _buildStatusLine(ThemeData theme, String statusText, DateTime? startedAt) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Flexible(
-            child: Text(
-              statusText,
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 7),
-            child: MorphingInfinity(size: 20, strokeWidth: 1.5, color: theme.colorScheme.primary),
-          ),
-          StreamingElapsedText(
-            startedAt: startedAt,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 实时思考尾随区：裸文本不加容器（面板空间小，保持轻量），
-  /// 限高 2 行自动贴底滚动，随思考增量流式更新
-  Widget _buildThoughtTail(ThemeData theme, String thought) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: ThoughtTailScrollView(
-        text: thought,
-        maxHeight: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-        textStyle: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-          fontStyle: FontStyle.italic,
-          height: 1.4,
-        ),
-      ),
-    );
-  }
-}
-
-/// 撤回横幅：有待撤回变更时常驻展示，不再自动过期——
-/// 直到撤回执行（phase 回 idle）或发起新任务（变更跨任务累加）
-class _PanelUndoBanner extends ConsumerWidget {
-  final Future<void> Function() onUndo;
-
-  const _PanelUndoBanner({required this.onUndo});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    // 记录按结构相等比较：仅撤回相关状态变化时才重建横幅
-    final (showBanner, undoCount, isUndoing) = ref.watch(
-      floatingQProvider.select((s) => (s.phase == FloatingQPhase.countdown, s.pendingUndoCount, s.isUndoing)),
-    );
-    // 高度展开/收合 + 淡入：横幅插入/移除不再硬切挤压消息区；
-    // 空态保持等宽零高，宽度稳定后只做高度方向动画
-    return AnimatedSize(
-      duration: AppDurations.normal,
-      curve: Curves.easeOut,
-      child: AnimatedSwitcher(
-        duration: AppDurations.fast,
-        switchInCurve: Curves.easeOut,
-        child: showBanner
-            ? Container(
-                key: const ValueKey('undo-banner'),
-                width: double.infinity,
-                color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(Icons.history_rounded, size: 16, color: theme.colorScheme.tertiary),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '可撤回 $undoCount 处修改',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onTertiaryContainer),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: isUndoing ? null : onUndo,
-                      child: isUndoing
-                          ? LoadingRing(size: 14, strokeWidth: 1.8, color: theme.colorScheme.primary)
-                          : const Text('撤回'),
-                    ),
-                  ],
-                ),
-              )
-            : const SizedBox(width: double.infinity, key: ValueKey('undo-empty')),
-      ),
-    );
-  }
-}
-
-/// 引用卡片：展示用户通过「给小Q」挂起的引用内容（来源 + 位置 + 文本摘录），
-/// 发送时随任务注入给小Q；× 可随时移除。null 时不渲染、不占位，
-/// 且只精确订阅 pendingQuote，流式刷新不重建本卡片外的面板结构
-class _PanelQuoteCard extends ConsumerWidget {
-  const _PanelQuoteCard();
-
-  IconData _sourceIcon(QQuoteSource source) => switch (source) {
-    QQuoteSource.note => Icons.sticky_note_2_outlined,
-    QQuoteSource.diary => Icons.schedule_rounded,
-    QQuoteSource.journal => Icons.menu_book_outlined,
-    QQuoteSource.todo => Icons.task_alt_outlined,
-    QQuoteSource.external => Icons.share_outlined,
-    QQuoteSource.chat => Icons.chat_bubble_outline_rounded,
-  };
-
-  String _sourceLabel(QQuoteSource source) => switch (source) {
-    QQuoteSource.note => '笔记',
-    QQuoteSource.diary => '流水记录',
-    QQuoteSource.journal => '每日日记',
-    QQuoteSource.todo => '待办',
-    QQuoteSource.external => '外部分享',
-    QQuoteSource.chat => '对话内容',
-  };
-
-  /// 标题行：日记来源为日期字符串不加书名号，其余《标题》+ 位置；
-  /// 外部分享无实体标题，只展示来源标签
-  String _titleLine(QTextQuote quote) {
-    final label = _sourceLabel(quote.source);
-    // 外部分享与对话内容无实体标题，只展示来源标签
-    if (quote.source == QQuoteSource.external || quote.source == QQuoteSource.chat) {
-      return label;
-    }
-    final title = quote.source == QQuoteSource.journal ? '$label ${quote.sourceTitle}' : '$label《${quote.sourceTitle}》';
-    final location = quote.locationDesc;
-    return location == null ? title : '$title · $location';
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final quote = ref.watch(floatingQProvider.select((s) => s.pendingQuote));
-    if (quote == null) {
-      return const SizedBox.shrink(key: ValueKey('quote-card-hidden'));
-    }
-    final theme = Theme.of(context);
-    return Container(
-      key: const ValueKey('quote-card'),
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.fromLTRB(10, 8, 2, 8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppRadius.medium),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Icon(_sourceIcon(quote.source), size: 16, color: theme.colorScheme.primary),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  List<Widget> _buildDialogLayers(Size size, EdgeInsets padding, double keyboardInset, Offset? bubblePosition) {
+    if (_closing) {
+      final fade = Curves.easeInCubic.transform(_exitController.value);
+      return [
+        Opacity(
+          opacity: (1 - fade).clamp(0.0, 1.0),
+          child: Transform.scale(
+            scale: 0.96 + 0.04 * (1 - fade),
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                Text(
-                  _titleLine(quote),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  quote.quotedText.isEmpty
-                      ? (quote.locationDesc?.contains('光标') == true ? '（光标处，可让小Q续写或编辑）' : '（引用完整内容）')
-                      : quote.quotedText,
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                _buildScrim(1, allowDismiss: false),
+                _buildContentWindow(Offset.zero & size, 0, size, clip: false, interactive: false),
               ],
             ),
           ),
-          const SizedBox(width: 4),
-          SizedBox(
-            width: 28,
-            height: 28,
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              iconSize: 16,
-              tooltip: '移除引用',
-              icon: const Icon(Icons.close_rounded),
-              color: theme.colorScheme.onSurfaceVariant,
-              onPressed: () => ref.read(floatingQProvider.notifier).clearPendingQuote(),
+        ),
+      ];
+    }
+
+    // 打开动画结束：容器/幽灵撤掉，内容窗口铺满全屏并停止裁切。
+    // 面板 widget 必须始终待在同一个带 Key 的窗口里 —— 直接把它挪到
+    // Stack 的另一层会让 Element 重新挂载，输入框和焦点会被重置。
+    final isSteady = !_minimizing && _morphController.value >= 1;
+    if (isSteady) {
+      return [_buildScrim(1, allowDismiss: true), _buildContentWindow(Offset.zero & size, 0, size, clip: false)];
+    }
+
+    final dialogRect = _readDialogRect() ?? _lastDialogRect ?? _fallbackDialogRect(size, padding, keyboardInset);
+    _lastDialogRect = dialogRect;
+    final bubbleRect = _bubbleRect(size, padding, keyboardInset, bubblePosition);
+    final origin = _minimizing ? bubbleRect : (_openOrigin ?? dialogRect);
+    final t = _rectProgress.value;
+    final rect = Rect.lerp(origin, dialogRect, t)!;
+    final radius = lerpDouble(_kBubbleSize / 2, _kDialogRadius, t)!;
+    final scheme = Theme.of(context).colorScheme;
+    final color = Color.lerp(scheme.primary, scheme.surface, t)!;
+    final shadow = _lerpShadow(_bubbleShadow(scheme), _dialogShadow(scheme), t);
+    final ghostOpacity = (1 - _ghostProgress.value).clamp(0.0, 1.0);
+    final ghostRect = _minimizing ? bubbleRect : (_openOrigin ?? bubbleRect);
+
+    return [
+      _buildScrim(_scrimProgress.value, allowDismiss: !_minimizing && !_closing && t > 0.4),
+      _buildContainer(rect, radius, color, shadow),
+      _buildContentWindow(rect, radius, size, interactive: !_minimizing && !_closing),
+      if (ghostOpacity > 0.001)
+        Positioned.fromRect(
+          key: const ValueKey('floating-q-bubble-ghost'),
+          rect: ghostRect,
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: ghostOpacity,
+              child: _FloatingQBubbleVisual(working: ref.read(floatingQProvider).runActive, unread: false),
             ),
           ),
-        ],
+        ),
+    ];
+  }
+
+  /// 自绘遮罩。
+  ///
+  /// 变形路径把路由的 barrier 设成透明，遮罩跟着容器一起动；[allowDismiss]
+  /// 为 false 时仍然吃掉点击（空回调），防止穿透到下面的页面。
+  Widget _buildScrim(double opacity, {required bool allowDismiss}) {
+    return Positioned.fill(
+      key: const ValueKey('floating-q-scrim'),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: allowDismiss ? _handleMinimize : () {},
+        child: ColoredBox(color: Colors.black.withValues(alpha: 0.4 * opacity.clamp(0.0, 1.0).toDouble())),
       ),
     );
   }
-}
 
-/// 分享图片附件条：外部分享图片唤起时展示待发送缩略图，× 可移除，
-/// 发送时随消息一次性携带。无附件时不占位；挂载与 pendingImages 变化
-/// 两个时机消费挂起图片（面板未开时收到分享走前者，面板开着再分享走后者）
-class _PanelImageAttachments extends ConsumerStatefulWidget {
-  const _PanelImageAttachments();
-
-  @override
-  ConsumerState<_PanelImageAttachments> createState() => _PanelImageAttachmentsState();
-}
-
-class _PanelImageAttachmentsState extends ConsumerState<_PanelImageAttachments> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _consumePending();
-    });
-  }
-
-  void _consumePending() => ref.read(floatingQProvider.notifier).consumePendingImages();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final images = ref.watch(floatingQProvider.select((s) => s.attachedImages));
-
-    ref.listen<List<String>?>(floatingQProvider.select((s) => s.pendingImages), (prev, next) {
-      if (next != null && next.isNotEmpty) _consumePending();
-    });
-
-    if (images.isEmpty) {
-      return const SizedBox.shrink(key: ValueKey('image-attachments-hidden'));
-    }
-
-    return Container(
-      key: const ValueKey('image-attachments'),
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: SizedBox(
-        height: 64,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: images.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 8),
-          itemBuilder: (context, index) {
-            final path = images[index];
-            return Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(AppRadius.medium),
-                  child: UnifiedImage(imagePath: path, width: 64, height: 64, fit: BoxFit.cover),
-                ),
-                // 移除按钮叠在缩略图右上角内侧（外溢负偏移会被 ListView 裁剪）
-                Positioned(
-                  top: 2,
-                  right: 2,
-                  child: GestureDetector(
-                    onTap: () => ref.read(floatingQProvider.notifier).removeAttachedImage(path),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface.withValues(alpha: 0.85),
-                        shape: BoxShape.circle,
-                      ),
-                      padding: const EdgeInsets.all(2),
-                      child: Icon(Icons.close_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+  /// 变形容器的底色/圆角/阴影。
+  Widget _buildContainer(Rect rect, double radius, Color color, BoxShadow shadow) {
+    return Positioned.fromRect(
+      key: const ValueKey('floating-q-morph-slot'),
+      rect: rect,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          key: const ValueKey('floating-q-morph'),
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(radius), boxShadow: [shadow]),
         ),
       ),
     );
   }
-}
 
-/// 输入行：输入框 + 发送/停止按钮。
-///
-/// 输入控制器在本组件内持有，且只订阅"是否工作中"：
-/// 流式刷新不重建 TextField，保证光标位置与 IME 组合态稳定
-/// （修复"删除文字后再打字，刚删的字又出现"的 Web 端输入异常）
-class _PanelInputRow extends ConsumerStatefulWidget {
-  const _PanelInputRow();
-
-  @override
-  ConsumerState<_PanelInputRow> createState() => _PanelInputRowState();
-}
-
-class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
-  final _inputController = TextEditingController();
-  final _focusNode = FocusNode();
-
-  @override
-  void dispose() {
-    _inputController.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  /// 物理键盘 Enter 拦截：无 Shift 即发送，Shift+Enter 放行默认换行。
-  /// 软键盘行为由 textInputAction:newline 交给 IME（移动端发送一律点按钮）；
-  /// 返回 handled 后 engine 不再把 Enter 送入文本输入通道，避免发送与换行叠加
-  KeyEventResult _handleEnterKey(FocusNode node, KeyEvent event) {
-    final isEnter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
-    if (!isEnter || event is KeyRepeatEvent) return KeyEventResult.ignored;
-    if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
-    if (event is KeyDownEvent) _handleSend();
-    return KeyEventResult.handled;
-  }
-
-  Future<void> _handleSend() async {
-    final fq = ref.read(floatingQProvider);
-    final text = _inputController.text.trim();
-    // 工作中由发送按钮转为停止按钮，键盘发送路径直接忽略（不清空已输入内容）
-    if (fq.phase == FloatingQPhase.working) return;
-    if (text.isEmpty && fq.attachedImages.isEmpty) return;
-    // 未配置模型：先弹引导，不清空输入
-    if (!await AiRoleService.instance.hasUsableConfigForRole('assistant')) {
-      if (mounted) {
-        await showNoModelConfiguredDialog(context, scene: '小Q 对话');
-      }
-      return;
-    }
-    HapticFeedback.lightImpact();
-    _inputController.clear();
-    // 发送后无需手动滚动：消息区的 listen 监听到消息数变化会自动滚到底部
-    await ref.read(floatingQProvider.notifier).send(text);
-  }
-
-  void _handleStop() {
-    HapticFeedback.mediumImpact();
-    ref.read(floatingQProvider.notifier).stop();
-  }
-
-  /// 长按发送按钮切换小Q模型：与 AI 主页面共用同一 assistant 角色绑定，
-  /// 切换为全局生效（主页面同步更新）
-  Future<void> _handleModelSelect() async {
-    HapticFeedback.mediumImpact();
-    final selected = await showAssistantModelSelector(context, ref);
-    if (selected == null || !mounted) return;
-    Toast.success(context, '小Q模型已切换为 ${selected.name}');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isWorking = ref.watch(floatingQProvider.select((s) => s.phase == FloatingQPhase.working));
-    final externalShareMode = ref.watch(floatingQProvider.select((s) => s.externalShareMode));
-    final effectiveContext = ref.watch(floatingQProvider.select((s) => s.effectiveContext));
-    final inputHint = externalShareMode
-        ? '告诉小Q如何处理这段内容…'
-        : (effectiveContext?.inputHintText ?? QPageContext.fallback.inputHintText);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 常用提示词按钮（点击弹出列表，选中即覆盖输入框）
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () => showQuickPromptDialog(context, ref, (text) {
-                _inputController.text = text;
-                _inputController.selection = TextSelection.fromPosition(TextPosition(offset: text.length));
-                _focusNode.requestFocus();
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bolt_rounded, size: 15, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Text(
-                      '常用提示词',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
+  /// 把整页弹窗内容裁进变形窗口。
+  ///
+  /// [OverflowBox] 让弹窗仍按最终全屏尺寸布局，[Transform.translate] 再把
+  /// 整页平移回全屏原点——外层 Positioned 的偏移和这里的平移恰好抵消，所以
+  /// 窗口怎么变都不会触发弹窗重新布局，量到的卡片 Rect 也始终是最终值。
+  Widget _buildContentWindow(Rect rect, double radius, Size size, {bool clip = true, bool interactive = true}) {
+    return Positioned.fromRect(
+      key: const ValueKey('floating-q-window'),
+      rect: rect,
+      child: IgnorePointer(
+        // 收回/关闭途中内容已经不可见，不能再让点击命中弹窗里的按钮。
+        ignoring: !interactive,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          clipBehavior: clip ? Clip.antiAlias : Clip.none,
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: size.width,
+            maxWidth: size.width,
+            minHeight: size.height,
+            maxHeight: size.height,
+            child: Transform.translate(
+              offset: -rect.topLeft,
+              child: RepaintBoundary(child: _buildDialogPage(size)),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Focus(
-                  onKeyEvent: _handleEnterKey,
-                  child: TextField(
-                    controller: _inputController,
-                    focusNode: _focusNode,
-                    autofocus: true,
-                    minLines: 1,
-                    maxLines: 4,
-                    // 软键盘回车键为「换行」，发送一律点右侧按钮；
-                    // 桌面/Web 物理回车在 _handleEnterKey 拦截发送，Shift+Enter 换行
-                    textInputAction: TextInputAction.newline,
-                    style: theme.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      hintText: inputHint,
-                      hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                      ),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.medium),
-                        borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.medium),
-                        borderSide: BorderSide(color: theme.colorScheme.outlineVariant),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.medium),
-                        borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // 小Q工作中：发送按钮变为中断/停止按钮（与 AI 主页面交互一致）；
-              // 空闲态长按可切换模型（工作中为停止按钮，不响应长按）。
-              // 工作态外圈环绕极简细线 LoadingRing 缺口圆环旋转动画，中央为精致圆角停止方块
-              isWorking
-                  ? Tooltip(
-                      message: '中止当前操作',
-                      child: InkWell(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          _handleStop();
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: theme.brightness == Brightness.dark ? 0.14 : 0.08,
-                            ),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: theme.brightness == Brightness.dark ? 0.22 : 0.14,
-                              ),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              LoadingRing(size: 30, strokeWidth: 1.3, color: theme.colorScheme.primary),
-                              Container(
-                                width: 9.5,
-                                height: 9.5,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary,
-                                  borderRadius: BorderRadius.circular(2.0),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )
-                  : IconButton.filled(
-                      onPressed: _handleSend,
-                      onLongPress: _handleModelSelect,
-                      tooltip: '发送（长按切换模型）',
-                      style: IconButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                      ),
-                      icon: const Icon(Icons.arrow_upward_rounded, size: 22),
-                    ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
+
+  /// 居中弹窗页面：按最终屏幕坐标布局，供变形窗口裁切/量取。
+  Widget _buildDialogPage(Size size) {
+    final padding = MediaQuery.paddingOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomInset = math.max(padding.bottom, keyboardInset);
+    final availableHeight = math.max(
+      _kDialogMinHeight,
+      size.height - padding.top - _kDialogVerticalMargin * 2 - bottomInset,
+    );
+    final dialogHeight = math.min(_kDialogMaxHeight, availableHeight);
+    final dialogWidth = math.min(_kDialogMaxWidth, math.max(0.0, size.width - 32));
+    // 会话切换时面板必须重挂载：输入草稿从 provider 回填，避免串到另一段对话
+    final sessionKey = ref.watch(floatingQProvider.select((s) => (s.contextSignature, s.externalShareMode)));
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, padding.top + _kDialogVerticalMargin, 16, bottomInset + _kDialogVerticalMargin),
+      child: Center(
+        child: SizedBox(
+          width: dialogWidth,
+          height: dialogHeight,
+          child: _FloatingQPanel(
+            key: ValueKey('floating-q-panel-${sessionKey.$1 ?? 'none'}-${sessionKey.$2}'),
+            surfaceKey: _surfaceKey,
+            entrance: _morphController,
+            panelSelection: _panelSelection,
+            onUndo: _handleUndo,
+            onMinimize: _handleMinimize,
+            onClose: _handleClose,
+            onExpand: _handleExpand,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Rect? _readDialogRect() {
+    final box = _surfaceKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  /// 首帧/收回后段量不到弹窗 Rect 时的兜底，必须和 [_buildDialogPage] 的布局一致。
+  Rect _fallbackDialogRect(Size size, EdgeInsets padding, double keyboardInset) {
+    final bottomInset = math.max(padding.bottom, keyboardInset);
+    final availableHeight = math.max(
+      _kDialogMinHeight,
+      size.height - padding.top - _kDialogVerticalMargin * 2 - bottomInset,
+    );
+    final height = math.min(_kDialogMaxHeight, availableHeight);
+    final width = math.min(_kDialogMaxWidth, math.max(0.0, size.width - 32));
+    final top = padding.top + _kDialogVerticalMargin + (availableHeight - height) / 2;
+    final left = (size.width - width) / 2;
+    return Rect.fromLTWH(left, top, width, height);
+  }
+
+  /// 打开变形的起点：优先最近一次点按位置（从手指/按钮处展开），
+  /// 程序化唤起（外部分享等）没有点按时落到屏幕底部中央。
+  Rect _tapOriginRect() {
+    final tap = ref.read(floatingQProvider.notifier).lastPointerDown;
+    if (tap != null) {
+      return Rect.fromCenter(center: tap, width: _kBubbleSize, height: _kBubbleSize);
+    }
+    return Rect.fromCenter(
+      center: Offset(_lastSize.width / 2, _lastSize.height - _kBubbleDefaultBottomGap),
+      width: _kBubbleSize,
+      height: _kBubbleSize,
+    );
+  }
+
+  Rect _bubbleRect(Size size, EdgeInsets padding, double keyboardInset, [Offset? committed]) {
+    return _bubblePosition(size, padding, keyboardInset, committed) & const Size(_kBubbleSize, _kBubbleSize);
+  }
+
+  Offset _bubblePosition(Size size, EdgeInsets padding, double keyboardInset, Offset? committed) {
+    final base = _liveBubblePosition ?? committed ?? _defaultBubblePosition(size, padding, keyboardInset);
+    return _clampBubblePosition(base, size, padding, keyboardInset);
+  }
+
+  Offset _defaultBubblePosition(Size size, EdgeInsets padding, double keyboardInset) {
+    final bottomInset = math.max(padding.bottom, keyboardInset);
+    return defaultQBubblePosition(size, bottomInset: bottomInset);
+  }
+
+  Offset _clampBubblePosition(Offset position, Size size, EdgeInsets padding, double keyboardInset) {
+    final bottomInset = math.max(padding.bottom, keyboardInset);
+    return clampQBubblePosition(position, size, topInset: padding.top, bottomInset: bottomInset);
+  }
+
+  Offset _snapBubble(Offset position, Size size) => snapQBubbleX(position, size);
+}
+
+BoxShadow _dialogShadow(ColorScheme scheme) {
+  return BoxShadow(color: scheme.shadow.withValues(alpha: 0.16), blurRadius: 32, offset: const Offset(0, 12));
+}
+
+BoxShadow _bubbleShadow(ColorScheme scheme) {
+  return BoxShadow(color: scheme.primary.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 6));
+}
+
+BoxShadow _lerpShadow(BoxShadow from, BoxShadow to, double t) {
+  return BoxShadow(
+    color: Color.lerp(from.color, to.color, t)!,
+    offset: Offset.lerp(from.offset, to.offset, t)!,
+    blurRadius: lerpDouble(from.blurRadius, to.blurRadius, t)!,
+    spreadRadius: lerpDouble(from.spreadRadius, to.spreadRadius, t)!,
+  );
 }

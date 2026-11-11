@@ -18,20 +18,38 @@ void main() {
   const pixelsPerMinute = 48 / 30;
 
   group('resolveTimelineDragDeltaMinutes', () {
+    final anchor = DateTime(2026, 11, 11, 9, 43);
+
     test('无位移不产生时间变化', () {
-      expect(resolveTimelineDragDeltaMinutes(contentDeltaPx: 0, pixelsPerMinute: pixelsPerMinute), 0);
+      expect(resolveTimelineDragDeltaMinutes(anchor: anchor, contentDeltaPx: 0, pixelsPerMinute: pixelsPerMinute), 0);
     });
 
-    test('位移按 5 分钟吸附', () {
-      // 8px ≈ 5 分钟
-      expect(resolveTimelineDragDeltaMinutes(contentDeltaPx: 8, pixelsPerMinute: pixelsPerMinute), 5);
-      expect(resolveTimelineDragDeltaMinutes(contentDeltaPx: -8, pixelsPerMinute: pixelsPerMinute), -5);
-      // 48px = 一个完整节点 = 30 分钟
-      expect(resolveTimelineDragDeltaMinutes(contentDeltaPx: 48, pixelsPerMinute: pixelsPerMinute), 30);
+    test('位移不足半个档位时保持原时间', () {
+      // 8px ≈ 5 分钟，不足 2.5 分钟（4px）视为手抖
+      expect(resolveTimelineDragDeltaMinutes(anchor: anchor, contentDeltaPx: 3, pixelsPerMinute: pixelsPerMinute), 0);
+      expect(resolveTimelineDragDeltaMinutes(anchor: anchor, contentDeltaPx: -3, pixelsPerMinute: pixelsPerMinute), 0);
+    });
+
+    test('按拖动后的绝对时刻吸附到 5 分钟整点', () {
+      // 09:43 + 5 分钟 = 09:48 → 吸附到 09:50
+      expect(resolveTimelineDragDeltaMinutes(anchor: anchor, contentDeltaPx: 8, pixelsPerMinute: pixelsPerMinute), 7);
+      // 09:43 - 5 分钟 = 09:38 → 吸附到 09:40
+      expect(resolveTimelineDragDeltaMinutes(anchor: anchor, contentDeltaPx: -8, pixelsPerMinute: pixelsPerMinute), -3);
+      // 48px = 一个完整节点 = 30 分钟：09:43 + 30 分钟 = 10:13 → 吸附到 10:15
+      expect(resolveTimelineDragDeltaMinutes(anchor: anchor, contentDeltaPx: 48, pixelsPerMinute: pixelsPerMinute), 32);
+    });
+
+    test('整点档位原时间按 5 分钟步进', () {
+      final onGrid = DateTime(2026, 11, 11, 9, 45);
+      expect(resolveTimelineDragDeltaMinutes(anchor: onGrid, contentDeltaPx: 8, pixelsPerMinute: pixelsPerMinute), 5);
+      expect(resolveTimelineDragDeltaMinutes(anchor: onGrid, contentDeltaPx: -8, pixelsPerMinute: pixelsPerMinute), -5);
     });
 
     test('非法像素比例兜底为 1', () {
-      expect(resolveTimelineDragDeltaMinutes(contentDeltaPx: 10, pixelsPerMinute: 0), 10);
+      expect(
+        resolveTimelineDragDeltaMinutes(anchor: DateTime(2026, 11, 11, 9, 45), contentDeltaPx: 10, pixelsPerMinute: 0),
+        10,
+      );
     });
   });
 
@@ -45,6 +63,14 @@ void main() {
       expect(shift.time, DateTime(2026, 11, 11, 9, 30));
       expect(shift.startTime, isNull);
       expect(shift.endTime, isNull);
+    });
+
+    test('非整点记录拖动后落在 5 分钟整点', () {
+      final record = _record(time: DateTime(2026, 11, 11, 9, 43));
+      final shift = resolveTimelineTimeShift(record: record, contentDeltaPx: 8, pixelsPerMinute: pixelsPerMinute);
+
+      expect(shift.deltaMinutes, 7);
+      expect(shift.time, DateTime(2026, 11, 11, 9, 50));
     });
 
     test('时间段记录整体平移且时长不变', () {

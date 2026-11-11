@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -9,17 +10,22 @@ import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/utils/note_file_type.dart';
+import 'package:qnote_flutter/core/utils/note_tree_drag.dart';
+import 'package:qnote_flutter/core/utils/reorder_gesture.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
+import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
+
+part 'notes_page_tiles.dart';
 
 class NotesPage extends ConsumerStatefulWidget {
   const NotesPage({super.key});
@@ -38,11 +44,36 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   /// 当前正在被拖拽的项（用于优雅展示底部「移至根目录」靶区等全局联动）
   FlattenedItem? _activeDraggingItem;
 
+  /// 拖拽期间的最新指针全局坐标。
+  ///
+  /// 不再依赖 DragTarget 的 details.offset（那是浮层左上角，会被拖拽锚点偏移），
+  /// 页面级命中测试用真实指针位置才能准确区分 before/inside/after。
+  Offset? _lastDragGlobal;
+
+  /// 当前指针命中的行与行内落点
+  String? _hoverTargetId;
+  ReorderDropPosition? _hoverPosition;
+  bool _isRootDropHover = false;
+
+  /// 起拖位置与「是否真的移动过」：长按原地不动时不要自动滚动列表
+  Offset? _dragStartGlobal;
+  bool _dragMoved = false;
+
+  /// 可见行的渲染盒注册表，用于页面级拖拽命中测试
+  final Map<String, GlobalKey> _rowKeys = {};
+  final GlobalKey _rootDropKey = GlobalKey();
+  final GlobalKey _listViewportKey = GlobalKey();
+  final ScrollController _scrollController = ScrollController();
+
+  Timer? _autoScrollTimer;
+  Timer? _springLoadTimer;
+
   // _flattenTree 结果缓存：folders/notes 引用未变时直接返回缓存，
   // 避免每次 rebuild（拖拽 hover、选择模式切换等）重算整棵树
   List<Folder>? _lastFolders;
   List<Note>? _lastNotes;
   List<FlattenedItem>? _cachedFlattened;
+  Map<String, FlattenedItem>? _cachedFlattenedById;
 
   List<FlattenedItem> _getFlattenedItems(List<Folder> folders, List<Note> notes) {
     if (identical(folders, _lastFolders) && identical(notes, _lastNotes) && _cachedFlattened != null) {
@@ -52,12 +83,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     _lastFolders = folders;
     _lastNotes = notes;
     _cachedFlattened = result;
+    _cachedFlattenedById = {for (final item in result) item.id: item};
     return result;
   }
 
   @override
   void dispose() {
     _confirmTimer?.cancel();
+    _autoScrollTimer?.cancel();
+    _springLoadTimer?.cancel();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -147,7 +182,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Widget build(BuildContext context) {
     // noteListProvider/folderListProvider 的订阅收窄到 AppBar 全选按钮与 body
     // 两个 Consumer 内，笔记/文件夹任何变更不再重建整个页面骨架
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
         leading: _isSelectionMode
             ? IconButton(icon: const Icon(Icons.close), onPressed: _exitSelectionMode)
@@ -292,7 +327,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                             backgroundColor: _isConfirming
                                 ? Theme.of(context).colorScheme.error
                                 : Theme.of(context).colorScheme.error,
-                            foregroundColor: Colors.white,
+                            foregroundColor: Theme.of(context).colorScheme.onError,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                           ),
                           child: Row(
@@ -311,6 +346,14 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               )
             : const SizedBox(width: double.infinity, height: 0),
       ),
+    );
+
+    // 页面级 DragTarget 只负责接收「确实落手」的信号，不参与行内位置判定：
+    // 位置由页面用真实指针坐标 + 行渲染盒计算，取消拖拽时不会触发 onAccept。
+    return DragTarget<FlattenedItem>(
+      onWillAcceptWithDetails: (details) => true,
+      onAcceptWithDetails: (details) => _handleDropAccepted(details.data),
+      builder: (context, candidateData, rejectedData) => scaffold,
     );
   }
 
@@ -357,46 +400,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   List<FlattenedItem> _flattenTree(String? parentId, int depth, List<Folder> folders, List<Note> notes) {
     final List<FlattenedItem> result = [];
 
-    // 获取该层级的文件夹和笔记
-    final childFolders = folders.where((f) => f.parentId == parentId).toList();
-    final childNotes = notes.where((n) => n.folderId == parentId).toList();
-
-    final pinnedNotes = childNotes.where((n) => n.isPinned).toList();
-    final unpinnedNotes = childNotes.where((n) => !n.isPinned).toList();
-
-    final List<dynamic> sortableItems = [...unpinnedNotes, ...childFolders];
-    sortableItems.sort((a, b) {
-      final aOrder = a is Note ? a.sortOrder : (a as Folder).sortOrder;
-      final bOrder = b is Note ? b.sortOrder : (b as Folder).sortOrder;
-      if (aOrder != bOrder) {
-        return aOrder.compareTo(bOrder);
-      }
-      if (a is Note && b is Note) {
-        return b.createdAt.compareTo(a.createdAt);
-      } else if (a is Folder && b is Folder) {
-        return a.name.compareTo(b.name);
-      } else {
-        return a is Folder ? -1 : 1;
-      }
-    });
-
-    // 1. 先加入置顶的笔记
-    for (final note in pinnedNotes) {
-      result.add(
-        FlattenedItem(
-          id: note.id,
-          isFolder: false,
-          note: note,
-          depth: depth,
-          parentId: parentId,
-          isPinned: true,
-          isJournal: JournalService.isJournalNote(note.id),
-        ),
-      );
-    }
-
-    // 2. 加入排序后的可排项（文件夹和未置顶笔记）
-    for (final item in sortableItems) {
+    // 展示顺序统一由纯逻辑 buildNoteTreeLevel 决定，落点计算复用同一顺序
+    for (final item in buildNoteTreeLevel(folders: folders, notes: notes, parentId: parentId)) {
       if (item is Note) {
         result.add(
           FlattenedItem(
@@ -405,26 +410,25 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             note: item,
             depth: depth,
             parentId: parentId,
-            isPinned: false,
+            isPinned: item.isPinned,
             isJournal: JournalService.isJournalNote(item.id),
           ),
         );
-      } else {
-        final folder = item as Folder;
+      } else if (item is Folder) {
         result.add(
           FlattenedItem(
-            id: folder.id,
+            id: item.id,
             isFolder: true,
-            folder: folder,
+            folder: item,
             depth: depth,
             parentId: parentId,
             isPinned: false,
-            isJournal: JournalService.isJournalFolder(folder),
+            isJournal: JournalService.isJournalFolder(item),
           ),
         );
         // 如果文件夹展开，递归将其子孙节点也加入展平列表
-        if (folder.isExpanded) {
-          result.addAll(_flattenTree(folder.id, depth + 1, folders, notes));
+        if (item.isExpanded) {
+          result.addAll(_flattenTree(item.id, depth + 1, folders, notes));
         }
       }
     }
@@ -446,178 +450,267 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     return result;
   }
 
-  bool _isDescendantOf(String? parentId, String folderId, List<Folder> allFolders) {
-    if (parentId == null) return false;
-    if (parentId == folderId) return true;
-    final parentFolder = allFolders.where((f) => f.id == parentId).firstOrNull;
-    if (parentFolder == null) return false;
-    return _isDescendantOf(parentFolder.parentId, folderId, allFolders);
+  void _registerRow(String id, GlobalKey key) {
+    _rowKeys[id] = key;
   }
 
-  Future<void> _handleDrop({
-    required FlattenedItem draggedItem,
-    required FlattenedItem targetItem,
-    required String dropPosition,
-  }) async {
-    final now = DateTime.now();
+  void _unregisterRow(String id, GlobalKey key) {
+    // 同一 id 可能已经换成新的 State，旧 State 销毁时不能误删新注册的 key
+    if (identical(_rowKeys[id], key)) {
+      _rowKeys.remove(id);
+    }
+  }
 
-    // 1. 基本安全检查
-    if (draggedItem.id == targetItem.id) return;
+  void _handleDragStarted(FlattenedItem item) {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) => _tickAutoScroll());
+    _dragStartGlobal = _lastDragGlobal;
+    _dragMoved = false;
 
-    final allFolders = ref.read(folderListProvider).value ?? [];
+    setState(() {
+      _activeDraggingItem = item;
+      _hoverTargetId = null;
+      _hoverPosition = null;
+      _isRootDropHover = false;
+    });
 
-    // 2. 文件夹循环移动防御
-    if (draggedItem.isFolder) {
-      final isTargetDescendant = _isDescendantOf(
-        dropPosition == 'inside' ? targetItem.id : targetItem.parentId,
-        draggedItem.id,
-        allFolders,
+    final pointer = _lastDragGlobal;
+    if (pointer != null) {
+      _updateDragHover(pointer);
+    }
+  }
+
+  void _handleDragPosition(Offset globalPosition) {
+    _lastDragGlobal = globalPosition;
+    if (_activeDraggingItem == null) return;
+
+    if (!_dragMoved) {
+      final start = _dragStartGlobal;
+      if (start != null && (globalPosition - start).distance > kReorderMoveThreshold) {
+        _dragMoved = true;
+      }
+    }
+    _updateDragHover(globalPosition);
+  }
+
+  void _handleDragEnded() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
+    _springLoadTimer?.cancel();
+    _springLoadTimer = null;
+    if (!mounted) return;
+
+    setState(() {
+      _activeDraggingItem = null;
+      _lastDragGlobal = null;
+      _dragStartGlobal = null;
+      _dragMoved = false;
+      _hoverTargetId = null;
+      _hoverPosition = null;
+      _isRootDropHover = false;
+    });
+  }
+
+  void _handleDropAccepted(FlattenedItem dragged) {
+    final pointer = _lastDragGlobal;
+    if (pointer == null) return;
+
+    // 落手瞬间再按最后指针位置校准一次，避免自动滚动后沿用上一帧的悬停行
+    _updateDragHover(pointer, silent: true);
+
+    if (_isRootDropHover) {
+      HapticFeedback.lightImpact();
+      final name = dragged.isFolder ? dragged.folder?.name : dragged.note?.title;
+      unawaited(
+        _applyDrop(draggedId: dragged.id, targetId: null, position: ReorderDropPosition.after).then((ok) {
+          if (!ok || !mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已将 "${name ?? ''}" 移至根目录'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }),
       );
-      if (isTargetDescendant) return;
-    }
-
-    // 3. 确定目标 parentId
-    final String? destParentId = dropPosition == 'inside' ? targetItem.id : targetItem.parentId;
-
-    // 4. 更新 draggedItem 的 parentId 属性并通知 Provider
-    if (draggedItem.isFolder) {
-      final folder = draggedItem.folder!;
-      if (folder.parentId != destParentId) {
-        await ref
-            .read(folderListProvider.notifier)
-            .updateFolder(folder.copyWith(parentId: destParentId, clearParentId: destParentId == null, updatedAt: now));
-      }
-    } else {
-      final note = draggedItem.note!;
-      if (note.folderId != destParentId) {
-        await ref
-            .read(noteListProvider.notifier)
-            .updateNote(note.copyWith(folderId: destParentId, clearFolderId: destParentId == null, updatedAt: now));
-      }
-    }
-
-    if (dropPosition == 'inside') {
-      // 移入文件夹：给它一个最大的 sortOrder 即可
-      final allNotes = ref.read(noteListProvider).value ?? [];
-      final refreshedFolders = ref.read(folderListProvider).value ?? [];
-
-      final siblings = [
-        ...refreshedFolders.where((f) => f.parentId == destParentId && f.id != draggedItem.id),
-        ...allNotes.where((n) => n.folderId == destParentId && !n.isPinned && n.id != draggedItem.id),
-      ];
-      int maxSortOrder = -1;
-      for (final s in siblings) {
-        final order = s is Note ? s.sortOrder : (s as Folder).sortOrder;
-        if (order > maxSortOrder) {
-          maxSortOrder = order;
-        }
-      }
-
-      if (draggedItem.isFolder) {
-        final folder = refreshedFolders.firstWhere((f) => f.id == draggedItem.id);
-        await ref
-            .read(folderListProvider.notifier)
-            .updateFolder(folder.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now));
-      } else {
-        final note = allNotes.firstWhere((n) => n.id == draggedItem.id);
-        await ref
-            .read(noteListProvider.notifier)
-            .updateNote(note.copyWith(sortOrder: maxSortOrder + 1, updatedAt: now));
-      }
       return;
     }
 
-    // 对于 before 和 after，重新对 destParentId 下的可排列表排序
-    final allNotes = ref.read(noteListProvider).value ?? [];
-    final refreshedFolders = ref.read(folderListProvider).value ?? [];
+    final targetId = _hoverTargetId;
+    final position = _hoverPosition;
+    if (targetId == null || position == null) return;
 
-    final isPinnedSort =
-        !draggedItem.isFolder && draggedItem.note!.isPinned && !targetItem.isFolder && targetItem.note!.isPinned;
+    HapticFeedback.lightImpact();
+    unawaited(_applyDrop(draggedId: dragged.id, targetId: targetId, position: position));
+  }
 
-    if (isPinnedSort) {
-      final siblingPinnedNotes = allNotes
-          .where((n) => n.folderId == destParentId && n.isPinned && n.id != draggedItem.id)
-          .toList();
+  /// 统一处理所有「移动到某层级」的落库：拖拽、菜单、底部根目录胶囊共用。
+  Future<bool> _applyDrop({
+    required String draggedId,
+    required String? targetId,
+    required ReorderDropPosition position,
+  }) async {
+    final folders = ref.read(folderListProvider).value ?? [];
+    final notes = ref.read(noteListProvider).value ?? [];
+    final plan = planNoteTreeDrop(
+      folders: folders,
+      notes: notes,
+      draggedId: draggedId,
+      targetId: targetId,
+      position: position,
+    );
+    if (plan == null || plan.isEmpty) return false;
 
-      final targetIndex = siblingPinnedNotes.indexWhere((n) => n.id == targetItem.id);
-      if (targetIndex == -1) {
-        siblingPinnedNotes.add(allNotes.firstWhere((n) => n.id == draggedItem.id));
-      } else {
-        final draggedNote = allNotes.firstWhere((n) => n.id == draggedItem.id);
-        if (dropPosition == 'before') {
-          siblingPinnedNotes.insert(targetIndex, draggedNote);
-        } else {
-          siblingPinnedNotes.insert(targetIndex + 1, draggedNote);
+    try {
+      if (plan.notes.isNotEmpty) {
+        await ref.read(noteListProvider.notifier).reorderNotes(plan.notes);
+      }
+      if (plan.folders.isNotEmpty) {
+        await ref.read(folderListProvider.notifier).reorderFolders(plan.folders);
+      }
+      return true;
+    } catch (e, stackTrace) {
+      LoggerService.instance.logDatabase('笔记拖拽保存失败', level: LogLevel.error, details: '$e\n$stackTrace');
+      if (mounted) {
+        // 两项写入可能只成功了一项，统一让 Provider 回库对齐
+        ref.invalidate(noteListProvider);
+        ref.invalidate(folderListProvider);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('拖拽保存失败，请重试'), behavior: SnackBarBehavior.floating));
+      }
+      return false;
+    }
+  }
+
+  /// 用真实指针坐标在可见行中做命中测试，再按行内纵坐标解析落点。
+  void _updateDragHover(Offset globalPosition, {bool silent = false}) {
+    final dragged = _activeDraggingItem;
+    if (dragged == null) return;
+
+    // 1. 底部「移至根目录」胶囊优先，避免被下方的行抢走
+    if (dragged.parentId != null) {
+      final rootBox = _rootDropKey.currentContext?.findRenderObject() as RenderBox?;
+      if (rootBox != null && rootBox.hasSize) {
+        final rootRect = rootBox.localToGlobal(Offset.zero) & rootBox.size;
+        if (rootRect.contains(globalPosition)) {
+          _setHover(targetId: null, position: null, rootHover: true, silent: silent);
+          return;
         }
-      }
-
-      final updatedNotes = <Note>[];
-      for (int i = 0; i < siblingPinnedNotes.length; i++) {
-        updatedNotes.add(siblingPinnedNotes[i].copyWith(sortOrder: i, updatedAt: now));
-      }
-      await ref.read(noteListProvider.notifier).reorderNotes(updatedNotes);
-    } else {
-      final siblings = [
-        ...refreshedFolders.where((f) => f.parentId == destParentId && f.id != draggedItem.id),
-        ...allNotes.where((n) => n.folderId == destParentId && !n.isPinned && n.id != draggedItem.id),
-      ];
-
-      siblings.sort((a, b) {
-        final aOrder = a is Note ? a.sortOrder : (a as Folder).sortOrder;
-        final bOrder = b is Note ? b.sortOrder : (b as Folder).sortOrder;
-        if (aOrder != bOrder) {
-          return aOrder.compareTo(bOrder);
-        }
-        if (a is Note && b is Note) {
-          return b.createdAt.compareTo(a.createdAt);
-        } else if (a is Folder && b is Folder) {
-          return a.name.compareTo(b.name);
-        } else {
-          return a is Folder ? -1 : 1;
-        }
-      });
-
-      final targetIndex = siblings.indexWhere((item) {
-        if (item is Folder) return item.id == targetItem.id;
-        if (item is Note) return item.id == targetItem.id;
-        return false;
-      });
-
-      dynamic draggedObject;
-      if (draggedItem.isFolder) {
-        draggedObject = refreshedFolders.firstWhere((f) => f.id == draggedItem.id);
-      } else {
-        draggedObject = allNotes.firstWhere((n) => n.id == draggedItem.id);
-      }
-
-      if (targetIndex == -1) {
-        siblings.add(draggedObject);
-      } else {
-        if (dropPosition == 'before') {
-          siblings.insert(targetIndex, draggedObject);
-        } else {
-          siblings.insert(targetIndex + 1, draggedObject);
-        }
-      }
-
-      final updatedNotes = <Note>[];
-      final updatedFolders = <Folder>[];
-      for (int i = 0; i < siblings.length; i++) {
-        final item = siblings[i];
-        if (item is Note) {
-          updatedNotes.add(item.copyWith(sortOrder: i, updatedAt: now));
-        } else if (item is Folder) {
-          updatedFolders.add(item.copyWith(sortOrder: i, updatedAt: now));
-        }
-      }
-
-      if (updatedNotes.isNotEmpty) {
-        await ref.read(noteListProvider.notifier).reorderNotes(updatedNotes);
-      }
-      if (updatedFolders.isNotEmpty) {
-        await ref.read(folderListProvider.notifier).reorderFolders(updatedFolders);
       }
     }
+
+    // 2. 只在列表视口内命中可见行；视口外的坐标为无效落点
+    final viewportBox = _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) {
+      _setHover(targetId: null, position: null, rootHover: false, silent: silent);
+      return;
+    }
+    final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    if (!viewportRect.contains(globalPosition)) {
+      _setHover(targetId: null, position: null, rootHover: false, silent: silent);
+      return;
+    }
+
+    final folders = ref.read(folderListProvider).value ?? [];
+    final notes = ref.read(noteListProvider).value ?? [];
+
+    for (final entry in _rowKeys.entries) {
+      final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      if (!rect.contains(globalPosition)) continue;
+
+      final target = _cachedFlattenedById?[entry.key];
+      if (target == null) continue;
+
+      if (!canDropNoteTreeItem(folders: folders, notes: notes, draggedId: dragged.id, targetId: target.id)) {
+        _setHover(targetId: null, position: null, rootHover: false, silent: silent);
+        return;
+      }
+
+      final position = resolveReorderDropPosition(
+        localY: globalPosition.dy - rect.top,
+        rowHeight: rect.height,
+        allowsInside: target.isFolder && !target.isJournal,
+      );
+      _setHover(targetId: target.id, position: position, rootHover: false, silent: silent);
+      return;
+    }
+
+    _setHover(targetId: null, position: null, rootHover: false, silent: silent);
+  }
+
+  void _setHover({
+    required String? targetId,
+    required ReorderDropPosition? position,
+    required bool rootHover,
+    required bool silent,
+  }) {
+    if (_hoverTargetId == targetId && _hoverPosition == position && _isRootDropHover == rootHover) {
+      return;
+    }
+
+    if (!silent && !rootHover && position == ReorderDropPosition.inside) {
+      HapticFeedback.selectionClick();
+    }
+
+    setState(() {
+      _hoverTargetId = targetId;
+      _hoverPosition = position;
+      _isRootDropHover = rootHover;
+    });
+    _syncSpringLoad(targetId, position, rootHover);
+  }
+
+  void _syncSpringLoad(String? targetId, ReorderDropPosition? position, bool rootHover) {
+    _springLoadTimer?.cancel();
+    _springLoadTimer = null;
+    if (rootHover || position != ReorderDropPosition.inside || targetId == null) return;
+
+    final folder = _cachedFlattenedById?[targetId]?.folder;
+    if (folder == null || folder.isExpanded) return;
+
+    // 悬停片刻自动展开，支持一次拖拽进入多层文件夹
+    _springLoadTimer = Timer(const Duration(milliseconds: 600), () {
+      _springLoadTimer = null;
+      if (!mounted) return;
+      unawaited(ref.read(folderListProvider.notifier).toggleExpanded(folder.id, true));
+    });
+  }
+
+  /// 拖到列表上下边缘时持续滚动，滚动后主动重新命中（指针本身没动）。
+  void _tickAutoScroll() {
+    final pointer = _lastDragGlobal;
+    if (pointer == null || _activeDraggingItem == null || !_dragMoved || _isRootDropHover) return;
+    if (!_scrollController.hasClients) return;
+
+    final viewportBox = _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) return;
+    final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    if (!viewportRect.contains(pointer)) return;
+
+    const edge = 72.0;
+    const step = 9.0;
+    double delta = 0;
+    if (pointer.dy < viewportRect.top + edge) {
+      delta = -step;
+    } else if (pointer.dy > viewportRect.bottom - edge) {
+      delta = step;
+    }
+    if (delta == 0) return;
+
+    final position = _scrollController.position;
+    final next = (position.pixels + delta).clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
+    if ((next - position.pixels).abs() < 0.5) return;
+
+    _scrollController.jumpTo(next);
+    // 滚动后行位置变了但指针没动，主动补一次命中计算
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _activeDraggingItem == null) return;
+      final latest = _lastDragGlobal;
+      if (latest != null) _updateDragHover(latest);
+    });
   }
 
   Widget _buildTree(BuildContext context, List<Folder> folders, List<Note> notes) {
@@ -649,6 +742,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     return Stack(
       children: [
         ListView.builder(
+          key: _listViewportKey,
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 140),
           itemCount: flattenedItems.length,
@@ -660,6 +755,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               index: index,
               isSelectionMode: _isSelectionMode,
               isSelected: item.isFolder ? _selectedFolderIds.contains(item.id) : _selectedNoteIds.contains(item.id),
+              hoverPosition: _activeDraggingItem != null && _hoverTargetId == item.id ? _hoverPosition : null,
+              onRegisterRow: _registerRow,
+              onUnregisterRow: _unregisterRow,
               onToggleSelection: () {
                 setState(() {
                   if (item.isFolder) {
@@ -686,66 +784,41 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               onShowFolderMenu: _showFolderMenu,
               onCreateNote: _createNote,
               onCreateFolder: _showCreateFolderDialog,
-              onDragStarted: (dragged) {
-                setState(() => _activeDraggingItem = dragged);
-              },
-              onDragEnded: () {
-                if (mounted) setState(() => _activeDraggingItem = null);
-              },
-              onDrop: _handleDrop,
+              onDragStarted: _handleDragStarted,
+              onDragPosition: _handleDragPosition,
+              onDragEnded: _handleDragEnded,
             );
           },
         ),
 
-        // 仅当拖动项是有父级的子项时，悬浮呼出底部「移至根目录」靶区
+        // 仅当拖动项是有父级的子项时，悬浮呼出底部「移至根目录」胶囊。
+        // 收窄为居中胶囊，避免整行宽靶区盖住列表最后几行。
         if (_activeDraggingItem != null && _activeDraggingItem!.parentId != null)
           Positioned(
-            left: 20,
-            right: 20,
+            left: 0,
+            right: 0,
             bottom: 24,
-            child: DragTarget<FlattenedItem>(
-              onWillAcceptWithDetails: (details) {
-                return details.data.parentId != null;
-              },
-              onAcceptWithDetails: (details) async {
-                final draggedItem = details.data;
-                HapticFeedback.mediumImpact();
-                if (draggedItem.isFolder) {
-                  await ref.read(folderListProvider.notifier).moveFolderToParent(draggedItem.id, null);
-                } else {
-                  await ref.read(noteListProvider.notifier).moveNoteToFolder(draggedItem.id, null);
-                }
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '已将 "${draggedItem.isFolder ? draggedItem.folder!.name : draggedItem.note!.title}" 移至根目录',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
-              builder: (context, candidateData, rejectedData) {
-                final isHovering = candidateData.isNotEmpty;
-                return AnimatedContainer(
+            child: Center(
+              child: SizedBox(
+                width: 220,
+                height: 56,
+                child: AnimatedContainer(
+                  key: _rootDropKey,
                   duration: AppDurations.fast,
                   curve: AppCurves.standard,
-                  height: 56,
                   decoration: BoxDecoration(
-                    color: isHovering
+                    color: _isRootDropHover
                         ? theme.colorScheme.primaryContainer
                         : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
-                      color: isHovering ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
-                      width: isHovering ? 2.0 : 1.2,
+                      color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
+                      width: _isRootDropHover ? 2.0 : 1.2,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isHovering ? 0.2 : 0.12),
-                        blurRadius: isHovering ? 16 : 8,
+                        color: Colors.black.withValues(alpha: _isRootDropHover ? 0.2 : 0.12),
+                        blurRadius: _isRootDropHover ? 16 : 8,
                         offset: const Offset(0, 4),
                       ),
                     ],
@@ -755,22 +828,22 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     children: [
                       Icon(
                         Icons.drive_file_move_outlined,
-                        size: isHovering ? 24 : 20,
-                        color: isHovering ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                        size: _isRootDropHover ? 24 : 20,
+                        color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        isHovering ? '松手移至根目录' : '移至根目录',
+                        _isRootDropHover ? '松手移至根目录' : '移至根目录',
                         style: TextStyle(
-                          color: isHovering ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                          fontWeight: isHovering ? FontWeight.bold : FontWeight.w600,
+                          color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                          fontWeight: _isRootDropHover ? FontWeight.bold : FontWeight.w600,
                           fontSize: 15,
                         ),
                       ),
                     ],
                   ),
-                );
-              },
+                ),
+              ),
             ),
           ),
       ],
@@ -803,17 +876,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
     final invalidIds = <String>{};
     if (isFolder) {
-      invalidIds.add(folder.id);
-      void addDescendants(String parentId) {
-        for (final f in allFolders) {
-          if (f.parentId == parentId) {
-            invalidIds.add(f.id);
-            addDescendants(f.id);
-          }
+      for (final candidate in allFolders) {
+        if (isFolderSelfOrDescendant(folderId: candidate.id, ancestorId: folder.id, folders: allFolders)) {
+          invalidIds.add(candidate.id);
         }
       }
-
-      addDescendants(folder.id);
     }
 
     final flattened = <Map<String, dynamic>>[];
@@ -857,12 +924,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   ),
                 ),
                 onTap: () {
-                  if (isFolder) {
-                    ref.read(folderListProvider.notifier).moveFolderToParent(folder.id, null);
-                  } else {
-                    ref.read(noteListProvider.notifier).moveNoteToFolder(note!.id, null);
-                  }
+                  final currentParentId = isFolder ? folder.parentId : note!.folderId;
                   Navigator.pop(ctx);
+                  // 已经在根目录时无需追加排序，避免一次无意义的整层重排
+                  if (currentParentId == null) return;
+                  unawaited(
+                    _applyDrop(
+                      draggedId: isFolder ? folder.id : note!.id,
+                      targetId: null,
+                      position: ReorderDropPosition.after,
+                    ),
+                  );
                 },
               ),
               const Divider(),
@@ -891,12 +963,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     ),
                   ),
                   onTap: () {
-                    if (isFolder) {
-                      ref.read(folderListProvider.notifier).moveFolderToParent(folder.id, f.id);
-                    } else {
-                      ref.read(noteListProvider.notifier).moveNoteToFolder(note!.id, f.id);
-                    }
+                    final currentParentId = isFolder ? folder.parentId : note!.folderId;
                     Navigator.pop(ctx);
+                    // 点当前父级不做「追加到末尾」，保持原位置
+                    if (currentParentId == f.id) return;
+                    unawaited(
+                      _applyDrop(
+                        draggedId: isFolder ? folder.id : note!.id,
+                        targetId: f.id,
+                        position: ReorderDropPosition.inside,
+                      ),
+                    );
                   },
                 );
               }),
@@ -1026,512 +1103,4 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       ),
     );
   }
-}
-
-class FlattenedItem {
-  final String id;
-  final bool isFolder;
-  final Note? note;
-  final Folder? folder;
-  final int depth;
-  final String? parentId;
-  final bool isPinned;
-
-  /// 是否为日记体系节点（日记根文件夹/月份子文件夹/日记笔记）
-  /// 此类节点不可拖拽、不可删除、不可作为拖拽目标
-  final bool isJournal;
-
-  /// 空文件夹展开时的"空"占位行，仅作视觉提示，无交互
-  final bool isEmptyPlaceholder;
-
-  FlattenedItem({
-    required this.id,
-    required this.isFolder,
-    this.note,
-    this.folder,
-    required this.depth,
-    this.parentId,
-    required this.isPinned,
-    this.isJournal = false,
-    this.isEmptyPlaceholder = false,
-  });
-}
-
-class _FlattenedTile extends ConsumerStatefulWidget {
-  final FlattenedItem item;
-  final int index;
-  final bool isSelectionMode;
-  final bool isSelected;
-  final VoidCallback onToggleSelection;
-  final void Function(Note) onEditNote;
-  final void Function(Note, GlobalKey) onShowNoteMenu;
-  final void Function(Folder) onToggleFolder;
-  final void Function(Folder, GlobalKey) onShowFolderMenu;
-  final void Function(String?) onCreateNote;
-  final void Function(String?) onCreateFolder;
-  final void Function(FlattenedItem) onDragStarted;
-  final VoidCallback onDragEnded;
-  final Future<void> Function({
-    required FlattenedItem draggedItem,
-    required FlattenedItem targetItem,
-    required String dropPosition,
-  })
-  onDrop;
-
-  const _FlattenedTile({
-    super.key,
-    required this.item,
-    required this.index,
-    required this.isSelectionMode,
-    required this.isSelected,
-    required this.onToggleSelection,
-    required this.onEditNote,
-    required this.onShowNoteMenu,
-    required this.onToggleFolder,
-    required this.onShowFolderMenu,
-    required this.onCreateNote,
-    required this.onCreateFolder,
-    required this.onDragStarted,
-    required this.onDragEnded,
-    required this.onDrop,
-  });
-
-  @override
-  ConsumerState<_FlattenedTile> createState() => _FlattenedTileState();
-}
-
-class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
-  final _tileKey = GlobalKey();
-  bool _isDragging = false;
-  bool _isPressed = false;
-  String? _hoverPosition; // 'before' | 'inside' | 'after' | null
-
-  /// 日记体系节点不作为拖拽目标；日记节点自身不可拖出（双保险）
-  bool _acceptsDrop(FlattenedItem dragged) {
-    if (widget.item.isJournal) return false;
-    if (dragged.isJournal) return false;
-    return dragged.id != widget.item.id;
-  }
-
-  void _updateHoverFromOffset(Offset localOffset, double totalHeight, FlattenedItem dragged) {
-    if (totalHeight <= 0) return;
-    final isFolder = widget.item.isFolder;
-
-    // 检查文件夹是否不能拖入自身子级
-    bool canDropInside = isFolder;
-    if (canDropInside && dragged.isFolder) {
-      final allFolders = ref.read(folderListProvider).value ?? [];
-      if (_checkIsDescendant(widget.item.id, dragged.id, allFolders)) {
-        canDropInside = false;
-      }
-    }
-
-    String? newPos;
-    if (canDropInside) {
-      // 文件夹：上下各 22% 为插入前后，中间 56% 宽容区为移入文件夹
-      final topThreshold = totalHeight * 0.22;
-      final bottomThreshold = totalHeight * 0.78;
-      if (localOffset.dy < topThreshold) {
-        newPos = 'before';
-      } else if (localOffset.dy > bottomThreshold) {
-        newPos = 'after';
-      } else {
-        newPos = 'inside';
-      }
-    } else {
-      // 笔记或无法移入的文件夹：平分上下两半
-      if (localOffset.dy < totalHeight * 0.5) {
-        newPos = 'before';
-      } else {
-        newPos = 'after';
-      }
-    }
-
-    if (_hoverPosition != newPos) {
-      if (newPos == 'inside') {
-        HapticFeedback.selectionClick();
-      }
-      setState(() {
-        _hoverPosition = newPos;
-      });
-    }
-  }
-
-  void _clearHoverPosition() {
-    if (_hoverPosition != null) {
-      setState(() {
-        _hoverPosition = null;
-      });
-    }
-  }
-
-  /// 节点图标：日记体系用书本/日历图标并统一青色，普通节点维持原样式
-  Widget _buildLeadingIcon(ThemeData theme, bool isFolder, bool isJournal) {
-    if (isJournal) {
-      if (!isFolder) {
-        return Icon(Icons.menu_book, size: 18, color: theme.colorScheme.tertiary);
-      }
-      final isRoot = widget.item.folder!.type == JournalService.rootFolderType;
-      final isExpanded = widget.item.folder!.isExpanded;
-      return Icon(
-        isRoot
-            ? (isExpanded ? Icons.auto_stories : Icons.auto_stories_outlined)
-            : (isExpanded ? Icons.calendar_month : Icons.calendar_month_outlined),
-        size: 18,
-        color: theme.colorScheme.tertiary,
-      );
-    }
-    if (isFolder) {
-      return Icon(
-        widget.item.folder!.isExpanded ? Icons.folder_open : Icons.folder,
-        size: 18,
-        color: theme.colorScheme.primary,
-      );
-    }
-    // 按文件类型显示图标，便于识别小Q生成的网页/数据文件
-    final icon = _noteTypeIcon(theme);
-    if (icon != null) return icon;
-    return Icon(Icons.description, size: 18, color: theme.colorScheme.primary);
-  }
-
-  /// 依据标题后缀返回文件类型图标；普通 Markdown 笔记返回 null 走默认图标
-  Icon? _noteTypeIcon(ThemeData theme) {
-    final note = widget.item.note;
-    if (note == null) return null;
-    switch (NoteFileTypeHelper.fromTitle(note.title)) {
-      case NoteFileType.html:
-        return Icon(Icons.language, size: 18, color: theme.colorScheme.primary);
-      case NoteFileType.svg:
-        return Icon(Icons.palette_outlined, size: 18, color: theme.colorScheme.primary);
-      case NoteFileType.json:
-        return Icon(Icons.data_object, size: 18, color: theme.colorScheme.primary);
-      case NoteFileType.code:
-        return Icon(Icons.code, size: 18, color: theme.colorScheme.primary);
-      case NoteFileType.markdown:
-        return null;
-    }
-  }
-
-  /// 前置图标容器：32×32 圆角底色 + 图标。
-  /// 文件夹在右下角叠加迷你展开箭头（原独立箭头并入此处，节省行首宽度）
-  Widget _buildLeadingIconBox(ThemeData theme, bool isFolder, bool isJournal) {
-    return SizedBox(
-      width: 32,
-      height: 32,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: isJournal
-                  ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
-                  : theme.colorScheme.primary.withValues(alpha: isFolder ? 0.08 : 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: _buildLeadingIcon(theme, isFolder, isJournal),
-          ),
-          if (isFolder)
-            Positioned(
-              right: -3,
-              bottom: -3,
-              child: Container(
-                width: 14,
-                height: 14,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: theme.colorScheme.surface,
-                  border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7), width: 0.8),
-                ),
-                child: AnimatedRotation(
-                  // 展开朝下，收起朝右（-0.25 圈 = 逆时针 90°）
-                  turns: widget.item.folder!.isExpanded ? 0 : -0.25,
-                  duration: AppMotion.duration(context, AppDurations.normal),
-                  curve: AppCurves.emphasized,
-                  child: Icon(
-                    Icons.keyboard_arrow_down,
-                    size: 11,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// 右侧拖动手柄：按住手柄滑动即刻开启拖拽，不再占用整行长按
-  Widget _buildDragHandle(ThemeData theme, bool isFolder) {
-    return Draggable<FlattenedItem>(
-      data: widget.item,
-      dragAnchorStrategy: (draggable, context, position) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        final feedbackWidth = screenWidth - 32;
-        // 手指按在右侧手柄上（距屏幕右边缘约 28px），
-        // 对应 feedback 卡片右侧边缘内约 20px 处，
-        // 使得拖拽时 feedback 整体水平位置与屏幕两侧边距（16px）保持完美重合居中
-        return Offset(feedbackWidth - 20, 24);
-      },
-      onDragStarted: () {
-        HapticFeedback.lightImpact();
-        widget.onDragStarted(widget.item);
-        setState(() => _isDragging = true);
-      },
-      onDragEnd: (_) {
-        widget.onDragEnded();
-        if (mounted) setState(() => _isDragging = false);
-      },
-      onDraggableCanceled: (_, offset) {
-        widget.onDragEnded();
-        if (mounted) setState(() => _isDragging = false);
-      },
-      onDragCompleted: () {
-        widget.onDragEnded();
-        if (mounted) setState(() => _isDragging = false);
-      },
-      feedback: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: MediaQuery.of(context).size.width - 32,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 4)),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(isFolder ? Icons.folder : Icons.description, color: theme.colorScheme.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  isFolder ? widget.item.folder!.name : widget.item.note!.title,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      child: SizedBox(
-        width: 32,
-        height: 32,
-        child: Center(
-          child: Icon(
-            Icons.drag_indicator,
-            size: 18,
-            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isFolder = widget.item.isFolder;
-    final isJournal = widget.item.isJournal;
-
-    // 空文件夹展开占位：仅显示"空"提示，文字与子级内容对齐，无交互
-    if (widget.item.isEmptyPlaceholder) {
-      return Padding(
-        padding: EdgeInsets.only(
-          // 12 + depth*16 为行左缘，+60 对齐子级图标后的文字起点
-          left: 12.0 + widget.item.depth * 16.0 + 60,
-          right: 12,
-          top: 2,
-          bottom: 6,
-        ),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            '空',
-            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
-          ),
-        ),
-      );
-    }
-
-    // 统一点击事件：文件夹触发展开/收起，笔记打开编辑，多选模式切换选中
-    final VoidCallback? onItemTap = widget.isSelectionMode
-        ? (isJournal ? null : widget.onToggleSelection)
-        : (isFolder ? () => widget.onToggleFolder(widget.item.folder!) : () => widget.onEditNote(widget.item.note!));
-
-    final Widget tileContent = AnimatedOpacity(
-      opacity: _isDragging ? 0.35 : 1.0,
-      duration: AppMotion.duration(context, AppDurations.press),
-      curve: AppCurves.standard,
-      child: AnimatedContainer(
-        key: _tileKey,
-        duration: AppMotion.duration(context, AppDurations.fast),
-        curve: AppCurves.standard,
-        padding: EdgeInsets.only(
-          left: 12.0 + widget.item.depth * 16.0,
-          right: 12,
-          top: isFolder ? 6 : 4,
-          bottom: isFolder ? 6 : 4,
-        ),
-        color: _hoverPosition == 'inside'
-            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
-            : Colors.transparent,
-        child: Row(
-          children: [
-            // 日记体系节点不参与批量选择，不渲染复选框
-            if (widget.isSelectionMode && !isJournal)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Checkbox(
-                    value: widget.isSelected,
-                    onChanged: (_) => widget.onToggleSelection(),
-                    activeColor: theme.colorScheme.primary,
-                  ),
-                ),
-              ),
-
-            // 展开箭头已并入前置图标（图标容器右下角徽标），此处统一留 16px，
-            // 使同层级文件夹与笔记的左边界对齐
-            const SizedBox(width: 16),
-
-            Expanded(
-              child: GestureDetector(
-                onTap: onItemTap,
-                onTapDown: onItemTap == null ? null : (_) => setState(() => _isPressed = true),
-                onTapUp: onItemTap == null ? null : (_) => setState(() => _isPressed = false),
-                onTapCancel: onItemTap == null ? null : () => setState(() => _isPressed = false),
-                onLongPress: () {
-                  if (widget.isSelectionMode || isJournal) return;
-                  HapticFeedback.lightImpact();
-                  if (isFolder) {
-                    widget.onShowFolderMenu(widget.item.folder!, _tileKey);
-                  } else {
-                    widget.onShowNoteMenu(widget.item.note!, _tileKey);
-                  }
-                },
-                behavior: HitTestBehavior.opaque,
-                child: AnimatedScale(
-                  scale: _isPressed ? 0.985 : 1.0,
-                  duration: AppMotion.duration(context, AppDurations.press),
-                  curve: AppCurves.standard,
-                  child: Row(
-                    children: [
-                      _buildLeadingIconBox(theme, isFolder, isJournal),
-                      const SizedBox(width: 12),
-                      if (!isFolder && widget.item.isPinned) ...[
-                        Icon(Icons.push_pin, size: 14, color: theme.colorScheme.primary),
-                        const SizedBox(width: 4),
-                      ],
-                      Expanded(
-                        child: Text(
-                          isFolder ? widget.item.folder!.name : widget.item.note!.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
-                            letterSpacing: 0.2,
-                            color: isJournal ? theme.colorScheme.tertiary : null,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // 日记体系节点为系统管理结构，不提供拖动手柄与操作菜单
-            if (!widget.isSelectionMode && !isJournal) ...[const SizedBox(width: 4), _buildDragHandle(theme, isFolder)],
-          ],
-        ),
-      ),
-    );
-
-    return Stack(
-      children: [
-        tileContent,
-
-        // 插入位置指示线常驻但默认透明：拖拽进出时淡入淡出，避免瞬现瞬消。
-        Positioned(
-          top: 0,
-          left: 12.0 + widget.item.depth * 16.0,
-          right: 12,
-          child: IgnorePointer(
-            child: AnimatedOpacity(
-              opacity: _hoverPosition == 'before' ? 1.0 : 0.0,
-              duration: AppMotion.duration(context, AppDurations.fast),
-              curve: AppCurves.standard,
-              child: Container(
-                height: 3,
-                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(1.5)),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 0,
-          left: 12.0 + widget.item.depth * 16.0,
-          right: 12,
-          child: IgnorePointer(
-            child: AnimatedOpacity(
-              opacity: _hoverPosition == 'after' ? 1.0 : 0.0,
-              duration: AppMotion.duration(context, AppDurations.fast),
-              curve: AppCurves.standard,
-              child: Container(
-                height: 3,
-                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(1.5)),
-              ),
-            ),
-          ),
-        ),
-
-        // 单一全覆盖 DragTarget：实时监听手势在 Item 内的精确局部坐标
-        // 告别多层细碎切分与判定抖动
-        Positioned.fill(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return DragTarget<FlattenedItem>(
-                onWillAcceptWithDetails: (details) {
-                  return _acceptsDrop(details.data);
-                },
-                onMove: (details) {
-                  final renderBox = context.findRenderObject() as RenderBox?;
-                  if (renderBox != null) {
-                    final localOffset = renderBox.globalToLocal(details.offset);
-                    _updateHoverFromOffset(localOffset, constraints.maxHeight, details.data);
-                  }
-                },
-                onLeave: (data) => _clearHoverPosition(),
-                onAcceptWithDetails: (details) {
-                  final position = _hoverPosition ?? 'after';
-                  _clearHoverPosition();
-                  HapticFeedback.lightImpact();
-                  widget.onDrop(draggedItem: details.data, targetItem: widget.item, dropPosition: position);
-                },
-                builder: (context, candidateData, rejectedData) => const SizedBox.expand(),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-bool _checkIsDescendant(String? parentId, String folderId, List<Folder> allFolders) {
-  if (parentId == null) return false;
-  if (parentId == folderId) return true;
-  final parentFolder = allFolders.where((f) => f.id == parentId).firstOrNull;
-  if (parentFolder == null) return false;
-  return _checkIsDescendant(parentFolder.parentId, folderId, allFolders);
 }

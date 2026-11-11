@@ -499,6 +499,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                           value: fieldTypeMap.containsKey(field.type) ? field.type : 'input',
                           isExpanded: true,
                           underline: const SizedBox.shrink(),
+                          borderRadius: BorderRadius.circular(12),
                           icon: const Icon(Icons.keyboard_arrow_down, size: 16),
                           style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
                           items: fieldTypeMap.entries

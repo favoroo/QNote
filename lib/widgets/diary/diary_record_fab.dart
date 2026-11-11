@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/timeline_selection_label.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 
@@ -26,8 +28,21 @@ class DiaryRecordFabStyle {
   final List<BoxShadow> boxShadow;
   final Color dotColor;
 
-  factory DiaryRecordFabStyle.resolve(ThemeData theme, {required bool hasSelection}) {
+  factory DiaryRecordFabStyle.resolve(ThemeData theme, {required bool hasSelection, bool compact = false}) {
     final scheme = theme.colorScheme;
+    if (compact) {
+      // 时间线节点行里的小圆钮：实心主色 + 轻辉光，和 1px 选中线同色，
+      // 一眼就能看出「在这条线上记录」。它同时是记录面板容器变形的起点。
+      return DiaryRecordFabStyle(
+        background: scheme.primary,
+        foreground: scheme.onPrimary,
+        border: null,
+        boxShadow: [
+          BoxShadow(color: scheme.primary.withValues(alpha: 0.28), blurRadius: 10, offset: const Offset(0, 3)),
+        ],
+        dotColor: scheme.onPrimary,
+      );
+    }
     return DiaryRecordFabStyle(
       // 主题里的 primaryContainer 是带 alpha 的强调色（见 app_theme.dart），
       // 直接拿它铺底等于给时间线开了扇窗——底下滚过的文字会透上来，和胶囊里的
@@ -69,6 +84,12 @@ class DiaryRecordFab extends ConsumerStatefulWidget {
   /// 空闲态直径 = 胶囊高度；打开面板的容器变形从这里起步。
   static const double height = 44;
   static const double radius = height / 2;
+
+  /// 时间线选中节点右侧「就地记录」小圆钮的直径与加号尺寸。
+  ///
+  /// 路由里的紧凑幽灵预览也读这两个值：两边不一致时，面板起落会看到加号跳一下。
+  static const double inlineDiameter = 28;
+  static const double inlineIconSize = 18;
 
   /// 点胶囊主体（或空闲态的圆钮）时打开记录面板。
   final VoidCallback onTap;
@@ -187,7 +208,8 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab> with SingleTick
           children: [
             // 装饰挂在外层：AnimatedContainer 的尺寸跟着 AnimatedSize 的动画
             // 宽度走，所以底色、描边和阴影每一帧都画在「当前宽度」上，胶囊
-            // 右端始终是圆头，而不是被矩形裁出来的直口。
+            // 右端始终是圆头，而不是被矩形裁出来的直口。描边单独走前景装饰，
+            // 原因见下面 foregroundDecoration 的注释。
             AnimatedContainer(
               duration: reduceMotion ? Duration.zero : _morphDuration,
               curve: _morphCurve,
@@ -198,9 +220,15 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab> with SingleTick
               decoration: BoxDecoration(
                 color: style.background,
                 borderRadius: BorderRadius.circular(DiaryRecordFab.radius),
-                border: style.border,
                 boxShadow: style.boxShadow,
               ),
+              // 描边走前景装饰而不是 decoration：Container 会把 decoration 里
+              // border 的宽度算进内边距，1.5 的描边就是左右各让 1.5，空闲态宽度
+              // 从 44 被撑到 47（高度被约束钉死在 44），22 的圆角于是画成横向
+              // 拉长的椭圆。前景装饰不参与布局，尺寸仍是正 44×44 的圆。
+              foregroundDecoration: style.border == null
+                  ? null
+                  : BoxDecoration(borderRadius: BorderRadius.circular(DiaryRecordFab.radius), border: style.border),
               // 内容（Padding + Row）按自然宽度布局，由 AnimatedSize 报告动画
               // 尺寸；AnimatedSize 只在自身溢出时裁剪，退场中的旧标签溢出的
               // 部分靠这层 ClipRect 按动画宽度切掉。
@@ -300,6 +328,88 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab> with SingleTick
   DateTime _todayOf(DateTime now) => DateTime(now.year, now.month, now.day);
 }
 
+/// 时间线选中行右端的「就地记录」小圆钮。
+///
+/// 点它直接打开记录面板，并把面板的容器变形起点交回按钮自身：弹层从这个
+/// 圆钮长出来，而不是从屏幕左下角的常驻按钮飞过来。视觉与 [DiaryRecordFab]
+/// 的紧凑选中态共用一份配色，命中区扩到 44×44，不必瞄准细线末端。
+class DiaryInlineRecordButton extends StatefulWidget {
+  const DiaryInlineRecordButton({super.key, required this.onTap});
+
+  /// 回调收到按钮当前的全局 Rect；量不到时传 null，面板退回无锚点入场。
+  final ValueChanged<Rect?> onTap;
+
+  @override
+  State<DiaryInlineRecordButton> createState() => _DiaryInlineRecordButtonState();
+}
+
+class _DiaryInlineRecordButtonState extends State<DiaryInlineRecordButton> {
+  /// 量视觉圆钮而不是 44 的命中区：容器变形要从真实的 28 圆起步。
+  final GlobalKey _circleKey = GlobalKey();
+  bool _pressed = false;
+  bool _hovered = false;
+
+  Rect? _measureCircle() {
+    final box = _circleKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize) {
+      return null;
+    }
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  void _handleTap() {
+    widget.onTap(_measureCircle());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final style = DiaryRecordFabStyle.resolve(theme, hasSelection: true, compact: true);
+    // 鼠标悬停略放大、按下略缩小；触摸端没有 hover，只剩按压反馈。
+    final scale = _pressed ? 0.9 : (_hovered ? 1.06 : 1.0);
+
+    return Semantics(
+      button: true,
+      label: '记录',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _handleTap,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTapCancel: () => setState(() => _pressed = false),
+          child: SizedBox(
+            width: DiaryRecordFab.height,
+            height: DiaryRecordFab.height,
+            child: Center(
+              child: AnimatedScale(
+                scale: scale,
+                duration: reduceMotion ? Duration.zero : AppDurations.press,
+                curve: AppCurves.emphasized,
+                child: Container(
+                  key: _circleKey,
+                  width: DiaryRecordFab.inlineDiameter,
+                  height: DiaryRecordFab.inlineDiameter,
+                  decoration: BoxDecoration(
+                    color: style.background,
+                    shape: BoxShape.circle,
+                    boxShadow: style.boxShadow,
+                  ),
+                  child: Icon(Icons.add_rounded, size: DiaryRecordFab.inlineIconSize, color: style.foreground),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 记录按钮的静态副本，用于打开面板时的容器变形起点。
 ///
 /// 真实按钮在路由打开期间被隐藏，变形容器从按钮 Rect 起步；如果起点上只有
@@ -308,7 +418,7 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab> with SingleTick
 ///
 /// 不复制交互：整体包了 [IgnorePointer]，× 只是画出来的圆钮。
 class DiaryRecordFabPreview extends StatelessWidget {
-  const DiaryRecordFabPreview({super.key, this.selection, this.hasDraft = false});
+  const DiaryRecordFabPreview({super.key, this.selection, this.hasDraft = false, this.compact = false});
 
   /// 起点时刻按钮上的时间选择（为空表示纯加号圆钮）。
   final TimelineTimeSelectEvent? selection;
@@ -316,11 +426,23 @@ class DiaryRecordFabPreview extends StatelessWidget {
   /// 有未保存草稿时按钮右上角的圆点。
   final bool hasDraft;
 
+  /// 紧凑态：起点是时间线行内的 28 小圆钮，只画居中的加号，不铺时间与 ×。
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final selection = this.selection;
-    final style = DiaryRecordFabStyle.resolve(theme, hasSelection: selection != null);
+    final style = DiaryRecordFabStyle.resolve(theme, hasSelection: selection != null, compact: compact);
+
+    if (compact) {
+      return IgnorePointer(
+        child: Center(
+          child: Icon(Icons.add_rounded, size: DiaryRecordFab.inlineIconSize, color: style.foreground),
+        ),
+      );
+    }
+
     final now = DateTime.now();
     final label = selection == null
         ? null

@@ -242,13 +242,14 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
       itemBuilder: (context, index) {
         final day = index + 1;
         final isSelected = day == _selectedDay;
-        return InkWell(
-          onTap: () {
-            setState(() {
-              _selectedDay = day;
-            });
-          },
-          child: Center(
+        return Center(
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () {
+              setState(() {
+                _selectedDay = day;
+              });
+            },
             child: Container(
               width: 32,
               height: 32,

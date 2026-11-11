@@ -120,11 +120,15 @@ void main() {
     // 验证三点菜单按钮 (Icons.more_vert) 已被彻底移除
     expect(find.byIcon(Icons.more_vert), findsNothing);
 
-    // 验证未完成待办拥有拖动手柄 (Icons.drag_indicator)，且手柄位于待办项右侧
-    expect(find.byIcon(Icons.drag_indicator), findsOneWidget);
-    final dragIconCenter = tester.getCenter(find.byIcon(Icons.drag_indicator));
-    final todoTextCenter = tester.getCenter(find.text('正在进行的任务'));
-    expect(dragIconCenter.dx, greaterThan(todoTextCenter.dx));
+    // 六点拖动手柄已移除：移动端改为整行长按拾起（ReorderableDelayedDragStartListener）
+    expect(find.byIcon(Icons.drag_indicator), findsNothing);
+    expect(find.byType(ReorderableDelayedDragStartListener), findsOneWidget);
+
+    // 长按整行拾起后原地松手，仍能弹出原来的操作菜单
+    await tester.longPress(find.text('正在进行的任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('批量管理'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
   });
 
   testWidgets('点击FAB弹出底部大弹窗，支持回车连续添加待办', (tester) async {

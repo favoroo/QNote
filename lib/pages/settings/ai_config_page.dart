@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:qnote_flutter/config/models.dart';
+import 'package:qnote_flutter/config/ai_vendors.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
@@ -22,6 +22,8 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/token_usage_card.dart';
+import 'package:qnote_flutter/widgets/ai/vendor_logo.dart';
+import 'package:qnote_flutter/widgets/ai/vendor_picker_sheet.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
 
 /// AI 模型配置页：服务商列表 + 三个角色的模型分配 + 工具开关
@@ -133,12 +135,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   // ── 服务商管理 ───────────────────────────────────────────
 
   Future<void> _addProvider() async {
-    final vendorId = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) => _VendorPickerSheet(),
-    );
+    final vendorId = await VendorPickerSheet.show(context);
     if (vendorId == null || !mounted) return;
     await context.push('/settings/ai-config/provider', extra: AiProviderEditArgs(initialVendorId: vendorId));
     if (mounted) {
@@ -354,7 +351,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               ref.watch(aiRouteGroupListProvider).valueOrNull ?? const <AiRouteGroup>[],
             ),
             const SizedBox(height: 4),
-            _buildToolSwitchCard(theme),
+            _buildToolSwitchCard(theme, providers),
           ],
         ),
       ),
@@ -393,15 +390,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
             padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
             child: Row(
               children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: disabled ? colorScheme.surfaceContainerHighest : colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(Icons.hub_rounded, color: disabled ? colorScheme.outline : colorScheme.primary, size: 20),
-                ),
+                VendorLogo(vendorId: provider.vendorId, fallbackLabel: provider.name, disabled: disabled),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -439,6 +428,10 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         provider.usesAccountAuth
                             ? '账号登录 · ${AccountRouting.fromId(provider.accountRouting).label} · '
                                   '${provider.models.length} 个模型'
+                            // 免密钥服务（本机 Ollama、免费网关）没有密钥是正常状态，
+                            // 显示「0 把密钥」会让人以为配错了
+                            : provider.apiKeys.isEmpty && vendorAllowsKeyless(provider.vendorId)
+                            ? '免密钥 · ${provider.models.length} 个模型'
                             : '${provider.apiKeys.length} 把密钥 · ${provider.models.length} 个模型',
                         style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
@@ -705,8 +698,20 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _buildToolSwitchCard(ThemeData theme) {
+  /// 小Q 助手当前绑定的模型是否走 Anthropic Messages 协议
+  ///
+  /// Messages 协议本次不支持工具调用：请求里根本不带 `tools`，开关开着也不生效。
+  /// 这里判定出来是为了「提示 + 置灰」，而不是让用户对着四个没反应的开关猜。
+  /// 路由组可能混装多种协议，只有直接绑定到 anthropic 厂商时才判定。
+  bool _assistantUsesAnthropic(List<AiProvider> providers) {
+    final ref = _roles.assistant;
+    if (ref == null || ref.isRouteGroup) return false;
+    return providers.where((p) => p.id == ref.providerId).firstOrNull?.providerType == 'anthropic';
+  }
+
+  Widget _buildToolSwitchCard(ThemeData theme, List<AiProvider> providers) {
     const toolMeta = {'fetch_url': '网页阅读', 'web_search': '网页搜索', 'generate_image': '图片生成', 'describe_image': '图片识别'};
+    final anthropicAssistant = _assistantUsesAnthropic(providers);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -720,6 +725,24 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           ),
           child: Column(
             children: [
+              if (anthropicAssistant)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '当前对话模型使用 Anthropic 原生接口，该接口暂不支持小Q工具，'
+                          '以下开关不生效；换用 OpenAI 兼容模型即恢复。',
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (!_toolsLoaded)
                 const Padding(
                   padding: EdgeInsets.all(16),
@@ -733,7 +756,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     value: !_disabledTools.contains(entry.key),
                     title: Text(entry.value),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    onChanged: (enabled) => _toggleTool(entry.key, enabled),
+                    // 不生效的开关直接置灰：可点却无效果比不可点更让人困惑
+                    onChanged: anthropicAssistant ? null : (enabled) => _toggleTool(entry.key, enabled),
                   ),
                   if (entry.key != toolMeta.keys.last) _divider(theme),
                 ],
@@ -755,85 +779,6 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
-    );
-  }
-}
-
-/// 厂商模板选择器（添加服务商第一步）
-///
-/// 按凭证类型分区：账号登录型（小浣熊这类订阅账号）在上，API Key 型在下。
-/// 两类厂商的「添加流程」完全不同（一个要登录、一个要粘密钥），混在一张平铺
-/// 列表里会让人以为登录型也要填 Key。
-class _VendorPickerSheet extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // 延迟到运行时读取，避免在 const 语境里依赖 config 列表
-    final accountVendors = aiAccountProviders();
-    final apiKeyVendors = aiApiKeyProviders();
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.8,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      builder: (context, controller) => Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text('选择厂商', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                ),
-                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop()),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              controller: controller,
-              padding: const EdgeInsets.only(bottom: 16),
-              children: [
-                if (accountVendors.isNotEmpty) ...[
-                  _vendorSectionHeader(theme, title: '账号登录', subtitle: '登录账号即可使用，Token 由账号额度提供'),
-                  ...accountVendors.map((spec) => _vendorTile(context, theme, spec)),
-                ],
-                if (apiKeyVendors.isNotEmpty) ...[
-                  _vendorSectionHeader(theme, title: 'API Key', subtitle: '填写地址与密钥，多把自动轮询'),
-                  ...apiKeyVendors.map((spec) => _vendorTile(context, theme, spec)),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _vendorSectionHeader(ThemeData theme, {required String title, required String subtitle}) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 2),
-          Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ],
-      ),
-    );
-  }
-
-  Widget _vendorTile(BuildContext context, ThemeData theme, AiProviderConfig spec) {
-    return ListTile(
-      title: Text(spec.name),
-      subtitle: Text(
-        spec.defaultBaseUrl.isEmpty ? '需要自己填写地址' : spec.defaultBaseUrl,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-      ),
-      onTap: () => Navigator.of(context).pop(spec.id),
     );
   }
 }

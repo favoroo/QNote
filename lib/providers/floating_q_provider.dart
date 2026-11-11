@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
@@ -24,6 +26,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -39,20 +42,22 @@ export 'package:qnote_flutter/core/agent/services/q_text_quote.dart' show QQuote
 //
 // 与 AI 主页面会话完全隔离的轻量任务入口：
 // - 页面上下文（QPageContext）让小Q知道当前界面与目标文件；
-// - 会话按上下文签名隔离：签名变化（切页/返回）即丢失历史，重新开始；
-// - 任务过程悬浮球播放动画，结束后可在面板横幅中随时撤回本次会话的全部修改
+// - 临时会话按上下文签名留存：最小化成气泡、切页暂存、回到原页面恢复，
+//   点右上角 × 才彻底丢弃；退出 App 即全部清空；
+// - 任务结束后可在面板横幅中随时撤回本次会话的全部修改
 //   （撤回横幅常驻不消失，直到撤回执行；期间发起新任务则跨任务累加）；
-// - 消息为纯内存态，不落库、不污染 AI 主页面的会话历史。
+// - 消息为纯内存态，不落库、不污染 AI 主页面的会话历史；
+//   只有「展开全页面」时才把当前临时会话提升为正式 ChatSession。
 // ==========================================
 
-/// 全局模态弹层计数（Dialog/BottomSheet 打开时悬浮球自动隐藏）
+/// 全局模态弹层计数（Dialog/BottomSheet 打开时悬浮层自动隐藏）
 final floatingQModalCount = ValueNotifier<int>(0);
 
 /// 模态路由观察者：挂在 GoRouter 的 observers（root Navigator）上，统计 PopupRoute。
 ///
 /// 自愈设计：除 didPush/didPop/didRemove/didReplace 对称增删外，还给每个入集路由挂
 /// 动画状态监听——弹层动画回到 dismissed 即代表它已关闭，若因事件丢失仍残留在集合中
-/// 则强制剔除并重算，杜绝计数泄漏导致悬浮球永久隐藏。
+/// 则强制剔除并重算，杜绝计数泄漏导致悬浮层永久隐藏。
 class FloatingQModalRouteObserver extends NavigatorObserver {
   /// 当前打开中的 PopupRoute 集合（以路由对象为键，天然去重）。
   /// 用 PopupRoute 类型而非 Route 基类：animation getter 定义在 TransitionRoute 上
@@ -89,7 +94,7 @@ class FloatingQModalRouteObserver extends NavigatorObserver {
   }
 
   /// 弹层动画回到 dismissed 意味着它已经关闭：无论 didPop/didRemove 是否被
-  /// 漏掉都强制剔除（防止计数泄漏导致悬浮球永久隐藏）
+  /// 漏掉都强制剔除（防止计数泄漏导致悬浮层永久隐藏）
   void _onRouteAnimationStatus(AnimationStatus status) {
     if (status != AnimationStatus.dismissed) return;
     final stale = _openPopups
@@ -116,12 +121,59 @@ enum FloatingQPhase {
   /// 待机：无任务进行、无待撤回变更
   idle,
 
-  /// 任务执行中（悬浮球播放动画，面板可查看进度并可中断）
+  /// 任务执行中（气泡播放动画，面板可查看进度并可中断）
   working,
 
   /// 撤回就绪：任务（或中断）结束后可随时在面板中撤回，
   /// 直到撤回执行；期间发起新任务则待撤回变更跨任务累加
   countdown,
+}
+
+/// 悬浮小Q的显示形态。
+///
+/// 三者是同一套容器的不同尺寸：弹窗 ↔ 气泡之间做容器变形，
+/// [hidden] 表示当前页面没有临时会话（什么都不渲染）。
+enum FloatingQPanelMode {
+  /// 没有临时会话：弹窗和气泡都不显示
+  hidden,
+
+  /// 最小化为可拖动圆形气泡（会话仍存活）
+  bubble,
+
+  /// 居中弹窗展开
+  panel,
+}
+
+/// 一个页面的临时会话快照。
+///
+/// 切页时把当前会话整体 park 到这里，回到同一页面再恢复；纯内存态，
+/// 退出 App 即消失。最多保留 [FloatingQNotifier._kMaxParkedSessions] 个页面。
+class _FloatingQSessionSnapshot {
+  _FloatingQSessionSnapshot({
+    required this.signature,
+    required this.contextLabel,
+    required this.messages,
+    required this.pendingQuote,
+    required this.attachedImages,
+    required this.draftText,
+    required this.minimized,
+    required this.unreadReply,
+    required this.pendingUndo,
+    required this.phase,
+    required this.updatedAt,
+  });
+
+  final String signature;
+  final String? contextLabel;
+  List<ChatMessage> messages;
+  QTextQuote? pendingQuote;
+  List<String> attachedImages;
+  String draftText;
+  bool minimized;
+  bool unreadReply;
+  List<WorkspaceUndoEntry> pendingUndo;
+  FloatingQPhase phase;
+  DateTime updatedAt;
 }
 
 /// 悬浮小Q状态
@@ -135,8 +187,8 @@ class FloatingQState {
   /// 工作阶段
   final FloatingQPhase phase;
 
-  /// 快捷对话面板是否展开
-  final bool panelOpen;
+  /// 当前显示形态（隐藏 / 气泡 / 弹窗）
+  final FloatingQPanelMode panelMode;
 
   /// 当前会话绑定的上下文签名（null 表示尚无会话）
   final String? contextSignature;
@@ -179,11 +231,26 @@ class FloatingQState {
   /// 面板附件图片（本地路径），随下一轮发送一次性携带给小Q
   final List<String> attachedImages;
 
+  /// 悬浮面板弹出的锚点对齐方式（默认底边居中 Alignment.bottomCenter）
+  final Alignment anchorAlignment;
+
+  /// 输入框草稿：面板卸载后仍随会话留存，重新打开/切回页面时回填
+  final String draftText;
+
+  /// 最小化期间是否收到了新的完成回复（气泡右上角小圆点）
+  final bool unreadReply;
+
+  /// 气泡左上角全局坐标（会话级共享；null 表示尚未放置，用默认右下角）
+  final Offset? bubblePosition;
+
+  /// 是否有任务正在执行（全局唯一，跨页面阻止并发发送）
+  final bool runActive;
+
   const FloatingQState({
     this.baseContext,
     this.overlayStack = const [],
     this.phase = FloatingQPhase.idle,
-    this.panelOpen = false,
+    this.panelMode = FloatingQPanelMode.hidden,
     this.contextSignature,
     this.contextLabel,
     this.messages = const [],
@@ -198,19 +265,35 @@ class FloatingQState {
     this.pendingImages,
     this.attachedImages = const [],
     this.anchorAlignment = Alignment.bottomCenter,
+    this.draftText = '',
+    this.unreadReply = false,
+    this.bubblePosition,
+    this.runActive = false,
   });
 
   /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文
   QPageContext? get effectiveContext => overlayStack.isNotEmpty ? overlayStack.last : baseContext;
 
-  /// 悬浮面板弹出的锚点对齐方式（默认底边居中 Alignment.bottomCenter）
-  final Alignment anchorAlignment;
+  /// 弹窗是否展开（兼容旧调用点）
+  bool get panelOpen => panelMode == FloatingQPanelMode.panel;
+
+  /// 是否已最小化成气泡
+  bool get minimized => panelMode == FloatingQPanelMode.bubble;
+
+  /// 当前页面是否还有值得留存的临时会话
+  bool get hasSession =>
+      messages.isNotEmpty ||
+      draftText.isNotEmpty ||
+      pendingQuote != null ||
+      attachedImages.isNotEmpty ||
+      pendingUndoCount > 0 ||
+      panelMode != FloatingQPanelMode.hidden;
 
   FloatingQState copyWith({
     QPageContext? baseContext,
     List<QPageContext>? overlayStack,
     FloatingQPhase? phase,
-    bool? panelOpen,
+    FloatingQPanelMode? panelMode,
     String? contextSignature,
     String? contextLabel,
     List<ChatMessage>? messages,
@@ -225,6 +308,10 @@ class FloatingQState {
     List<String>? pendingImages,
     List<String>? attachedImages,
     Alignment? anchorAlignment,
+    String? draftText,
+    bool? unreadReply,
+    Offset? bubblePosition,
+    bool? runActive,
     bool clearSignature = false,
     bool clearStatusText = false,
     bool clearStreamingThought = false,
@@ -233,12 +320,13 @@ class FloatingQState {
     bool clearQuote = false,
     bool clearPendingImages = false,
     bool clearAttachedImages = false,
+    bool clearBubblePosition = false,
   }) {
     return FloatingQState(
       baseContext: baseContext ?? this.baseContext,
       overlayStack: overlayStack ?? this.overlayStack,
       phase: phase ?? this.phase,
-      panelOpen: panelOpen ?? this.panelOpen,
+      panelMode: panelMode ?? this.panelMode,
       contextSignature: clearSignature ? null : (contextSignature ?? this.contextSignature),
       contextLabel: clearSignature ? null : (contextLabel ?? this.contextLabel),
       messages: messages ?? this.messages,
@@ -253,6 +341,10 @@ class FloatingQState {
       pendingImages: clearPendingImages ? null : (pendingImages ?? this.pendingImages),
       attachedImages: clearAttachedImages ? const [] : (attachedImages ?? this.attachedImages),
       anchorAlignment: anchorAlignment ?? this.anchorAlignment,
+      draftText: draftText ?? this.draftText,
+      unreadReply: unreadReply ?? this.unreadReply,
+      bubblePosition: clearBubblePosition ? null : (bubblePosition ?? this.bubblePosition),
+      runActive: runActive ?? this.runActive,
     );
   }
 }
@@ -260,15 +352,18 @@ class FloatingQState {
 final floatingQProvider = NotifierProvider<FloatingQNotifier, FloatingQState>(FloatingQNotifier.new);
 
 class FloatingQNotifier extends Notifier<FloatingQState> {
+  /// 每个页面最多保留的临时会话数（LRU 淘汰）
+  static const int _kMaxParkedSessions = 5;
+
   AgentCancellationToken? _currentToken;
 
   /// 本次会话累积的待撤回变更（跨多轮累加，撤回语义 = 撤销本会话小Q的全部修改）
-  final List<WorkspaceUndoEntry> _pendingUndo = [];
+  List<WorkspaceUndoEntry> _pendingUndo = [];
 
   /// 运行中任务的会话消息现场（事件流写入，结束时同步到 state）
   List<ChatMessage> _sessionMessages = const [];
 
-  /// 任务运行期间上下文是否被切换（切换即丢弃历史）
+  /// 任务运行期间是否已切离所属会话（切走后不再朗读、不再把流式内容写进新页面）
   bool _contextSwitchedDuringRun = false;
 
   final StringBuffer _streamBuffer = StringBuffer();
@@ -279,6 +374,26 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   /// 分段朗读驱动：随正文增量逐段开口，一轮任务一个实例
   StreamingSpeechSession? _speech;
 
+  /// 按页面签名暂存的临时会话（切页留存，退出 App 清空）
+  final Map<String, _FloatingQSessionSnapshot> _parkedSessions = {};
+
+  /// 当前运行中的任务属于哪个会话（同一时刻最多一个）
+  String? _runSignature;
+
+  /// 当前运行中任务的展示态，切回所属页面时恢复
+  DateTime? _runStartedAt;
+  String? _runStatus;
+
+  /// 是否有任务在跑（跨页面阻止并发发送）
+  bool _runActive = false;
+
+  /// 面板被 × 彻底关闭后，正在收尾的异步任务不再回写任何状态
+  bool _discardRun = false;
+
+  /// 最近一次全局点按位置（容器变形的起点）
+  Offset? _lastPointerDown;
+  DateTime? _lastPointerDownAt;
+
   @override
   FloatingQState build() {
     ref.onDispose(() {
@@ -288,8 +403,23 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   }
 
   // ==========================================
-  // 上下文注册（路由监听与编辑页压栈/出栈）
+  // 触发点与上下文注册
   // ==========================================
+
+  /// 记录全局点按位置，供打开弹窗时从手指/按钮位置展开
+  void recordPointerDown(Offset position) {
+    _lastPointerDown = position;
+    _lastPointerDownAt = DateTime.now();
+  }
+
+  /// 最近 1.2 秒内的点按位置；过期或没有点按时返回 null（走默认底部锚点）
+  Offset? get lastPointerDown {
+    final position = _lastPointerDown;
+    final at = _lastPointerDownAt;
+    if (position == null || at == null) return null;
+    if (DateTime.now().difference(at) > const Duration(milliseconds: 1200)) return null;
+    return position;
+  }
 
   /// 更新基础上下文（由路由 location 监听器调用）
   void setBaseContext(QPageContext context) {
@@ -312,30 +442,115 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     _applyEffectiveContext();
   }
 
-  /// 生效上下文签名变化时处理会话隔离：
-  /// 空闲 → 立即清空历史（切页/返回即丢失，含"切走再回来"）；
-  /// 工作中 → 任务继续跑完（撤回能力全局保留），但历史立即丢弃
+  /// 生效上下文签名变化时切换临时会话：
+  /// 旧会话（含消息、引用、附件、草稿、待撤回变更）park 起来，
+  /// 新页面若有暂存会话则恢复成气泡，否则隐藏；不再直接清空历史。
   void _applyEffectiveContext() {
     final effective = state.effectiveContext;
-    final signature = effective?.signature;
-    if (signature == state.contextSignature) return;
+    _switchToSession(effective?.signature, label: effective?.displayLabel, external: false);
+  }
 
-    if (state.phase == FloatingQPhase.working) {
-      _contextSwitchedDuringRun = true;
-      // 切页即丢弃历史，朗读也要收住：新页面上突然冒出的语音毫无来由
-      _speech?.onAbort();
+  /// 切换到指定签名的临时会话。
+  ///
+  /// [external] 为 true 时使用独立的 `external:share` 会话，不与页面会话互串。
+  void _switchToSession(String? signature, {String? label, required bool external}) {
+    final sameSignature = signature == state.contextSignature && external == state.externalShareMode;
+    if (sameSignature) {
+      if (label != null && label != state.contextLabel) {
+        state = state.copyWith(contextLabel: label);
+      }
+      return;
     }
-    state = state.copyWith(
+
+    // 运行中的任务属于旧会话：切走后不再朗读，也不再往新页面写流式内容
+    if (_runActive && state.contextSignature == _runSignature) {
+      _contextSwitchedDuringRun = true;
+    }
+    _parkActiveSession();
+
+    final restored = signature == null ? null : _parkedSessions.remove(signature);
+    _pendingUndo = restored?.pendingUndo ?? <WorkspaceUndoEntry>[];
+    final isRunSession = _runActive && signature != null && signature == _runSignature;
+    final restoredPhase = restored?.phase ?? FloatingQPhase.idle;
+    final phase = isRunSession
+        ? FloatingQPhase.working
+        : (restoredPhase == FloatingQPhase.working ? FloatingQPhase.idle : restoredPhase);
+
+    state = FloatingQState(
+      baseContext: state.baseContext,
+      overlayStack: state.overlayStack,
+      phase: phase,
+      panelMode: restored == null
+          ? FloatingQPanelMode.hidden
+          : (restored.minimized ? FloatingQPanelMode.bubble : FloatingQPanelMode.hidden),
       contextSignature: signature,
-      contextLabel: effective?.displayLabel,
-      messages: const [],
-      // 生效上下文为空（无基础上下文且无编辑页）时显式清空会话签名
-      clearSignature: signature == null,
-      // 挂起引用与来源页面绑定，会话随签名切换即作废；
-      // 页面切换也意味着离开外部分享场景，恢复页面上下文模式
-      clearQuote: true,
-      externalShareMode: false,
+      contextLabel: label ?? restored?.contextLabel,
+      messages: restored?.messages ?? const [],
+      statusText: isRunSession ? _runStatus : null,
+      streamingThought: isRunSession && _thoughtBuffer.isNotEmpty ? _thoughtBuffer.toString() : null,
+      streamingText: isRunSession && _streamBuffer.isNotEmpty ? _streamBuffer.toString() : null,
+      streamingStartedAt: isRunSession ? _runStartedAt : null,
+      pendingUndoCount: _pendingUndo.length,
+      pendingQuote: restored?.pendingQuote,
+      externalShareMode: external,
+      attachedImages: restored?.attachedImages ?? const [],
+      draftText: restored?.draftText ?? '',
+      unreadReply: restored?.unreadReply ?? false,
+      bubblePosition: state.bubblePosition,
+      anchorAlignment: state.anchorAlignment,
+      runActive: _runActive,
     );
+    _sessionMessages = List.of(state.messages);
+  }
+
+  /// 把当前会话整体暂存起来（切页/离开编辑器时调用）。
+  ///
+  /// 暂存态统一标记为「最小化」：回来时显示气泡而不是突然弹出对话框。
+  void _parkActiveSession() {
+    final signature = state.contextSignature;
+    if (signature == null) return;
+    final hasContent =
+        state.messages.isNotEmpty ||
+        state.draftText.isNotEmpty ||
+        state.pendingQuote != null ||
+        state.attachedImages.isNotEmpty ||
+        state.pendingUndoCount > 0;
+    if (!hasContent) {
+      _parkedSessions.remove(signature);
+      return;
+    }
+    _parkedSessions[signature] = _FloatingQSessionSnapshot(
+      signature: signature,
+      contextLabel: state.contextLabel,
+      messages: List.of(state.messages),
+      pendingQuote: state.pendingQuote,
+      attachedImages: List.of(state.attachedImages),
+      draftText: state.draftText,
+      minimized: true,
+      unreadReply: state.unreadReply,
+      pendingUndo: List.of(_pendingUndo),
+      phase: state.phase,
+      updatedAt: DateTime.now(),
+    );
+    _pendingUndo = [];
+    _evictParkedSessions();
+  }
+
+  /// 超出上限时按最后活跃时间淘汰最旧的页面，运行中的会话始终保留
+  void _evictParkedSessions() {
+    while (_parkedSessions.length > _kMaxParkedSessions) {
+      String? oldestKey;
+      DateTime? oldestAt;
+      for (final entry in _parkedSessions.entries) {
+        if (entry.key == _runSignature) continue;
+        if (oldestAt == null || entry.value.updatedAt.isBefore(oldestAt)) {
+          oldestKey = entry.key;
+          oldestAt = entry.value.updatedAt;
+        }
+      }
+      if (oldestKey == null) break;
+      _parkedSessions.remove(oldestKey);
+    }
   }
 
   // ==========================================
@@ -343,22 +558,84 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   // ==========================================
 
   /// 手动点开面板：回到页面上下文模式（外部分享模式仅在分享唤起时生效）
-  void openPanel({Alignment anchorAlignment = Alignment.bottomCenter}) =>
-      state = state.copyWith(panelOpen: true, externalShareMode: false, anchorAlignment: anchorAlignment);
+  void openPanel({Alignment anchorAlignment = Alignment.bottomCenter}) {
+    final effective = state.effectiveContext;
+    _switchToSession(effective?.signature, label: effective?.displayLabel, external: false);
+    state = state.copyWith(
+      panelMode: FloatingQPanelMode.panel,
+      externalShareMode: false,
+      anchorAlignment: anchorAlignment,
+      unreadReply: false,
+    );
+  }
 
-  void closePanel() => state = state.copyWith(panelOpen: false);
+  /// 收起面板：最小化成气泡（无内容时直接隐藏）。
+  ///
+  /// 名称保留给旧调用点；「彻底关闭」走 [dismissActiveSession]。
+  void closePanel() => minimizePanel();
+
+  /// 最小化成气泡；当前页面没有值得留存的内容时直接隐藏
+  void minimizePanel() {
+    if (state.panelMode != FloatingQPanelMode.panel) return;
+    final hasContent =
+        state.messages.isNotEmpty ||
+        state.draftText.isNotEmpty ||
+        state.pendingQuote != null ||
+        state.attachedImages.isNotEmpty ||
+        state.pendingUndoCount > 0;
+    state = state.copyWith(panelMode: hasContent ? FloatingQPanelMode.bubble : FloatingQPanelMode.hidden);
+  }
+
+  /// 彻底关闭当前页面的临时会话（× 按钮确认后调用）。
+  ///
+  /// 正在执行的任务会中止，且不再回写任何消息；待撤回变更一并丢弃。
+  void dismissActiveSession() {
+    _discardRun = true;
+    _currentToken?.cancel('对话已关闭');
+    AgentInteractionService.instance.cancelPending('对话已关闭');
+    _speech?.onAbort();
+    _pendingUndo = [];
+    _sessionMessages = const [];
+    final signature = state.contextSignature;
+    if (signature != null) {
+      _parkedSessions.remove(signature);
+    }
+    state = state.copyWith(
+      panelMode: FloatingQPanelMode.hidden,
+      messages: const [],
+      clearQuote: true,
+      clearAttachedImages: true,
+      draftText: '',
+      pendingUndoCount: 0,
+      clearStatusText: true,
+      clearStreamingText: true,
+      clearStreamingThought: true,
+      clearStreamingStartedAt: true,
+      unreadReply: false,
+    );
+  }
 
   /// 「给小Q」引用入口：挂起引用并展开面板。
   ///
   /// 小Q工作中同样允许挂起（send 在 working 期是 no-op，引用保留待发），
   /// 引用在发送时一次性消费，期间可在面板引用卡片上移除。
   /// 外部内容（第三方分享/划词）唤起时进入外部模式：不展示也不注入页面位置
-  void openWithQuote(QTextQuote quote, {Alignment anchorAlignment = Alignment.bottomCenter}) => state = state.copyWith(
-    pendingQuote: quote,
-    panelOpen: true,
-    externalShareMode: quote.source == QQuoteSource.external,
-    anchorAlignment: anchorAlignment,
-  );
+  void openWithQuote(QTextQuote quote, {Alignment anchorAlignment = Alignment.bottomCenter}) {
+    final isExternal = quote.source == QQuoteSource.external;
+    final effective = state.effectiveContext;
+    _switchToSession(
+      isExternal ? 'external:share' : effective?.signature,
+      label: isExternal ? '系统分享' : effective?.displayLabel,
+      external: isExternal,
+    );
+    state = state.copyWith(
+      pendingQuote: quote,
+      panelMode: FloatingQPanelMode.panel,
+      externalShareMode: isExternal,
+      anchorAlignment: anchorAlignment,
+      unreadReply: false,
+    );
+  }
 
   /// 移除挂起的引用（引用卡片 × 按钮）
   void clearPendingQuote() => state = state.copyWith(clearQuote: true);
@@ -366,7 +643,13 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   /// 外部分享图片入口：挂起待挂载图片并展开面板（同样进入外部模式）
   void openWithImages(List<String> paths) {
     if (paths.isEmpty) return;
-    state = state.copyWith(pendingImages: List.of(paths), panelOpen: true, externalShareMode: true);
+    _switchToSession('external:share', label: '系统分享', external: true);
+    state = state.copyWith(
+      pendingImages: List.of(paths),
+      panelMode: FloatingQPanelMode.panel,
+      externalShareMode: true,
+      unreadReply: false,
+    );
   }
 
   /// 面板消费挂起的分享图片：转入附件区展示，随下一轮发送一次性携带。
@@ -398,31 +681,49 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     state = state.copyWith(attachedImages: state.attachedImages.where((p) => p != path).toList());
   }
 
+  /// 输入框草稿同步：面板卸载后仍能恢复未发送内容
+  void updateDraft(String text) {
+    if (state.draftText == text) return;
+    state = state.copyWith(draftText: text);
+  }
+
+  /// 记录气泡最终位置（拖动结束后调用；纯内存，重启 App 回到默认右下角）
+  void setBubblePosition(Offset position) {
+    if (state.bubblePosition == position) return;
+    state = state.copyWith(bubblePosition: position);
+  }
+
   /// 手动开启新对话（清空历史；进行中的任务与待撤回变更不受影响）
   void newConversation() {
-    if (state.phase == FloatingQPhase.working) return;
+    if (state.runActive) return;
+    _pendingUndo = [];
+    _sessionMessages = const [];
     state = state.copyWith(
       messages: const [],
-      clearSignature: true,
       clearStatusText: true,
       clearStreamingText: true,
+      clearStreamingThought: true,
+      clearStreamingStartedAt: true,
       // 挂起引用与附件图片属于旧会话上下文，随会话重置一并清空
       clearQuote: true,
       clearAttachedImages: true,
+      draftText: '',
+      pendingUndoCount: 0,
+      unreadReply: false,
+      phase: FloatingQPhase.idle,
     );
-    _sessionMessages = const [];
   }
 
   // ==========================================
   // 发送 / 中断 / 撤回
   // ==========================================
 
-  /// 发送指令：上下文签名变化即自动开新会话；连续对话携带本会话历史。
+  /// 发送指令：上下文签名变化即自动切到对应会话；连续对话携带本会话历史。
   /// 支持仅附件图片、无文字的发送（自动补引导语）；发送时取走全部附件图片
   Future<void> send(String content) async {
     final text = content.trim();
     final images = List<String>.of(state.attachedImages);
-    if ((text.isEmpty && images.isEmpty) || state.phase == FloatingQPhase.working) {
+    if ((text.isEmpty && images.isEmpty) || state.runActive) {
       return;
     }
 
@@ -430,10 +731,10 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     final isExternal = state.externalShareMode;
     final ctx = isExternal ? null : state.effectiveContext;
     final signature = isExternal ? 'external:share' : (ctx?.signature ?? 'page:none');
+    _switchToSession(signature, label: ctx?.displayLabel, external: isExternal);
 
     // 撤回就绪期发起新任务：保留并继续累加旧修改，撤回语义仍为
     // "撤销本会话小Q的全部修改"（逆序恢复天然按时间倒序覆盖多次任务）
-    final isNewConversation = signature != state.contextSignature;
     final userMessage = ChatMessage(
       role: 'user',
       content: text.isEmpty && images.isNotEmpty ? '请结合图片进行分析' : text,
@@ -446,17 +747,25 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
     state = state.copyWith(
       phase: FloatingQPhase.working,
+      runActive: true,
       contextSignature: signature,
-      contextLabel: ctx?.displayLabel,
-      messages: isNewConversation ? [userMessage] : [...state.messages, userMessage],
+      contextLabel: ctx?.displayLabel ?? state.contextLabel,
+      messages: [...state.messages, userMessage],
       statusText: '小Q准备中',
       streamingStartedAt: DateTime.now(),
       clearStreamingText: true,
       clearStreamingThought: true,
       clearQuote: true,
       clearAttachedImages: true,
+      draftText: '',
+      unreadReply: false,
     );
     _sessionMessages = List.of(state.messages);
+    _runSignature = signature;
+    _runStartedAt = state.streamingStartedAt;
+    _runStatus = state.statusText;
+    _runActive = true;
+    _discardRun = false;
     _contextSwitchedDuringRun = false;
 
     // 通知目标编辑页任务开始（暂停自动保存）并记录编辑器指纹
@@ -475,6 +784,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 将最近一条步数上限消息标记为已处理（隐藏「继续/暂停」按钮）
   void _markTurnLimitHandled() {
+    if (_discardRun) return;
     final messages = List<ChatMessage>.from(_sessionMessages);
     for (var i = messages.length - 1; i >= 0; i--) {
       if (messages[i].uiDetails?['type'] == 'turn_limit') {
@@ -488,14 +798,14 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 点击「继续」：以「继续」指令重启 Agent 循环接着执行未完成的任务
   Future<void> continueTask() async {
-    if (state.phase == FloatingQPhase.working) return;
+    if (state.runActive) return;
     _markTurnLimitHandled();
     await send('继续');
   }
 
   /// 点击「暂停」：仅隐藏按钮，已完成的工作保留，任务就此结束
   void pauseTask() {
-    if (state.phase == FloatingQPhase.working) return;
+    if (state.runActive) return;
     _markTurnLimitHandled();
   }
 
@@ -516,9 +826,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       state = state.copyWith(
         phase: FloatingQPhase.idle,
         messages: const [],
-        clearSignature: true,
         pendingUndoCount: 0,
         isUndoing: false,
+        unreadReply: false,
       );
       return result;
     } catch (e) {
@@ -526,6 +836,45 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       state = state.copyWith(isUndoing: false);
       return null;
     }
+  }
+
+  /// 把当前临时对话提升为正式会话，供「展开全页面」继续聊。
+  ///
+  /// 返回 null 表示当前没有可迁移的内容（已清空临时会话）；
+  /// 任务执行中不可迁移，由调用方提示。
+  Future<ChatSession?> promoteActiveSession() async {
+    if (state.runActive) return null;
+    final messages = List<ChatMessage>.of(state.messages);
+    final draft = state.draftText.trim();
+    if (messages.isEmpty && draft.isEmpty) {
+      dismissActiveSession();
+      return null;
+    }
+
+    ChatMessage? firstUser;
+    for (final message in messages) {
+      if (message.role == 'user') {
+        firstUser = message;
+        break;
+      }
+    }
+    var title = (firstUser?.content ?? draft).trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (title.isEmpty) title = '与小Q的对话';
+    if (title.length > 20) title = '${title.substring(0, 20)}…';
+
+    final now = DateTime.now();
+    final session = ChatSession(
+      id: const Uuid().v4(),
+      title: title,
+      messages: messages,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await ConfigRepository.instance.insertChatSession(session);
+    ref.read(chatSessionListProvider.notifier).upsertLocal(session);
+    ref.read(currentChatProvider.notifier).setSession(session);
+    dismissActiveSession();
+    return session;
   }
 
   // ==========================================
@@ -624,7 +973,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             _thoughtBuffer.clear();
             // 上一轮的正文会被状态行覆盖，朗读跟着作废，否则"念半截又从头念"
             _speech?.onTurnStart();
-            state = state.copyWith(clearStreamingThought: true);
+            if (!_discardRun && _runSignature == state.contextSignature) {
+              state = state.copyWith(clearStreamingThought: true);
+            }
             // 首轮不展示步数，避免"第 1 步"这类无信息量文案
             _setStatus((event.turn ?? 0) > 1 ? '小Q思考中 · 第 ${event.turn} 步' : '小Q思考中');
             break;
@@ -632,7 +983,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             if (event.text != null) {
               _streamBuffer.write(event.text);
               _scheduleFlush();
-              // 切页后不再喂正文：与"历史立即丢弃、答复不落界面"保持同一语义
+              // 切页后不再喂正文：与"历史留存但不跨页面朗读"保持同一语义
               if (!_contextSwitchedDuringRun) _speech?.onContentDelta(event.text!);
             }
             break;
@@ -650,7 +1001,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
               _thoughtBuffer
                 ..clear()
                 ..write(thoughtText);
-              state = state.copyWith(streamingThought: thoughtText);
+              if (!_discardRun && _runSignature == state.contextSignature) {
+                state = state.copyWith(streamingThought: thoughtText);
+              }
             }
             break;
           case AgentEventType.toolCalling:
@@ -693,7 +1046,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
         // 语音回复：与 AI 主页面共用「小Q语音 → 自动朗读回复」开关。
         // 正文流式期间已逐段开口，这里只补上未满门槛的最后一段并收尾。
-        // 只在答复确实落到当前可见会话时朗读（切页丢弃历史/用户主动中止时沉默）
+        // 只在答复确实落到当前可见会话时朗读（切页/用户主动中止时沉默）
         if (!_contextSwitchedDuringRun &&
             !token.isCancelled &&
             state.contextSignature == signature &&
@@ -732,36 +1085,59 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       // 任务结束：目标编辑页指纹未变则重载刷新 UI（保留用户手动编辑的版本）
       await QTargetBridge.instance.notifyTaskEnd(ctx?.signature);
 
-      // 会话已因切页重置：历史丢弃，消息不再回到界面（撤回能力仍全局保留）
-      if (_contextSwitchedDuringRun) {
-        _sessionMessages = const [];
-      }
-
-      // 本轮任务的修改并入待撤回集合（跨任务累加，撤回 = 撤销本会话全部修改）
-      _pendingUndo.addAll(undoEntries);
-
-      if (_pendingUndo.isNotEmpty) {
-        // 存在待撤回变更即进入撤回就绪：横幅常驻面板、不再自动过期，
-        // 直到用户执行撤回；本轮无新修改但此前仍有待撤回变更时同样保持就绪
+      _runActive = false;
+      if (_discardRun) {
+        // 面板已被 × 彻底关闭：本次任务的结果和撤回入口一并丢弃
+        _discardRun = false;
         state = state.copyWith(
-          phase: FloatingQPhase.countdown,
-          pendingUndoCount: _pendingUndo.length,
-          messages: List.of(_sessionMessages),
+          phase: FloatingQPhase.idle,
+          runActive: false,
           clearStatusText: true,
           clearStreamingText: true,
           clearStreamingThought: true,
           clearStreamingStartedAt: true,
         );
       } else {
-        state = state.copyWith(
-          phase: FloatingQPhase.idle,
-          messages: List.of(_sessionMessages),
-          clearStatusText: true,
-          clearStreamingText: true,
-          clearStreamingThought: true,
-          clearStreamingStartedAt: true,
-        );
+        final isRunSession = state.contextSignature == signature;
+        if (isRunSession) {
+          // 本轮任务的修改并入待撤回集合（跨任务累加，撤回 = 撤销本会话全部修改）
+          _pendingUndo.addAll(undoEntries);
+          final hasUndo = _pendingUndo.isNotEmpty;
+          state = state.copyWith(
+            phase: hasUndo ? FloatingQPhase.countdown : FloatingQPhase.idle,
+            messages: List.of(_sessionMessages),
+            pendingUndoCount: _pendingUndo.length,
+            runActive: false,
+            // 最小化期间完成：气泡上亮未读点；面板开着则直接看到回复
+            unreadReply: state.panelMode == FloatingQPanelMode.bubble,
+            clearStatusText: true,
+            clearStreamingText: true,
+            clearStreamingThought: true,
+            clearStreamingStartedAt: true,
+          );
+        } else {
+          // 任务所属页面已切走：结果写回暂存会话，回来时以未读气泡提示
+          final snapshot = _parkedSessions[signature];
+          if (snapshot != null) {
+            snapshot.messages = List.of(_sessionMessages);
+            snapshot.pendingUndo.addAll(undoEntries);
+            snapshot.phase = snapshot.pendingUndo.isNotEmpty ? FloatingQPhase.countdown : FloatingQPhase.idle;
+            snapshot.unreadReply = true;
+            snapshot.updatedAt = DateTime.now();
+          }
+          state = state.copyWith(
+            runActive: false,
+            clearStatusText: true,
+            clearStreamingText: true,
+            clearStreamingThought: true,
+            clearStreamingStartedAt: true,
+          );
+        }
       }
+      _runSignature = null;
+      _runStatus = null;
+      _runStartedAt = null;
+      _sessionMessages = const [];
     }
   }
 
@@ -880,9 +1256,10 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     ].join('\n');
   }
 
-  /// 追加会话消息：会话已因切页重置时不再回写界面
+  /// 追加会话消息：只回写到任务所属的可见会话，切走的页面不串显
   void _appendSessionMessage(ChatMessage message, String runSignature) {
     _sessionMessages = [..._sessionMessages, message];
+    if (_discardRun) return;
     if (!_contextSwitchedDuringRun && state.contextSignature == runSignature) {
       state = state.copyWith(messages: List.of(_sessionMessages));
     }
@@ -891,6 +1268,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   void _setStatus(String text) {
     _flushTimer?.cancel();
     _flushTimer = null;
+    if (_discardRun || _runSignature != state.contextSignature) return;
+    _runStatus = text;
     state = state.copyWith(statusText: text, clearStreamingText: true);
   }
 
@@ -899,6 +1278,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   void _scheduleFlush() {
     if (_flushTimer != null && _flushTimer!.isActive) return;
     _flushTimer = Timer(const Duration(milliseconds: 60), () {
+      if (_discardRun || _runSignature != state.contextSignature) return;
       final content = _streamBuffer.toString();
       if (content.isNotEmpty) {
         state = state.copyWith(streamingText: content, clearStatusText: true, clearStreamingThought: true);

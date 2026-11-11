@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:qnote_flutter/config/ai_vendors.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/reasoning_effort.dart';
 
@@ -333,7 +334,12 @@ class AiProvider {
   bool get usesAccountAuth => authMode != authModeApiKey;
 
   /// 是否已有可用凭证（账号型交给登录态判断，发信层再校验）
-  bool get hasCredentials => usesAccountAuth || apiKeys.any((key) => key.trim().isNotEmpty);
+  ///
+  /// 免密钥服务（本机 Ollama/LM Studio、免费网关）按厂商模板
+  /// `AiProviderConfig.keyOptional` 放行：把它们判成「无凭证」会让条目从选路
+  /// 与选择器里静默消失，而这类服务本来就不需要密钥。
+  bool get hasCredentials =>
+      usesAccountAuth || apiKeys.any((key) => key.trim().isNotEmpty) || vendorAllowsKeyless(vendorId);
 
   /// 厂商下是否还有可用的「地址 + 凭证 + 模型」组合（已停用的厂商一律不可用）
   bool get isUsable => enabled && baseUrl.trim().isNotEmpty && hasCredentials && models.isNotEmpty;

@@ -118,49 +118,57 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
     String? emptyText,
   }) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
+    // 底色放在 Material 上，而不是带底色的 Container：卡片内的 ListTile 要在最近的
+    // Material 上绘制背景与点击水波纹，中间夹一层有底色的 DecoratedBox 会把涟漪
+    // 整片盖住（Flutter 会直接抛「ink splashes may be invisible」断言）。
+    return Material(
+      color: theme.colorScheme.surface,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '共 $count 个',
+                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (children.isEmpty && emptyText != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
-                  '共 $count 个',
-                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  emptyText,
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (children.isEmpty && emptyText != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                emptyText,
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            )
-          else
-            ...children,
-        ],
+              )
+            else
+              ...children,
+          ],
+        ),
       ),
     );
   }

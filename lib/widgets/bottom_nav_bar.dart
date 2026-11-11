@@ -433,7 +433,8 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final phase = ref.watch(floatingQProvider.select((s) => s.phase));
-    final panelOpen = ref.watch(floatingQProvider.select((s) => s.panelOpen));
+    final panelMode = ref.watch(floatingQProvider.select((s) => s.panelMode));
+    final panelOpen = panelMode == FloatingQPanelMode.panel;
     final isWorking = phase == FloatingQPhase.working;
     // /ai 分支激活态（index 4）
     final isActive = widget.currentIndex == 4;
@@ -442,9 +443,17 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
       behavior: HitTestBehavior.translucent,
       onTap: () {
         final notifier = ref.read(floatingQProvider.notifier);
-        if (ref.read(floatingQProvider).panelOpen) {
-          // 面板已展开：单击收起
-          notifier.closePanel();
+        final mode = ref.read(floatingQProvider).panelMode;
+        if (mode == FloatingQPanelMode.panel) {
+          // 面板已展开：单击最小化成气泡（会话保留）
+          HapticFeedback.selectionClick();
+          FocusManager.instance.primaryFocus?.unfocus();
+          notifier.minimizePanel();
+        } else if (mode == FloatingQPanelMode.bubble) {
+          // 当前页面已有气泡：单击重新打开同一段对话，而不是新开
+          HapticFeedback.selectionClick();
+          FocusManager.instance.primaryFocus?.unfocus();
+          notifier.openPanel();
         } else {
           HapticFeedback.selectionClick();
           widget.onTap();

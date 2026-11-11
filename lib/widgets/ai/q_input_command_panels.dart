@@ -127,7 +127,7 @@ class SlashCommandPanel extends StatelessWidget {
 /// @ 引用类别
 enum AtReferenceKind {
   note(Icons.description_outlined, '引用笔记'),
-  todo(Icons.check_box_outlined, '引用待办'),
+  todo(Icons.checklist_rounded, '引用待办'),
   journal(Icons.auto_stories_outlined, '引用日记');
 
   const AtReferenceKind(this.icon, this.label);

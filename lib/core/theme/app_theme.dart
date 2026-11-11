@@ -2,6 +2,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
+
 class AppTheme {
   static const Color primaryDefault = Color(0xFF005BCB);
 
@@ -19,11 +22,19 @@ class AppTheme {
   );
 
   static ThemeData lightTheme(Color accentColor) {
+    // 主题色由用户自选，可能极亮（如荧光黄绿）；前景色一律按对比度推导，
+    // 避免浅色主题色上出现白字压浅底。
+    final onPrimary = AppContrast.onColor(accentColor);
+    // 强调色当文字时贴的是 surface（白）或半透明 primaryContainer 淡底，
+    // 先把淡底合到 surface 上再算，才能得到真实可读的深色。
+    final accentOnSurface = AppContrast.readable(accentColor, Colors.white);
+    final primaryContainer = accentColor.withValues(alpha: 0.1);
+    final onPrimaryContainer = AppContrast.readable(accentColor, Color.alphaBlend(primaryContainer, Colors.white));
     final colorScheme = ColorScheme(
       primary: accentColor,
-      onPrimary: Colors.white,
-      primaryContainer: accentColor.withValues(alpha: 0.1),
-      onPrimaryContainer: accentColor,
+      onPrimary: onPrimary,
+      primaryContainer: primaryContainer,
+      onPrimaryContainer: onPrimaryContainer,
       secondary: const Color(0xFF5B5F6E),
       onSecondary: Colors.white,
       secondaryContainer: const Color(0xFFECEDEF),
@@ -76,11 +87,11 @@ class AppTheme {
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: accentColor,
-        foregroundColor: Colors.white,
+        foregroundColor: colorScheme.onPrimary,
         elevation: 2,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        selectedItemColor: accentColor,
+        selectedItemColor: accentOnSurface,
         unselectedItemColor: const Color(0xFF727785),
         type: BottomNavigationBarType.fixed,
         backgroundColor: colorScheme.surface,
@@ -99,7 +110,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: accentColor, width: 1.5),
+          borderSide: BorderSide(color: accentOnSurface, width: 1.5),
         ),
         filled: true,
         fillColor: colorScheme.surface,
@@ -120,13 +131,13 @@ class AppTheme {
         indicatorColor: accentColor.withValues(alpha: 0.12),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return IconThemeData(color: accentColor);
+            return IconThemeData(color: accentOnSurface);
           }
           return const IconThemeData(color: Color(0xFF727785));
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return TextStyle(color: accentColor, fontSize: 11, fontWeight: FontWeight.w600);
+            return TextStyle(color: accentOnSurface, fontSize: 11, fontWeight: FontWeight.w600);
           }
           return const TextStyle(color: Color(0xFF727785), fontSize: 11);
         }),
@@ -139,7 +150,7 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: accentColor,
-          foregroundColor: Colors.white,
+          foregroundColor: colorScheme.onPrimary,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -148,7 +159,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: accentColor,
+          foregroundColor: accentOnSurface,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           textStyle: const TextStyle(fontWeight: FontWeight.w500),
         ),
@@ -157,6 +168,11 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+      // Tooltip 也是浮层，统一成与菜单/卡片一致的小圆角
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(color: colorScheme.inverseSurface, borderRadius: BorderRadius.circular(8)),
+        textStyle: TextStyle(color: colorScheme.onInverseSurface, fontSize: 12),
       ),
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -175,7 +191,7 @@ class AppTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return Colors.white;
+            return colorScheme.onPrimary;
           }
           return const Color(0xFFC2C6D6);
         }),
@@ -194,13 +210,13 @@ class AppTheme {
           }
           return Colors.transparent;
         }),
-        checkColor: WidgetStateProperty.all(Colors.white),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        checkColor: WidgetStateProperty.all(colorScheme.onPrimary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
       radioTheme: RadioThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor;
+            return accentOnSurface;
           }
           return const Color(0xFF727785);
         }),
@@ -215,11 +231,18 @@ class AppTheme {
   }
 
   static ThemeData darkTheme(Color accentColor) {
+    const darkSurface = Color(0xFF1A1D24);
+    // 与浅色主题同理：深色模式下强调色当文字时要朝白提亮才读得清；
+    // 原先写死的 #A5B4FC 只对蓝色系主题成立。
+    final onPrimary = AppContrast.onColor(accentColor);
+    final accentOnSurface = AppContrast.readable(accentColor, darkSurface);
+    final primaryContainer = accentColor.withValues(alpha: 0.18);
+    final onPrimaryContainer = AppContrast.readable(accentColor, Color.alphaBlend(primaryContainer, darkSurface));
     final colorScheme = ColorScheme(
       primary: accentColor,
-      onPrimary: Colors.white,
-      primaryContainer: accentColor.withValues(alpha: 0.18),
-      onPrimaryContainer: const Color(0xFFA5B4FC),
+      onPrimary: onPrimary,
+      primaryContainer: primaryContainer,
+      onPrimaryContainer: onPrimaryContainer,
       secondary: const Color(0xFF8E94A3),
       onSecondary: const Color(0xFF111318),
       secondaryContainer: const Color(0xFF2A2D36),
@@ -272,11 +295,11 @@ class AppTheme {
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: accentColor,
-        foregroundColor: Colors.white,
+        foregroundColor: colorScheme.onPrimary,
         elevation: 2,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        selectedItemColor: accentColor,
+        selectedItemColor: accentOnSurface,
         unselectedItemColor: const Color(0xFF8E94A3),
         type: BottomNavigationBarType.fixed,
         backgroundColor: colorScheme.surface,
@@ -295,7 +318,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: accentColor, width: 1.5),
+          borderSide: BorderSide(color: accentOnSurface, width: 1.5),
         ),
         filled: true,
         fillColor: colorScheme.surfaceContainerLow,
@@ -316,13 +339,13 @@ class AppTheme {
         indicatorColor: accentColor.withValues(alpha: 0.15),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return IconThemeData(color: accentColor);
+            return IconThemeData(color: accentOnSurface);
           }
           return const IconThemeData(color: Color(0xFF8E94A3));
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return TextStyle(color: accentColor, fontSize: 11, fontWeight: FontWeight.w600);
+            return TextStyle(color: accentOnSurface, fontSize: 11, fontWeight: FontWeight.w600);
           }
           return const TextStyle(color: Color(0xFF8E94A3), fontSize: 11);
         }),
@@ -335,7 +358,7 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: accentColor,
-          foregroundColor: Colors.white,
+          foregroundColor: colorScheme.onPrimary,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -344,15 +367,36 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: accentColor,
+          foregroundColor: accentOnSurface,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           textStyle: const TextStyle(fontWeight: FontWeight.w500),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(foregroundColor: colorScheme.onSurfaceVariant)),
+      // M3 默认把 SnackBar 底色取成 inverseSurface，深色主题下那是近白色。
+      // 这里改用抬升一层的容器色，并同步指定文字色：否则默认正文仍按
+      // onInverseSurface（深色）绘制，落在深色底上会读不清。
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        contentTextStyle: TextStyle(
+          color: colorScheme.onSurface,
+          fontSize: AppTypography.bodyLarge,
+          fontFamily: 'Inter',
+        ),
+        actionTextColor: colorScheme.primary,
+        closeIconColor: colorScheme.onSurfaceVariant,
+      ),
+      // Tooltip 同样别再走 inverseSurface：深色下浅色气泡会跳成亮斑，
+      // 统一成与菜单/卡片一致的抬升表面，并补一圈细描边交代边界。
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        textStyle: TextStyle(color: colorScheme.onSurface, fontSize: 12),
       ),
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -371,7 +415,7 @@ class AppTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return Colors.white;
+            return colorScheme.onPrimary;
           }
           return const Color(0xFF8E94A3);
         }),
@@ -390,13 +434,13 @@ class AppTheme {
           }
           return Colors.transparent;
         }),
-        checkColor: WidgetStateProperty.all(Colors.white),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        checkColor: WidgetStateProperty.all(colorScheme.onPrimary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
       radioTheme: RadioThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return accentColor;
+            return accentOnSurface;
           }
           return const Color(0xFF8E94A3);
         }),

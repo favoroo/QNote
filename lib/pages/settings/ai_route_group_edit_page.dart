@@ -335,6 +335,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
         : (options.isEmpty ? null : options.first.encode());
     return DropdownButtonFormField<String>(
       initialValue: value,
+      borderRadius: BorderRadius.circular(12),
       decoration: const InputDecoration(labelText: '当前固定成员', border: OutlineInputBorder(), isDense: true),
       items: options
           .map(

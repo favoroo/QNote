@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/search_highlight.dart';
 
@@ -118,7 +120,7 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
   Widget _buildLeading(ThemeData theme, {required bool isRunning}) {
     final scheme = theme.colorScheme;
     if (widget.isBatchMode) {
-      return Checkbox(value: widget.isChecked, onChanged: (_) => widget.onToggleCheck());
+      return AppCheckbox(value: widget.isChecked);
     }
     final Widget icon = isRunning
         ? LoadingRing(size: 16, strokeWidth: 1.8, color: widget.isActive ? scheme.primary : scheme.onSurfaceVariant)
@@ -152,7 +154,10 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
-        color: theme.colorScheme.error,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.error,
+          borderRadius: BorderRadius.circular(AppRadius.medium),
+        ),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       confirmDismiss: (_) => widget.confirmDelete(),

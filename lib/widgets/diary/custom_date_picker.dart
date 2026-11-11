@@ -228,7 +228,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                             color: isSelected
-                                ? Colors.white
+                                ? colorScheme.onPrimary
                                 : isCurrentMonth
                                 ? colorScheme.onSurface
                                 : colorScheme.onSurface.withValues(alpha: 0.3),
@@ -243,7 +243,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
                             width: 5,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: isSelected ? Colors.white : markColor,
+                              color: isSelected ? colorScheme.onPrimary : markColor,
                               shape: BoxShape.circle,
                             ),
                           ),

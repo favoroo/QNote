@@ -55,6 +55,20 @@ void main() {
     expect(find.text('14:30'), findsNothing);
   });
 
+  testWidgets('空闲态是正圆：宽高必须相等，描边不能把宽度撑开', (tester) async {
+    // 描边一旦写在 decoration 的 border 上，Container 会把它算进内边距，
+    // 高度被约束钉在 44、宽度却被撑到 47，22 的圆角就画成横向拉长的椭圆。
+    // 所以这里断言空闲态的宽高完全一致，而不是只看「有没有加号」。
+    final container = _container();
+    addTearDown(container.dispose);
+
+    await _pumpFab(tester, container);
+
+    final size = tester.getSize(find.byType(DiaryRecordFab));
+    expect(size.width, DiaryRecordFab.height);
+    expect(size.height, DiaryRecordFab.height);
+  });
+
   testWidgets('选中时间后加号仍在左侧，时间与 × 长在它右边', (tester) async {
     final container = _container(
       selection: TimelineTimeSelectEvent(const TimeOfDay(hour: 14, minute: 30), date: _today()),
@@ -192,5 +206,55 @@ void main() {
     await _pumpFab(tester, container);
 
     expect(find.byKey(const ValueKey('fab-draft-dot')), findsNothing);
+  });
+
+  group('DiaryInlineRecordButton', () {
+    Future<void> pumpInline(WidgetTester tester, ValueChanged<Rect?> onTap) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(child: DiaryInlineRecordButton(onTap: onTap)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('点击回调交出圆钮自身的全局 Rect，作为面板变形起点', (tester) async {
+      Rect? tapped;
+      await pumpInline(tester, (rect) => tapped = rect);
+
+      expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+
+      await tester.tap(find.byType(DiaryInlineRecordButton));
+      await tester.pump();
+
+      expect(tapped, isNotNull);
+      // 量的是 28 的视觉圆钮，而不是 44 的命中区，否则容器起点会偏大一圈
+      expect(tapped!.width, DiaryRecordFab.inlineDiameter);
+      expect(tapped!.height, DiaryRecordFab.inlineDiameter);
+    });
+
+    testWidgets('紧凑幽灵预览只画加号，不画时间与 ×', (tester) async {
+      // 行内起点只有 28 宽；若沿用大按钮排版，时间与 × 会被裁成一条细缝。
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: DiaryRecordFab.inlineDiameter,
+              height: DiaryRecordFab.inlineDiameter,
+              child: DiaryRecordFabPreview(
+                compact: true,
+                selection: TimelineTimeSelectEvent(const TimeOfDay(hour: 14, minute: 30), date: _today()),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+      expect(find.text('14:30'), findsNothing);
+      expect(find.byIcon(Icons.close_rounded), findsNothing);
+    });
   });
 }

@@ -520,6 +520,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
               trailing: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
                   value: _syncIntervalOptions.any((e) => e.value == _syncInterval) ? _syncInterval : 15,
+                  borderRadius: BorderRadius.circular(12),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     fontSize: AppTypography.body,
@@ -664,10 +665,10 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
               onPressed: isSyncing ? null : _performSync,
               style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
               icon: isSyncing
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
                     )
                   : const Icon(Icons.sync_rounded, size: 20),
               label: Text(

@@ -189,7 +189,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: theme.colorScheme.onPrimary,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 0),

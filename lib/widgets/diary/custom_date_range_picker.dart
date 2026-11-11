@@ -287,8 +287,8 @@ class _CustomDateRangePickerDialogState extends State<CustomDateRangePickerDialo
                             color: (isStart || isEnd)
                                 ? colorScheme.primary
                                 : (inRange ? colorScheme.primary.withValues(alpha: 0.1) : null),
-                            shape: (isStart || isEnd) ? BoxShape.circle : BoxShape.rectangle,
-                            borderRadius: (isStart || isEnd) ? null : BorderRadius.circular(4),
+                            // 选中/范围中的日期统一为圆形，避免中间日期呈小方块
+                            shape: BoxShape.circle,
                           ),
                           child: Center(
                             child: Text(
@@ -296,7 +296,7 @@ class _CustomDateRangePickerDialogState extends State<CustomDateRangePickerDialo
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 fontWeight: (isStart || isEnd) ? FontWeight.bold : FontWeight.normal,
                                 color: (isStart || isEnd)
-                                    ? Colors.white
+                                    ? colorScheme.onPrimary
                                     : isCurrentMonth
                                     ? colorScheme.onSurface
                                     : colorScheme.onSurface.withValues(alpha: 0.3),

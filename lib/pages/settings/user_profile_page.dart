@@ -536,7 +536,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                               shape: BoxShape.circle,
                               border: Border.all(color: theme.colorScheme.surface, width: 1.5),
                             ),
-                            child: const Icon(Icons.camera_alt_rounded, size: 9, color: Colors.white),
+                            child: Icon(Icons.camera_alt_rounded, size: 9, color: theme.colorScheme.onPrimary),
                           ),
                         ),
                       ],
@@ -1024,7 +1024,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     icon: const Icon(Icons.add_rounded, size: 18),
                     style: IconButton.styleFrom(
                       backgroundColor: theme.colorScheme.primary,
-                      foregroundColor: Colors.white,
+                      foregroundColor: theme.colorScheme.onPrimary,
                       minimumSize: const Size(28, 28),
                       padding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
@@ -1120,7 +1120,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: isSelected ? theme.colorScheme.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
           boxShadow: isSelected
               ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 2, offset: const Offset(0, 1))]
               : null,

@@ -23,30 +23,44 @@ class ActionMenu {
   static GlobalKey<_ActionMenuOverlayState>? _currentOverlayKey;
 
   static void show({required BuildContext context, required GlobalKey key, required List<ActionMenuItem> items}) {
-    dismiss(immediate: true);
-
     final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
+    _showNear(context, anchorTopLeft: renderBox.localToGlobal(Offset.zero), anchorSize: renderBox.size, items: items);
+  }
+
+  /// 在指定屏幕坐标附近弹菜单。
+  ///
+  /// 用于没有稳定锚点组件的场景（如「长按拾起后原地松手」）：此时卡片可能正被
+  /// 拖拽浮层临时替换，手指落点反而更贴近用户的视觉焦点。
+  static void showAt({required BuildContext context, required Offset position, required List<ActionMenuItem> items}) {
+    _showNear(context, anchorTopLeft: position, anchorSize: Size.zero, items: items);
+  }
+
+  static void _showNear(
+    BuildContext context, {
+    required Offset anchorTopLeft,
+    required Size anchorSize,
+    required List<ActionMenuItem> items,
+  }) {
+    dismiss(immediate: true);
 
     final overlay = Overlay.of(context);
-    final size = renderBox.size;
-    final offset = renderBox.localToGlobal(Offset.zero);
     final screenSize = MediaQuery.of(context).size;
 
     const menuWidth = 220.0;
     const itemHeight = 52.0;
     final menuHeight = items.length * itemHeight + 16;
 
-    final showAbove = offset.dy + size.height + menuHeight > screenSize.height - 16;
+    final showAbove = anchorTopLeft.dy + anchorSize.height + menuHeight > screenSize.height - 16;
     double top;
     if (showAbove) {
-      top = offset.dy - menuHeight;
+      top = anchorTopLeft.dy - menuHeight;
       if (top < 16) top = 16;
     } else {
-      top = offset.dy + size.height + 4;
+      top = anchorTopLeft.dy + anchorSize.height + 4;
     }
 
-    double left = offset.dx;
+    double left = anchorTopLeft.dx;
     if (left + menuWidth > screenSize.width - 16) {
       left = screenSize.width - menuWidth - 16;
     }

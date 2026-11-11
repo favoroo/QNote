@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
 
 OverlayEntry? _debugOverlayEntry;
 
@@ -284,16 +285,21 @@ class _DebugConsoleOverlayState extends State<_DebugConsoleOverlay> {
               _showToast('已复制');
             },
       child: Container(
-        color: isSelected ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_isSelectMode) ...[
-              Icon(
-                isSelected ? Icons.check_box : Icons.check_box_outline_blank,
+              AppCheckbox(
+                value: isSelected,
                 size: 16,
-                color: isSelected ? Colors.blue : Colors.white54,
+                activeColor: Colors.blue,
+                inactiveColor: Colors.white54,
+                checkColor: Colors.white,
               ),
               const SizedBox(width: 8),
             ],

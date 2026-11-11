@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
@@ -1357,6 +1358,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
             ...shortcuts.where((s) => s.isVisible).map((config) {
               final isSelected = _tags.contains(config.name);
               final color = tagColors[config.name] ?? colorScheme.primary;
+              // 选中态的前景压在标签色实心底上，按底色亮度取黑/白才不会在琥珀色等浅底上看不清
+              final onColor = AppContrast.onColor(color);
               final icon = tagIcons[config.name] ?? Icons.label;
 
               return ChoiceChip(
@@ -1367,16 +1370,16 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 ),
                 labelPadding: isSelected ? null : EdgeInsets.zero,
                 padding: isSelected ? null : const EdgeInsets.all(8),
-                avatar: Icon(icon, size: 14, color: isSelected ? Colors.white : colorScheme.onSurfaceVariant),
+                avatar: Icon(icon, size: 14, color: isSelected ? onColor : colorScheme.onSurfaceVariant),
                 selected: isSelected,
                 selectedColor: color,
                 backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : colorScheme.onSurface,
+                  color: isSelected ? onColor : colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
-                checkmarkColor: Colors.white,
+                checkmarkColor: onColor,
                 showCheckmark: false,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),

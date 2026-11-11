@@ -9,7 +9,7 @@ import 'package:qnote_flutter/models/diary_record.dart';
 /// 时间线每 30 分钟一个时间节点。
 const int kTimelineNodeMinutes = 30;
 
-/// 拖动时时间变化的最小粒度（分钟）。
+/// 拖动后绝对时间的吸附档位（分钟）。
 const int kTimelineDragSnapMinutes = 5;
 
 /// 按节点高度换算拖动灵敏度（像素/分钟）。
@@ -24,8 +24,14 @@ double timelineDragPixelsPerMinute(double nodeHeight) {
 
 /// 把内容坐标系的竖直位移换算成吸附后的整体平移分钟数。
 ///
-/// [contentDeltaPx] 为正表示向下拖（时间变晚），为负表示向上拖（时间变早）。
+/// 吸附以「拖动后的绝对时刻」为准，而不是把位移量本身按档位取整：
+/// 原时间 10:43 向后拖时，结果应是 10:45 / 10:50 这类整点档位，
+/// 而不是 10:48 / 10:53 这种带着原尾数的值。
+///
+/// [anchor] 为拖动开始时刻（区间记录取开始时间）；位移不足半个档位时
+/// 保持原时间不变，避免长按刚触发就跳档。
 int resolveTimelineDragDeltaMinutes({
+  required DateTime anchor,
   required double contentDeltaPx,
   required double pixelsPerMinute,
   int snapMinutes = kTimelineDragSnapMinutes,
@@ -33,7 +39,12 @@ int resolveTimelineDragDeltaMinutes({
   final safePixelsPerMinute = pixelsPerMinute <= 0 ? 1.0 : pixelsPerMinute;
   final grid = snapMinutes <= 0 ? 1 : snapMinutes;
   final rawMinutes = contentDeltaPx / safePixelsPerMinute;
-  return (rawMinutes / grid).round() * grid;
+  if (rawMinutes.abs() < grid / 2) {
+    return 0;
+  }
+  final anchorMinuteOfDay = anchor.hour * 60 + anchor.minute;
+  final snappedMinuteOfDay = ((anchorMinuteOfDay + rawMinutes) / grid).round() * grid;
+  return snappedMinuteOfDay - anchorMinuteOfDay;
 }
 
 /// 一条记录整体平移后的时间字段。
@@ -74,6 +85,7 @@ TimelineTimeShift resolveTimelineTimeShift({
 }) {
   final anchor = record.startTime ?? record.time;
   var delta = resolveTimelineDragDeltaMinutes(
+    anchor: anchor,
     contentDeltaPx: contentDeltaPx,
     pixelsPerMinute: pixelsPerMinute,
     snapMinutes: snapMinutes,

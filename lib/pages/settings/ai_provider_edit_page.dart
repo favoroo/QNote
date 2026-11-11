@@ -25,6 +25,8 @@ import 'package:qnote_flutter/widgets/ai/model_effort_levels_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/model_meta_badges.dart';
 import 'package:qnote_flutter/widgets/ai/raccoon_login_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/sms_login_sheet.dart';
+import 'package:qnote_flutter/widgets/ai/vendor_logo.dart';
+import 'package:qnote_flutter/widgets/ai/vendor_picker_sheet.dart';
 import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 
 part 'ai_provider_edit_widgets.dart';
@@ -264,12 +266,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   // ── 基础信息 ─────────────────────────────────────────────
 
   Future<void> _pickVendor() async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) => _VendorPickerSheet(selectedId: _vendorId),
-    );
+    final selected = await VendorPickerSheet.show(context, selectedId: _vendorId);
     if (selected == null || selected == _vendorId || !mounted) return;
 
     final previousSpec = _vendorSpec;
@@ -512,7 +509,10 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     }
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
     final spec = _vendorSpec;
-    final authType = spec?.authType ?? 'bearer';
+    // 免密钥厂商（本机服务、免费网关）扫描时无需凭证，按无鉴权发请求；
+    // 否则「允许留空密钥却又不让扫描」会让条目停在 0 个模型上无法使用
+    final keyless = spec?.keyOptional ?? false;
+    final authType = keyless && keys.isEmpty ? 'none' : (spec?.authType ?? 'bearer');
     if (keys.isEmpty && authType != 'none') {
       Toast.warning(context, '请先添加密钥再扫描');
       return;
@@ -693,7 +693,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       children.add(
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
+          decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)),
           child: Text(
             label,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -916,7 +916,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
       Toast.warning(context, 'Base URL 必须以 http:// 或 https:// 开头');
       return false;
     }
-    if (!usesAccount && keys.isEmpty) {
+    if (!usesAccount && keys.isEmpty && !(_vendorSpec?.keyOptional ?? false)) {
       Toast.warning(context, '请至少添加一把密钥');
       return false;
     }
@@ -1127,6 +1127,8 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
   Widget _buildBasicCard(ThemeData theme) {
     final colorScheme = theme.colorScheme;
+    final regions = _vendorSpec?.regions ?? const <AiVendorRegion>[];
+    final selectedRegionId = _vendorSpec?.regionFor(_baseUrlCtl.text)?.id;
     return _card(
       theme,
       child: Column(
@@ -1139,15 +1141,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: Icon(Icons.hub_outlined, size: 18, color: colorScheme.primary),
-                  ),
+                  VendorLogo(vendorId: _vendorId, fallbackLabel: _vendorLabel, size: 34),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -1176,13 +1170,31 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             children: [
               Text('Base URL', style: theme.textTheme.labelSmall),
               const Spacer(),
-              if (_vendorId == 'chatanywhere') ...[
-                _urlChip('国内中转', 'https://api.chatanywhere.tech/v1', theme),
-                const SizedBox(width: 6),
-                _urlChip('国外', 'https://api.chatanywhere.org/v1', theme),
-              ],
+              if (regions.isNotEmpty)
+                Text(
+                  _vendorSpec!.regionTitle,
+                  style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                ),
             ],
           ),
+          // 多接入点的厂商（国内/国际、按量/套餐）在这里一键切换地址，
+          // 不拆成多个厂商条目，避免选择器里出现一长串「某厂商（国内）」
+          if (regions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final region in regions)
+                  ChoiceChip(
+                    label: Text(region.name),
+                    selected: selectedRegionId == region.id,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _selectRegion(region),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 4),
           TextField(
             controller: _baseUrlCtl,
@@ -1201,9 +1213,11 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             const SizedBox(height: 4),
             DropdownButtonFormField<String>(
               initialValue: _providerType,
+              borderRadius: BorderRadius.circular(12),
               decoration: const InputDecoration(isDense: true),
               items: const [
                 DropdownMenuItem(value: 'openai', child: Text('OpenAI 兼容')),
+                DropdownMenuItem(value: 'anthropic', child: Text('Anthropic 原生（/v1/messages）')),
                 DropdownMenuItem(value: 'gemini', child: Text('Gemini 原生')),
               ],
               onChanged: (value) {
@@ -1220,35 +1234,14 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     );
   }
 
-  Widget _urlChip(String label, String url, ThemeData theme) {
-    final selected = _baseUrlCtl.text == url;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _baseUrlCtl.text = url;
-          _dirty = true;
-        });
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.2)
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? theme.colorScheme.primary.withValues(alpha: 0.4) : Colors.transparent),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
+  /// 切换厂商接入点（地区 / 套餐）：写入该端点的地址，并按需同步协议
+  void _selectRegion(AiVendorRegion region) {
+    setState(() {
+      _baseUrlCtl.text = region.baseUrl;
+      final provider = region.provider;
+      if (provider != null) _providerType = provider;
+      _dirty = true;
+    });
   }
 
   /// 账号列表卡片：多账号增删、备注、启停、排序 + 选号策略与亲和
@@ -1584,7 +1577,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                '还没有密钥，添加后即可扫描模型。',
+                // 本机服务与免密钥网关允许空密钥：这里的文案必须跟着变，
+                // 否则用户会以为必填而卡在保存上
+                (_vendorSpec?.keyOptional ?? false) ? '该服务可以留空密钥，直接扫描模型即可。' : '还没有密钥，添加后即可扫描模型。',
                 style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             )
