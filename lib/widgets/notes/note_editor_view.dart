@@ -16,6 +16,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/note_file_type.dart';
+import 'package:qnote_flutter/core/utils/note_segments.dart';
 import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/notes/html_preview/html_preview_view.dart';
@@ -72,26 +73,8 @@ class _LinkSegment extends _Segment {
 // ---------------------------------------------------------------------------
 // History states for undo/redo
 // ---------------------------------------------------------------------------
-abstract class _SegmentState {}
-
-class _TextSegmentState extends _SegmentState {
-  final String text;
-  _TextSegmentState(this.text);
-}
-
-class _ImageSegmentState extends _SegmentState {
-  final String path;
-  _ImageSegmentState(this.path);
-}
-
-class _LinkSegmentState extends _SegmentState {
-  final String url;
-  final String? title;
-  _LinkSegmentState(this.url, this.title);
-}
-
 class _EditorHistoryState {
-  final List<_SegmentState> segments;
+  final List<NoteSegmentData> segments;
   final int focusedSegmentIndex;
   final TextSelection? selection;
   // 记录历史快照时刻的文件级状态，用于 undo/redo 时回滚图片删除副作用
@@ -252,100 +235,45 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   String _initContentString() => decodeNoteContent(widget.note.content);
 
-  /// Parse a markdown string into alternating text/image segments.
+  /// 解析 Markdown 文本为编辑器分段（语法规则见 [parseNoteSegments]）。
   void _parseContentIntoSegments(String content) {
-    _segments.clear();
-    // 代码类内容（html/svg/json/code）整体作为单个等宽文本段：
-    // 不解析图片/链接语法，避免 HTML 标签、URL 被误拆成链接卡片
-    if (_isCodeLikeFile) {
-      _segments.add(_TextSegment(context: context, text: content, plainCode: true));
-      _attachListeners();
-      return;
-    }
-    // Split on image lines: lines matching ^![...](...)$
-    final imageReg = RegExp(r'^!\[.*?\]\((.*?)\)$', multiLine: true);
-    int lastEnd = 0;
-
-    for (final match in imageReg.allMatches(content)) {
-      // Text before image
-      final textBefore = content.substring(lastEnd, match.start);
-      final cleanText = textBefore.trimRight();
-      if (cleanText.isEmpty) {
-        _addTextSegment('');
-      } else {
-        _addTextAndLinkSegments(cleanText);
-      }
-
-      // Image segment
-      final path = match.group(1) ?? '';
-      _segments.add(_ImageSegment(path));
-
-      lastEnd = match.end;
-      // Skip a leading newline after image tag
-      if (lastEnd < content.length && content[lastEnd] == '\n') lastEnd++;
-    }
-
-    // Remaining text
-    final remaining = content.substring(lastEnd).trimLeft();
-    if (remaining.isEmpty) {
-      _addTextSegment('');
-    } else {
-      _addTextAndLinkSegments(remaining);
-    }
-
-    // Ensure at least one text segment
-    if (_segments.isEmpty) _addTextSegment('');
-    // Ensure last segment is always a text segment for typing
-    if (_segments.last is _ImageSegment || _segments.last is _LinkSegment) _addTextSegment('');
-
+    _segments
+      ..clear()
+      ..addAll(
+        parseNoteSegments(content, plainCode: _isCodeLikeFile)
+            .map(_createSegment),
+      );
     _attachListeners();
   }
 
-  void _addTextSegment(String text) {
-    final seg = _TextSegment(context: context, text: text, plainCode: _isCodeLikeFile);
-    _segments.add(seg);
+  /// 把纯数据分段转成带 controller / focusNode 的编辑器分段。
+  _Segment _createSegment(NoteSegmentData data) {
+    switch (data.type) {
+      case NoteSegmentType.text:
+        return _TextSegment(
+          context: context,
+          text: data.text,
+          plainCode: _isCodeLikeFile,
+        );
+      case NoteSegmentType.image:
+        return _ImageSegment(data.path);
+      case NoteSegmentType.link:
+        return _LinkSegment(url: data.url!, title: data.title);
+    }
   }
 
-  void _addTextAndLinkSegments(String text) {
-    final pattern = RegExp(
-      r'\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)|(https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+)',
-    );
-
-    int lastEnd = 0;
-    for (final match in pattern.allMatches(text)) {
-      final textBefore = text.substring(lastEnd, match.start);
-      if (textBefore.isNotEmpty) {
-        _addTextSegment(textBefore);
-      }
-
-      if (match.group(1) != null) {
-        final title = match.group(1)!;
-        final url = match.group(2)!;
-        _segments.add(_LinkSegment(url: url, title: title));
-      } else {
-        String url = match.group(3)!;
-        final trailingPunct = RegExp(r'[\.\,\?\!\:\;]+$');
-        final punctMatch = trailingPunct.firstMatch(url);
-        String punct = '';
-        if (punctMatch != null) {
-          punct = punctMatch.group(0)!;
-          url = url.substring(0, url.length - punct.length);
-        }
-        
-        _segments.add(_LinkSegment(url: url));
-        
-        if (punct.isNotEmpty) {
-          _addTextSegment(punct);
-        }
-      }
-
-      lastEnd = match.end;
+  /// 把编辑器分段压成纯数据，供序列化、图片提取与撤销快照使用。
+  NoteSegmentData _segmentToData(_Segment segment) {
+    if (segment is _TextSegment) {
+      return NoteSegmentData.text(segment.controller.text);
     }
-
-    final remaining = text.substring(lastEnd);
-    if (remaining.isNotEmpty) {
-      _addTextSegment(remaining);
+    if (segment is _ImageSegment) {
+      return NoteSegmentData.image(segment.path);
     }
+    if (segment is _LinkSegment) {
+      return NoteSegmentData.link(url: segment.url, title: segment.title);
+    }
+    throw Exception('Unknown segment type');
   }
 
   void _attachListeners() {
@@ -397,68 +325,35 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
   void _splitUrlsInSegment(int index) {
     // 源码类内容中的 URL 是网页源码的一部分，禁止自动拆分为链接卡片
-    if (_isCodeLikeFile) return;
-    if (index < 0 || index >= _segments.length) return;
+    if (_isCodeLikeFile) {
+      return;
+    }
+    if (index < 0 || index >= _segments.length) {
+      return;
+    }
     final seg = _segments[index];
-    if (seg is! _TextSegment) return;
+    if (seg is! _TextSegment) {
+      return;
+    }
 
     final text = seg.controller.text;
-    final pattern = RegExp(
-      r'\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)|(https?:\/\/[^\s\(\)\[\]\{\}<>"\u4e00-\u9fa5]+)',
-    );
-
-    final matches = pattern.allMatches(text);
-    if (matches.isEmpty) return;
+    if (!hasNoteLinks(text)) {
+      return;
+    }
 
     _historyTimer?.cancel();
     _saveHistoryState();
 
-    final List<_Segment> newSegments = [];
-    int lastEnd = 0;
-    int lastLinkIdxInNew = -1;
-
-    for (final match in matches) {
-      final textBefore = text.substring(lastEnd, match.start);
-      if (textBefore.isNotEmpty) {
-        newSegments.add(_TextSegment(context: context, text: textBefore));
-      }
-
-      if (match.group(1) != null) {
-        final title = match.group(1)!;
-        final url = match.group(2)!;
-        newSegments.add(_LinkSegment(url: url, title: title));
-      } else {
-        String url = match.group(3)!;
-        final trailingPunct = RegExp(r'[\.\,\?\!\:\;]+$');
-        final punctMatch = trailingPunct.firstMatch(url);
-        String punct = '';
-        if (punctMatch != null) {
-          punct = punctMatch.group(0)!;
-          url = url.substring(0, url.length - punct.length);
-        }
-        
-        newSegments.add(_LinkSegment(url: url));
-        
-        if (punct.isNotEmpty) {
-          newSegments.add(_TextSegment(context: context, text: punct));
-        }
-      }
-      lastLinkIdxInNew = newSegments.length - 1;
-      lastEnd = match.end;
-    }
-
-    final remaining = text.substring(lastEnd);
-    if (remaining.isNotEmpty) {
-      newSegments.add(_TextSegment(context: context, text: remaining));
-    }
+    final split = splitNoteTextByLinks(text);
+    final newSegments = split.segments.map(_createSegment).toList();
 
     if (newSegments.isEmpty) {
-      newSegments.add(_TextSegment(context: context, text: ''));
+      newSegments.add(_createSegment(const NoteSegmentData.text('')));
     }
 
-    // Ensure last segment is always a text segment for typing if it's a link
+    // 最后一段始终是文本段，方便继续输入
     if (newSegments.last is _LinkSegment) {
-      newSegments.add(_TextSegment(context: context, text: ''));
+      newSegments.add(_createSegment(const NoteSegmentData.text('')));
     }
 
     // Dispose old segment
@@ -471,17 +366,18 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _attachListeners();
 
     // Trigger metadata fetch
-    for (final s in newSegments) {
-      if (s is _LinkSegment) {
-        _fetchMetadataForUrl(s.url);
+    for (final newSegment in newSegments) {
+      if (newSegment is _LinkSegment) {
+        _fetchMetadataForUrl(newSegment.url);
       }
     }
 
     // Focus the next text segment
-    int focusTargetIdx = -1;
-    if (lastLinkIdxInNew != -1) {
-      final absoluteLastLinkIdx = index + lastLinkIdxInNew;
-      for (int i = absoluteLastLinkIdx + 1; i < _segments.length; i++) {
+    var focusTargetIdx = -1;
+    final lastMatchIndex = split.lastMatchIndex;
+    if (lastMatchIndex != -1) {
+      final absoluteLastMatchIdx = index + lastMatchIndex;
+      for (var i = absoluteLastMatchIdx + 1; i < _segments.length; i++) {
         if (_segments[i] is _TextSegment) {
           focusTargetIdx = i;
           break;
@@ -492,7 +388,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (focusTargetIdx != -1) {
       _focusedSegmentIndex = focusTargetIdx;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (focusTargetIdx < _segments.length && _segments[focusTargetIdx] is _TextSegment) {
+        if (focusTargetIdx < _segments.length &&
+            _segments[focusTargetIdx] is _TextSegment) {
           (_segments[focusTargetIdx] as _TextSegment).focusNode.requestFocus();
         }
         _saveHistoryState();
@@ -511,8 +408,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
 
     if (prev is _TextSegment) {
       final prevText = prev.controller.text;
-      final mergedText = prevText.endsWith('\n') ? '$prevText${current.controller.text}' : '$prevText\n${current.controller.text}';
-      
+      final mergedText = mergeNoteText(prevText, current.controller.text);
+
       _historyTimer?.cancel();
       _saveHistoryState();
 
@@ -542,36 +439,18 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
   }
 
-  /// Serialize all segments back to markdown.
-  String _serializeToMarkdown() {
-    final buf = StringBuffer();
-    for (int i = 0; i < _segments.length; i++) {
-      final seg = _segments[i];
-      if (seg is _TextSegment) {
-        final text = seg.controller.text;
-        if (text.isNotEmpty) {
-          buf.write(text);
-          if (i < _segments.length - 1) buf.write('\n');
-        }
-      } else if (seg is _ImageSegment) {
-        buf.write('![image](${seg.path})\n');
-      } else if (seg is _LinkSegment) {
-        if (seg.title != null && seg.title!.isNotEmpty) {
-          buf.write('[${seg.title}](${seg.url})\n');
-        } else {
-          buf.write('${seg.url}\n');
-        }
-      }
-    }
-    return buf.toString();
-  }
+  /// 把所有分段还原成 Markdown（规则见 [serializeNoteSegments]）。
+  String _serializeToMarkdown() => serializeNoteSegments(_segmentDataList());
 
-  List<String> _extractImages() {
-    return _segments.whereType<_ImageSegment>().map((s) => s.path).toList();
-  }
+  /// 提取分段中的图片路径（顺序保留，不去重）。
+  List<String> _extractImages() => extractImagePaths(_segmentDataList());
+
+  /// 把当前分段压成纯数据列表。
+  List<NoteSegmentData> _segmentDataList() =>
+      _segments.map(_segmentToData).toList();
 
   /// 标题入库口径：空标题统一存成「无标题」，比较与写入必须走同一个函数
-  String _normalizeTitle(String raw) => raw.isEmpty ? '无标题' : raw;
+  String _normalizeTitle(String raw) => normalizeNoteTitle(raw);
 
   /// 是否有尚未落库的改动（AppBar 保存状态与退出拦截共用）
   bool get _isDirty =>
@@ -793,17 +672,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   // History Undo/Redo logic
   // ---------------------------------------------------------------------------
   _EditorHistoryState _captureHistoryState() {
-    final states = _segments.map((seg) {
-      if (seg is _TextSegment) {
-        return _TextSegmentState(seg.controller.text);
-      } else if (seg is _ImageSegment) {
-        return _ImageSegmentState(seg.path);
-      } else if (seg is _LinkSegment) {
-        return _LinkSegmentState(seg.url, seg.title);
-      } else {
-        throw Exception('Unknown segment type');
-      }
-    }).toList();
+    final states = _segmentDataList();
 
     TextSelection? selection;
     if (_focusedSegmentIndex >= 0 && _focusedSegmentIndex < _segments.length) {
@@ -833,25 +702,15 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _segments.clear();
 
     // 2. Re-create segments
-    for (final segState in state.segments) {
-      if (segState is _TextSegmentState) {
-        final seg = _TextSegment(
-          context: context,
-          text: segState.text,
-          plainCode: _isCodeLikeFile,
-        );
-        _segments.add(seg);
-      } else if (segState is _ImageSegmentState) {
-        _segments.add(_ImageSegment(segState.path));
-      } else if (segState is _LinkSegmentState) {
-        _segments.add(_LinkSegment(url: segState.url, title: segState.title));
-      }
-    }
+    _segments.addAll(state.segments.map(_createSegment));
 
-    // Ensure at least one text segment
-    if (_segments.isEmpty) _addTextSegment('');
-    // Ensure last segment is always a text segment for typing
-    if (_segments.last is _ImageSegment || _segments.last is _LinkSegment) _addTextSegment('');
+    // 保证至少一个文本段，且最后一段是文本段
+    if (_segments.isEmpty) {
+      _segments.add(_createSegment(const NoteSegmentData.text('')));
+    }
+    if (_segments.last is _ImageSegment || _segments.last is _LinkSegment) {
+      _segments.add(_createSegment(const NoteSegmentData.text('')));
+    }
 
     // 3. Attach listeners
     _attachListeners();
@@ -880,31 +739,15 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   }
 
   bool _areStatesEqual(_EditorHistoryState a, _EditorHistoryState b) {
-    if (a.segments.length != b.segments.length) return false;
-    for (int i = 0; i < a.segments.length; i++) {
-      final sa = a.segments[i];
-      final sb = b.segments[i];
-      if (sa is _TextSegmentState && sb is _TextSegmentState) {
-        if (sa.text != sb.text) return false;
-      } else if (sa is _ImageSegmentState && sb is _ImageSegmentState) {
-        if (sa.path != sb.path) return false;
-      } else if (sa is _LinkSegmentState && sb is _LinkSegmentState) {
-        if (sa.url != sb.url || sa.title != sb.title) return false;
-      } else {
-        return false;
-      }
+    if (!noteSegmentsEqual(a.segments, b.segments)) {
+      return false;
     }
     // 文件级状态不同也视为不同状态，避免 undo/redo 中途的删除副作用被误判为重复
-    if (!_stringListEquals(a.removedPaths, b.removedPaths)) return false;
-    if (!_stringListEquals(a.newlyUploadedPaths, b.newlyUploadedPaths)) return false;
-    return true;
-  }
-
-  /// 简单的 `List<String>` 相等比较，避免引入新依赖
-  bool _stringListEquals(List<String> a, List<String> b) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
+    if (!stringListsEqual(a.removedPaths, b.removedPaths)) {
+      return false;
+    }
+    if (!stringListsEqual(a.newlyUploadedPaths, b.newlyUploadedPaths)) {
+      return false;
     }
     return true;
   }

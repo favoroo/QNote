@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
+import 'package:qnote_flutter/core/utils/diary_editor_logic.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -210,191 +210,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     });
   }
 
-  /// 构建弹窗标签结构化字段详情汇总（如「种类：自制，评价：健康」）
-  String _buildPopupDetails(
-    List<TagEntry> tagEntries,
-    List<ShortcutConfig> shortcuts,
-  ) {
-    final popupEntries = <TagEntry>[];
-    final popupConfigs = <ShortcutConfig>[];
-
-    for (final entry in tagEntries) {
-      try {
-        final config = shortcuts.firstWhere(
-          (s) => s.id == entry.id || s.name == entry.name,
-        );
-        if (config.hasPopup) {
-          popupEntries.add(entry);
-          popupConfigs.add(config);
-        }
-      } catch (_) {}
-    }
-
-    if (popupEntries.isEmpty) return '';
-
-    final detailParts = <String>[];
-
-    for (int pi = 0; pi < popupEntries.length; pi++) {
-      final entry = popupEntries[pi];
-      final config = popupConfigs[pi];
-
-      List<ShortcutField> fieldsToProcess = config.fields;
-      final Map<String, dynamic> entryFields = Map<String, dynamic>.from(
-        entry.fields,
-      );
-      String categoryPrefix = '';
-
-      if (config.categories != null && config.categories!.isNotEmpty) {
-        final currentCategory = config.categories!.firstWhere(
-          (c) => c.id == entryFields['_category'],
-          orElse: () => config.categories!.first,
-        );
-        fieldsToProcess = currentCategory.fields;
-        categoryPrefix = '${currentCategory.name} - ';
-      }
-
-      final details = fieldsToProcess
-          .map((f) {
-            final val = entryFields[f.id];
-            if (val == null) return null;
-            if (val is List) return '${f.label}：${val.join('、')}';
-            return '${f.label}：$val';
-          })
-          .where((s) => s != null && s.isNotEmpty)
-          .join('，');
-
-      final fullDetails = categoryPrefix.isNotEmpty
-          ? '$categoryPrefix$details'
-          : details;
-      if (fullDetails.isNotEmpty) detailParts.add(fullDetails);
-    }
-
-    return detailParts.join('；');
-  }
-
-  /// 严谨判定文本是否纯粹由结构化标签字段构成（无用户正文/AI正文）
-  bool _isPurelyFieldSummary(
-    String content,
-    List<TagEntry> tagEntries,
-    List<ShortcutConfig> shortcuts,
-  ) {
-    final trimmed = content.trim();
-    if (trimmed.isEmpty) return true;
-
-    final knownLabels = <String>{};
-    final knownValues = <String>{};
-
-    for (final entry in tagEntries) {
-      final sc = shortcuts
-          .where((s) => s.id == entry.id || s.name == entry.name)
-          .firstOrNull;
-      if (sc != null) {
-        for (final f in sc.fields) {
-          knownLabels.add(f.label);
-          knownLabels.add(f.id);
-        }
-        if (sc.categories != null) {
-          for (final cat in sc.categories!) {
-            knownLabels.add(cat.name);
-            for (final f in cat.fields) {
-              knownLabels.add(f.label);
-              knownLabels.add(f.id);
-            }
-          }
-        }
-      }
-      for (final f in entry.fields.entries) {
-        knownLabels.add(f.key);
-        if (f.value != null) {
-          if (f.value is List) {
-            knownValues.addAll((f.value as List).map((e) => e.toString()));
-          } else {
-            knownValues.add(f.value.toString());
-          }
-        }
-      }
-    }
-
-    if (knownLabels.isEmpty) return false;
-
-    final lines = trimmed.split(RegExp(r'[\r\n]+'));
-    for (final line in lines) {
-      final l = line.trim();
-      if (l.isEmpty) continue;
-
-      final segments = l.split(RegExp(r'[；;，,]'));
-      for (final seg in segments) {
-        final s = seg.trim();
-        if (s.isEmpty) continue;
-
-        if (s.contains('：') || s.contains(':')) {
-          final parts = s.split(RegExp(r'[:：]'));
-          final key = parts[0].trim().replaceAll(RegExp(r'^.*-\s*'), '');
-          if (!knownLabels.contains(key)) {
-            return false;
-          }
-        } else {
-          if (!knownLabels.contains(s) && !knownValues.contains(s)) {
-            return false;
-          }
-        }
-      }
-    }
-
-    return true;
-  }
-
+  /// 从记录正文中还原用户手写备注（纯逻辑见 [parseDiaryUserRemarks]）。
+  ///
+  /// State 只负责取当前快捷标签配置，解析细节留在工具函数里便于单测。
   String _parseUserRemarks(String content, List<TagEntry> tagEntries) {
-    final trimmed = content.trim();
-    if (trimmed.isEmpty) return '';
-
-    // 1. 如果包含「\n备注：」或「\n备注:」，截取后面的用户正文
-    if (content.contains('\n备注：')) {
-      final idx = content.indexOf('\n备注：');
-      return content.substring(idx + '\n备注：'.length).trim();
-    }
-    if (content.contains('\n备注:')) {
-      final idx = content.indexOf('\n备注:');
-      return content.substring(idx + '\n备注:'.length).trim();
-    }
-    if (content.startsWith('备注：') || content.startsWith('备注:')) {
-      return content.replaceFirst(RegExp(r'^备注[:：]\s*'), '').trim();
-    }
-
     final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-    final hasPopupFields = tagEntries.any((entry) {
-      final sc = shortcuts
-          .where((s) => s.id == entry.id || s.name == entry.name)
-          .firstOrNull;
-      return sc != null && sc.hasPopup;
-    });
-
-    if (!hasPopupFields) {
-      return content;
-    }
-
-    // 2. 比对生成的标签字段详情
-    final allDetails = _buildPopupDetails(tagEntries, shortcuts);
-    if (allDetails.isNotEmpty) {
-      if (trimmed == allDetails.trim()) {
-        return '';
-      }
-      if (content.startsWith(allDetails)) {
-        final remainder = content.substring(allDetails.length).trim();
-        if (remainder.startsWith('备注：') || remainder.startsWith('备注:')) {
-          return remainder.replaceFirst(RegExp(r'^备注[:：]\s*'), '').trim();
-        }
-        return remainder.replaceFirst(RegExp(r'^[\n\r；;,，\s]+'), '');
-      }
-    }
-
-    // 3. 严谨检查是否纯由结构化字段构成（无用户正文）
-    if (_isPurelyFieldSummary(content, tagEntries, shortcuts)) {
-      return '';
-    }
-
-    // 4. 用户/AI正文（严禁因包含冒号、图：、时间等误清空）
-    return content;
+    return parseDiaryUserRemarks(content, tagEntries, shortcuts);
   }
 
   @override
@@ -447,28 +268,18 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   /// 表单字段以 `_tagEntries` 为准而非 `_formControllers`——后者由 build 懒创建，
   /// 且每次 onChanged 都会回写进 entries，因此 entries 一定是最新值。
   String _editSignature() {
-    final buffer = StringBuffer()
-      ..writeln(_contentController.text)
-      ..writeln(_time.microsecondsSinceEpoch)
-      ..writeln(_startTime?.microsecondsSinceEpoch ?? 0)
-      ..writeln(_endTime?.microsecondsSinceEpoch ?? 0)
-      ..writeln(_tags.join('\u0000'))
-      ..writeln(_displayTag)
-      ..writeln(_photos.join('\u0000'));
-    for (final entry in _tagEntries) {
-      buffer.write(
-        '${entry.id}|${entry.name}|${entry.time}|'
-        '${entry.startHour}:${entry.startMinute}:${entry.startOffset}|'
-        '${entry.endHour}:${entry.endMinute}:${entry.endOffset}|',
-      );
-      // 字段名排序后拼接：Map 插入顺序会变，不排序会把同一内容编成不同指纹
-      final fieldKeys = entry.fields.keys.toList()..sort();
-      for (final key in fieldKeys) {
-        buffer.write('$key=${entry.fields[key]};');
-      }
-      buffer.writeln();
-    }
-    return buffer.toString();
+    return diaryEditSignature(
+      DiaryEditSnapshot(
+        content: _contentController.text,
+        time: _time,
+        startTime: _startTime,
+        endTime: _endTime,
+        tags: _tags,
+        displayTag: _displayTag,
+        photos: _photos,
+        tagEntries: _tagEntries,
+      ),
+    );
   }
 
   /// 是否有尚未保存的改动
@@ -1195,7 +1006,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     }
 
     String content = '';
-    final allDetails = _buildPopupDetails(_tagEntries, shortcuts);
+    final allDetails = buildDiaryPopupDetails(_tagEntries, shortcuts);
     final remarksText = _contentController.text.trim();
 
     if (allDetails.isEmpty) {
@@ -1207,7 +1018,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           widget.record.content.startsWith('备注：') ||
           widget.record.content.startsWith('备注:') ||
           widget.record.content.trim() == allDetails.trim() ||
-          _isPurelyFieldSummary(widget.record.content, widget.record.tagEntries, shortcuts);
+          isDiaryFieldSummaryOnly(widget.record.content, widget.record.tagEntries, shortcuts);
 
       if (originalHadPopupDetails) {
         content = remarksText.isNotEmpty ? '$allDetails\n备注：$remarksText' : allDetails;
@@ -1312,18 +1123,6 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     Navigator.of(context).pop();
   }
 
-  String _mergeNotesWithContent(String notes, String originalContent) {
-    final trimmedNotes = notes.trim();
-    final trimmedOriginal = originalContent.trim();
-    if (trimmedNotes.isEmpty) return originalContent;
-    if (trimmedOriginal.isEmpty) return trimmedNotes;
-    // 包含已有解析（如以图：开头或普通说明）则去重，防止二次提取重复追加
-    if (trimmedOriginal.contains(trimmedNotes)) {
-      return originalContent;
-    }
-    return '$originalContent\n$trimmedNotes';
-  }
-
   Future<void> _handleAiExtract() async {
     if (_isExtracting) {
       _cancelToken?.cancel();
@@ -1380,7 +1179,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
       if (extracted.tagEntries.isNotEmpty) {
         final newContent = _photos.isNotEmpty
-            ? _mergeNotesWithContent(
+            ? mergeDiaryNotesWithContent(
                 extracted.notes,
                 _contentController.text,
               )
@@ -1393,7 +1192,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         });
       } else if (foundShortcut != null) {
         final newContent = _photos.isNotEmpty
-            ? _mergeNotesWithContent(
+            ? mergeDiaryNotesWithContent(
                 extracted.notes,
                 _contentController.text,
               )
@@ -1464,10 +1263,6 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     }
   }
 
-
-  String _formatDateTime(DateTime dt) {
-    return DateFormat('MM-dd HH:mm').format(dt);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1560,7 +1355,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
-                        _formatDateTime(_startTime ?? _time),
+                        formatDiaryEditorDateTime(_startTime ?? _time),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
@@ -1598,7 +1393,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          _formatDateTime(_endTime!),
+                          formatDiaryEditorDateTime(_endTime!),
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
@@ -1921,8 +1716,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                         children: entry.fields.entries
                             .where((f) => !f.key.startsWith('_'))
                             .map((f) {
-                              final label = _formatExtraFieldLabel(f.key);
-                              final val = _formatExtraFieldValue(f.key, f.value);
+                              final label = formatDiaryExtraFieldLabel(f.key);
+                              final val = formatDiaryExtraFieldValue(f.key, f.value);
                               return Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
@@ -1949,50 +1744,6 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         ],
       ],
     );
-  }
-
-  String _formatExtraFieldLabel(String key) {
-    switch (key.toLowerCase()) {
-      case 'sub_type':
-      case 'subtype':
-        return '运动项目';
-      case 'distance_km':
-      case 'distance':
-        return '距离';
-      case 'calories':
-      case 'cal':
-        return '消耗';
-      case 'avg_hr':
-      case 'heart_rate':
-        return '平均心率';
-      case 'avg_pace':
-      case 'pace':
-        return '平均配速';
-      case 'duration':
-        return '时长';
-      default:
-        return key;
-    }
-  }
-
-  String _formatExtraFieldValue(String key, dynamic value) {
-    final vStr = value.toString();
-    switch (key.toLowerCase()) {
-      case 'distance_km':
-      case 'distance':
-        if (!vStr.contains('km')) return '${vStr}km';
-        return vStr;
-      case 'calories':
-      case 'cal':
-        if (!vStr.contains('kcal')) return '${vStr}kcal';
-        return vStr;
-      case 'avg_hr':
-      case 'heart_rate':
-        if (!vStr.contains('bpm')) return '${vStr}bpm';
-        return vStr;
-      default:
-        return vStr;
-    }
   }
 
   Widget _buildCategorySelector(

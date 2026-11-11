@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart';
@@ -394,7 +395,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                 'WebDAV 服务器',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  fontSize: 15,
+                  fontSize: AppTypography.subtitle,
                 ),
               ),
               const Spacer(),
@@ -420,7 +421,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                 label: Text(
                   _testing ? '测试中' : '测试连接',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: AppTypography.bodySmall,
                     fontWeight: FontWeight.w600,
                     color: colorScheme.primary,
                   ),
@@ -472,7 +473,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   Text(
                     _showAdvancedPath ? '收起' : '修改',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: AppTypography.label,
                       color: colorScheme.primary,
                       fontWeight: FontWeight.w500,
                     ),
@@ -541,14 +542,14 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                       : 15,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                    fontSize: AppTypography.body,
                     color: colorScheme.onSurface,
                   ),
                   isDense: true,
                   items: _syncIntervalOptions
                       .map((e) => DropdownMenuItem(
                             value: e.value,
-                            child: Text(e.key, style: const TextStyle(fontSize: 13)),
+                            child: Text(e.key, style: const TextStyle(fontSize: AppTypography.body)),
                           ))
                       .toList(),
                   onChanged: (val) {
@@ -625,7 +626,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                           '同步状态：',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.hintColor,
-                            fontSize: 13,
+                            fontSize: AppTypography.body,
                           ),
                         ),
                         Text(
@@ -633,7 +634,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: statusColor,
                             fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                            fontSize: AppTypography.body,
                           ),
                         ),
                       ],
@@ -645,7 +646,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                           : '尚未同步',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.hintColor,
-                        fontSize: 11,
+                        fontSize: AppTypography.label,
                       ),
                     ),
                   ],
@@ -669,7 +670,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   Expanded(
                     child: Text(
                       lastError,
-                      style: TextStyle(color: colorScheme.error, fontSize: 11),
+                      style: TextStyle(color: colorScheme.error, fontSize: AppTypography.label),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -699,7 +700,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   : const Icon(Icons.sync_rounded, size: 20),
               label: Text(
                 isSyncing ? '同步中…' : '立即同步',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: AppTypography.subtitle, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -738,7 +739,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                   title,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: AppTypography.bodyLarge,
                   ),
                 ),
                 if (description != null && description.isNotEmpty) ...[
@@ -747,7 +748,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                     description,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.hintColor,
-                      fontSize: 11,
+                      fontSize: AppTypography.label,
                     ),
                   ),
                 ],
@@ -815,7 +816,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           ),
           style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w500,
-            fontSize: 13,
+            fontSize: AppTypography.body,
           ),
         ),
       ],

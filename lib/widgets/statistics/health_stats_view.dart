@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/utils/health_step_trend.dart';
@@ -276,7 +277,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                     '共 ${_metricsList.length} 天',
                     style: TextStyle(
                       color: colorScheme.onPrimaryContainer,
-                      fontSize: 11,
+                      fontSize: AppTypography.label,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -363,7 +364,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           unit,
           style: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.outline,
-            fontSize: 10,
+            fontSize: AppTypography.caption,
           ),
         ),
       ],
@@ -493,7 +494,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
             Text(
               subText,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 10,
+                fontSize: AppTypography.caption,
                 color: colorScheme.outline,
               ),
               maxLines: 1,
@@ -555,7 +556,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                   ].join(' · '),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
-                    fontSize: 11,
+                    fontSize: AppTypography.label,
                   ),
                 ),
               ],
@@ -572,13 +573,13 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                     const SizedBox(width: 2),
                     Text(
                       '${r.avgHeartRate}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: AppTypography.body),
                     ),
                   ],
                 ),
                 Text(
                   'bpm',
-                  style: TextStyle(fontSize: 10, color: colorScheme.outline),
+                  style: TextStyle(fontSize: AppTypography.caption, color: colorScheme.outline),
                 ),
               ],
             ),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -253,7 +254,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                 selectedColor: tagColor.withValues(alpha: 0.18),
                                 checkmarkColor: tagColor,
                                 labelStyle: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: AppTypography.body,
                                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                   color: isSelected ? tagColor : colorScheme.onSurface,
                                 ),
@@ -753,7 +754,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       ' 步',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
-                        fontSize: 11,
+                        fontSize: AppTypography.label,
                       ),
                     ),
                     const Spacer(),
@@ -766,7 +767,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       child: Text(
                         isTargetReached ? '已达标' : '目标 $stepTarget',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: AppTypography.caption,
                           fontWeight: FontWeight.bold,
                           color: isTargetReached ? brandGreen : colorScheme.primary,
                         ),
@@ -837,7 +838,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         Text(
                           '${sleepMinutes ~/ 60}h${sleepMinutes % 60}m${sleepScore != null ? ' · $sleepScore分' : ''}',
                           style: const TextStyle(
-                            fontSize: 10,
+                            fontSize: AppTypography.caption,
                             fontWeight: FontWeight.bold,
                             color: sleepPurple,
                           ),
@@ -855,7 +856,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     child: Text(
                       '血氧 $avgSpo2%',
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: AppTypography.caption,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFFDC2626),
                       ),
@@ -871,7 +872,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     child: Text(
                       '压力 $avgStress',
                       style: const TextStyle(
-                        fontSize: 10,
+                        fontSize: AppTypography.caption,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8B5CF6),
                       ),
@@ -892,7 +893,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         Text(
                           '屏幕 $screenStr',
                           style: const TextStyle(
-                            fontSize: 10,
+                            fontSize: AppTypography.caption,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF0284C7),
                           ),
@@ -1060,7 +1061,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       child: Text(
                         dateLabel,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: AppTypography.bodySmall,
                           fontWeight: _dateRange != null ? FontWeight.bold : FontWeight.w500,
                           color: _dateRange != null ? colorScheme.primary : colorScheme.onSurface,
                         ),
@@ -1125,7 +1126,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       child: Text(
                         tagLabel,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: AppTypography.bodySmall,
                           fontWeight: _selectedTags.isNotEmpty ? FontWeight.bold : FontWeight.w500,
                           color: _selectedTags.isNotEmpty ? colorScheme.primary : colorScheme.onSurface,
                         ),
@@ -1324,7 +1325,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                   child: const Text(
                                     '系统同步',
                                     style: TextStyle(
-                                      fontSize: 10,
+                                      fontSize: AppTypography.caption,
                                       fontWeight: FontWeight.w600,
                                       color: TagColors.health,
                                     ),
@@ -1499,7 +1500,7 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
         elevation: 0,
         title: Text(
           '${_currentIndex + 1} / ${widget.photos.length}',
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: const TextStyle(color: Colors.white, fontSize: AppTypography.title),
         ),
         centerTitle: true,
         leading: IconButton(

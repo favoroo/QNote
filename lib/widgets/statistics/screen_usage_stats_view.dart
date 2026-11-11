@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_snapshot_service.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/models/screen_usage_daily.dart';
 import 'package:qnote_flutter/providers/screen_usage_provider.dart';
@@ -277,7 +278,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 12,
+                fontSize: AppTypography.bodySmall,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -523,7 +524,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         Text(
           label,
           style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 11,
+            fontSize: AppTypography.label,
             fontWeight: FontWeight.w600,
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -537,7 +538,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11,
+                fontSize: AppTypography.label,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -576,7 +577,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               Text(
                 label,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 11,
+                  fontSize: AppTypography.label,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -589,7 +590,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.right,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 10,
+                      fontSize: AppTypography.caption,
                       color: colorScheme.outline,
                     ),
                   ),
@@ -604,7 +605,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
-              fontSize: 16,
+              fontSize: AppTypography.title,
             ),
           ),
         ],
@@ -690,7 +691,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                 TextStyle(
                   color: isDark ? Colors.white : colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
-                  fontSize: 12,
+                  fontSize: AppTypography.bodySmall,
                 ),
               );
             },
@@ -718,12 +719,12 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               interval: maxY / 2,
               getTitlesWidget: (value, meta) {
                 if (value == 0) {
-                  return const Text(' 0', style: TextStyle(fontSize: 10, color: Colors.grey));
+                  return const Text(' 0', style: TextStyle(fontSize: AppTypography.caption, color: Colors.grey));
                 }
                 final h = value.toInt();
                 final m = ((value - h) * 60).round();
                 final text = m > 0 ? '$h小时$m分' : '$h小时';
-                return Text(' $text', style: const TextStyle(fontSize: 10, color: Colors.grey));
+                return Text(' $text', style: const TextStyle(fontSize: AppTypography.caption, color: Colors.grey));
               },
             ),
           ),
@@ -744,7 +745,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                   child: Text(
                     _weekdayLabel(item.date),
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: AppTypography.caption,
                       fontWeight: selected ? FontWeight.bold : FontWeight.normal,
                       color: selected
                           ? (isDark ? Colors.white : colorScheme.primary)
@@ -814,7 +815,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         Text(
           '每日只记时长前 20 应用，按本周累计排序',
           style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 10,
+            fontSize: AppTypography.caption,
             color: theme.colorScheme.outline,
           ),
         ),
@@ -856,7 +857,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    fontSize: 13,
+                    fontSize: AppTypography.body,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -869,7 +870,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           Text(
             durationText,
             style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 12,
+              fontSize: AppTypography.bodySmall,
               color: isDark ? Colors.white60 : theme.colorScheme.outline,
             ),
           ),

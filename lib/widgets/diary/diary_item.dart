@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/screen_usage_info.dart';
@@ -1311,7 +1312,7 @@ class _DiaryItemState extends State<DiaryItem> {
             line,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
-              fontSize: 13,
+              fontSize: AppTypography.body,
               height: 1.6,
             ),
           ),
@@ -1327,7 +1328,7 @@ class _DiaryItemState extends State<DiaryItem> {
             line,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-              fontSize: 13,
+              fontSize: AppTypography.body,
               height: 1.6,
             ),
           ),
@@ -1584,7 +1585,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                 ? '达标 ${(steps / stepTarget * 100).toInt()}%'
                                 : '${(steps / stepTarget * 100).toInt()}% / 目标$stepTarget',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: AppTypography.label,
                               fontWeight: FontWeight.bold,
                               color: isTargetReached ? brandGreen : colorScheme.primary,
                             ),
@@ -1706,7 +1707,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                 child: Text(
                                   '$sleepScore分',
                                   style: const TextStyle(
-                                    fontSize: 11,
+                                    fontSize: AppTypography.label,
                                     fontWeight: FontWeight.bold,
                                     color: sleepPurple,
                                   ),
@@ -1742,7 +1743,7 @@ class _DiaryItemState extends State<DiaryItem> {
                           child: Text(
                             sleepTimeDisplay,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 10,
+                              fontSize: AppTypography.caption,
                               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -1829,7 +1830,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                   child: Text(
                                     screenDiffDesc,
                                     style: const TextStyle(
-                                      fontSize: 10,
+                                      fontSize: AppTypography.caption,
                                       fontWeight: FontWeight.w600,
                                       color: screenBlue,
                                     ),
@@ -1866,7 +1867,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                       child: Text(
                                         app['name'] as String? ?? '应用',
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: AppTypography.label,
                                           fontWeight: FontWeight.w500,
                                           color: colorScheme.onSurface,
                                         ),
@@ -1877,7 +1878,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                     Text(
                                       app['formatted'] as String? ?? '',
                                       style: TextStyle(
-                                        fontSize: 10,
+                                        fontSize: AppTypography.caption,
                                         fontWeight: FontWeight.bold,
                                         color: screenBlue.withValues(alpha: 0.9),
                                       ),
@@ -2017,7 +2018,7 @@ class _DiaryItemState extends State<DiaryItem> {
         const SizedBox(width: 4),
         Text(
           '$label $value',
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
+          style: const TextStyle(fontSize: AppTypography.caption, fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -2077,7 +2078,7 @@ class _DiaryItemState extends State<DiaryItem> {
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: AppTypography.caption,
                 fontWeight: FontWeight.w500,
                 color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
               ),
@@ -2116,14 +2117,14 @@ class _DiaryItemState extends State<DiaryItem> {
                   value,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    fontSize: 11,
+                    fontSize: AppTypography.label,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 9,
+                    fontSize: AppTypography.micro,
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   ),
                 ),
@@ -2193,14 +2194,14 @@ class _DiaryItemState extends State<DiaryItem> {
                   title,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                    fontSize: AppTypography.body,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   items.join(' · '),
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: AppTypography.label,
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
                   ),
                 ),

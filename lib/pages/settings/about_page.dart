@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/network/update_service.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/pages/settings/changelog_page.dart';
 import 'package:qnote_flutter/widgets/debug_console.dart';
@@ -182,16 +183,16 @@ class _AboutPageState extends State<AboutPage> {
               child: Column(
                 children: [
                   ListTile(
-                    title: const Text('版本', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    title: const Text('版本', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
                     trailing: GestureDetector(
                       onTap: _handleVersionTap,
-                      child: Text(AppVersion.version, style: TextStyle(color: theme.hintColor, fontSize: 13)),
+                      child: Text(AppVersion.version, style: TextStyle(color: theme.hintColor, fontSize: AppTypography.body)),
                     ),
                     onTap: _handleVersionTap,
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
-                    title: const Text('更新日志', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    title: const Text('更新日志', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
                     trailing: Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
                     onTap: () {
                       Navigator.of(context).push(
@@ -201,7 +202,7 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
-                    title: const Text('检查更新', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    title: const Text('检查更新', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
                     trailing: _checkingUpdate
                         ? SizedBox(
                             width: 16,
@@ -213,14 +214,14 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   SwitchListTile(
-                    title: const Text('自动检查更新', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    title: const Text('自动检查更新', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
                     value: _autoCheckUpdate,
                     onChanged: _toggleAutoCheck,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
-                    title: const Text('隐私协议', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    title: const Text('隐私协议', style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold)),
                     trailing: Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
                     onTap: _showPrivacyPolicy,
                   ),

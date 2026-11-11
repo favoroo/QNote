@@ -10,6 +10,7 @@ import 'package:qnote_flutter/core/storage/daily_score_service.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
@@ -206,7 +207,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                             const SizedBox(height: 12),
                             TextButton.icon(
                               icon: const Icon(Icons.refresh, size: 16),
-                              label: const Text('重新评分', style: TextStyle(fontSize: 12)),
+                              label: const Text('重新评分', style: TextStyle(fontSize: AppTypography.bodySmall)),
                               onPressed: () => _confirmAndRescore(context, selectedDate),
                             ),
                           ],
@@ -244,7 +245,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                 const SizedBox(width: 8),
                                 const Text(
                                   '维度评分',
-                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                  style: TextStyle(fontSize: AppTypography.subtitle, fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -343,14 +344,14 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                               const SizedBox(height: 16),
                               const Text(
                                   '记录过少',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                  style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
                                 ),
                               const SizedBox(height: 12),
                               Text(
                                 '今日仅 $count 条记录。AI 至少需要 3 条才能评分，再记几条试试。',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: AppTypography.body,
                                   color: theme.colorScheme.onSurfaceVariant,
                                   height: 1.5,
                                 ),
@@ -382,14 +383,14 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                               const SizedBox(height: 16),
                               const Text(
                                   '今日表现',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                  style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
                                 ),
                               const SizedBox(height: 12),
                               Text(
                                 '今天已记录 $count 条，让 AI 给出全天健康评分与建议。',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: AppTypography.body,
                                   color: theme.colorScheme.onSurfaceVariant,
                                   height: 1.5,
                                 ),
@@ -448,7 +449,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     const SizedBox(width: 8),
                     const Text(
                       '评分热力图（近3个月）',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: AppTypography.subtitle, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -498,7 +499,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     const SizedBox(width: 8),
                     const Text(
                       '评分趋势（近7天）',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: AppTypography.subtitle, fontWeight: FontWeight.bold),
                     ),
                     const Spacer(),
                     IconButton(
@@ -594,7 +595,7 @@ class _ScoreCircle extends StatelessWidget {
                         ),
                         Text(
                           '/ 100',
-                          style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurfaceVariant),
+                          style: TextStyle(fontSize: AppTypography.bodyLarge, color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -605,7 +606,7 @@ class _ScoreCircle extends StatelessWidget {
               Text(
                 _getScoreLabel(score),
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: AppTypography.headline,
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
@@ -648,7 +649,7 @@ class _DimensionScoreBar extends StatelessWidget {
             width: 48,
             child: Text(
               name,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.w600),
             ),
           ),
           Expanded(
@@ -674,7 +675,7 @@ class _DimensionScoreBar extends StatelessWidget {
             width: 32,
             child: Text(
               '$score',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: AppTypography.bodySmall, fontWeight: FontWeight.bold),
             ),
           ),
           Container(
@@ -685,7 +686,7 @@ class _DimensionScoreBar extends StatelessWidget {
             ),
             child: Text(
               _getScoreLabel(score),
-              style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: AppTypography.caption, color: color, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -765,7 +766,7 @@ class _AiSuggestionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Text(
                   'AI 评价',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: AppTypography.subtitle, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -774,7 +775,7 @@ class _AiSuggestionCard extends StatelessWidget {
               MarkdownBody(
                 data: _formatMarkdownText(summary),
                 styleSheet: MarkdownStyleSheet(
-                  p: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface, height: 1.5),
+                  p: TextStyle(fontSize: AppTypography.bodyLarge, color: theme.colorScheme.onSurface, height: 1.5),
                 ),
               ),
               const Divider(height: 24),
@@ -786,7 +787,7 @@ class _AiSuggestionCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   const Text(
                     '建议',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                    style: TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.bold, color: Colors.blueGrey),
                   ),
                 ],
               ),
@@ -794,7 +795,7 @@ class _AiSuggestionCard extends StatelessWidget {
               MarkdownBody(
                 data: _formatMarkdownText(suggestions),
                 styleSheet: MarkdownStyleSheet(
-                  p: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface, height: 1.5),
+                  p: TextStyle(fontSize: AppTypography.bodyLarge, color: theme.colorScheme.onSurface, height: 1.5),
                 ),
               ),
             ],
@@ -856,7 +857,7 @@ class _ScoreHistoryChart extends StatelessWidget {
                     child: Text(
                       label,
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: AppTypography.caption,
                         color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                       ),
                     ),
@@ -875,7 +876,7 @@ class _ScoreHistoryChart extends StatelessWidget {
                     child: Text(
                       '${value.toInt()}',
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: AppTypography.caption,
                         color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                       ),
                       textAlign: TextAlign.end,

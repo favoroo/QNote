@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 
 /// 评分热力图组件（GitHub 贡献图风格）
@@ -167,7 +168,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                                 orElse: () => (row + 1, ''),
                               ).$2,
                               style: TextStyle(
-                                fontSize: 9,
+                                fontSize: AppTypography.micro,
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
@@ -192,7 +193,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                           child: Text(
                             ml.$2,
                             style: TextStyle(
-                              fontSize: 9,
+                              fontSize: AppTypography.micro,
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
@@ -349,7 +350,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                         Text(
                           dateStr,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: AppTypography.label,
                             fontWeight: FontWeight.w600,
                             color: theme.colorScheme.onSurface,
                           ),
@@ -358,7 +359,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                         Text(
                           scoreStr,
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: AppTypography.caption,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
@@ -380,7 +381,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Text('少', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
+        Text('少', style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant)),
         const SizedBox(width: 6),
         Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: emptyColor, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 2),
@@ -392,7 +393,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
         const SizedBox(width: 2),
         Container(width: _cellSize, height: _cellSize, decoration: BoxDecoration(color: primary.withValues(alpha: 1.0), borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 6),
-        Text('多', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
+        Text('多', style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant)),
       ],
     );
   }

@@ -1,0 +1,630 @@
+part of 'todo_page.dart';
+// 从 todo_page.dart 拆分：待办分类标签栏与待办条目展示组件。
+
+/// 动态横向分类标签栏
+class _TodoFolderTabBar extends StatelessWidget {
+  final List<Folder> folders;
+  final String selectedFolderId;
+  final List<Todo> todos;
+  final ValueChanged<String> onSelect;
+
+  const _TodoFolderTabBar({
+    required this.folders,
+    required this.selectedFolderId,
+    required this.todos,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      height: 46,
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      // 分类栏不再提供快捷新建入口，避免与右下角新增待办混淆；新建分类请走右上角分类管理
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: folders.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final folder = folders[index];
+          final isSelected = folder.id == selectedFolderId;
+          // 计算未完成待办数
+          final count = todos.where((t) {
+            if (t.isCompleted || t.title.trim().isEmpty) return false;
+            if (t.folderId == folder.id) return true;
+            if (t.folderId == null || t.folderId!.isEmpty) {
+              if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
+                return t.isLongTerm;
+              }
+              if (folder.id == 'todo_default_today' || index == 0) {
+                return !t.isLongTerm;
+              }
+            }
+            return false;
+          }).length;
+
+          return GestureDetector(
+            onTap: () => onSelect(folder.id),
+            child: AnimatedContainer(
+              duration: AppDurations.normal,
+              curve: Curves.easeInOut,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(AppRadius.large),
+                border: Border.all(
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    folder.name,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 13.5,
+                      color: isSelected
+                          ? colorScheme.onPrimary
+                          : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  if (count > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? colorScheme.onPrimary.withValues(alpha: 0.2)
+                            : colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? colorScheme.onPrimary : colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 仿小米待办卡片组件
+class _TodoItem extends StatefulWidget {
+  final Todo todo;
+  final int index;
+  final bool isDraggable;
+  final bool isSelectionMode;
+  final bool isSelected;
+
+  /// 是否播放「从 0 高度展开」的入场动画。已完成区分批展开时关闭，
+  /// 避免外层高度过渡与每行入场动画叠加。
+  final bool animateIn;
+  final VoidCallback onTap;
+  final VoidCallback onToggleComplete;
+  final void Function(GlobalKey key) onLongPress;
+  final VoidCallback? onDelete;
+  final VoidCallback? onSelectToggle;
+
+  const _TodoItem({
+    super.key,
+    required this.todo,
+    required this.index,
+    this.isDraggable = true,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+    this.animateIn = true,
+    required this.onTap,
+    required this.onToggleComplete,
+    required this.onLongPress,
+    this.onDelete,
+    this.onSelectToggle,
+  });
+
+  @override
+  State<_TodoItem> createState() => _TodoItemState();
+}
+
+class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
+  final GlobalKey _cardKey = GlobalKey();
+  late AnimationController _animController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _heightFactor;
+  late Animation<double> _opacityAnimation;
+
+  /// 控制左滑位移动画
+  late AnimationController _slideAnimController;
+  late Animation<double> _slideAnimation;
+
+  /// 最大左滑距离（露出圆形删除按钮）
+  static const double _kMaxSlideExtent = 72.0;
+
+  bool _localCompleted = false;
+  bool _isCompleting = false;
+
+  /// 已播放过入场动画的待办 id。ListView 懒构建、PageView 切页都会重新
+  /// initState，若每次都从 0 播入场，滚动时条目会不停「弹进来」。
+  static final Set<String> _entrancePlayed = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: AppDurations.medium,
+    );
+
+    _scaleAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeIn,
+    );
+
+    _heightFactor = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeInOut,
+    );
+
+    _opacityAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeIn,
+      reverseCurve: Curves.easeOut,
+    );
+
+    _slideAnimController = AnimationController(
+      vsync: this,
+      duration: AppDurations.fast,
+    );
+    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _slideAnimController, curve: AppCurves.emphasized),
+    );
+
+    if (_entrancePlayed.length > 800) {
+      _entrancePlayed.clear();
+    }
+    if (widget.animateIn && _entrancePlayed.add(widget.todo.id)) {
+      _animController.forward();
+    } else {
+      _animController.value = 1.0;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 减弱动效时直接落在终态，并且把左滑吸附改成瞬时。
+    if (AppMotion.reduce(context)) {
+      _animController.value = 1.0;
+      _slideAnimController.duration = Duration.zero;
+    } else {
+      _slideAnimController.duration = AppDurations.fast;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _TodoItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isSelectionMode && !oldWidget.isSelectionMode) {
+      _closeSlide();
+    }
+    if (oldWidget.todo.isCompleted != widget.todo.isCompleted) {
+      setState(() {
+        _localCompleted = widget.todo.isCompleted;
+      });
+      if (widget.todo.isCompleted) {
+        _animController.value = 1.0;
+      } else {
+        _animController.forward();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    _slideAnimController.dispose();
+    super.dispose();
+  }
+
+  void _openSlide() {
+    _slideAnimController.animateTo(1.0, curve: AppCurves.emphasized);
+  }
+
+  void _closeSlide() {
+    _slideAnimController.animateTo(0.0, curve: AppCurves.emphasized);
+  }
+
+  void _handleToggleComplete() {
+    HapticFeedback.mediumImpact();
+    if (_slideAnimController.value > 0) {
+      _closeSlide();
+      return;
+    }
+    if (widget.todo.isCompleted) {
+      widget.onToggleComplete();
+      return;
+    }
+    if (_isCompleting) return;
+
+    // 减弱动效下不播放 300ms 收缩，直接提交完成状态。
+    if (AppMotion.reduce(context)) {
+      widget.onToggleComplete();
+      return;
+    }
+
+    _isCompleting = true;
+    setState(() {
+      _localCompleted = true;
+    });
+
+    _animController.reverse().then((_) {
+      if (mounted) {
+        _isCompleting = false;
+      }
+      widget.onToggleComplete();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final todo = widget.todo;
+    final isDone = todo.isCompleted || _localCompleted;
+    final isSelectionMode = widget.isSelectionMode;
+    final isSelected = widget.isSelected;
+
+    return SizeTransition(
+      sizeFactor: _heightFactor,
+      alignment: const Alignment(-1.0, -1.0),
+      child: FadeTransition(
+        opacity: _opacityAnimation,
+        child: ScaleTransition(
+          scale: _scaleAnimation,
+          child: AnimatedBuilder(
+            animation: _slideAnimation,
+            builder: (context, child) {
+              final slideProgress = _slideAnimation.value;
+              final currentOffset = -_kMaxSlideExtent * slideProgress;
+              final isSlidOpen = slideProgress > 0.01;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.centerRight,
+                  children: [
+                    // 右侧暴露的圆形删除按钮背景层（多选模式下隐藏）
+                    if (isSlidOpen && !isSelectionMode)
+                      Positioned(
+                        right: 8,
+                        child: Opacity(
+                          opacity: (slideProgress * 1.5).clamp(0.0, 1.0),
+                          child: Transform.scale(
+                            scale: (0.5 + 0.5 * slideProgress).clamp(0.5, 1.0),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  HapticFeedback.mediumImpact();
+                                  _closeSlide();
+                                  widget.onDelete?.call();
+                                },
+                                customBorder: const CircleBorder(),
+                                child: Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFE54B3C),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Color(0x33E54B3C),
+                                        blurRadius: 8,
+                                        offset: Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // 前景待办卡片主体（多选模式下禁止左滑）
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragUpdate: isSelectionMode
+                          ? null
+                          : (details) {
+                              final deltaProgress = -details.primaryDelta! / _kMaxSlideExtent;
+                              final newProgress = (_slideAnimController.value + deltaProgress).clamp(0.0, 1.0);
+                              _slideAnimController.value = newProgress;
+                            },
+                      onHorizontalDragEnd: isSelectionMode
+                          ? null
+                          : (details) {
+                              final velocity = details.primaryVelocity ?? 0.0;
+                              if (velocity < -300) {
+                                // 快速左滑：直接展开
+                                _openSlide();
+                              } else if (velocity > 300) {
+                                // 快速右滑：直接收起
+                                _closeSlide();
+                              } else {
+                                // 根据当前拖拽位置阈值决定吸附
+                                if (_slideAnimController.value >= 0.4) {
+                                  _openSlide();
+                                } else {
+                                  _closeSlide();
+                                }
+                              }
+                            },
+                      child: Transform.translate(
+                        offset: Offset(isSelectionMode ? 0 : currentOffset, 0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isSelectionMode && isSelected
+                                ? colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08)
+                                : (isDark
+                                    ? colorScheme.surfaceContainer
+                                    : colorScheme.surfaceContainerLow),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isSelectionMode && isSelected
+                                  ? colorScheme.primary
+                                  : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
+                              width: isSelectionMode && isSelected ? 1.8 : 1.0,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: colorScheme.shadow.withValues(alpha: 0.02),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            child: Row(
+                              children: [
+                                // 多选复选框 vs 小米风格圆形复选框
+                                if (isSelectionMode)
+                                  GestureDetector(
+                                    key: const ValueKey('todo_select_detector'),
+                                    onTap: () {
+                                      HapticFeedback.selectionClick();
+                                      widget.onSelectToggle?.call();
+                                    },
+                                    behavior: HitTestBehavior.opaque,
+                                    child: AnimatedContainer(
+                                      key: const ValueKey('todo_select_checkbox'),
+                                      duration: AppMotion.duration(context, AppDurations.fast),
+                                      curve: AppCurves.standard,
+                                      width: 22,
+                                      height: 22,
+                                      margin: const EdgeInsets.only(right: 10),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(11),
+                                        color: isSelected ? colorScheme.primary : Colors.transparent,
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? colorScheme.primary
+                                              : colorScheme.outline.withValues(alpha: 0.6),
+                                          width: 2.0,
+                                        ),
+                                      ),
+                                      child: isSelected
+                                          ? const Icon(Icons.check, size: 15, color: Colors.white)
+                                          : null,
+                                    ),
+                                  )
+                                else
+                                  GestureDetector(
+                                    key: const ValueKey('todo_done_detector'),
+                                    onTap: _handleToggleComplete,
+                                    behavior: HitTestBehavior.opaque,
+                                    child: AnimatedContainer(
+                                      key: const ValueKey('todo_done_checkbox'),
+                                      duration: AppMotion.duration(context, AppDurations.medium),
+                                      curve: AppCurves.standard,
+                                      width: 20,
+                                      height: 20,
+                                      margin: const EdgeInsets.only(right: 10),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: isDone
+                                              ? (isDark ? Colors.white30 : colorScheme.outline.withValues(alpha: 0.4))
+                                              : colorScheme.outline.withValues(alpha: 0.5),
+                                          width: 1.8,
+                                        ),
+                                        color: isDone
+                                            ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
+                                            : Colors.transparent,
+                                      ),
+                                      child: isDone
+                                          ? TweenAnimationBuilder<double>(
+                                              tween: Tween(begin: 0.0, end: 1.0),
+                                              duration: AppMotion.duration(context, AppDurations.medium),
+                                              curve: AppCurves.spring,
+                                              builder: (context, value, child) {
+                                                return Transform.scale(
+                                                  scale: value,
+                                                  child: child,
+                                                );
+                                              },
+                                              child: Icon(
+                                                Icons.check,
+                                                size: 14,
+                                                color: isDark ? Colors.white70 : colorScheme.primary,
+                                              ),
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                // 待办标题与辅助状态（选择模式下点击整张卡片切换选中，正常模式下点击唤出编辑弹窗，长按唤出操作菜单）
+                                Expanded(
+                                  child: GestureDetector(
+                                    key: _cardKey,
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      if (isSelectionMode) {
+                                        HapticFeedback.selectionClick();
+                                        widget.onSelectToggle?.call();
+                                      } else if (isSlidOpen) {
+                                        _closeSlide();
+                                      } else {
+                                        widget.onTap();
+                                      }
+                                    },
+                                    onLongPress: () {
+                                      if (isSelectionMode) {
+                                        HapticFeedback.selectionClick();
+                                        widget.onSelectToggle?.call();
+                                      } else if (isSlidOpen) {
+                                        _closeSlide();
+                                      } else {
+                                        widget.onLongPress(_cardKey);
+                                      }
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          todo.title.isEmpty ? '待办事项' : todo.title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
+                                            fontSize: 15.5,
+                                            color: isDone
+                                                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+                                                : colorScheme.onSurface,
+                                          ),
+                                        ),
+                                        if (todo.isRecurring || todo.reminderTime != null || todo.description.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              if (todo.isRecurring) ...[
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                  margin: const EdgeInsets.only(right: 6),
+                                                  decoration: BoxDecoration(
+                                                    color: colorScheme.primary.withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.repeat, size: 11, color: colorScheme.primary),
+                                                      const SizedBox(width: 3),
+                                                      Text(
+                                                        todo.repeatRuleLabel,
+                                                        style: TextStyle(
+                                                          fontSize: 10.5,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: colorScheme.primary,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                              if (todo.reminderTime != null) ...[
+                                                Icon(
+                                                  Icons.alarm,
+                                                  size: 12,
+                                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                                ),
+                                                const SizedBox(width: 3),
+                                                Text(
+                                                  todo.reminderTime!,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                              ],
+                                              if (todo.description.isNotEmpty)
+                                                Expanded(
+                                                  child: Text(
+                                                    todo.description,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: theme.textTheme.bodySmall?.copyWith(
+                                                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                if (widget.isDraggable && !isSelectionMode)
+                                  ReorderableDragStartListener(
+                                    index: widget.index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 8),
+                                      child: SizedBox(
+                                        width: 28,
+                                        height: 28,
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.drag_indicator,
+                                            size: 18,
+                                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
