@@ -17,17 +17,35 @@ import 'package:qnote_flutter/models/health_sport_record.dart';
 import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 
+/// 「运动健康」顶栏需要的外部状态：是否已绑定账号、是否正在同步。
+///
+/// 嵌入「健康数据」综合页时，子页自己的 AppBar 不再渲染，这些状态要交给外层顶栏，
+/// 否则「未绑定时不该显示同步按钮」「同步中要转圈」这类判断会丢在外层。
+typedef MiFitnessTopBarStatus = ({bool authed, bool syncing});
+
 class MiFitnessSettingsPage extends ConsumerStatefulWidget {
   final DateTime? initialDate;
 
-  const MiFitnessSettingsPage({super.key, this.initialDate});
+  /// 嵌入模式：由「健康数据」综合页承载时为 true，不重复生成外层 Scaffold 与 AppBar，
+  /// 顶栏动作（同步当天）改由外层页通过 GlobalKey 触发。
+  final bool embedded;
+
+  /// 嵌入模式下向外层顶栏同步 [MiFitnessTopBarStatus]；独立打开时为 null。
+  final ValueNotifier<MiFitnessTopBarStatus>? statusNotifier;
+
+  const MiFitnessSettingsPage({
+    super.key,
+    this.initialDate,
+    this.embedded = false,
+    this.statusNotifier,
+  });
 
   @override
   ConsumerState<MiFitnessSettingsPage> createState() =>
-      _MiFitnessSettingsPageState();
+      MiFitnessSettingsPageState();
 }
 
-class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
+class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   bool _isLoading = true;
   bool _isSyncing = false;
   MiAuthCredentials? _credentials;
@@ -378,13 +396,100 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     }
   }
 
+  /// 是否已绑定小米账号（外层「健康数据」页据此决定顶栏是否显示同步按钮）
+  bool get isAuthed => _credentials != null && _credentials!.ssecurity.isNotEmpty;
+
+  /// 是否正在同步（外层顶栏据此把按钮换成转圈）
+  bool get isSyncing => _isSyncing;
+
+  /// 供外层「健康数据」页顶栏调用：同步当前选中日期的数据
+  Future<void> syncSelectedDate() => _handleSyncSelectedDate();
+
+  /// 把「已绑定 / 同步中」同步给外层顶栏。
+  ///
+  /// 登录态与同步标志由多条异步路径改写（扫码登录、解绑、批量/单日同步），逐处补通知
+  /// 容易漏，统一在每次重建后校验一次；值未变时不写，避免无意义地通知外层重建。
+  void _publishTopBarStatus() {
+    final notifier = widget.statusNotifier;
+    if (notifier == null) return;
+    final next = (authed: isAuthed, syncing: _isSyncing);
+    if (notifier.value == next) return;
+    notifier.value = next;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isAuthed = _credentials != null && _credentials!.ssecurity.isNotEmpty;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _publishTopBarStatus();
+    });
+
+    final body = _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            children: [
+              // 0. 上次同步失败提示：登录态失效时否则用户只看到「数据不更新」，没有任何解释
+              if (_lastFailure != null && isAuthed) ...[
+                _buildSyncFailureBanner(context),
+                const SizedBox(height: 12),
+              ],
+
+              // 1. 日期切换导航栏
+              _buildDateNavBar(context),
+              const SizedBox(height: 12),
+
+              // 2. 步数与活力主卡片
+              _buildStepsCard(context),
+              const SizedBox(height: 12),
+
+              // 3. 深度作息睡眠卡片（含比例条、阶段明细、作息区间与评分徽标）
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openHealthDetail(HealthMetricKind.sleep, '作息睡眠'),
+                child: _buildSleepCard(context),
+              ),
+              const SizedBox(height: 12),
+
+              // 4. 心率健康深度指标卡片（静息心率、均值与极值范围、状态评估）
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openHealthDetail(HealthMetricKind.heartRate, '心率健康'),
+                child: _buildHeartRateCard(context),
+              ),
+              const SizedBox(height: 12),
+
+              // 5. 血氧饱和度与全天压力双联状态卡片
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openHealthDetail(HealthMetricKind.vitals, '血氧与压力'),
+                child: _buildSpo2AndStressRow(context),
+              ),
+              const SizedBox(height: 12),
+
+              // 6. 单次运动记录列表
+              if (_selectedSports.isNotEmpty) ...[
+                _buildSportRecordsSection(context),
+                const SizedBox(height: 12),
+              ],
+
+              // 7. 账号连接状态卡片（放在运动健康数据之后）
+              _buildAccountStatusCard(context, isAuthed),
+              const SizedBox(height: 12),
+
+              // 8. 基础设置（自动沉淀开关）
+              _buildPreferencesCard(context, isAuthed),
+              const SizedBox(height: 16),
+            ],
+          );
+
+    // 嵌入「健康数据」综合页时不重复生成 Scaffold/AppBar，顶栏动作由外层统一承载
+    if (widget.embedded) {
+      return body;
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('小米运动健康'),
+        title: const Text('运动健康'),
         actions: [
           if (isAuthed)
             _isSyncing
@@ -403,64 +508,7 @@ class _MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                   ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              children: [
-                // 0. 上次同步失败提示：登录态失效时否则用户只看到「数据不更新」，没有任何解释
-                if (_lastFailure != null && isAuthed) ...[
-                  _buildSyncFailureBanner(context),
-                  const SizedBox(height: 12),
-                ],
-
-                // 1. 日期切换导航栏
-                _buildDateNavBar(context),
-                const SizedBox(height: 12),
-
-                // 2. 步数与活力主卡片
-                _buildStepsCard(context),
-                const SizedBox(height: 12),
-
-                // 3. 深度作息睡眠卡片（含比例条、阶段明细、作息区间与评分徽标）
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _openHealthDetail(HealthMetricKind.sleep, '作息睡眠'),
-                  child: _buildSleepCard(context),
-                ),
-                const SizedBox(height: 12),
-
-                // 4. 心率健康深度指标卡片（静息心率、均值与极值范围、状态评估）
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _openHealthDetail(HealthMetricKind.heartRate, '心率健康'),
-                  child: _buildHeartRateCard(context),
-                ),
-                const SizedBox(height: 12),
-
-                // 5. 血氧饱和度与全天压力双联状态卡片
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _openHealthDetail(HealthMetricKind.vitals, '血氧与压力'),
-                  child: _buildSpo2AndStressRow(context),
-                ),
-                const SizedBox(height: 12),
-
-                // 6. 单次运动记录列表
-                if (_selectedSports.isNotEmpty) ...[
-                  _buildSportRecordsSection(context),
-                  const SizedBox(height: 12),
-                ],
-
-                // 7. 账号连接状态卡片（放在运动健康数据之后）
-                _buildAccountStatusCard(context, isAuthed),
-                const SizedBox(height: 12),
-
-                // 8. 基础设置（自动沉淀开关）
-                _buildPreferencesCard(context, isAuthed),
-                const SizedBox(height: 16),
-              ],
-            ),
+      body: body,
     );
   }
 

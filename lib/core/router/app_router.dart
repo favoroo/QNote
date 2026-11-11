@@ -15,11 +15,9 @@ import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_provider_edit_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_route_group_edit_page.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
-import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
-import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
+import 'package:qnote_flutter/pages/settings/quick_record_settings_page.dart';
+import 'package:qnote_flutter/pages/settings/health_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
-import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
-import 'package:qnote_flutter/pages/settings/screen_usage_page.dart';
 import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
@@ -200,14 +198,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        // 快捷记录：快捷按钮与固定事件合并为一个入口，用 query 定位分段
         path: '/settings/shortcuts',
         parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(const ShortcutsPage()),
+        pageBuilder: (context, state) => _fadeTransitionPage(
+          QuickRecordSettingsPage(initialTab: _quickRecordTab(state.uri.queryParameters['tab'])),
+        ),
       ),
       GoRoute(
+        // 旧「固定事件」路径保留，统一重定向到快捷记录页的固定事件分段
+        // （该路由历史上不带 extra，重定向不会丢参数）
         path: '/settings/fixed-events',
-        parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) => _fadeTransitionPage(const FixedEventsPage()),
+        redirect: (context, state) => '/settings/shortcuts?tab=fixed-events',
       ),
       GoRoute(
         path: '/settings/data',
@@ -228,20 +230,27 @@ final routerProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) => '/settings/data?tab=sync',
       ),
       GoRoute(
+        // 健康数据：运动健康与屏幕使用时间合并为一个入口，用 query 定位分段
         path: '/settings/mi-fitness',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) {
           final initialDate = state.extra as DateTime?;
-          return _fadeTransitionPage(MiFitnessSettingsPage(initialDate: initialDate));
+          return _fadeTransitionPage(
+            HealthSettingsPage(
+              initialTab: _healthTab(state.uri.queryParameters['tab']),
+              initialDate: initialDate,
+            ),
+          );
         },
       ),
       GoRoute(
+        // 旧「屏幕使用时间」路径保留：直接构建合并页并定位到屏幕使用分段。
+        // 不用 redirect——redirect 会丢掉 extra 里的日期，而日记日结卡片正是带日期跳过来的。
         path: '/settings/screen-usage',
         parentNavigatorKey: rootNavigatorKey,
-        pageBuilder: (context, state) {
-          final initialDate = state.extra as DateTime?;
-          return _fadeTransitionPage(ScreenUsagePage(initialDate: initialDate));
-        },
+        pageBuilder: (context, state) => _fadeTransitionPage(
+          HealthSettingsPage(initialTab: 1, initialDate: state.extra as DateTime?),
+        ),
       ),
       GoRoute(
         // 健康指标二级详情页：数据由主看板通过 extra 带入，不自己查库
@@ -287,6 +296,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// 快捷记录页的分段：`?tab=fixed-events` → 固定事件（1），其余为快捷按钮（0）
+int _quickRecordTab(String? tab) => tab == 'fixed-events' ? 1 : 0;
+
+/// 健康数据页的分段：`?tab=screen` → 屏幕使用（1），其余为运动健康（0）
+int _healthTab(String? tab) => tab == 'screen' ? 1 : 0;
 
 /// Smooth fade page transition for settings and sub-routes
 CustomTransitionPage _fadeTransitionPage(Widget child) {

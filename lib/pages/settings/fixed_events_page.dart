@@ -14,13 +14,17 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 
 class FixedEventsPage extends ConsumerStatefulWidget {
-  const FixedEventsPage({super.key});
+  const FixedEventsPage({super.key, this.embedded = false});
+
+  /// 嵌入模式：由「快捷记录」综合页承载时为 true，不重复生成外层 Scaffold 与 AppBar，
+  /// 顶栏「新建」动作改由外层页通过 GlobalKey 触发。
+  final bool embedded;
 
   @override
-  ConsumerState<FixedEventsPage> createState() => _FixedEventsPageState();
+  ConsumerState<FixedEventsPage> createState() => FixedEventsPageState();
 }
 
-class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
+class FixedEventsPageState extends ConsumerState<FixedEventsPage> {
   /// 编辑对话框打开期间，按 `'$tagId#${field.id}'` 缓存的输入控制器。
   /// 必须在 dialog 关闭时统一 dispose，避免泄漏。
   final Map<String, TextEditingController> _fieldControllers = {};
@@ -105,14 +109,67 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
     return f;
   }
 
+  /// 供外层「快捷记录」页顶栏调用：打开新建固定事件对话框
+  void openNewTemplateEditor() => _showEditDialog(context, null);
+
   @override
   Widget build(BuildContext context) {
     final templates = ref.watch(fixedEventNotifierProvider);
     final theme = Theme.of(context);
 
+    final body = templates.isEmpty
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.event_repeat_outlined,
+                  size: 48,
+                  color: theme.disabledColor,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '暂无固定事件模板',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.disabledColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '点右上角 + 添加',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.disabledColor,
+                  ),
+                ),
+              ],
+            ),
+          )
+        : ReorderableListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: templates.length,
+            onReorderItem: (oldIndex, newIndex) {
+              ref
+                  .read(fixedEventNotifierProvider.notifier)
+                  .reorder(oldIndex, newIndex);
+            },
+            itemBuilder: (context, index) {
+              final template = templates[index];
+              return _buildTemplateCard(
+                context,
+                template,
+                key: ValueKey(template.id),
+              );
+            },
+          );
+
+    // 嵌入「快捷记录」综合页时不重复生成 Scaffold/AppBar
+    if (widget.embedded) {
+      return body;
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('固定事件管理'),
+        title: const Text('固定事件'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -120,50 +177,7 @@ class _FixedEventsPageState extends ConsumerState<FixedEventsPage> {
           ),
         ],
       ),
-      body: templates.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.event_repeat_outlined,
-                    size: 48,
-                    color: theme.disabledColor,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '暂无固定事件模板',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.disabledColor,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '点右上角 + 添加',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.disabledColor,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : ReorderableListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: templates.length,
-              onReorderItem: (oldIndex, newIndex) {
-                ref
-                    .read(fixedEventNotifierProvider.notifier)
-                    .reorder(oldIndex, newIndex);
-              },
-              itemBuilder: (context, index) {
-                final template = templates[index];
-                return _buildTemplateCard(
-                  context,
-                  template,
-                  key: ValueKey(template.id),
-                );
-              },
-            ),
+      body: body,
     );
   }
 

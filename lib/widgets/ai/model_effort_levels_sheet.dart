@@ -99,19 +99,31 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
     });
   }
 
+  /// 一键勾满全部档位；用户不必为了加一档逐行点
+  void _selectAll() {
+    setState(() {
+      _selected
+        ..clear()
+        ..addAll(ReasoningEffort.values);
+    });
+  }
+
+  void _clearAll() {
+    setState(_selected.clear);
+  }
+
   void _save() {
     if (_selected.isEmpty) return;
     final levels = [
-      for (final effort in _autoCapability.configurableLevels)
+      for (final effort in ReasoningEffort.values)
         if (_selected.contains(effort)) effort,
     ];
     // 勾选结果与自动识别一致时存 null，扫描/升级后仍能跟着能力表走
     final isAuto =
         levels.length == _autoCapability.levels.length &&
         levels.toSet().containsAll(_autoCapability.levels);
-    Navigator.of(context).pop(
-      ModelEffortLevelsSelection(isAuto ? null : levels),
-    );
+    final selection = ModelEffortLevelsSelection(isAuto ? null : levels);
+    Navigator.of(context).pop(selection);
   }
 
   @override
@@ -132,7 +144,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
               padding: const EdgeInsets.only(bottom: 12),
               children: [
                 _buildIntro(theme),
-                const SizedBox(height: 4),
+                _buildQuickActions(theme),
                 for (final effort in _autoCapability.configurableLevels)
                   _buildLevelTile(theme, effort),
               ],
@@ -146,6 +158,10 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
 
   Widget _buildHeader(ThemeData theme) {
     final colorScheme = theme.colorScheme;
+    // 自动识别用中性底，自定义用主色底，扫一眼就能分清是不是动过
+    final badgeColor = _isAuto
+        ? colorScheme.surfaceContainerHighest
+        : colorScheme.primaryContainer;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 12, 4),
       child: Row(
@@ -169,10 +185,7 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
                         vertical: 1,
                       ),
                       decoration: BoxDecoration(
-                        color: (_isAuto
-                                ? colorScheme.surfaceContainerHighest
-                                : colorScheme.primaryContainer)
-                            .withValues(alpha: 0.8),
+                        color: badgeColor.withValues(alpha: 0.8),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -234,6 +247,13 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
           ),
           const SizedBox(height: 6),
           Text(
+            '所有档位都能勾选，协议不能单独表达的档位会按下方「实际发送」折叠。',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colorScheme.outline,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
             '$_autoCapability.paramStyleLabel；$autoLine',
             style: theme.textTheme.labelSmall?.copyWith(
               color: colorScheme.outline,
@@ -260,14 +280,41 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
     );
   }
 
+  /// 「全选 / 清空」快捷操作：放开全部档位后不必逐行点
+  Widget _buildQuickActions(ThemeData theme) {
+    final allSelected = _selected.length == ReasoningEffort.values.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
+      child: Row(
+        children: [
+          Text(
+            '可选档位',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.outline,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: allSelected ? null : _selectAll,
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            child: const Text('全选'),
+          ),
+          TextButton(
+            onPressed: _selected.isEmpty ? null : _clearAll,
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLevelTile(ThemeData theme, ReasoningEffort effort) {
     final colorScheme = theme.colorScheme;
     final selected = _selected.contains(effort);
     final label = _autoCapability.labelFor(effort);
-    final description = _autoCapability.isBinary &&
-            effort == ReasoningEffort.high
-        ? '开启思考'
-        : effort.description;
+    final description = effort.description;
     return CheckboxListTile(
       value: selected,
       onChanged: (value) => _toggle(effort, value ?? false),

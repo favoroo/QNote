@@ -68,12 +68,29 @@ void main() {
     expect(lastBody()['reasoning_effort'], 'minimal');
   });
 
-  test('GLM 写 thinking.type 开关', () async {
+  test('GLM 写 thinking.type 开关，并附带 reasoning_effort', () async {
     await send(
-      config('glm-4.6', vendorId: 'zhipu', effort: ReasoningEffort.high),
+      config('glm-4.6', vendorId: 'zhipu', effort: ReasoningEffort.medium),
     );
 
-    expect(lastBody()['thinking'], {'type': 'enabled'});
+    final body = lastBody();
+    expect(body['thinking'], {'type': 'enabled'});
+    expect(body['reasoning_effort'], 'medium');
+  });
+
+  test('GLM 自定义的 xhigh 也真实发出', () async {
+    await send(
+      config(
+        'glm-4.6',
+        vendorId: 'zhipu',
+        effort: ReasoningEffort.xhigh,
+        efforts: [ReasoningEffort.xhigh],
+      ),
+    );
+
+    final body = lastBody();
+    expect(body['thinking'], {'type': 'enabled'});
+    expect(body['reasoning_effort'], 'xhigh');
   });
 
   test('Qwen 写 enable_thinking 与预算', () async {
@@ -132,12 +149,17 @@ void main() {
   });
 
   test('模型不支持的档位静默跳过', () async {
-    // GLM 只有关闭/开启两档，medium 不在能力表里
+    // Gemini 3 默认只有低/高，medium 没有自定义时不应发出
     await send(
-      config('glm-4.6', vendorId: 'zhipu', effort: ReasoningEffort.medium),
+      config(
+        'gemini-3-flash-preview',
+        provider: 'gemini',
+        effort: ReasoningEffort.medium,
+      ),
     );
 
-    expect(lastBody().containsKey('thinking'), isFalse);
+    final generationConfig = lastBody()['generationConfig'] as Map;
+    expect(generationConfig.containsKey('thinkingConfig'), isFalse);
   });
 
   test('Gemini 3 写 generationConfig.thinkingConfig.thinkingLevel', () async {

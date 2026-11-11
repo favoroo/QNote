@@ -57,21 +57,18 @@ void main() {
       expect(maxBody['reasoning_effort'], 'max');
     });
 
-    test('自定义档位不在参数形态候选里时被过滤', () {
-      // 二值开关表达不了中间档，不能给用户假精度
+    test('所有模型都能自定义完整档位，不做协议裁剪', () {
       final binary = capabilityOf('glm-4.6').withLevels([
-        ReasoningEffort.none,
-        ReasoningEffort.low,
-        ReasoningEffort.high,
+        ReasoningEffort.minimal,
+        ReasoningEffort.medium,
+        ReasoningEffort.max,
       ]);
       expect(binary.levels, [
-        ReasoningEffort.none,
-        ReasoningEffort.high,
+        ReasoningEffort.minimal,
+        ReasoningEffort.medium,
+        ReasoningEffort.max,
       ]);
-      expect(binary.configurableLevels, [
-        ReasoningEffort.none,
-        ReasoningEffort.high,
-      ]);
+      expect(binary.configurableLevels, ReasoningEffort.values);
     });
 
     test('o 系没有 none 档，选了也不发字段', () {
@@ -102,21 +99,28 @@ void main() {
     });
   });
 
-  group('智谱 GLM 二值开关', () {
-    test('只提供关闭/开启两档，文案为开关', () {
+  group('智谱 GLM 开关 + reasoning_effort', () {
+    test('默认给四档，不再只剩开启/关闭', () {
       final capability = capabilityOf('glm-4.6');
-      expect(capability.levels, [ReasoningEffort.none, ReasoningEffort.high]);
+      expect(capability.levels, [
+        ReasoningEffort.none,
+        ReasoningEffort.low,
+        ReasoningEffort.medium,
+        ReasoningEffort.high,
+      ]);
       expect(capability.labelFor(null), '自动');
       expect(capability.labelFor(ReasoningEffort.none), '关闭');
-      expect(capability.labelFor(ReasoningEffort.high), '开启');
+      expect(capability.labelFor(ReasoningEffort.high), '高');
+      expect(capability.isBinary, isTrue);
     });
 
-    test('写 thinking.type 而不是 reasoning_effort', () {
+    test('开启时写 thinking.type，并附带档位对应的 reasoning_effort', () {
       final capability = capabilityOf('glm-4.6');
       final enabled = <String, dynamic>{};
-      capability.applyToOpenAiBody(enabled, ReasoningEffort.high);
+      capability.applyToOpenAiBody(enabled, ReasoningEffort.medium);
       expect(enabled, {
         'thinking': {'type': 'enabled'},
+        'reasoning_effort': 'medium',
       });
 
       final disabled = <String, dynamic>{};
@@ -126,11 +130,16 @@ void main() {
       });
     });
 
-    test('中间档位不受支持时静默跳过', () {
-      final capability = capabilityOf('glm-4.5');
+    test('自定义中间档位真实发出，不再静默跳过', () {
+      final capability = capabilityOf(
+        'glm-4.5',
+      ).withLevels([ReasoningEffort.low, ReasoningEffort.xhigh]);
       final body = <String, dynamic>{};
-      capability.applyToOpenAiBody(body, ReasoningEffort.medium);
-      expect(body, isEmpty);
+      capability.applyToOpenAiBody(body, ReasoningEffort.xhigh);
+      expect(body, {
+        'thinking': {'type': 'enabled'},
+        'reasoning_effort': 'xhigh',
+      });
     });
   });
 
@@ -177,7 +186,7 @@ void main() {
   });
 
   group('Gemini 原生 thinkingConfig', () {
-    test('Gemini 3 只提供低/高，写 thinkingLevel', () {
+    test('Gemini 3 默认低/高，写 thinkingLevel，可自定义中间档', () {
       final capability = capabilityOf(
         'gemini-3-flash-preview',
         providerType: 'gemini',
@@ -190,6 +199,33 @@ void main() {
 
       expect(capability.geminiThinkingConfig(ReasoningEffort.high), {
         'thinkingLevel': 'high',
+      });
+      expect(capability.geminiThinkingConfig(ReasoningEffort.low), {
+        'thinkingLevel': 'low',
+      });
+    });
+
+    test('Gemini 3 勾选的中/极高/最高就近折叠为 high', () {
+      final capability =
+          capabilityOf(
+            'gemini-3-pro-preview',
+            providerType: 'gemini',
+          ).withLevels([
+            ReasoningEffort.none,
+            ReasoningEffort.medium,
+            ReasoningEffort.xhigh,
+            ReasoningEffort.max,
+          ]);
+
+      expect(capability.supports(ReasoningEffort.medium), isTrue);
+      expect(capability.geminiThinkingConfig(ReasoningEffort.medium), {
+        'thinkingLevel': 'high',
+      });
+      expect(capability.geminiThinkingConfig(ReasoningEffort.max), {
+        'thinkingLevel': 'high',
+      });
+      expect(capability.geminiThinkingConfig(ReasoningEffort.none), {
+        'thinkingLevel': 'low',
       });
     });
 
@@ -271,7 +307,12 @@ void main() {
     test('已收录模型仍走精确能力，不被兜底覆盖', () {
       final capability = ModelReasoningCapability.forUi(modelName: 'glm-4.6');
       expect(capability.isGeneric, isFalse);
-      expect(capability.levels, [ReasoningEffort.none, ReasoningEffort.high]);
+      expect(capability.levels, [
+        ReasoningEffort.none,
+        ReasoningEffort.low,
+        ReasoningEffort.medium,
+        ReasoningEffort.high,
+      ]);
     });
   });
 }

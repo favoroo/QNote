@@ -21,20 +21,21 @@ void main() {
     ]);
   });
 
-  test('GLM 二值开关文案', () {
+  test('GLM 默认也有低/中/高，不再只剩开启/关闭', () {
     final options = reasoningEffortOptions(
       modelName: 'glm-4.6',
       providerType: 'openai',
       vendorId: 'zhipu',
     );
 
-    expect(options.map((o) => o.label), ['自动', '关闭', '开启']);
+    expect(options.map((o) => o.label), ['自动', '关闭', '低', '中', '高']);
     expect(options.map((o) => o.effort), [
       null,
       ReasoningEffort.none,
+      ReasoningEffort.low,
+      ReasoningEffort.medium,
       ReasoningEffort.high,
     ]);
-    expect(options.last.description, '开启思考');
   });
 
   test('未收录模型给通用兜底档位，入口不隐藏', () {
@@ -62,7 +63,7 @@ void main() {
     ]);
   });
 
-  test('二值模型会过滤掉表达不了的中间档', () {
+  test('二值模型的中间档不再被过滤', () {
     final options = reasoningEffortOptions(
       modelName: 'glm-4.6',
       providerType: 'openai',
@@ -70,10 +71,11 @@ void main() {
       customLevels: [
         ReasoningEffort.none,
         ReasoningEffort.low,
+        ReasoningEffort.medium,
         ReasoningEffort.high,
       ],
     );
 
-    expect(options.map((o) => o.label), ['自动', '关闭', '开启']);
+    expect(options.map((o) => o.label), ['自动', '关闭', '低', '中', '高']);
   });
 }

@@ -37,6 +37,94 @@ final colorMarkProvider = FutureProvider<DateColorMark?>((ref) async {
 
 final diaryInputTimeProvider = StateProvider<TimelineTimeSelectEvent?>((ref) => null);
 
+/// 记录面板的草稿快照。
+///
+/// 从面板 State 里提出来放进 Provider，是为了让草稿活过面板的关闭：面板是模态
+/// 底部弹层，误触遮罩就会销毁 State，草稿只存在 State 里会直接丢字。放在这里
+/// 后还能顺带驱动左下角记录按钮的「有草稿」圆点。
+class DiaryComposeDraft {
+  final String id;
+  final String inputText;
+  final List<TagEntry> tagEntries;
+  final List<String> selectedPhotos;
+  final TimeOfDay startTime;
+  final TimeOfDay? endTime;
+  final int? startOffset;
+  final int? endOffset;
+
+  DiaryComposeDraft({
+    required this.id,
+    this.inputText = '',
+    this.tagEntries = const [],
+    this.selectedPhotos = const [],
+    TimeOfDay? startTime,
+    this.endTime,
+    this.startOffset,
+    this.endOffset,
+  }) : startTime = startTime ?? TimeOfDay.now();
+
+  Map<String, dynamic> getFormValuesFor(String tagId) {
+    final entry = tagEntries.where((e) => e.id == tagId).firstOrNull;
+    return entry != null ? Map<String, dynamic>.from(entry.fields) : {};
+  }
+
+  /// 是否是一份「什么都没填」的空草稿（决定按钮要不要亮圆点、保存按钮要不要禁用）
+  bool get isEmpty =>
+      inputText.trim().isEmpty && tagEntries.isEmpty && selectedPhotos.isEmpty;
+
+  DiaryComposeDraft copyWith({
+    String? id,
+    String? inputText,
+    List<TagEntry>? tagEntries,
+    List<String>? selectedPhotos,
+    TimeOfDay? startTime,
+    bool clearEndTime = false,
+    TimeOfDay? endTime,
+    int? startOffset,
+    bool clearStartOffset = false,
+    int? endOffset,
+    bool clearEndOffset = false,
+  }) {
+    return DiaryComposeDraft(
+      id: id ?? this.id,
+      inputText: inputText ?? this.inputText,
+      tagEntries: tagEntries ?? this.tagEntries,
+      selectedPhotos: selectedPhotos ?? this.selectedPhotos,
+      startTime: startTime ?? this.startTime,
+      endTime: clearEndTime ? null : (endTime ?? this.endTime),
+      startOffset: clearStartOffset ? null : (startOffset ?? this.startOffset),
+      endOffset: clearEndOffset ? null : (endOffset ?? this.endOffset),
+    );
+  }
+
+  DiaryComposeDraft updateTagEntryFields(
+    String tagId,
+    Map<String, dynamic> fields,
+  ) {
+    final newEntries = tagEntries.map((e) {
+      if (e.id == tagId) return e.copyWith(fields: fields);
+      return e;
+    }).toList();
+    return copyWith(tagEntries: newEntries);
+  }
+}
+
+/// 记录面板草稿。面板卸载后草稿仍在，重新打开时接着填。
+final diaryComposeDraftProvider =
+    NotifierProvider<DiaryComposeDraftNotifier, DiaryComposeDraft>(
+      DiaryComposeDraftNotifier.new,
+    );
+
+class DiaryComposeDraftNotifier extends Notifier<DiaryComposeDraft> {
+  @override
+  DiaryComposeDraft build() => DiaryComposeDraft(id: const Uuid().v4());
+
+  void set(DiaryComposeDraft draft) => state = draft;
+
+  /// 保存成功或用户主动清空后重置为一份全新草稿。
+  void reset() => state = DiaryComposeDraft(id: const Uuid().v4());
+}
+
 enum WidgetAction {
   input,
   photo,
@@ -53,6 +141,13 @@ final diaryDraftsProvider = StateProvider<List<DiaryRecord>>((ref) => []);
 final diaryScrollTriggerProvider = StateProvider<int>((ref) => 0);
 
 final diaryScrollToTimeProvider = StateProvider<DateTime?>((ref) => null);
+
+/// 刚由记录面板写下的记录 id，供时间线播「新卡片升起」的入场动画。
+///
+/// 用显式信号而不是「和上一次列表做差」：备份恢复、WebDAV 同步、批量提取都会一次
+/// 冒出成批记录，按差集判定会让它们跟着一起炸开动画，而这里只认「用户刚记下的那条」。
+/// 页面消费一次即清空。
+final diaryJustInsertedProvider = StateProvider<List<String>>((ref) => const []);
 
 final diaryListProvider =
     AsyncNotifierProvider<DiaryListNotifier, List<DiaryRecord>>(() {

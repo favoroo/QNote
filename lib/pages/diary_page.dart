@@ -8,8 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -19,6 +21,8 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/cheer_burst.dart';
+import 'package:qnote_flutter/core/utils/diary_progress.dart';
+import 'package:qnote_flutter/core/utils/timeline_time_drag.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
@@ -27,7 +31,8 @@ import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
-import 'package:qnote_flutter/widgets/diary/diary_input_bar.dart';
+import 'package:qnote_flutter/widgets/diary/diary_record_fab.dart';
+import 'package:qnote_flutter/widgets/diary/diary_record_sheet.dart';
 import 'package:qnote_flutter/widgets/diary/cheer_burst_overlay.dart';
 import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
@@ -75,6 +80,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   // Multi-record undo mapping
   final Map<String, DiaryRecord> _undoRecords = {};
   final Map<String, AnimationController> _undoControllers = {};
+
+  // 卡片拖动调时：长按时间线左侧圆形节点后，手指位移换算为整条记录的时间平移。
+  // 手势统一由外层 GestureDetector 持有，避免卡片被 ListView 回收时拖拽中断。
+  final Map<String, GlobalKey> _recordHandleKeys = {};
+  _RecordTimeDragState? _cardDrag;
+  OverlayEntry? _cardDragOverlay;
+
+  /// 拖动吸附反馈节流：快速拖动时每帧都变档，避免连续震动糊成一片。
+  int _lastDragHapticMs = 0;
+
+  /// 拖动灵敏度：与时间线节点高度保持同一口径（一个节点 = 30 分钟）。
+  static const double _dragPixelsPerMinute = _nodeHeight / kTimelineNodeMinutes;
 
   // _buildRecordsByDate 结果缓存，避免每次 rebuild 重算全表分组+排序
   List<DiaryRecord>? _lastAllRecords;
@@ -697,8 +714,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
+    _removeCardDragOverlay();
+    _cardDrag = null;
+    _recordHandleKeys.clear();
     _cheerTimer?.cancel();
     _cheerExitTimer?.cancel();
+    _insertClearTimer?.cancel();
     _removeCheerBurst();
     _itemContexts.clear();
     _itemHeights.clear();
@@ -717,6 +738,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   void _onScroll() {
     if (_isShiftingWindow ||
         _isProgrammaticScrolling ||
+        // 拖动调时依赖页面内稳定的列表窗口：自动滚动到窗口边缘时禁止平移窗口，
+        // 否则日期与 item 索引会在拖拽中途整体偏移。
+        _cardDrag != null ||
         !_scrollController.hasClients) {
       return;
     }
@@ -1090,7 +1114,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     context.push('/diary/batch');
   }
 
-  /// 记完一条后的轻量庆祝：输入条上方浮现胶囊，短暂停留后播退场再移除。
+  /// 记完一条后的轻量庆祝：悬浮钮行上方浮现胶囊，短暂停留后播退场再移除。
   ///
   /// 满档与破纪录才配流光描边和彩带（分级规格见 [resolveCheerLevel]），平时保持极轻；
   /// 1 秒内连记多条只展示最后一次，避免胶囊排队刷屏。
@@ -1143,10 +1167,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   /// 彩带迸发层挂到 Overlay，而不是塞进 body。
   ///
-  /// 两个原因：一是 body 是一条 Column，排在最后的 [DiaryInputBar] 是不透明面板，
-  /// 画在它之前的粒子会被整条盖掉，而爆点恰好贴着它左端的圆环；二是为了提层把
-  /// 这 600 行 body 包进 Stack，会让本次改动淹没在重排 diff 里（本文件按 120 行宽
-  /// 手写排版，不能靠 dart format 兜底）。Toast 在本项目里就是同一套 OverlayEntry。
+  /// 两个原因：一是 body 是 Stack，彩带要压过左下角的记录按钮与右侧两个悬浮钮，
+  /// 而爆点恰好贴着它们；二是为了提层把这 600 行 body 再包一层会让本次改动淹没在
+  /// 重排 diff 里（本文件按 120 行宽手写排版，不能靠 dart format 兜底）。
+  /// Toast 在本项目里就是同一套 OverlayEntry。
   ///
   /// 播完由 [CheerBurstOverlay.onFinished] 自行摘除；连记多条时先摘再挂，
   /// 保证每次爆发都是新的一组粒子。
@@ -1181,6 +1205,34 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   /// 正在播放退场动画的记录集合
   final Set<String> _deletingRecordIds = {};
+
+  /// 正在播放入场动画的记录集合（记录面板刚写下的那几条）。
+  final Set<String> _insertingRecordIds = {};
+
+  /// 记录面板是否已经升起，防外部快捷入口连发导致面板叠层。
+  bool _recordSheetOpen = false;
+
+  /// 入场动画播完后撤标记的兜底定时器。
+  Timer? _insertClearTimer;
+
+  /// 记录面板把「刚写下的记录 id」交过来时开始播入场动画。
+  ///
+  /// 标记要撤：ListView 回收再重建（来回滚动）会重新构造这个包装器，
+  /// 不撤的话每次滚回来卡片都会重播一遍入场动画。
+  void _handleJustInserted(List<String> recordIds) {
+    if (recordIds.isEmpty) {
+      return;
+    }
+    setState(() => _insertingRecordIds.addAll(recordIds));
+    _insertClearTimer?.cancel();
+    _insertClearTimer = Timer(
+      _kInsertRevealDelay + _kInsertDuration + const Duration(milliseconds: 400),
+      () {
+        if (!mounted) return;
+        setState(_insertingRecordIds.clear);
+      },
+    );
+  }
 
   void _handleDelete(DiaryRecord record) {
     // 运动健康日结汇总卡片不可被删除
@@ -1642,7 +1694,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
           );
           final scrollOffset = _scrollController.offset;
           final viewportHeight = _scrollController.position.viewportDimension;
-          // 预留上下安全边距（顶部导航与底部输入栏区域）
+          // 预留上下安全边距（顶部导航与底部悬浮钮区域）
           if (estimatedOffset >= scrollOffset + 40 &&
               estimatedOffset <= scrollOffset + viewportHeight - 140) {
             needScroll = false;
@@ -1758,6 +1810,25 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         );
       },
     );
+  }
+
+  /// 升起「记录事件」面板。
+  ///
+  /// 草稿活在 `diaryComposeDraftProvider` 里而不是面板 State 里，所以这里不需要
+  /// 传递任何东西：时间线上选好的时间、上次没填完的内容，面板自己会读。
+  Future<void> _openRecordSheet({WidgetAction? action}) async {
+    // 面板是模态路由，遮罩挡住了底下的按钮，正常点不到第二次；
+    // 但快捷入口（悬浮球 / 小组件）是外部信号，可能连发两次。
+    if (_recordSheetOpen) {
+      return;
+    }
+    _recordSheetOpen = true;
+    HapticFeedback.lightImpact();
+    try {
+      await DiaryRecordSheet.show(context, action: action);
+    } finally {
+      _recordSheetOpen = false;
+    }
   }
 
   Future<void> _handleJournalTap() async {
@@ -1913,6 +1984,19 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
 
   @override
   Widget build(BuildContext context) {
+    // 悬浮球 / 桌面小组件的快捷记录入口（/quick_record?action=…）。
+    // 记录面板不再常驻，这个动作要由页面接住再带着它把面板升起来。
+    ref.listen<WidgetAction?>(pendingWidgetActionProvider, (previous, next) {
+      if (next == null) {
+        return;
+      }
+      ref.read(pendingWidgetActionProvider.notifier).state = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _openRecordSheet(action: next);
+      });
+    });
+
     ref.listen<int>(diaryScrollTriggerProvider, (previous, next) {
       if (next != 0) {
         final allRecords = ref.read(diaryListProvider).valueOrNull;
@@ -1928,6 +2012,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         _scrollToTime(next, recordsByDate: recordsByDate);
         ref.read(diaryScrollToTimeProvider.notifier).state = null;
       }
+    });
+
+    // 记录面板刚写下的记录：交给时间线播一次入场动画，然后立刻清空信号。
+    ref.listen<List<String>>(diaryJustInsertedProvider, (previous, next) {
+      if (next.isEmpty) {
+        return;
+      }
+      ref.read(diaryJustInsertedProvider.notifier).state = const [];
+      _handleJustInserted(next);
     });
 
     // 今日完整度庆祝：该不该弹、弹哪一档都收在 resolveCheerLevel 里，
@@ -2115,12 +2208,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                           onLongPressStart: _handleDragStart,
                           onLongPressMoveUpdate: _handleDragUpdate,
                           onLongPressEnd: _handleDragEnd,
+                          onLongPressCancel: _handleDragCancel,
                           child: ListView.builder(
                             scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
                             controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              12,
+                              16,
+                              // 底部让开悬浮按钮：记录钮压在最上面一层，内容不能藏在它下面
+                              _fabBottom + 56,
                             ),
                             itemCount: _windowDays * _itemsPerDay,
                             itemBuilder: (context, i) {
@@ -2513,26 +2610,43 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                                       ),
                                     ...recordsInInterval.map(
                                       (record) => RepaintBoundary(
-                                        child: _CollapsingItemWrapper(
-                                          isCollapsing: _deletingRecordIds.contains(record.id),
-                                          child: DiaryItem(
-                                            record: record,
-                                            onTap: () => _handleEdit(record),
-                                            onEdit: _handleEdit,
-                                            onDelete: _handleDelete,
-                                            onQuoteToQ: _quoteRecordToQ,
-                                            onAiExtract: () =>
-                                                _handleAiExtract(record),
-                                            onAiExtractLongPress: () =>
-                                                _handleAiExtractModelSelect(record),
-                                            isExtracting:
-                                                _extractingRecordId == record.id,
-                                            onUndo: () => _undoExtract(record),
-                                            isUndoable: _undoRecords.containsKey(
-                                              record.id,
+                                        child: _InsertingItemWrapper(
+                                          isInserting:
+                                              _insertingRecordIds.contains(
+                                                record.id,
+                                              ),
+                                          child: _CollapsingItemWrapper(
+                                            isCollapsing:
+                                                _deletingRecordIds.contains(
+                                                  record.id,
+                                                ),
+                                            child: DiaryItem(
+                                              record: record,
+                                              timeDragHandleKey: _handleKeyFor(
+                                                record.id,
+                                              ),
+                                              isTimeDragging:
+                                                  _cardDrag?.record.id ==
+                                                  record.id,
+                                              onTap: () => _handleEdit(record),
+                                              onEdit: _handleEdit,
+                                              onDelete: _handleDelete,
+                                              onQuoteToQ: _quoteRecordToQ,
+                                              onAiExtract: () =>
+                                                  _handleAiExtract(record),
+                                              onAiExtractLongPress: () =>
+                                                  _handleAiExtractModelSelect(
+                                                    record,
+                                                  ),
+                                              isExtracting:
+                                                  _extractingRecordId ==
+                                                  record.id,
+                                              onUndo: () => _undoExtract(record),
+                                              isUndoable: _undoRecords
+                                                  .containsKey(record.id),
+                                              undoAnimation:
+                                                  _undoControllers[record.id],
                                             ),
-                                            undoAnimation:
-                                                _undoControllers[record.id],
                                           ),
                                         ),
                                       ),
@@ -2562,7 +2676,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                   error: (e, _) => AppErrorState(
                     error: e,
                     action: '加载记录失败',
-                    // 时间线区域只是 Stack 的一层，FAB 与输入栏仍在兄弟节点，用紧凑态避免整屏替换
+                    // 时间线区域只是 Stack 的一层，悬浮钮仍在兄弟节点，用紧凑态避免整屏替换
                     compact: true,
                     onRetry: () => ref.invalidate(diaryListProvider),
                   ),
@@ -2570,23 +2684,28 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
                 // 每日日记 FAB（智能提取按钮左侧）
                 Positioned(
                   right: 72,
-                  bottom: 12,
+                  bottom: _fabBottom,
                   child: _buildJournalFAB(theme),
                 ),
                 // Smart Extract FAB
                 Positioned(
                   right: 16,
-                  bottom: 12,
+                  bottom: _fabBottom,
                   child: _buildSmartExtractFAB(theme),
                 ),
-                // 记完即时庆祝胶囊：输入条上方居中浮现，不挡时间线主体。
-                // 彩带不在这里画 —— 本 Stack 之后的 DiaryInputBar 是不透明面板，
-                // 会把贴着圆环的下半程整个盖掉，所以粒子层挂在 body 的兄弟层。
+                // 记录按钮：左下角，与右侧两钮同高对称。
+                // 时间线上选中时间后它会横向展开成胶囊，把选中的时间段直接顶在按钮上。
+                Positioned(
+                  left: 16,
+                  bottom: _fabBottom,
+                  child: DiaryRecordFab(onTap: _openRecordSheet),
+                ),
+                // 记完即时庆祝胶囊：按钮行上方居中浮现，不挡时间线主体。
                 if (_cheerEvent != null)
                   Positioned(
                     left: 0,
                     right: 0,
-                    bottom: 64,
+                    bottom: _fabBottom + 56,
                     child: Center(
                       child: RecordCheerToast(
                         event: _cheerEvent!,
@@ -2599,11 +2718,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
             ),
           ),
           if (_showBatchConfirmButton) _buildBatchConfirmPanel(theme),
-          const DiaryInputBar(),
         ],
       ),
     );
   }
+
+  /// 底部两个圆钮的落点。
+  ///
+  /// 原来底部压着常驻输入栏，12 这个写死值够用；输入栏撤掉后按钮直接贴屏幕底，
+  /// 必须让 home indicator 的安全区，否则在全面屏上会被系统手势条压住。
+  double get _fabBottom => MediaQuery.paddingOf(context).bottom + 12;
 
   Color _hexToColor(String hex) {
     final hexStr = hex.replaceFirst('#', '');
@@ -2636,6 +2760,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _handleDragStart(LongPressStartDetails details) {
+    // 先判断是否按在记录卡片左侧的圆形节点把手上；命中则进入「拖动调时」，
+    // 不启动时间轴区间选择。卡片本体的长按仍由 DiaryItem 内部手势弹出操作菜单。
+    final dragRecord = _findRecordAtHandle(details.globalPosition);
+    if (dragRecord != null) {
+      _startRecordTimeDrag(dragRecord, details);
+      return;
+    }
+
     final index = _pointToItemIndex(details.globalPosition);
     if (index != -1 && index % _itemsPerDay != 0) {
       final dayOffset = index ~/ _itemsPerDay;
@@ -2653,6 +2785,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _handleDragUpdate(LongPressMoveUpdateDetails details) {
+    if (_cardDrag != null) {
+      _updateRecordTimeDrag(details.globalPosition);
+      return;
+    }
+
     _lastDragPosition = details.globalPosition;
     final index = _pointToItemIndex(details.globalPosition);
     if (index != -1 && index % _itemsPerDay != 0) {
@@ -2667,6 +2804,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
   }
 
   void _handleDragEnd(LongPressEndDetails details) {
+    if (_cardDrag != null) {
+      _endRecordTimeDrag();
+      return;
+    }
+
     _stopAutoScrollTimer();
     _lastDragPosition = null;
 
@@ -2703,6 +2845,435 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
       _dragStartIndex = null;
       _dragEndIndex = null;
     });
+  }
+
+  /// 手势被系统或其它识别器取消时的兜底清理。
+  ///
+  /// 长按识别器在被打断时不一定回调 onLongPressEnd；不清理会留下
+  /// 跟随浮层和自动滚动定时器，页面看起来会「卡住」。
+  /// 取消属于非正常松手，直接丢弃本次拖动，不落库。
+  void _handleDragCancel() {
+    _stopAutoScrollTimer();
+    _lastDragPosition = null;
+    if (_cardDrag != null) {
+      _removeCardDragOverlay();
+      _cardDrag = null;
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    if (_dragStartIndex != null || _dragEndIndex != null) {
+      setState(() {
+        _dragStartIndex = null;
+        _dragEndIndex = null;
+      });
+    }
+  }
+
+  /// 为每条记录复用同一个把手 Key；记录被 ListView 回收后再次构建仍能命中。
+  GlobalKey _handleKeyFor(String recordId) {
+    return _recordHandleKeys.putIfAbsent(recordId, () => GlobalKey());
+  }
+
+  /// 判断长按位置是否落在某条记录的左侧节点把手上。
+  ///
+  /// 只遍历已构建（含缓存区）的把手，列表很长时也不会全表扫描；
+  /// 顺带清掉已卸载记录的 Key，避免长时间使用后缓存随历史记录无限增长。
+  DiaryRecord? _findRecordAtHandle(Offset globalPosition) {
+    String? hitId;
+    final staleIds = <String>[];
+    for (final entry in _recordHandleKeys.entries) {
+      final ctx = entry.value.currentContext;
+      if (ctx == null || !ctx.mounted) {
+        staleIds.add(entry.key);
+        continue;
+      }
+      final box = ctx.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) {
+        continue;
+      }
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      if (rect.contains(globalPosition)) {
+        hitId = entry.key;
+        break;
+      }
+    }
+    for (final id in staleIds) {
+      _recordHandleKeys.remove(id);
+    }
+    if (hitId == null) {
+      return null;
+    }
+
+    final records = ref.read(diaryListProvider).valueOrNull ?? const [];
+    for (final record in records) {
+      if (record.id == hitId) {
+        // 系统同步的健康记录会在下次同步时被覆盖，不提供手动拖拽调时。
+        return isSystemSyncedHealthRecord(record) ? null : record;
+      }
+    }
+    return null;
+  }
+
+  void _startRecordTimeDrag(DiaryRecord record, LongPressStartDetails details) {
+    if (_cardDrag != null || _deletingRecordIds.contains(record.id)) {
+      return;
+    }
+
+    final handleBox =
+        _recordHandleKeys[record.id]?.currentContext?.findRenderObject()
+            as RenderBox?;
+    final viewportBox =
+        _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (handleBox == null ||
+        !handleBox.hasSize ||
+        viewportBox == null ||
+        !viewportBox.hasSize) {
+      return;
+    }
+
+    final handleRect =
+        handleBox.localToGlobal(Offset.zero) & handleBox.size;
+    final viewportRect =
+        viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+    // 卡片左边界正好接在 48px 宽的节点栏右侧；右侧留白 = 列表 16 + 卡片 12。
+    final cardLeft = handleRect.right;
+    final cardWidth = viewportRect.right - 28 - cardLeft;
+    if (cardWidth < 160) {
+      return;
+    }
+
+    _lastDragPosition = details.globalPosition;
+    _cardDrag = _RecordTimeDragState(
+      record: record,
+      startGlobalY: details.globalPosition.dy,
+      startScrollOffset: _scrollController.hasClients
+          ? _scrollController.offset
+          : 0,
+      grabOffsetY: (details.globalPosition.dy - handleRect.top).clamp(
+        0.0,
+        handleRect.height,
+      ),
+      cardLeft: cardLeft,
+      cardWidth: cardWidth,
+      // 时间轴竖线位于列表内容 left + 39，宽 2px，中心取 +40。
+      axisX: viewportRect.left + 40,
+      proxyTop: handleRect.top,
+      topLimit: viewportRect.top + 8,
+      bottomLimit: viewportRect.bottom - 132,
+      shift: resolveTimelineTimeShift(
+        record: record,
+        contentDeltaPx: 0,
+        pixelsPerMinute: _dragPixelsPerMinute,
+      ),
+    );
+    HapticFeedback.mediumImpact();
+    setState(() {});
+    _showCardDragOverlay();
+    _startAutoScrollTimer();
+  }
+
+  void _updateRecordTimeDrag(Offset globalPosition) {
+    _applyRecordDragAt(globalPosition);
+  }
+
+  /// 按当前手指位置重算目标时间并刷新浮层；自动滚动时也会走到这里。
+  void _applyRecordDragAt(Offset globalPosition) {
+    final drag = _cardDrag;
+    if (drag == null) {
+      return;
+    }
+    _lastDragPosition = globalPosition;
+    final scrollOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : drag.startScrollOffset;
+    // 内容坐标系位移 = 手指位移 + 列表滚动量：手指不动、列表滚动时时间也应继续变化。
+    final contentDelta =
+        (globalPosition.dy - drag.startGlobalY) +
+        (scrollOffset - drag.startScrollOffset);
+    final shift = resolveTimelineTimeShift(
+      record: drag.record,
+      contentDeltaPx: contentDelta,
+      pixelsPerMinute: _dragPixelsPerMinute,
+    );
+    final changed = shift.deltaMinutes != drag.shift.deltaMinutes;
+    drag
+      ..proxyTop = globalPosition.dy - drag.grabOffsetY
+      ..shift = shift;
+    if (changed) {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (nowMs - _lastDragHapticMs >= 50) {
+        _lastDragHapticMs = nowMs;
+        HapticFeedback.selectionClick();
+      }
+    }
+    _cardDragOverlay?.markNeedsBuild();
+  }
+
+  void _endRecordTimeDrag() {
+    _stopAutoScrollTimer();
+    _lastDragPosition = null;
+
+    final drag = _cardDrag;
+    _removeCardDragOverlay();
+    _cardDrag = null;
+    if (drag == null) {
+      return;
+    }
+    if (mounted) {
+      setState(() {});
+    }
+    if (!drag.shift.isChanged) {
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    final before = drag.record;
+    final after = before.copyWith(
+      time: drag.shift.time,
+      startTime: drag.shift.startTime,
+      endTime: drag.shift.endTime,
+      updatedAt: DateTime.now(),
+    );
+    _saveDraggedRecordTime(before, after);
+  }
+
+  Future<void> _saveDraggedRecordTime(
+    DiaryRecord before,
+    DiaryRecord after,
+  ) async {
+    try {
+      await ref.read(diaryListProvider.notifier).updateDiary(after);
+      if (!mounted) {
+        return;
+      }
+      final label = formatTimelineDragTimeLabel(
+        after.startTime ?? after.time,
+        end: after.endTime,
+      );
+      Toast.show(
+        context,
+        '已调整到 $label',
+        type: ToastType.success,
+        duration: const Duration(seconds: 4),
+        actionLabel: '撤销',
+        onAction: () {
+          ref.read(diaryListProvider.notifier).updateDiary(before);
+        },
+      );
+    } catch (e, stackTrace) {
+      LoggerService.instance.error(
+        '拖动调整记录时间失败: $e',
+        category: LogCategory.database,
+        stackTrace: stackTrace,
+      );
+      if (mounted) {
+        Toast.error(context, '调整时间失败');
+      }
+    }
+  }
+
+  void _showCardDragOverlay() {
+    _removeCardDragOverlay();
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final entry = OverlayEntry(
+      builder: (overlayContext) =>
+          _buildCardDragOverlay(Theme.of(overlayContext)),
+    );
+    overlay.insert(entry);
+    _cardDragOverlay = entry;
+  }
+
+  void _removeCardDragOverlay() {
+    final entry = _cardDragOverlay;
+    if (entry == null) {
+      return;
+    }
+    _cardDragOverlay = null;
+    try {
+      entry.remove();
+    } catch (_) {
+      // 页面销毁时宿主 Overlay 可能已不可用，与彩带层的处理方式一致。
+    }
+  }
+
+  /// 拖动浮层：跟手卡片 + 时间轴落点提示。
+  Widget _buildCardDragOverlay(ThemeData theme) {
+    final drag = _cardDrag;
+    if (drag == null) {
+      return const SizedBox.shrink();
+    }
+
+    final shift = drag.shift;
+    final tagColor = TagColors.of(drag.record.displayTag);
+    final maxTop = math.max(drag.topLimit, drag.bottomLimit);
+    final top = math.min(math.max(drag.proxyTop, drag.topLimit), maxTop);
+    final indicatorY = top + 23;
+    final targetLabel = formatTimelineDragTimeLabel(
+      shift.startTime ?? shift.time,
+      end: shift.endTime,
+    );
+    final originalLabel = formatTimelineDragTimeLabel(
+      drag.record.startTime ?? drag.record.time,
+      end: drag.record.endTime,
+    );
+    final delta = shift.deltaMinutes;
+    final deltaLabel = delta == 0
+        ? null
+        : (delta > 0 ? '+$delta 分钟' : '$delta 分钟');
+
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          // 落点提示：轴线圆点 + 连到卡片的细线，让浮层和当前时间轴锚在一起。
+          Positioned(
+            left: drag.axisX - 1,
+            top: indicatorY - 1,
+            width: math.max(0.0, drag.cardLeft - drag.axisX + 1),
+            child: Container(
+              height: 2,
+              color: theme.colorScheme.primary.withValues(alpha: 0.35),
+            ),
+          ),
+          Positioned(
+            left: drag.axisX - 4,
+            top: indicatorY - 4,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.35),
+                    blurRadius: 6,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: drag.cardLeft,
+            top: top,
+            width: drag.cardWidth,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: tagColor.withValues(alpha: 0.35),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.16),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                  BoxShadow(
+                    color: tagColor.withValues(alpha: 0.14),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: tagColor.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.schedule_rounded,
+                          size: 15,
+                          color: tagColor,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '调整到 ',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              TextSpan(
+                                text: targetLabel,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (deltaLabel != null)
+                                TextSpan(
+                                  text: '  $deltaLabel',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.primary.withValues(
+                                      alpha: 0.75,
+                                    ),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 18,
+                        color: theme.colorScheme.outline,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _dragPreviewText(drag.record),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '松开生效 · 原 $originalLabel',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _dragPreviewText(DiaryRecord record) {
+    final content = record.content.trim();
+    if (content.isNotEmpty) {
+      return content;
+    }
+    final title = record.title.trim();
+    if (title.isNotEmpty) {
+      return title;
+    }
+    return record.photos.isNotEmpty ? '${record.photos.length} 张图片' : '一条记录';
   }
 
   void _startAutoScrollTimer() {
@@ -2749,6 +3320,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
         if (targetOffset != currentOffset) {
           _scrollController.jumpTo(targetOffset);
 
+          if (_cardDrag != null) {
+            // 卡片拖动：列表滚动改变内容坐标，立即重算目标时间并刷新浮层。
+            _applyRecordDragAt(_lastDragPosition!);
+            return;
+          }
+
           // 列表发生滚动后，手指下方的节点发生改变，动态更新选择范围！
           final index = _pointToItemIndex(_lastDragPosition!);
           if (index != -1 && index % _itemsPerDay != 0) {
@@ -2769,6 +3346,45 @@ class _DiaryPageState extends ConsumerState<DiaryPage>
     _autoScrollTimer?.cancel();
     _autoScrollTimer = null;
   }
+}
+
+/// 单次卡片拖动调时的会话状态。
+///
+/// 只保存拖拽起点与浮层几何，目标时间由 [TimelineTimeShift] 按当前手指位置
+/// 重新计算；这样自动滚动、跨节点拖动都走同一条计算路径。
+class _RecordTimeDragState {
+  _RecordTimeDragState({
+    required this.record,
+    required this.startGlobalY,
+    required this.startScrollOffset,
+    required this.grabOffsetY,
+    required this.cardLeft,
+    required this.cardWidth,
+    required this.axisX,
+    required this.proxyTop,
+    required this.topLimit,
+    required this.bottomLimit,
+    required this.shift,
+  });
+
+  final DiaryRecord record;
+  final double startGlobalY;
+  final double startScrollOffset;
+
+  /// 长按点相对卡片顶部的偏移，保证浮层不会在起手瞬间跳一下。
+  final double grabOffsetY;
+
+  final double cardLeft;
+  final double cardWidth;
+  final double axisX;
+  final double topLimit;
+  final double bottomLimit;
+
+  /// 浮层当前顶部位置（跟随手指）。
+  double proxyTop;
+
+  /// 当前目标时间平移结果。
+  TimelineTimeShift shift;
 }
 
 class _EmptyTimeNode extends StatelessWidget {
@@ -3232,6 +3848,118 @@ class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper>
       child: FadeTransition(
         opacity: _fadeAnimation,
         child: widget.child,
+      ),
+    );
+  }
+}
+
+/// 新记录卡片的入场：从上方「长出来」+ 淡入上移 + 一圈淡出的主色辉光。
+///
+/// [isInserting] 只在记录面板刚写下这条时为 true。延迟 [_kInsertRevealDelay] 是
+/// 为让位：记录面板保存后还要播 320ms 的 ✓ 才降下去（见 `DiaryRecordSheet._savedFeedbackDuration`），
+/// 卡片立刻升起会被面板整个盖住，动画等于白做。
+///
+/// 辉光画在卡片外层而不是铺一层色块盖在内容上 —— 覆盖式高亮会把卡片文字压暗，
+/// 而新增记录恰恰是用户最需要看清内容的时候。
+class _InsertingItemWrapper extends StatefulWidget {
+  const _InsertingItemWrapper({required this.isInserting, required this.child});
+
+  final bool isInserting;
+  final Widget child;
+
+  @override
+  State<_InsertingItemWrapper> createState() => _InsertingItemWrapperState();
+}
+
+/// 入场时长与让位延迟。
+const Duration _kInsertDuration = Duration(milliseconds: 340);
+const Duration _kInsertRevealDelay = Duration(milliseconds: 360);
+
+class _InsertingItemWrapperState extends State<_InsertingItemWrapper>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _grow;
+  late final Animation<double> _fade;
+  late final Animation<double> _glow;
+  Timer? _startTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 用平台无障碍开关而不是 MediaQuery：initState 里依赖 InheritedWidget 是违规的。
+    final reduceMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
+    final shouldPlay = widget.isInserting && !reduceMotion;
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kInsertDuration,
+      value: shouldPlay ? 0 : 1,
+    );
+    _grow = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _fade = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0, 0.7, curve: Curves.easeOut),
+    );
+    // 后 65% 用来把辉光收掉：落位那一刻最亮，收尾时不留痕迹
+    _glow = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.35, 1, curve: Curves.easeOut),
+    );
+
+    if (shouldPlay) {
+      _startTimer = Timer(_kInsertRevealDelay, () {
+        if (mounted) _controller.forward();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _startTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return SizeTransition(
+      sizeFactor: _grow,
+      alignment: Alignment.topCenter,
+      child: FadeTransition(
+        opacity: _fade,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.06),
+            end: Offset.zero,
+          ).animate(_grow),
+          child: AnimatedBuilder(
+            animation: _glow,
+            builder: (context, child) {
+              final strength = (1 - _glow.value) * 0.32;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: strength <= 0.01
+                      ? const []
+                      : [
+                          BoxShadow(
+                            color: primary.withValues(alpha: strength),
+                            blurRadius: 14,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                ),
+                child: child,
+              );
+            },
+            child: widget.child,
+          ),
+        ),
       ),
     );
   }

@@ -9,13 +9,17 @@ import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
 class ShortcutsPage extends ConsumerStatefulWidget {
-  const ShortcutsPage({super.key});
+  const ShortcutsPage({super.key, this.embedded = false});
+
+  /// 嵌入模式：由「快捷记录」综合页承载时为 true，不重复生成外层 Scaffold 与 AppBar，
+  /// 顶栏「新建」动作改由外层页通过 GlobalKey 触发。
+  final bool embedded;
 
   @override
-  ConsumerState<ShortcutsPage> createState() => _ShortcutsPageState();
+  ConsumerState<ShortcutsPage> createState() => ShortcutsPageState();
 }
 
-class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
+class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
   @override
   void initState() {
     super.initState();
@@ -24,14 +28,80 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
     });
   }
 
+  /// 供外层「快捷记录」页顶栏调用：打开新建快捷按钮对话框
+  void openNewShortcutEditor() => _showEditDialog(context, null);
+
   @override
   Widget build(BuildContext context) {
     final shortcuts = ref.watch(shortcutListNotifierProvider);
     final theme = Theme.of(context);
 
+    final body = Column(
+      children: [
+        Expanded(
+          child: shortcuts.isEmpty
+              ? Center(
+                  child: Text(
+                    '暂无快捷按钮，点右上角 + 添加',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
+                  ),
+                )
+              : ReorderableListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: shortcuts.length,
+                  onReorderItem: (oldIndex, newIndex) {
+                    ref.read(shortcutListNotifierProvider.notifier).reorder(oldIndex, newIndex);
+                  },
+                  itemBuilder: (context, index) {
+                    final config = shortcuts[index];
+                    return _buildShortcutCard(context, config, key: ValueKey(config.id));
+                  },
+                ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24, top: 8),
+          child: Container(
+            width: double.infinity,
+            height: 54,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => _confirmAndRestoreDefaults(context),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.refresh, size: 20, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 8),
+                    Text(
+                      '恢复默认设置',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    // 嵌入「快捷记录」综合页时不重复生成 Scaffold/AppBar
+    if (widget.embedded) {
+      return body;
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('快捷按钮管理'),
+        title: const Text('快捷按钮'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -39,63 +109,7 @@ class _ShortcutsPageState extends ConsumerState<ShortcutsPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: shortcuts.isEmpty
-                ? Center(
-                    child: Text(
-                      '暂无快捷按钮，点右上角 + 添加',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
-                    ),
-                  )
-                : ReorderableListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: shortcuts.length,
-                    onReorderItem: (oldIndex, newIndex) {
-                      ref.read(shortcutListNotifierProvider.notifier).reorder(oldIndex, newIndex);
-                    },
-                    itemBuilder: (context, index) {
-                      final config = shortcuts[index];
-                      return _buildShortcutCard(context, config, key: ValueKey(config.id));
-                    },
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24, top: 8),
-            child: Container(
-              width: double.infinity,
-              height: 54,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () => _confirmAndRestoreDefaults(context),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.refresh, size: 20, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 8),
-                      Text(
-                        '恢复默认设置',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: body,
     );
   }
 

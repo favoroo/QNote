@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
 import 'package:qnote_flutter/pages/settings/q_voice_page.dart';
+import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 
 /// 小Q设置（管理）一体化页面
 ///
@@ -26,11 +26,11 @@ class QSettingsPage extends ConsumerStatefulWidget {
 }
 
 class _QSettingsPageState extends ConsumerState<QSettingsPage> {
-  static const _tabs = <_TabItem>[
-    _TabItem(title: '个性', icon: Icons.mood_outlined),
-    _TabItem(title: '技能', icon: Icons.auto_fix_high_outlined),
-    _TabItem(title: '记忆', icon: Icons.psychology_outlined),
-    _TabItem(title: '语音', icon: Icons.graphic_eq_outlined),
+  static const _tabs = <SettingsSegmentItem>[
+    SettingsSegmentItem(title: '个性', icon: Icons.mood_outlined),
+    SettingsSegmentItem(title: '技能', icon: Icons.auto_fix_high_outlined),
+    SettingsSegmentItem(title: '记忆', icon: Icons.psychology_outlined),
+    SettingsSegmentItem(title: '语音', icon: Icons.graphic_eq_outlined),
   ];
 
   late int _currentIndex;
@@ -44,7 +44,6 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
 
   void _switchTo(int index) {
     if (index == _currentIndex) return;
-    HapticFeedback.selectionClick();
     setState(() => _currentIndex = index);
   }
 
@@ -73,7 +72,11 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
       ),
       body: Column(
         children: [
-          _buildTabSelector(context),
+          SettingsSegmentBar(
+            items: _tabs,
+            selectedIndex: _currentIndex,
+            onChanged: _switchTo,
+          ),
           Expanded(
             child: IndexedStack(
               index: _currentIndex,
@@ -89,117 +92,4 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
       ),
     );
   }
-
-  /// 分段式分区切换器（单一体积滑动指示器架构，物理互斥避免双按钮同时高亮）
-  Widget _buildTabSelector(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    const padding = 4.0;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-      padding: const EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final tabWidth = constraints.maxWidth / _tabs.length;
-          const tabHeight = 40.0;
-
-          return SizedBox(
-            height: tabHeight,
-            child: Stack(
-              children: [
-                // 唯一的平移滑动背景胶囊（确保视觉上任何时刻只有一个选中滑块）
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 240),
-                  curve: Curves.fastOutSlowIn,
-                  left: _currentIndex * tabWidth,
-                  top: 0,
-                  width: tabWidth,
-                  height: tabHeight,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: colorScheme.surface,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 6,
-                          offset: const Offset(0, 1.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // 选项可点击标签行
-                Row(
-                  children: List.generate(_tabs.length, (index) {
-                    final selected = index == _currentIndex;
-                    final tab = _tabs[index];
-                    return Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _switchTo(index),
-                        child: Center(
-                          child: AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeInOut,
-                            style: theme.textTheme.bodyMedium!.copyWith(
-                              fontSize: 13,
-                              fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                              color: selected
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                TweenAnimationBuilder<Color?>(
-                                  duration: const Duration(milliseconds: 200),
-                                  curve: Curves.easeInOut,
-                                  tween: ColorTween(
-                                    begin: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                    end: selected
-                                        ? colorScheme.primary
-                                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                  ),
-                                  builder: (context, iconColor, child) {
-                                    return Icon(
-                                      tab.icon,
-                                      size: 16,
-                                      color: iconColor,
-                                    );
-                                  },
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  tab.title,
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TabItem {
-  final String title;
-  final IconData icon;
-
-  const _TabItem({required this.title, required this.icon});
 }

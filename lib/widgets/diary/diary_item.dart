@@ -26,6 +26,16 @@ class DiaryItem extends StatefulWidget {
   final bool isUndoable;
   final Animation<double>? undoAnimation;
 
+  /// 时间线左侧圆形节点图标的 Key。
+  ///
+  /// 页面层不直接监听卡片内部手势，而是用这个 Key 拿到图标命中区域，
+  /// 在时间线原有的长按手势里判断「是否按在拖动把手上」，避免子组件
+  /// 被 ListView 回收时拖拽手势随之中断。
+  final GlobalKey? timeDragHandleKey;
+
+  /// 是否正在被拖动调整时间：原卡片淡出并轻微缩小，突出跟手浮层。
+  final bool isTimeDragging;
+
   const DiaryItem({
     super.key,
     required this.record,
@@ -39,6 +49,8 @@ class DiaryItem extends StatefulWidget {
     this.onUndo,
     this.isUndoable = false,
     this.undoAnimation,
+    this.timeDragHandleKey,
+    this.isTimeDragging = false,
   });
 
   @override
@@ -56,6 +68,7 @@ class _DiaryItemState extends State<DiaryItem> {
   VoidCallback? get onAiExtractLongPress => widget.onAiExtractLongPress;
   void Function(DiaryRecord)? get onQuoteToQ => widget.onQuoteToQ;
   bool get isExtracting => widget.isExtracting;
+  bool get isTimeDragging => widget.isTimeDragging;
   VoidCallback? get onUndo => widget.onUndo;
   bool get isUndoable => widget.isUndoable;
   Animation<double>? get undoAnimation => widget.undoAnimation;
@@ -511,34 +524,64 @@ class _DiaryItemState extends State<DiaryItem> {
                 ),
               ),
               Positioned(
-                top: 12,
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: tagColor.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _tagIcon(record.displayTag),
-                        size: 14,
-                        color: tagColor,
-                      ),
+                top: 0,
+                child: Semantics(
+                  label: '长按拖动调整时间',
+                  child: SizedBox(
+                    key: widget.timeDragHandleKey,
+                    width: 48,
+                    height: 48,
+                    child: Stack(
+                      alignment: Alignment.topCenter,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: AnimatedScale(
+                            scale: isTimeDragging ? 1.12 : 1,
+                            duration: const Duration(milliseconds: 140),
+                            curve: Curves.easeOut,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 140),
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface,
+                                shape: BoxShape.circle,
+                                border: isTimeDragging
+                                    ? Border.all(
+                                        color: tagColor.withValues(alpha: 0.55),
+                                        width: 1.5,
+                                      )
+                                    : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: isTimeDragging
+                                        ? tagColor.withValues(alpha: 0.28)
+                                        : Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: isTimeDragging ? 10 : 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: tagColor.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _tagIcon(record.displayTag),
+                                    size: 14,
+                                    color: tagColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -554,200 +597,209 @@ class _DiaryItemState extends State<DiaryItem> {
               // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q」，普通卡片含「给小Q/编辑/删除」）
               onLongPress: _showActionMenu,
               behavior: HitTestBehavior.opaque,
-              child: AnimatedGradientBorder(
-                isAnimating: isExtracting,
-                borderRadius: 16,
-                strokeWidth: 2,
-                child: Container(
-                  key: _cardKey,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isExtracting
-                          ? Colors.transparent
-                          : tagColor.withValues(alpha: 0.15),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: tagColor.withValues(alpha: 0.03),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+              child: AnimatedOpacity(
+                opacity: isTimeDragging ? 0.24 : 1,
+                duration: const Duration(milliseconds: 140),
+                child: AnimatedScale(
+                  scale: isTimeDragging ? 0.97 : 1,
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOut,
+                  child: AnimatedGradientBorder(
+                    isAnimating: isExtracting,
+                    borderRadius: 16,
+                    strokeWidth: 2,
+                    child: Container(
+                      key: _cardKey,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isExtracting
+                              ? Colors.transparent
+                              : tagColor.withValues(alpha: 0.15),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: tagColor.withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.01),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.01),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      SingleChildScrollView(
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeader(
-                              theme,
-                              tagColor,
-                              categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
-                                  ? record.displayTag
-                                  : null,
-                            ),
-                            if (_isHealthDailySummary)
-                              _buildHealthDailySummaryCard(theme, tagColor)
-                            else if (hasMultipleTags)
-                              _buildMultiTagSections(theme)
-                            else ...[
-                              _buildTagAndFieldsRow(theme, tagColor),
-                              _buildSingleTagContent(theme, tagColor),
-                            ],
-                            if (record.photos.isNotEmpty)
-                              Builder(
-                                builder: (context) {
-                                  final screenWidth = MediaQuery.of(
-                                    context,
-                                  ).size.width;
-                                  final maxWidth =
-                                      screenWidth - 132 - _contentIndent;
-                                  const spacing = 6.0;
-                                  final itemWidth =
-                                      ((maxWidth - spacing * 2 - 2.0) / 3)
-                                          .clamp(50.0, 70.0);
-                                  return Padding(
-                                    padding: const EdgeInsets.only(
-                                      left: _contentIndent,
-                                      top: 4,
-                                    ),
-                                    child: Wrap(
-                                      spacing: spacing,
-                                      runSpacing: spacing,
-                                      children: record.photos.asMap().entries.map((entry) {
-                                        final index = entry.key;
-                                        final photo = entry.value;
-                                        return GestureDetector(
-                                          behavior: HitTestBehavior.opaque,
-                                          onTap: () {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (_) => FullScreenImageGallery(
-                                                  images: record.photos,
-                                                  initialIndex: index,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildHeader(
+                                  theme,
+                                  tagColor,
+                                  categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
+                                      ? record.displayTag
+                                      : null,
+                                ),
+                                if (_isHealthDailySummary)
+                                  _buildHealthDailySummaryCard(theme, tagColor)
+                                else if (hasMultipleTags)
+                                  _buildMultiTagSections(theme)
+                                else ...[
+                                  _buildTagAndFieldsRow(theme, tagColor),
+                                  _buildSingleTagContent(theme, tagColor),
+                                ],
+                                if (record.photos.isNotEmpty)
+                                  Builder(
+                                    builder: (context) {
+                                      final screenWidth = MediaQuery.of(
+                                        context,
+                                      ).size.width;
+                                      final maxWidth =
+                                          screenWidth - 132 - _contentIndent;
+                                      const spacing = 6.0;
+                                      final itemWidth =
+                                          ((maxWidth - spacing * 2 - 2.0) / 3)
+                                              .clamp(50.0, 70.0);
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          left: _contentIndent,
+                                          top: 4,
+                                        ),
+                                        child: Wrap(
+                                          spacing: spacing,
+                                          runSpacing: spacing,
+                                          children: record.photos.asMap().entries.map((entry) {
+                                            final index = entry.key;
+                                            final photo = entry.value;
+                                            return GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onTap: () {
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute(
+                                                    builder: (_) => FullScreenImageGallery(
+                                                      images: record.photos,
+                                                      initialIndex: index,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                              child: UnifiedImage(
+                                                imagePath: photo,
+                                                width: itemWidth,
+                                                height: itemWidth,
+                                                borderRadius: BorderRadius.circular(
+                                                  8,
                                                 ),
                                               ),
                                             );
-                                          },
-                                          child: UnifiedImage(
-                                            imagePath: photo,
-                                            width: itemWidth,
-                                            height: itemWidth,
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  );
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (onAiExtract != null && !_isHealthDailySummary)
-                        Positioned(
-                          bottom: -22,
-                          right: -24,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: isUndoable ? onUndo : onAiExtract,
-                            onLongPress: isUndoable
-                                ? null
-                                : (isExtracting
-                                      ? null
-                                      : onAiExtractLongPress),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: (isUndoable
-                                              ? theme.colorScheme.error
-                                              : tagColor)
-                                          .withValues(alpha: 0.2),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: isUndoable
-                                    ? (undoAnimation != null
-                                          ? AnimatedBuilder(
-                                              animation: undoAnimation!,
-                                              builder: (context, child) {
-                                                return Stack(
-                                                  alignment: Alignment.center,
-                                                  children: [
-                                                    SizedBox(
-                                                      width: 28,
-                                                      height: 28,
-                                                      child: CustomPaint(
-                                                        painter:
-                                                            _UndoCountdownPainter(
-                                                          progress:
-                                                              undoAnimation!
-                                                                  .value,
-                                                          color: theme
-                                                              .colorScheme
-                                                              .error,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    child!,
-                                                  ],
-                                                );
-                                              },
-                                              child: Icon(
-                                                Icons.undo,
-                                                size: 14,
-                                                color:
-                                                    theme.colorScheme.error,
-                                              ),
-                                            )
-                                          : Icon(
-                                              Icons.undo,
-                                              size: 14,
-                                              color: theme.colorScheme.error,
-                                            ))
-                                    : isExtracting
-                                    ? Center(
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.0,
-                                            color: tagColor,
-                                          ),
+                                          }).toList(),
                                         ),
-                                      )
-                                    : Icon(
-                                        Icons.auto_awesome,
-                                        size: 16,
-                                        color: tagColor,
-                                      ),
-                              ),
+                                      );
+                                    },
+                                  ),
+                              ],
                             ),
                           ),
-                        ),
-                    ],
+                          if (onAiExtract != null && !_isHealthDailySummary)
+                            Positioned(
+                              bottom: -22,
+                              right: -24,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: isUndoable ? onUndo : onAiExtract,
+                                onLongPress: isUndoable
+                                    ? null
+                                    : (isExtracting
+                                          ? null
+                                          : onAiExtractLongPress),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.surface,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (isUndoable
+                                                  ? theme.colorScheme.error
+                                                  : tagColor)
+                                              .withValues(alpha: 0.2),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: isUndoable
+                                        ? (undoAnimation != null
+                                              ? AnimatedBuilder(
+                                                  animation: undoAnimation!,
+                                                  builder: (context, child) {
+                                                    return Stack(
+                                                      alignment: Alignment.center,
+                                                      children: [
+                                                        SizedBox(
+                                                          width: 28,
+                                                          height: 28,
+                                                          child: CustomPaint(
+                                                            painter:
+                                                                _UndoCountdownPainter(
+                                                              progress:
+                                                                  undoAnimation!
+                                                                      .value,
+                                                              color: theme
+                                                                  .colorScheme
+                                                                  .error,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        child!,
+                                                      ],
+                                                    );
+                                                  },
+                                                  child: Icon(
+                                                    Icons.undo,
+                                                    size: 14,
+                                                    color:
+                                                        theme.colorScheme.error,
+                                                  ),
+                                                )
+                                              : Icon(
+                                                  Icons.undo,
+                                                  size: 14,
+                                                  color: theme.colorScheme.error,
+                                                ))
+                                        : isExtracting
+                                        ? Center(
+                                            child: SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.0,
+                                                color: tagColor,
+                                              ),
+                                            ),
+                                          )
+                                        : Icon(
+                                            Icons.auto_awesome,
+                                            size: 16,
+                                            color: tagColor,
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1699,10 +1751,10 @@ class _DiaryItemState extends State<DiaryItem> {
               color: Colors.transparent,
               child: InkWell(
                 onTap: () {
-                  // 点击直接跳转至独立的屏幕使用时间页面，并同步对齐卡片所属日期
+                  // 点击跳转至「健康数据」页的屏幕使用分段，并同步对齐卡片所属日期
                   final dateStr = bs['date'] as String?;
                   final targetDate = dateStr != null ? DateTime.tryParse(dateStr) : record.time;
-                  context.push('/settings/screen-usage', extra: targetDate ?? record.time);
+                  context.push('/settings/mi-fitness?tab=screen', extra: targetDate ?? record.time);
                 },
                 borderRadius: BorderRadius.circular(14),
                 child: Container(

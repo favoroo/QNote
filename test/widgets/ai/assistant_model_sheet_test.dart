@@ -30,11 +30,8 @@ AiProviderModel _model(
   String id, {
   ReasoningEffort? effort,
   List<ReasoningEffort>? efforts,
-}) => AiProviderModel.of(
-  id,
-  reasoningEffort: effort,
-  reasoningEfforts: efforts,
-);
+}) =>
+    AiProviderModel.of(id, reasoningEffort: effort, reasoningEfforts: efforts);
 
 AiRouteGroup _group({
   required List<RouteGroupMember> members,
@@ -53,6 +50,7 @@ Future<void> _openSheet(
   WidgetTester tester, {
   required List<AiProvider> providers,
   List<AiRouteGroup> groups = const [],
+  List<AiModelRef> recent = const [],
   AiModelRef? selected,
   Future<bool> Function(AiModelRef ref)? onSelect,
   Future<bool> Function(
@@ -60,6 +58,11 @@ Future<void> _openSheet(
     ReasoningEffort? effort,
   )?
   onEffort,
+  Future<bool> Function(
+    ReasoningEffortTarget target,
+    List<ReasoningEffort>? levels,
+  )?
+  onLevels,
 }) async {
   // 面板底部常驻思考强度区块，默认 800x600 的测试视口装不下完整列表
   tester.view.physicalSize = const Size(900, 1600);
@@ -77,8 +80,10 @@ Future<void> _openSheet(
                 providers: providers,
                 groups: groups,
                 selected: selected,
+                recentModels: recent,
                 onSelectBinding: onSelect ?? (ref) async => true,
                 onEffortChanged: onEffort ?? (targets, effort) async => true,
+                onLevelsChanged: onLevels,
               ),
               child: const Text('open'),
             ),
@@ -201,7 +206,7 @@ void main() {
   });
 
   group('选择面板', () {
-    testWidgets('一级列厂商与路由组，当前绑定打勾', (tester) async {
+    testWidgets('一级直接列模型与路由组，当前绑定打勾', (tester) async {
       await _openSheet(
         tester,
         providers: [primary, backup],
@@ -215,18 +220,61 @@ void main() {
         selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
       );
 
+      // 切换模型的主路径是看到模型名直接点：厂商不再占据一级
       expect(find.text('路由组'), findsOneWidget);
-      expect(find.text('厂商'), findsOneWidget);
       expect(find.text('故障转移组'), findsOneWidget);
-      expect(find.text('主力'), findsOneWidget);
-      expect(find.text('备用'), findsOneWidget);
-      expect(find.text('当前 gpt-5.4-mini · 默认'), findsOneWidget);
-      // 只有当前绑定的厂商行打勾
+      expect(find.text('全部模型'), findsOneWidget);
+      expect(find.text('按厂商浏览（2）'), findsOneWidget);
+      expect(find.text('厂商'), findsNothing);
+      // 一级模型行标题是模型名，副标题才写厂商
+      expect(find.widgetWithText(ListTile, 'gpt-5.4-mini'), findsOneWidget);
+      expect(find.widgetWithText(ListTile, 'glm-4.6'), findsOneWidget);
+      expect(find.widgetWithText(ListTile, 'gpt-5.4'), findsOneWidget);
+      // 只有当前绑定的模型行打勾
       expect(find.byIcon(Icons.check_rounded), findsOneWidget);
       // 一级常驻思考强度：当前模型与档位都直接可见
       expect(find.text('当前模型'), findsOneWidget);
-      expect(find.text('gpt-5.4-mini'), findsOneWidget);
       expect(_chipSelected(tester, '自动'), isTrue);
+    });
+
+    testWidgets('最近使用置顶，且不在下方重复列出', (tester) async {
+      await _openSheet(
+        tester,
+        providers: [primary, backup],
+        recent: const [
+          AiModelRef(providerId: 'p2', modelName: 'glm-4.6'),
+        ],
+        selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
+      );
+
+      expect(find.text('最近使用'), findsOneWidget);
+      // 最近使用里出现过的模型不再在「全部模型」重复列出
+      expect(find.widgetWithText(ListTile, 'glm-4.6'), findsOneWidget);
+      expect(find.widgetWithText(ListTile, 'gpt-5.4-mini'), findsOneWidget);
+      expect(find.widgetWithText(ListTile, 'gpt-5.4'), findsOneWidget);
+      // 最近使用行在「全部模型」之上
+      expect(
+        tester.getTopLeft(find.text('最近使用')).dy,
+        lessThan(tester.getTopLeft(find.text('全部模型')).dy),
+      );
+
+      await tester.tap(find.widgetWithText(ListTile, 'glm-4.6'));
+      await tester.pumpAndSettle();
+      expect(_chipSelected(tester, '自动'), isTrue);
+    });
+
+    testWidgets('最近使用里已失效的引用不显示', (tester) async {
+      await _openSheet(
+        tester,
+        providers: [primary],
+        recent: const [
+          AiModelRef(providerId: 'p9', modelName: '已删除'),
+        ],
+        selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
+      );
+
+      expect(find.text('最近使用'), findsNothing);
+      expect(find.text('全部模型'), findsOneWidget);
     });
 
     testWidgets('一级直接调当前模型的思考强度，不用进二级', (tester) async {
@@ -277,7 +325,7 @@ void main() {
       expect(_chipSelected(tester, '极高'), isTrue);
     });
 
-    testWidgets('点厂商进入二级：模型与思考强度同屏，点模型即写库', (tester) async {
+    testWidgets('按厂商浏览：厂商列表 → 该厂商模型，点模型即写库', (tester) async {
       final selections = <AiModelRef>[];
       await _openSheet(
         tester,
@@ -289,11 +337,19 @@ void main() {
         },
       );
 
+      await tester.tap(find.text('按厂商浏览（2）'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('按厂商选择'), findsOneWidget);
+      expect(find.text('上一步'), findsOneWidget);
+      // 当前绑定在备用，主力行用文案说明「这家现在用的是谁」
+      expect(find.text('主力'), findsOneWidget);
+      expect(find.text('2 个模型 · 默认'), findsOneWidget);
+      expect(find.text('当前 glm-4.6'), findsOneWidget);
+
       await tester.tap(find.text('主力'));
       await tester.pumpAndSettle();
 
-      expect(find.text('上一步'), findsOneWidget);
-      expect(find.text('模型'), findsOneWidget);
       expect(find.text('思考强度'), findsOneWidget);
       // 当前绑定在备用，主力面板先用文字说明「选中模型后」才能调
       expect(find.text('选中模型后即可调整它的思考强度'), findsOneWidget);
@@ -303,15 +359,18 @@ void main() {
 
       expect(selections.single.providerId, 'p1');
       expect(selections.single.modelName, 'gpt-5.4-mini');
-      // 面板保持打开，勾选与思考强度都跟到新模型上
+      // 面板保持打开，思考强度跟到新模型上
       expect(find.text('思考强度'), findsOneWidget);
       expect(find.text('选中模型后即可调整它的思考强度'), findsNothing);
       expect(_chipSelected(tester, '自动'), isTrue);
 
-      // 返回一级后勾选也跟着移动
+      // 两次上一步回到一级后勾选也跟着移动
       await tester.tap(find.text('上一步'));
       await tester.pumpAndSettle();
-      expect(find.text('当前 gpt-5.4-mini · 默认'), findsOneWidget);
+      await tester.tap(find.text('上一步'));
+      await tester.pumpAndSettle();
+      expect(find.text('当前模型'), findsOneWidget);
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
     });
 
     testWidgets('二级调档写库成功后面板同步显示新档位', (tester) async {
@@ -331,6 +390,8 @@ void main() {
         },
       );
 
+      await tester.tap(find.text('按厂商浏览（2）'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('主力'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('高'));
@@ -351,6 +412,8 @@ void main() {
         onEffort: (targets, effort) async => false,
       );
 
+      await tester.tap(find.text('按厂商浏览（2）'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('主力'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('高'));
@@ -371,9 +434,6 @@ void main() {
         providers: [oSeries],
         selected: const AiModelRef(providerId: 'p3', modelName: 'o3-mini'),
       );
-
-      await tester.tap(find.text('推理'));
-      await tester.pumpAndSettle();
 
       expect(_chipSelected(tester, '自动'), isTrue);
       expect(find.widgetWithText(ChoiceChip, '关闭'), findsNothing);
@@ -419,6 +479,75 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(targets?.map((t) => t.model.id), ['gpt-5.4-mini', 'glm-4.6']);
+    });
+
+    testWidgets('底部「管理思考档位」入口直接改当前模型的档位集合', (tester) async {
+      List<ReasoningEffort>? written;
+      ReasoningEffortTarget? configured;
+      await _openSheet(
+        tester,
+        providers: [primary, backup],
+        selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
+        onLevels: (target, levels) async {
+          configured = target;
+          written = levels;
+          return true;
+        },
+      );
+
+      await tester.tap(find.text('管理思考档位'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('思考档位'), findsOneWidget);
+      await tester.tap(find.text('全选'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+
+      expect(configured?.model.id, 'gpt-5.4-mini');
+      expect(written, ReasoningEffort.values);
+      // 写库成功后对话面板立即出现新增档位，不用重开
+      expect(find.widgetWithText(ChoiceChip, '极高'), findsOneWidget);
+    });
+
+    testWidgets('路由组的管理入口先选成员，再配置该成员的档位', (tester) async {
+      final group = _group(
+        members: const [
+          RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4-mini'),
+          RouteGroupMember(providerId: 'p2', modelName: 'glm-4.6'),
+        ],
+      );
+      String? configured;
+      List<ReasoningEffort>? written;
+      await _openSheet(
+        tester,
+        providers: [primary, backup],
+        groups: [group],
+        selected: const AiModelRef(providerId: 'p1', modelName: 'gpt-5.4-mini'),
+        onLevels: (target, levels) async {
+          configured = target.model.id;
+          written = levels;
+          return true;
+        },
+      );
+
+      await tester.tap(find.text('故障转移组'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('管理思考档位'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('选择要配置档位的模型'), findsOneWidget);
+      // 选成员（列表里同时有底层面板的同名模型行）
+      await tester.tap(find.text('glm-4.6').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('全选'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+
+      expect(configured, 'glm-4.6');
+      expect(written, ReasoningEffort.values);
     });
   });
 }

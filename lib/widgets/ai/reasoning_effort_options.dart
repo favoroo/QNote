@@ -42,9 +42,7 @@ List<ReasoningEffortOption> reasoningEffortOptions({
       ReasoningEffortOption(
         effort: effort,
         label: capability.labelFor(effort),
-        description: capability.isBinary && effort == ReasoningEffort.high
-            ? '开启思考'
-            : effort.description,
+        description: effort.description,
       ),
   ];
 }

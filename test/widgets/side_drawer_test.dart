@@ -64,24 +64,27 @@ void main() {
   setUp(() => AppVersion.version = '0.0.0-test');
 
   group('SideDrawer 排版', () {
-    testWidgets('10 个入口全部可见，行与行之间以 9 条分隔线区隔', (tester) async {
+    testWidgets('8 个入口全部可见，行与行之间以 7 条分隔线区隔', (tester) async {
       await _pumpDrawer(tester);
 
       for (final label in <String>[
         '个人信息',
         '小Q设置',
         'AI 模型配置',
-        '快捷按钮管理',
-        '固定事件管理',
+        '快捷记录',
         '数据与同步',
-        '小米运动健康',
-        '屏幕使用时间',
+        '健康数据',
         '个性化设置',
         '关于 QNote',
       ]) {
         expect(find.text(label), findsOneWidget, reason: '缺少入口：$label');
       }
-      expect(find.byType(Divider), findsNWidgets(9));
+      // 已合并的旧入口不再单独出现
+      expect(find.text('快捷按钮管理'), findsNothing);
+      expect(find.text('固定事件管理'), findsNothing);
+      expect(find.text('小米运动健康'), findsNothing);
+      expect(find.text('屏幕使用时间'), findsNothing);
+      expect(find.byType(Divider), findsNWidgets(7));
       expect(find.textContaining('Version'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -118,7 +121,7 @@ void main() {
       await _pumpDrawer(tester, brightness: Brightness.dark);
 
       expect(find.text('个性化设置'), findsOneWidget);
-      expect(find.byType(Divider), findsNWidgets(9));
+      expect(find.byType(Divider), findsNWidgets(7));
       expect(tester.takeException(), isNull);
     });
   });

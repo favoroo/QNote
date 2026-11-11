@@ -137,13 +137,11 @@ void main() {
     expect(result!.customLevels, isNull);
   });
 
-  testWidgets('至少保留一个档位：全部取消时完成不可点', (tester) async {
+  testWidgets('至少保留一个档位：清空后完成不可点', (tester) async {
     await _openSheet(tester, modelName: 'gpt-5.4-mini', onResult: (_) {});
 
-    for (final label in ['关闭', '低', '中', '高']) {
-      await tester.tap(find.text(label));
-      await tester.pumpAndSettle();
-    }
+    await tester.tap(find.text('清空'));
+    await tester.pumpAndSettle();
 
     expect(find.text('至少保留一个档位，或恢复自动识别'), findsOneWidget);
     final done = tester.widget<FilledButton>(
@@ -160,7 +158,23 @@ void main() {
     expect(restored.onPressed, isNotNull);
   });
 
-  testWidgets('二值开关模型只给关闭/开启', (tester) async {
+  testWidgets('全选可一键勾满全部档位', (tester) async {
+    await _openSheet(tester, modelName: 'gpt-5.4-mini', onResult: (_) {});
+
+    await tester.tap(find.text('全选'));
+    await tester.pumpAndSettle();
+
+    for (final effort in ReasoningEffort.values) {
+      expect(_checked(tester, effort.label), isTrue, reason: effort.label);
+    }
+    // 当前已是全选，快捷按钮置灰
+    final all = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, '全选'),
+    );
+    expect(all.onPressed, isNull);
+  });
+
+  testWidgets('GLM 也能勾选低/中/高，默认四档', (tester) async {
     await _openSheet(
       tester,
       modelName: 'glm-4.6',
@@ -168,14 +182,26 @@ void main() {
       onResult: (_) {},
     );
 
-    expect(find.widgetWithText(CheckboxListTile, '关闭'), findsOneWidget);
-    expect(find.widgetWithText(CheckboxListTile, '开启'), findsOneWidget);
-    expect(find.widgetWithText(CheckboxListTile, '低'), findsNothing);
+    for (final label in ['关闭', '低', '中', '高', '最少', '极高', '最高']) {
+      expect(
+        find.widgetWithText(CheckboxListTile, label),
+        findsOneWidget,
+        reason: '$label 应可勾选',
+      );
+    }
     expect(_checked(tester, '关闭'), isTrue);
-    expect(_checked(tester, '开启'), isTrue);
+    expect(_checked(tester, '低'), isTrue);
+    expect(_checked(tester, '中'), isTrue);
+    expect(_checked(tester, '高'), isTrue);
+    expect(_checked(tester, '最少'), isFalse);
+    expect(_checked(tester, '极高'), isFalse);
+    expect(_checked(tester, '最高'), isFalse);
+    // 每个档位都展示真实发送值，二值模型会附带 reasoning_effort
+    expect(find.textContaining('thinking.type: enabled'), findsWidgets);
+    expect(find.textContaining('reasoning_effort: medium'), findsOneWidget);
   });
 
-  testWidgets('Gemini 3 只给低/高', (tester) async {
+  testWidgets('Gemini 3 默认低/高，其余档位也能自行勾选', (tester) async {
     await _openSheet(
       tester,
       modelName: 'gemini-3-flash-preview',
@@ -183,9 +209,16 @@ void main() {
       onResult: (_) {},
     );
 
-    expect(find.widgetWithText(CheckboxListTile, '低'), findsOneWidget);
-    expect(find.widgetWithText(CheckboxListTile, '高'), findsOneWidget);
-    expect(find.widgetWithText(CheckboxListTile, '关闭'), findsNothing);
-    expect(find.widgetWithText(CheckboxListTile, '最少'), findsNothing);
+    for (final label in ['关闭', '最少', '低', '中', '高', '极高', '最高']) {
+      expect(
+        find.widgetWithText(CheckboxListTile, label),
+        findsOneWidget,
+        reason: '$label 应可勾选',
+      );
+    }
+    expect(_checked(tester, '低'), isTrue);
+    expect(_checked(tester, '高'), isTrue);
+    expect(_checked(tester, '关闭'), isFalse);
+    expect(_checked(tester, '中'), isFalse);
   });
 }

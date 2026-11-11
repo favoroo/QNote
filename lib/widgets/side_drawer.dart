@@ -7,11 +7,9 @@ import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
-import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
-import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
+import 'package:qnote_flutter/pages/settings/quick_record_settings_page.dart';
+import 'package:qnote_flutter/pages/settings/health_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
-import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
-import 'package:qnote_flutter/pages/settings/screen_usage_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 import 'package:qnote_flutter/providers/drawer_nav_provider.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
@@ -311,10 +309,23 @@ class _MenuEntry {
   });
 }
 
+/// 已合并入口的旧 id → 新 id。
+///
+/// 抽屉位置记忆跨版本存活（只在关闭时写一次），合并入口后旧 id 会查不到，
+/// 直接退回菜单会让「刚点进快捷记录就关掉、立刻重开」落到一级菜单。这里把旧 id
+/// 映射到合并后的入口，记忆窗口内的还原行为保持一致。
+const Map<String, String> _legacyEntryIds = {
+  'shortcuts': 'quick-record',
+  'fixed-events': 'quick-record',
+  'mi-fitness': 'health',
+  'screen-usage': 'health',
+};
+
 /// 按 id 查入口；找不到（版本升级删过条目）时返回 null，由调用方退回菜单
 _MenuEntry? _entryById(String id) {
+  final resolvedId = _legacyEntryIds[id] ?? id;
   for (final entry in _menuEntries) {
-    if (entry.id == id) return entry;
+    if (entry.id == resolvedId) return entry;
   }
   return null;
 }
@@ -329,20 +340,18 @@ const List<_MenuEntry> _menuEntries = [
     page: QSettingsPage(),
   ),
   _MenuEntry(id: 'ai-config', icon: Icons.tune_rounded, label: 'AI 模型配置', page: AiConfigPage()),
-  _MenuEntry(id: 'shortcuts', icon: Icons.hexagon_outlined, label: '快捷按钮管理', page: ShortcutsPage()),
-  _MenuEntry(id: 'fixed-events', icon: Icons.event_repeat, label: '固定事件管理', page: FixedEventsPage()),
+  _MenuEntry(
+    id: 'quick-record',
+    icon: Icons.hexagon_outlined,
+    label: '快捷记录',
+    page: QuickRecordSettingsPage(),
+  ),
   _MenuEntry(id: 'data', icon: Icons.sync_rounded, label: '数据与同步', page: DataSyncPage()),
   _MenuEntry(
-    id: 'mi-fitness',
+    id: 'health',
     icon: Icons.favorite_border_rounded,
-    label: '小米运动健康',
-    page: MiFitnessSettingsPage(),
-  ),
-  _MenuEntry(
-    id: 'screen-usage',
-    icon: Icons.hourglass_bottom_rounded,
-    label: '屏幕使用时间',
-    page: ScreenUsagePage(),
+    label: '健康数据',
+    page: HealthSettingsPage(),
   ),
   _MenuEntry(
     id: 'personalization',

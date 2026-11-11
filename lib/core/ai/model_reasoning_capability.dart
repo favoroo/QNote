@@ -71,7 +71,7 @@ class ModelReasoningCapability {
       case _ReasoningParamStyle.openAiEffort:
         return '按 reasoning_effort 发送';
       case _ReasoningParamStyle.thinkingToggle:
-        return '按 thinking.type 开关发送，只能表达开启/关闭';
+        return '按 thinking.type 开关发送，档位同时附带 reasoning_effort';
       case _ReasoningParamStyle.qwenThinking:
         return '按 enable_thinking + thinking_budget 发送';
       case _ReasoningParamStyle.openRouterReasoning:
@@ -83,23 +83,12 @@ class ModelReasoningCapability {
     }
   }
 
-  /// 该参数形态下能单独表达的档位（配置页的候选集合）
+  /// 配置页的候选档位：始终给完整档位
   ///
-  /// 二值开关与 Gemini 3 强行给出中间档只会让用户误以为生效，实际请求仍只有
-  /// 开/关或低/高，因此候选集合做收缩而不是全量放开。
-  List<ReasoningEffort> get configurableLevels {
-    switch (_style) {
-      case _ReasoningParamStyle.thinkingToggle:
-        return const [ReasoningEffort.none, ReasoningEffort.high];
-      case _ReasoningParamStyle.geminiThinkingLevel:
-        return const [ReasoningEffort.low, ReasoningEffort.high];
-      case _ReasoningParamStyle.openAiEffort:
-      case _ReasoningParamStyle.qwenThinking:
-      case _ReasoningParamStyle.openRouterReasoning:
-      case _ReasoningParamStyle.geminiThinkingBudget:
-        return ReasoningEffort.values;
-    }
-  }
+  /// 不按协议收缩：同一个模型经不同网关转发时能表达的档位并不一致，替用户
+  /// 预先裁掉中间档只会让「想加一档」变成改代码。不能单独表达的档位会在配置
+  /// 页按 [wireValueFor] 展示实际发送值，网关拒绝时再由 400 降级兜住。
+  List<ReasoningEffort> get configurableLevels => ReasoningEffort.values;
 
   /// 档位在请求里的实际写法，配置页展示给愿意看参数的用户
   String wireValueFor(ReasoningEffort effort) {
@@ -111,9 +100,11 @@ class ModelReasoningCapability {
             ? 'reasoning_effort: minimal'
             : 'reasoning_effort: ${effort.wireName}';
       case _ReasoningParamStyle.thinkingToggle:
+        // 开关表达不了强度，额外带一个 reasoning_effort 尽力表达；网关不认时
+        // 由发信层的 400 降级把两个参数一起摘掉
         return effort == ReasoningEffort.none
             ? 'thinking.type: disabled'
-            : 'thinking.type: enabled';
+            : 'thinking.type: enabled + reasoning_effort: ${effort.wireName}';
       case _ReasoningParamStyle.qwenThinking:
         return effort == ReasoningEffort.none
             ? 'enable_thinking: false'
@@ -121,7 +112,7 @@ class ModelReasoningCapability {
       case _ReasoningParamStyle.openRouterReasoning:
         return 'reasoning.effort: ${effort.wireName}';
       case _ReasoningParamStyle.geminiThinkingLevel:
-        return 'thinkingLevel: ${effort == ReasoningEffort.high ? 'high' : 'low'}';
+        return 'thinkingLevel: ${_geminiIsHigh(effort) ? 'high' : 'low'}';
       case _ReasoningParamStyle.geminiThinkingBudget:
         return 'thinkingBudget: ${_budgetFor(effort)}';
     }
@@ -129,16 +120,16 @@ class ModelReasoningCapability {
 
   /// 用自定义档位集合覆盖自动识别结果
   ///
-  /// 传 null 或空集合表示沿用自动识别；不在该参数形态候选里的档位会被过滤，
-  /// 避免二值模型出现「选了中等但请求只能开/关」的假精度。
+  /// 传 null 或空集合表示沿用自动识别；其余档位一律保留，只做去重与排序。
+  /// 是否「能发出去」交给 [supports] 与配置页的实际发送值说明，不在这里
+  /// 替用户裁剪。
   ModelReasoningCapability withLevels(List<ReasoningEffort>? customLevels) {
     if (customLevels == null || customLevels.isEmpty) {
       return this;
     }
-    final allowed = configurableLevels.toSet();
     final normalized = [
       for (final effort in ReasoningEffort.values)
-        if (customLevels.contains(effort) && allowed.contains(effort)) effort,
+        if (customLevels.contains(effort)) effort,
     ];
     if (normalized.isEmpty) {
       return this;
@@ -155,15 +146,10 @@ class ModelReasoningCapability {
   bool supports(ReasoningEffort effort) => levels.contains(effort);
 
   /// 档位展示名；null 表示「自动」
-  String labelFor(ReasoningEffort? effort) {
-    if (effort == null) {
-      return '自动';
-    }
-    if (_binary && effort == ReasoningEffort.high) {
-      return '开启';
-    }
-    return effort.label;
-  }
+  ///
+  /// 二值模型也不再把 high 改叫「开启」：档位集合可能被用户扩成低/中/高，
+  /// 单独一个「开启」夹在中间只会让人以为它们互斥。
+  String labelFor(ReasoningEffort? effort) => effort?.label ?? '自动';
 
   /// 解析模型能力；null 表示该模型不支持配置思考强度
   ///
@@ -246,8 +232,10 @@ class ModelReasoningCapability {
       );
     }
     if (_glmThinking.hasMatch(name)) {
+      // 默认就给四档：GLM 的 thinking.type 是开关，但对话面板不该只剩
+      // 「开启/关闭」，中间档由 reasoning_effort 尽力表达
       return const ModelReasoningCapability._(
-        [ReasoningEffort.none, ReasoningEffort.high],
+        _defaultLevels,
         _ReasoningParamStyle.thinkingToggle,
         binary: true,
       );
@@ -323,6 +311,11 @@ class ModelReasoningCapability {
       body['thinking'] = {
         'type': effort == ReasoningEffort.none ? 'disabled' : 'enabled',
       };
+      // 开关本身只有两态，附带 effort 让支持该字段的网关能表达中间档；
+      // 不支持的网关会忽略或 400，后者由降级重发兜住
+      if (effort != ReasoningEffort.none) {
+        body['reasoning_effort'] = effort.wireName;
+      }
     } else if (_style == _ReasoningParamStyle.qwenThinking) {
       final enabled = effort != ReasoningEffort.none;
       body['enable_thinking'] = enabled;
@@ -341,12 +334,9 @@ class ModelReasoningCapability {
       return null;
     }
     if (_style == _ReasoningParamStyle.geminiThinkingLevel) {
-      // Gemini 3 只区分低/高；自定义集合也只会给出这两档，这里仍做兜底收敛
-      final isHigh =
-          effort == ReasoningEffort.high ||
-          effort == ReasoningEffort.xhigh ||
-          effort == ReasoningEffort.max;
-      return {'thinkingLevel': isHigh ? 'high' : 'low'};
+      // Gemini 3 只有 low/high 两个真实档位；用户勾选的中间档按就近折叠，
+      // 配置页会展示折叠后的实际值
+      return {'thinkingLevel': _geminiIsHigh(effort) ? 'high' : 'low'};
     }
     if (_style == _ReasoningParamStyle.geminiThinkingBudget) {
       return {
@@ -356,6 +346,21 @@ class ModelReasoningCapability {
       };
     }
     return null;
+  }
+
+  /// Gemini 3 只有低/高：中档及以上都按高发送，避免「中」被折叠成低
+  static bool _geminiIsHigh(ReasoningEffort effort) {
+    switch (effort) {
+      case ReasoningEffort.none:
+      case ReasoningEffort.minimal:
+      case ReasoningEffort.low:
+        return false;
+      case ReasoningEffort.medium:
+      case ReasoningEffort.high:
+      case ReasoningEffort.xhigh:
+      case ReasoningEffort.max:
+        return true;
+    }
   }
 
   /// 档位到 token 预算的映射（Qwen / Gemini 2.5 共用）
