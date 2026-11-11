@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 
@@ -136,6 +138,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 width: widget.width,
                 height: widget.height,
                 fit: widget.fit,
+                frameBuilder: _fadeInFrame,
                 errorBuilder: (context, error, stackTrace) {
                   LoggerService.instance.logUI(
                     '图片加载失败 (Web): $error',
@@ -155,6 +158,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 cacheWidth: widget.width != null 
                     ? (widget.width! * 2.0).clamp(100.0, 1080.0).round() 
                     : 720,
+                frameBuilder: _fadeInFrame,
                 errorBuilder: (context, error, stackTrace) {
                   LoggerService.instance.logUI(
                     '图片加载失败: $error',
@@ -165,6 +169,24 @@ class _UnifiedImageState extends State<UnifiedImage> {
                 },
               ),
       ),
+    );
+  }
+
+  /// 图片首帧到达时淡入，避免解码完成后「啪」地出现；同步命中缓存时直接返回。
+  Widget _fadeInFrame(
+    BuildContext context,
+    Widget child,
+    int? frame,
+    bool wasSynchronouslyLoaded,
+  ) {
+    if (wasSynchronouslyLoaded || MediaQuery.disableAnimationsOf(context)) {
+      return child;
+    }
+    return AnimatedOpacity(
+      opacity: frame == null ? 0.0 : 1.0,
+      duration: AppDurations.fast,
+      curve: AppCurves.emphasized,
+      child: child,
     );
   }
 

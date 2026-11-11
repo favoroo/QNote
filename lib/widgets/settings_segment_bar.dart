@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 
 /// 设置页分区切换器的单个分区描述
 class SettingsSegmentItem {
@@ -54,8 +57,8 @@ class SettingsSegmentBar extends StatelessWidget {
               children: [
                 // 唯一的平移胶囊：任何时刻都只有一个选中滑块，不会出现双高亮
                 AnimatedPositioned(
-                  duration: const Duration(milliseconds: 240),
-                  curve: Curves.fastOutSlowIn,
+                  duration: AppMotion.duration(context, AppDurations.page),
+                  curve: AppCurves.emphasizedSpatial,
                   left: selectedIndex * tabWidth,
                   top: 0,
                   width: tabWidth,
@@ -88,8 +91,8 @@ class SettingsSegmentBar extends StatelessWidget {
                         },
                         child: Center(
                           child: AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeInOut,
+                            duration: AppMotion.duration(context, AppDurations.normal),
+                            curve: AppCurves.standard,
                             style: theme.textTheme.bodyMedium!.copyWith(
                               fontSize: 13,
                               fontWeight: selected ? FontWeight.bold : FontWeight.w500,
@@ -102,8 +105,8 @@ class SettingsSegmentBar extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 TweenAnimationBuilder<Color?>(
-                                  duration: const Duration(milliseconds: 200),
-                                  curve: Curves.easeInOut,
+                                  duration: AppMotion.duration(context, AppDurations.normal),
+                                  curve: AppCurves.standard,
                                   tween: ColorTween(
                                     begin: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                     end: selected
@@ -135,6 +138,82 @@ class SettingsSegmentBar extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 分段页内容切换过渡。
+///
+/// 内部通常放 [IndexedStack] 以保留各分段的滚动位置与编辑态；`index` 变化时
+/// 只对新内容做一次短促的淡入 + 4px 上移，避免「胶囊滑过去了、内容啪一下换掉」。
+/// 只做位移与透明度，不改变子树结构，因此不会打断 [IndexedStack] 的状态。
+class SettingsSegmentContent extends StatefulWidget {
+  final int index;
+  final Widget child;
+
+  const SettingsSegmentContent({
+    super.key,
+    required this.index,
+    required this.child,
+  });
+
+  @override
+  State<SettingsSegmentContent> createState() => _SettingsSegmentContentState();
+}
+
+class _SettingsSegmentContentState extends State<SettingsSegmentContent>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppDurations.normal,
+      value: 1.0,
+    );
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: AppCurves.emphasized,
+      reverseCurve: AppCurves.exit,
+    );
+    _opacity = Tween<double>(begin: 0.55, end: 1.0).animate(curved);
+    _offset = Tween<Offset>(
+      begin: const Offset(0, 0.008),
+      end: Offset.zero,
+    ).animate(curved);
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingsSegmentContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index == widget.index) return;
+    if (AppMotion.reduce(context)) {
+      _controller.value = 1.0;
+    } else {
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: _opacity,
+        child: SlideTransition(
+          position: _offset,
+          child: widget.child,
+        ),
       ),
     );
   }

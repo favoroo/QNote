@@ -27,7 +27,9 @@ import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
@@ -2231,12 +2233,14 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
   static const Duration _flushInterval = Duration(milliseconds: 200);
 
   void _scheduleFlush(String latest) {
+    // 内容没有实际增长时不要挂定时器：否则 200ms 后 setState 又会走到同一
+    // 分支，形成整段流式期间永不停止的 5Hz 空转重建。
+    if (latest == _renderedContent) return;
     _pendingContent = latest;
     _flushTimer ??= Timer(_flushInterval, () {
       _flushTimer = null;
-      if (mounted) {
-        setState(() => _renderedContent = _pendingContent);
-      }
+      if (!mounted || _pendingContent == _renderedContent) return;
+      setState(() => _renderedContent = _pendingContent);
     });
   }
 
@@ -2260,14 +2264,23 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
 
     String content = '';
     if (hasContent) {
-      if (streamingContent.length - _renderedContent.length >= _minFlushDelta ||
-          !streamingContent.startsWith(_renderedContent)) {
-        // 增量达阈值，或内容被整体替换（重发/重试），立即跟上
+      if (_renderedContent.isEmpty) {
+        // 首块正文立即渲染：节流只用于压制长正文的高频重解析，
+        // 不该让状态卡在首个 token 到达后再多停 200ms。
         _flushTimer?.cancel();
         _flushTimer = null;
         _renderedContent = streamingContent;
-      } else {
-        _scheduleFlush(streamingContent);
+      } else if (streamingContent != _renderedContent) {
+        if (streamingContent.length - _renderedContent.length >=
+                _minFlushDelta ||
+            !streamingContent.startsWith(_renderedContent)) {
+          // 增量达阈值，或内容被整体替换（重发/重试），立即跟上
+          _flushTimer?.cancel();
+          _flushTimer = null;
+          _renderedContent = streamingContent;
+        } else {
+          _scheduleFlush(streamingContent);
+        }
       }
       content = _renderedContent;
     } else {
@@ -2283,6 +2296,9 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
     // 思考 → 回答），状态卡阶段则由气泡内部的实时思考区承担
     final showThoughtRow = hasContent && liveThought.isNotEmpty;
     final bubble = ChatBubble(
+      // 固定 Key：思考行在首字到达后插入到气泡上方，若气泡没有 Key
+      // 会因 Column 第 0 个子节点变化而被卸载重建，入场动画和气泡状态都会重来。
+      key: const ValueKey('streaming_chat_bubble'),
       message: ChatMessage(
         role: 'assistant',
         content: content,
@@ -2295,41 +2311,41 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
       generatedImageKeys: widget.generatedImageKeys,
       onSendToQ: widget.onSendToQ,
     );
-    if (!showThoughtRow) {
-      return RepaintBoundary(child: bubble);
-    }
     return RepaintBoundary(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (widget.isFirstInGroup)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 2, left: 4, right: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const QAvatar(size: 24, withBackground: true),
-                  const SizedBox(width: 6),
-                  Text(
-                    '小Q',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+          if (showThoughtRow) ...[
+            if (widget.isFirstInGroup)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2, left: 4, right: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const QAvatar(size: 24, withBackground: true),
+                    const SizedBox(width: 6),
+                    Text(
+                      '小Q',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            Padding(
+              key: const ValueKey('streaming_thought_row'),
+              padding: const EdgeInsets.only(left: 4, right: 4, bottom: 2),
+              child: ThinkingProcessView(
+                thought: liveThought,
+                isStreaming: true,
+                startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.only(left: 4, right: 4, bottom: 2),
-            child: ThinkingProcessView(
-              thought: liveThought,
-              isStreaming: true,
-              startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
-            ),
-          ),
+          ],
           bubble,
         ],
       ),
@@ -2368,6 +2384,7 @@ class ChatBubble extends ConsumerWidget {
   final bool regenerateEnabled;
 
   const ChatBubble({
+    super.key,
     required this.message,
     this.statusText,
     this.statusStartedAt,
@@ -2502,8 +2519,8 @@ class ChatBubble extends ConsumerWidget {
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
-      duration: AppDurations.medium,
-      curve: Curves.easeOut,
+      duration: AppMotion.duration(context, AppDurations.medium),
+      curve: AppCurves.emphasized,
       builder: (context, value, child) {
         return Opacity(
           opacity: value,
@@ -2648,106 +2665,136 @@ class ChatBubble extends ConsumerWidget {
                             ),
                         ],
                       )
-                    : statusText != null
-                    ? _StreamingStatusCard(
-                        statusText: statusText,
-                        startedAt: statusStartedAt,
-                      )
-                    : !hasRenderableBody
-                    ? const MorphingInfinity()
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
-                          // 连续工具聚合卡片或单工具执行反馈卡片
-                          if (message.role == 'tool_group')
-                            ToolChainGroupWidget(
-                              toolMessages:
-                                  (message.uiDetails?['messages']
-                                      as List<ChatMessage>?) ??
-                                  const [],
-                              theme: theme,
-                            )
-                          else if (message.role == 'tool')
-                            buildToolFeedback(
-                              context,
-                              message,
-                              theme,
-                              onSendToQ: onSendToQ,
-                            )
-                          else ...[
-                            MarkdownBody(
-                              data: message.content,
-                              selectable: false,
-                              // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
-                              // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
-                              sizedImageBuilder: (config) => ChatBodyImage(
-                                src: config.uri.toString(),
-                                generatedImageKeys: generatedImageKeys,
-                                onSendToQ: onSendToQ,
-                              ),
-                              styleSheet: MarkdownStyleSheet(
-                                p: TextStyle(
-                                  color: theme.colorScheme.onSurface,
-                                  fontSize: 14,
-                                  height: 1.5,
-                                ),
-                                h1: TextStyle(
-                                  color: theme.colorScheme.onSurface,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.6,
-                                ),
-                                h2: TextStyle(
-                                  color: theme.colorScheme.onSurface,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.5,
-                                ),
-                                h3: TextStyle(
-                                  color: theme.colorScheme.onSurface,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.4,
-                                ),
-                                code: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 13,
-                                  color: theme.colorScheme.primary,
-                                  backgroundColor: Colors.transparent,
-                                ),
-                                codeblockDecoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceContainerLow,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: theme.colorScheme.outlineVariant
-                                        .withValues(alpha: 0.5),
-                                  ),
-                                ),
-                                blockquoteDecoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceContainerLow,
-                                  border: Border(
-                                    left: BorderSide(
-                                      color: theme.colorScheme.primary,
-                                      width: 4,
+                    : AnimatedSwitcher(
+                        duration: AppMotion.duration(
+                          context,
+                          AppDurations.normal,
+                        ),
+                        switchInCurve: AppCurves.emphasized,
+                        switchOutCurve: AppCurves.exit,
+                        layoutBuilder: (currentChild, previousChildren) {
+                          return Stack(
+                            alignment: Alignment.topLeft,
+                            children: [...previousChildren, ?currentChild],
+                          );
+                        },
+                        child: statusText != null
+                            ? _StreamingStatusCard(
+                                key: const ValueKey('streaming_status'),
+                                statusText: statusText,
+                                startedAt: statusStartedAt,
+                              )
+                            : !hasRenderableBody
+                            ? const MorphingInfinity(
+                                key: ValueKey('streaming_loading'),
+                              )
+                            : Column(
+                                key: const ValueKey('streaming_body'),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
+                                  // 连续工具聚合卡片或单工具执行反馈卡片
+                                  if (message.role == 'tool_group')
+                                    ToolChainGroupWidget(
+                                      toolMessages:
+                                          (message.uiDetails?['messages']
+                                              as List<ChatMessage>?) ??
+                                          const [],
+                                      theme: theme,
+                                    )
+                                  else if (message.role == 'tool')
+                                    buildToolFeedback(
+                                      context,
+                                      message,
+                                      theme,
+                                      onSendToQ: onSendToQ,
+                                    )
+                                  else ...[
+                                    MarkdownBody(
+                                      data: message.content,
+                                      selectable: false,
+                                      // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
+                                      // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
+                                      sizedImageBuilder: (config) =>
+                                          ChatBodyImage(
+                                            src: config.uri.toString(),
+                                            generatedImageKeys:
+                                                generatedImageKeys,
+                                            onSendToQ: onSendToQ,
+                                          ),
+                                      styleSheet: MarkdownStyleSheet(
+                                        p: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                          fontSize: 14,
+                                          height: 1.5,
+                                        ),
+                                        h1: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.6,
+                                        ),
+                                        h2: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.5,
+                                        ),
+                                        h3: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.4,
+                                        ),
+                                        code: TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontSize: 13,
+                                          color: theme.colorScheme.primary,
+                                          backgroundColor: Colors.transparent,
+                                        ),
+                                        codeblockDecoration: BoxDecoration(
+                                          color: theme
+                                              .colorScheme
+                                              .surfaceContainerLow,
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: theme
+                                                .colorScheme
+                                                .outlineVariant
+                                                .withValues(alpha: 0.5),
+                                          ),
+                                        ),
+                                        blockquoteDecoration: BoxDecoration(
+                                          color: theme
+                                              .colorScheme
+                                              .surfaceContainerLow,
+                                          border: Border(
+                                            left: BorderSide(
+                                              color: theme.colorScheme.primary,
+                                              width: 4,
+                                            ),
+                                          ),
+                                          borderRadius:
+                                              const BorderRadius.horizontal(
+                                                right: Radius.circular(6),
+                                              ),
+                                        ),
+                                        blockquotePadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                        listBullet: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  borderRadius: const BorderRadius.horizontal(
-                                    right: Radius.circular(6),
-                                  ),
-                                ),
-                                blockquotePadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                listBullet: TextStyle(
-                                  color: theme.colorScheme.onSurface,
-                                ),
+                                  ],
+                                ],
                               ),
-                            ),
-                          ],
-                        ],
                       ),
               ),
             ),
@@ -3700,7 +3747,11 @@ class _GenericToolFeedbackWidgetState
                     const SizedBox(width: 4),
                     AnimatedRotation(
                       turns: _isExpanded ? 0.5 : 0,
-                      duration: AppDurations.normal,
+                      duration: AppMotion.duration(
+                        context,
+                        AppDurations.normal,
+                      ),
+                      curve: AppCurves.emphasized,
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
                         size: 16,
@@ -3713,13 +3764,14 @@ class _GenericToolFeedbackWidgetState
             ),
           ),
           // 展开内容区：长结果带滚动上限，与目录/检索折叠卡一致
-          if (_isExpanded && hasBody) ...[
-            const Divider(height: 1),
-            Padding(
+          _CollapsibleToolBody(
+            expanded: _isExpanded,
+            hasBody: hasBody,
+            bodyBuilder: (context) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: buildBody(),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -3840,7 +3892,11 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                     const SizedBox(width: 4),
                     AnimatedRotation(
                       turns: _isExpanded ? 0.5 : 0,
-                      duration: AppDurations.normal,
+                      duration: AppMotion.duration(
+                        context,
+                        AppDurations.normal,
+                      ),
+                      curve: AppCurves.emphasized,
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
                         size: 16,
@@ -3853,9 +3909,10 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
             ),
           ),
           // 展开内容区：当条目数较多时提供带滚动的列表
-          if (_isExpanded && displayList.isNotEmpty) ...[
-            const Divider(height: 1),
-            Container(
+          _CollapsibleToolBody(
+            expanded: _isExpanded,
+            hasBody: displayList.isNotEmpty,
+            bodyBuilder: (context) => Container(
               constraints: const BoxConstraints(maxHeight: 180),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: SingleChildScrollView(
@@ -3898,7 +3955,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                 ),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -4008,7 +4065,11 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
                     const SizedBox(width: 4),
                     AnimatedRotation(
                       turns: _isExpanded ? 0.5 : 0,
-                      duration: AppDurations.normal,
+                      duration: AppMotion.duration(
+                        context,
+                        AppDurations.normal,
+                      ),
+                      curve: AppCurves.emphasized,
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
                         size: 16,
@@ -4020,16 +4081,17 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
               ),
             ),
           ),
-          if (_isExpanded && message.content.trim().isNotEmpty) ...[
-            const Divider(height: 1),
-            Container(
+          _CollapsibleToolBody(
+            expanded: _isExpanded,
+            hasBody: message.content.trim().isNotEmpty,
+            bodyBuilder: (context) => Container(
               constraints: const BoxConstraints(maxHeight: 200),
               padding: const EdgeInsets.all(10),
               child: SingleChildScrollView(
                 child: MarkdownBody(data: message.content, selectable: true),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -4043,7 +4105,11 @@ class ToolChainGroupWidget extends StatefulWidget {
   final List<ChatMessage> toolMessages;
   final ThemeData theme;
 
-  const ToolChainGroupWidget({required this.toolMessages, required this.theme});
+  const ToolChainGroupWidget({
+    super.key,
+    required this.toolMessages,
+    required this.theme,
+  });
 
   @override
   State<ToolChainGroupWidget> createState() => _ToolChainGroupWidgetState();
@@ -4126,7 +4192,8 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                   const SizedBox(width: 6),
                   AnimatedRotation(
                     turns: _isExpanded ? 0.5 : 0,
-                    duration: AppDurations.normal,
+                    duration: AppMotion.duration(context, AppDurations.normal),
+                    curve: AppCurves.emphasized,
                     child: Icon(
                       Icons.keyboard_arrow_down_rounded,
                       size: 16,
@@ -4138,9 +4205,10 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
             ),
           ),
           // 展开状态：逐条紧凑渲染每一个工具的专属反馈卡
-          if (_isExpanded) ...[
-            const Divider(height: 1),
-            Container(
+          _CollapsibleToolBody(
+            expanded: _isExpanded,
+            hasBody: messages.isNotEmpty,
+            bodyBuilder: (context) => Container(
               constraints: const BoxConstraints(maxHeight: 280),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: SingleChildScrollView(
@@ -4192,8 +4260,58 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                 ),
               ),
             ),
-          ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// 工具卡片的折叠内容区。
+///
+/// 展开时高度随内容增长，收起时先淡出内容再收拢高度，避免 `if (expanded)`
+/// 直接插入/移除导致的整行瞬跳。内容通过 [bodyBuilder] 懒构建，折叠态不解析
+/// 文件正文或目录列表。
+class _CollapsibleToolBody extends StatelessWidget {
+  final bool expanded;
+  final bool hasBody;
+  final WidgetBuilder bodyBuilder;
+
+  const _CollapsibleToolBody({
+    required this.expanded,
+    required this.hasBody,
+    required this.bodyBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final child = expanded && hasBody
+        ? Column(
+            key: const ValueKey('tool_body'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [const Divider(height: 1), bodyBuilder(context)],
+          )
+        : const SizedBox(
+            key: ValueKey('tool_body_empty'),
+            width: double.infinity,
+          );
+
+    return AnimatedSize(
+      duration: AppMotion.duration(context, AppDurations.normal),
+      curve: AppCurves.emphasized,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: AppMotion.duration(context, AppDurations.fast),
+        switchInCurve: AppCurves.emphasized,
+        switchOutCurve: AppCurves.exit,
+        layoutBuilder: (currentChild, previousChildren) {
+          return Stack(
+            alignment: Alignment.topCenter,
+            children: [...previousChildren, ?currentChild],
+          );
+        },
+        child: child,
       ),
     );
   }
@@ -4208,61 +4326,77 @@ class _TypingBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (isFirstInGroup)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6, left: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const QAvatar(size: 24, withBackground: true),
-                const SizedBox(width: 6),
-                Text(
-                  '小Q',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: theme.colorScheme.onSurfaceVariant,
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: AppMotion.duration(context, AppDurations.fast),
+      curve: AppCurves.emphasized,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * 8),
+            child: child,
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isFirstInGroup)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6, left: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const QAvatar(size: 24, withBackground: true),
+                  const SizedBox(width: 6),
+                  Text(
+                    '小Q',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
+                ],
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainer,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                  bottomLeft: Radius.circular(4),
+                  bottomRight: Radius.circular(16),
                 ),
-              ],
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.5,
+                  ),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: MorphingInfinity(
+                size: 26,
+                strokeWidth: 1.6,
+                color: theme.colorScheme.primary,
+              ),
             ),
           ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Container(
-            margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainer,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-                bottomLeft: Radius.circular(4),
-                bottomRight: Radius.circular(16),
-              ),
-              border: Border.all(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: MorphingInfinity(
-              size: 26,
-              strokeWidth: 1.6,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -4341,7 +4475,11 @@ class _StreamingStatusCard extends ConsumerWidget {
   /// 本轮任务开始时间，状态行尾部显示「已用时」递增计数
   final DateTime? startedAt;
 
-  const _StreamingStatusCard({required this.statusText, this.startedAt});
+  const _StreamingStatusCard({
+    super.key,
+    required this.statusText,
+    this.startedAt,
+  });
 
   /// 「思考中/准备中」只表示任务在跑，思考步骤行（含计时与呼吸动画）
   /// 已经表达同一信息，不再重复占一行

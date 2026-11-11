@@ -26,6 +26,7 @@ class LoadingRing extends StatefulWidget {
 class _LoadingRingState extends State<LoadingRing>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -37,11 +38,27 @@ class _LoadingRingState extends State<LoadingRing>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    if (reduce == _reduceMotion) return;
+    _reduceMotion = reduce;
+    if (reduce) {
+      _controller.stop();
+      _controller.value = 0.0;
+    } else {
+      _controller.repeat();
+    }
+  }
+
+  @override
   void didUpdateWidget(LoadingRing oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.duration != widget.duration) {
       _controller.duration = widget.duration;
-      _controller.repeat();
+      if (!_reduceMotion) {
+        _controller.repeat();
+      }
     }
   }
 

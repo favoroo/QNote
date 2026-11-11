@@ -25,6 +25,7 @@ class MorphingInfinity extends StatefulWidget {
 class _MorphingInfinityState extends State<MorphingInfinity>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -36,11 +37,28 @@ class _MorphingInfinityState extends State<MorphingInfinity>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    if (reduce == _reduceMotion) return;
+    _reduceMotion = reduce;
+    if (reduce) {
+      _controller.stop();
+      // 停在一个完整无限符号形态，而不是随机中间帧。
+      _controller.value = 0.25;
+    } else {
+      _controller.repeat();
+    }
+  }
+
+  @override
   void didUpdateWidget(MorphingInfinity oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.duration != widget.duration) {
       _controller.duration = widget.duration;
-      _controller.repeat();
+      if (!_reduceMotion) {
+        _controller.repeat();
+      }
     }
   }
 

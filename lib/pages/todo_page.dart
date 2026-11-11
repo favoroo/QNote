@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/folder.dart';
@@ -35,6 +36,18 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   final Map<String, ScrollController> _scrollControllers = {};
   bool _isCompletedCollapsed = true;
 
+  /// 折叠时把已完成内容多保留一个动画周期，让 AnimatedCrossFade 能同时
+  /// 收敛高度与透明度；动画结束后再真正移除，避免长列表常驻构建。
+  bool _keepCompletedItems = false;
+  Timer? _completedCollapseTimer;
+
+  /// 用户点击分类标签后，PageView 正在按目标页播放滑动动画。
+  /// 此期间不要用 build 里的同步逻辑 jumpToPage，否则会把动画直接打断成瞬跳。
+  bool _isSwitchingFolder = false;
+
+  /// 连续点击分类标签时只让最后一次动画负责清除 [_isSwitchingFolder]。
+  int _folderSwitchSeq = 0;
+
   // 批量选择与批量删除状态
   bool _isSelectionMode = false;
   final Set<String> _selectedTodoIds = {};
@@ -57,14 +70,35 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     if (saved != null && mounted) {
       setState(() {
         _isCompletedCollapsed = saved;
+        _keepCompletedItems = !saved;
       });
     }
   }
 
   void _toggleCompletedCollapsed() {
+    final nextCollapsed = !_isCompletedCollapsed;
+    _completedCollapseTimer?.cancel();
+
     setState(() {
-      _isCompletedCollapsed = !_isCompletedCollapsed;
+      _isCompletedCollapsed = nextCollapsed;
+      if (!nextCollapsed) {
+        _keepCompletedItems = true;
+      }
     });
+
+    if (nextCollapsed) {
+      final duration = AppMotion.duration(context, AppDurations.normal);
+      if (duration == Duration.zero) {
+        setState(() => _keepCompletedItems = false);
+      } else {
+        // 比交叉淡化多留 50ms，确保动画收尾后再移除长列表。
+        _completedCollapseTimer = Timer(duration + const Duration(milliseconds: 50), () {
+          if (!mounted || !_isCompletedCollapsed) return;
+          setState(() => _keepCompletedItems = false);
+        });
+      }
+    }
+
     SharedPreferences.getInstance().then((prefs) {
       prefs.setBool(_kTodoCompletedCollapsedKey, _isCompletedCollapsed);
     });
@@ -73,6 +107,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   @override
   void dispose() {
     _confirmTimer?.cancel();
+    _completedCollapseTimer?.cancel();
     _pageController.dispose();
     for (final controller in _scrollControllers.values) {
       controller.dispose();
@@ -354,7 +389,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               final safeIndex = currentIndex >= 0 ? currentIndex : 0;
 
               // 监听外部切换或保持 pageController 同步
-              if (_pageController.hasClients &&
+              if (!_isSwitchingFolder &&
+                  _pageController.hasClients &&
                   _pageController.page?.round() != safeIndex) {
                 _pageController.jumpToPage(safeIndex);
               }
@@ -370,14 +406,26 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     todos: allTodos,
                     onSelect: (folderId) {
                       FocusScope.of(context).unfocus();
-                      ref.read(selectedTodoFolderIdProvider.notifier).state = folderId;
                       final targetIndex = folders.indexWhere((f) => f.id == folderId);
                       if (targetIndex >= 0 && _pageController.hasClients) {
-                        _pageController.animateToPage(
-                          targetIndex,
-                          duration: AppDurations.medium,
-                          curve: Curves.easeInOut,
-                        );
+                        // 先标记为「动画切换中」，provider 更新触发的 rebuild
+                        // 就不会在动画起步前把页面直接 jump 到目标页。
+                        _isSwitchingFolder = true;
+                        final switchSeq = ++_folderSwitchSeq;
+                        ref.read(selectedTodoFolderIdProvider.notifier).state = folderId;
+                        _pageController
+                            .animateToPage(
+                              targetIndex,
+                              duration: AppMotion.duration(context, AppDurations.medium),
+                              curve: AppCurves.emphasized,
+                            )
+                            .whenComplete(() {
+                              if (switchSeq == _folderSwitchSeq) {
+                                _isSwitchingFolder = false;
+                              }
+                            });
+                      } else {
+                        ref.read(selectedTodoFolderIdProvider.notifier).state = folderId;
                       }
                     },
                   ),
@@ -561,46 +609,75 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    _isCompletedCollapsed ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  AnimatedRotation(
+                    turns: _isCompletedCollapsed ? 0.0 : 0.5,
+                    duration: AppMotion.duration(context, AppDurations.normal),
+                    curve: AppCurves.emphasized,
+                    child: Icon(
+                      Icons.keyboard_arrow_down,
+                      size: 18,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    '已完成 ${completedTodos.length}',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                  AppMotion.switcher(
+                    context: context,
+                    baseDuration: AppDurations.fast,
+                    scale: false,
+                    child: Text(
+                      '已完成 ${completedTodos.length}',
+                      key: ValueKey<int>(completedTodos.length),
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          if (!_isCompletedCollapsed) ...[
-            const SizedBox(height: 4),
-            ...completedTodos.map(
-              (todo) => _TodoItem(
-                key: ValueKey('todo_completed_${todo.id}'),
-                todo: todo,
-                index: -1,
-                isDraggable: false,
-                isSelectionMode: _isSelectionMode,
-                isSelected: _selectedTodoIds.contains(todo.id),
-                onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
-                onToggleComplete: () {
-                  ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
-                },
-                onLongPress: (globalKey) {
-                  _showActionMenu(context, todo, globalKey);
-                },
-                onDelete: () => _confirmDelete(todo),
-                onSelectToggle: () => _toggleSelectTodo(todo.id),
-              ),
-            ),
-          ],
+          // 折叠/展开同时过渡高度与透明度；折叠完成后才移除长列表。
+          AnimatedCrossFade(
+            duration: AppMotion.duration(context, AppDurations.normal),
+            sizeCurve: AppCurves.emphasized,
+            firstCurve: AppCurves.exit,
+            secondCurve: AppCurves.emphasized,
+            crossFadeState:
+                _isCompletedCollapsed ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+            alignment: Alignment.topCenter,
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: _keepCompletedItems
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 4),
+                      ...completedTodos.map(
+                        (todo) => _TodoItem(
+                          key: ValueKey('todo_completed_${todo.id}'),
+                          todo: todo,
+                          index: -1,
+                          isDraggable: false,
+                          animateIn: false,
+                          isSelectionMode: _isSelectionMode,
+                          isSelected: _selectedTodoIds.contains(todo.id),
+                          onTap: () =>
+                              _showTodoBottomSheet(context, todo: todo, folderId: folderId),
+                          onToggleComplete: () {
+                            ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
+                          },
+                          onLongPress: (globalKey) {
+                            _showActionMenu(context, todo, globalKey);
+                          },
+                          onDelete: () => _confirmDelete(todo),
+                          onSelectToggle: () => _toggleSelectTodo(todo.id),
+                        ),
+                      ),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
       ),
     );
@@ -1225,6 +1302,10 @@ class _TodoItem extends StatefulWidget {
   final bool isDraggable;
   final bool isSelectionMode;
   final bool isSelected;
+
+  /// 是否播放「从 0 高度展开」的入场动画。已完成区分批展开时关闭，
+  /// 避免外层高度过渡与每行入场动画叠加。
+  final bool animateIn;
   final VoidCallback onTap;
   final VoidCallback onToggleComplete;
   final void Function(GlobalKey key) onLongPress;
@@ -1238,6 +1319,7 @@ class _TodoItem extends StatefulWidget {
     this.isDraggable = true,
     this.isSelectionMode = false,
     this.isSelected = false,
+    this.animateIn = true,
     required this.onTap,
     required this.onToggleComplete,
     required this.onLongPress,
@@ -1264,6 +1346,11 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   static const double _kMaxSlideExtent = 72.0;
 
   bool _localCompleted = false;
+  bool _isCompleting = false;
+
+  /// 已播放过入场动画的待办 id。ListView 懒构建、PageView 切页都会重新
+  /// initState，若每次都从 0 播入场，滚动时条目会不停「弹进来」。
+  static final Set<String> _entrancePlayed = <String>{};
 
   @override
   void initState() {
@@ -1292,13 +1379,32 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
 
     _slideAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: AppDurations.fast,
     );
     _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _slideAnimController, curve: Curves.easeOutCubic),
+      CurvedAnimation(parent: _slideAnimController, curve: AppCurves.emphasized),
     );
 
-    _animController.forward();
+    if (_entrancePlayed.length > 800) {
+      _entrancePlayed.clear();
+    }
+    if (widget.animateIn && _entrancePlayed.add(widget.todo.id)) {
+      _animController.forward();
+    } else {
+      _animController.value = 1.0;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 减弱动效时直接落在终态，并且把左滑吸附改成瞬时。
+    if (AppMotion.reduce(context)) {
+      _animController.value = 1.0;
+      _slideAnimController.duration = Duration.zero;
+    } else {
+      _slideAnimController.duration = AppDurations.fast;
+    }
   }
 
   @override
@@ -1327,11 +1433,11 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   }
 
   void _openSlide() {
-    _slideAnimController.animateTo(1.0, curve: Curves.easeOutCubic);
+    _slideAnimController.animateTo(1.0, curve: AppCurves.emphasized);
   }
 
   void _closeSlide() {
-    _slideAnimController.animateTo(0.0, curve: Curves.easeOutCubic);
+    _slideAnimController.animateTo(0.0, curve: AppCurves.emphasized);
   }
 
   void _handleToggleComplete() {
@@ -1344,12 +1450,23 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
       widget.onToggleComplete();
       return;
     }
+    if (_isCompleting) return;
 
+    // 减弱动效下不播放 300ms 收缩，直接提交完成状态。
+    if (AppMotion.reduce(context)) {
+      widget.onToggleComplete();
+      return;
+    }
+
+    _isCompleting = true;
     setState(() {
       _localCompleted = true;
     });
 
     _animController.reverse().then((_) {
+      if (mounted) {
+        _isCompleting = false;
+      }
       widget.onToggleComplete();
     });
   }
@@ -1495,7 +1612,8 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                     behavior: HitTestBehavior.opaque,
                                     child: AnimatedContainer(
                                       key: const ValueKey('todo_select_checkbox'),
-                                      duration: AppDurations.fast,
+                                      duration: AppMotion.duration(context, AppDurations.fast),
+                                      curve: AppCurves.standard,
                                       width: 22,
                                       height: 22,
                                       margin: const EdgeInsets.only(right: 10),
@@ -1521,8 +1639,8 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                     behavior: HitTestBehavior.opaque,
                                     child: AnimatedContainer(
                                       key: const ValueKey('todo_done_checkbox'),
-                                      duration: AppDurations.medium,
-                                      curve: Curves.easeInOut,
+                                      duration: AppMotion.duration(context, AppDurations.medium),
+                                      curve: AppCurves.standard,
                                       width: 20,
                                       height: 20,
                                       margin: const EdgeInsets.only(right: 10),
@@ -1541,8 +1659,8 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                       child: isDone
                                           ? TweenAnimationBuilder<double>(
                                               tween: Tween(begin: 0.0, end: 1.0),
-                                              duration: AppDurations.medium,
-                                              curve: Curves.elasticOut,
+                                              duration: AppMotion.duration(context, AppDurations.medium),
+                                              curve: AppCurves.spring,
                                               builder: (context, value, child) {
                                                 return Transform.scale(
                                                   scale: value,

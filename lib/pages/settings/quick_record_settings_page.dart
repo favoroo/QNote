@@ -82,12 +82,15 @@ class _QuickRecordSettingsPageState extends ConsumerState<QuickRecordSettingsPag
           ),
           Expanded(
             // IndexedStack 保留两个分段的滚动位置与编辑态，来回切换不会重建列表
-            child: IndexedStack(
+            child: SettingsSegmentContent(
               index: _currentIndex,
-              children: [
-                ShortcutsPage(key: _shortcutsKey, embedded: true),
-                FixedEventsPage(key: _fixedEventsKey, embedded: true),
-              ],
+              child: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  ShortcutsPage(key: _shortcutsKey, embedded: true),
+                  FixedEventsPage(key: _fixedEventsKey, embedded: true),
+                ],
+              ),
             ),
           ),
         ],

@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 
 /// 取思考文本中最新的一行（最后一个非空行）
@@ -102,7 +104,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
 
     return AnimatedSize(
       duration: AppDurations.medium,
-      curve: Curves.easeOutCubic,
+      curve: AppCurves.emphasized,
       alignment: Alignment.topLeft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,7 +164,8 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                       ),
                       AnimatedRotation(
                         turns: _expanded ? 0.5 : 0,
-                        duration: AppDurations.normal,
+                        duration: AppMotion.duration(context, AppDurations.normal),
+                        curve: AppCurves.emphasized,
                         child: Icon(
                           Icons.keyboard_arrow_down_rounded,
                           size: 16,
@@ -358,6 +361,13 @@ class _LatestThoughtLineState extends State<_LatestThoughtLine> {
       _controller.position.maxScrollExtent - _controller.offset < 2;
 
   @override
+  void initState() {
+    super.initState();
+    // 首次挂载后贴到最新一行；后续文本变化由 didUpdateWidget 触发。
+    _scheduleTailScroll();
+  }
+
+  @override
   void didUpdateWidget(covariant _LatestThoughtLine oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.text != widget.text && _follow) {
@@ -381,7 +391,6 @@ class _LatestThoughtLineState extends State<_LatestThoughtLine> {
 
   @override
   Widget build(BuildContext context) {
-    _scheduleTailScroll();
     // 已滚离最左时左侧渐隐，提示前面还有更早的思考
     final showLeftFade = _controller.hasClients && _controller.offset > 2;
     return NotificationListener<ScrollNotification>(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/pages/diary_page.dart';
 import 'package:qnote_flutter/pages/notes_page.dart';
 import 'package:qnote_flutter/pages/todo_page.dart';
@@ -303,16 +305,34 @@ int _quickRecordTab(String? tab) => tab == 'fixed-events' ? 1 : 0;
 /// 健康数据页的分段：`?tab=screen` → 屏幕使用（1），其余为运动健康（0）
 int _healthTab(String? tab) => tab == 'screen' ? 1 : 0;
 
-/// Smooth fade page transition for settings and sub-routes
+/// 设置页与二级路由的统一转场：淡入 + 轻微上移。
+///
+/// 只做 2% 屏高的位移，既让页面有「从下方进入」的方向感，又不会在快速
+/// 连续打开设置页时产生拖沓；返回时用 [AppCurves.exit] 快速退场。
 CustomTransitionPage _fadeTransitionPage(Widget child) {
   return CustomTransitionPage(
     child: child,
+    transitionDuration: AppDurations.page,
+    reverseTransitionDuration: AppDurations.normal,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      // 系统开启减弱动效时直接呈现终态，不做任何位移/淡入。
+      if (MediaQuery.disableAnimationsOf(context)) return child;
+
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: AppCurves.emphasized,
+        reverseCurve: AppCurves.exit,
+      );
       return FadeTransition(
-        opacity: CurveTween(curve: Curves.easeInOut).animate(animation),
-        child: child,
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.02),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
       );
     },
-    transitionDuration: const Duration(milliseconds: 250),
   );
 }

@@ -14,6 +14,12 @@ abstract class AppCurves {
   /// 强调型入场曲线 (easeOutCubic)
   static const Curve emphasized = Curves.easeOutCubic;
 
+  /// 强调型空间位移曲线 (easeInOutCubicEmphasized)
+  ///
+  /// 适合容器变形、面板展开等「同一元素改变尺寸/位置」的过渡；
+  /// 纯淡入淡出仍优先用 [emphasized]。
+  static const Curve emphasizedSpatial = Curves.easeInOutCubicEmphasized;
+
   /// 快速离开曲线 (easeIn)
   static const Curve exit = Curves.easeIn;
 

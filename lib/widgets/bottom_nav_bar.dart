@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
@@ -86,11 +87,12 @@ class _NavBranchTransitionState extends State<_NavBranchTransition>
     _lastIndex = widget.currentIndex;
     _controller = AnimationController(
       vsync: this,
-      duration: AppDurations.normal,
+      duration: AppDurations.page,
     );
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: AppCurves.emphasized,
+    // 从 0.86 起步而不是全透明：IndexedStack 已在同一帧换掉旧分支，
+    // 若从 0 开始会先露出 Scaffold 底色，形成一次可见的「闪白」。
+    _fadeAnimation = Tween<double>(begin: 0.86, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: AppCurves.emphasized),
     );
     _slideAnimation = Tween<Offset>(
       begin: Offset.zero,
@@ -105,8 +107,13 @@ class _NavBranchTransitionState extends State<_NavBranchTransition>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentIndex != widget.currentIndex) {
       // 判定切换方向：向右切（index变大）新页面由右向左微移，反之由左向右微移
-      final direction = widget.currentIndex > _lastIndex ? 0.03 : -0.03;
+      final direction = widget.currentIndex > _lastIndex ? 0.018 : -0.018;
       _lastIndex = widget.currentIndex;
+
+      if (AppMotion.reduce(context)) {
+        _controller.value = 1.0;
+        return;
+      }
 
       _slideAnimation = Tween<Offset>(
         begin: Offset(direction, 0),
@@ -326,12 +333,19 @@ class _BottomNavContent extends ConsumerWidget {
             }
           : null,
       child: Center(
-        child: Icon(
-          isSelected ? item.activeIcon : item.icon,
-          size: 24,
-          color: isSelected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.onSurfaceVariant,
+        // 选中态 outlined ↔ filled 交叉淡化，避免图标「瞬间换脸」；
+        // 颜色随新图标一起过渡，旧图标退场时仍保持原色。
+        child: AppMotion.switcher(
+          context: context,
+          baseDuration: AppDurations.fast,
+          child: Icon(
+            isSelected ? item.activeIcon : item.icon,
+            key: ValueKey(isSelected),
+            size: 24,
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -364,6 +378,7 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
   late final Animation<double> _eyeOpennessAnimation;
   Timer? _blinkTimer;
   final math.Random _random = math.Random();
+  bool? _reduceMotion;
 
   @override
   void initState() {
@@ -394,8 +409,20 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
         weight: 45,
       ),
     ]).animate(_blinkController);
+  }
 
-    if (widget.currentIndex == 4) {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // MediaQuery 在 initState 阶段不可用，且系统开关可能在运行时变化，
+    // 因此把眨眼循环的启停放到依赖变化里统一处理。
+    final reduce = AppMotion.reduce(context);
+    if (_reduceMotion == reduce) return;
+    _reduceMotion = reduce;
+
+    if (reduce) {
+      _stopBlinkingLoop();
+    } else if (widget.currentIndex == 4) {
       _startBlinkingLoop(immediateFirstBlink: true);
     }
   }
@@ -416,6 +443,7 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
   }
 
   void _startBlinkingLoop({bool immediateFirstBlink = false}) {
+    if (AppMotion.reduce(context)) return;
     _blinkTimer?.cancel();
     if (immediateFirstBlink) {
       // 延时 350ms，配合页面切换完成产生轻微延迟交互感
@@ -450,7 +478,7 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
   }
 
   void _performBlinkSequence() {
-    if (!mounted || widget.currentIndex != 4) return;
+    if (!mounted || widget.currentIndex != 4 || AppMotion.reduce(context)) return;
 
     _blinkController.forward(from: 0.0).then((_) {
       if (!mounted || widget.currentIndex != 4) return;
@@ -507,7 +535,22 @@ class _QNavButtonState extends ConsumerState<_QNavButton>
         );
       },
       child: Center(
-        child: _buildIcon(theme, isWorking, isActive, panelOpen),
+        // 工作态无限符号 / 面板关闭叉 / 小Q头像三种形态差异较大，
+        // 直接替换会「跳脸」，用交叉淡化 + 轻微缩放保持连续感。
+        child: AppMotion.switcher(
+          context: context,
+          baseDuration: AppDurations.fast,
+          child: KeyedSubtree(
+            key: ValueKey(
+              isWorking
+                  ? 'q_working'
+                  : panelOpen
+                      ? 'q_close'
+                      : 'q_idle_$isActive',
+            ),
+            child: _buildIcon(theme, isWorking, isActive, panelOpen),
+          ),
+        ),
       ),
     );
   }

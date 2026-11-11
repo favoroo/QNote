@@ -7,6 +7,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
 import 'package:qnote_flutter/core/storage/daily_score_service.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
@@ -36,6 +39,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
       }
       return;
     }
+    if (!mounted) return;
     setState(() => _isScoring = true);
     Toast.show(context, '正在分析今日数据', duration: const Duration(seconds: 15));
     try {
@@ -556,52 +560,60 @@ class _ScoreCircle extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = _getScoreColor(score);
-    return Center(
-      child: Column(
-        children: [
-          SizedBox(
-            width: 160,
-            height: 160,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 150,
-                  height: 150,
-                  child: CircularProgressIndicator(
-                    value: score / 100,
-                    strokeWidth: 12,
-                    backgroundColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-                    valueColor: AlwaysStoppedAnimation(color),
-                  ),
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
+    // 首屏从 0 计数到目标分数，分数环同步扫过；避免静态数字「蹦」出来。
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: score.toDouble()),
+      duration: AppMotion.duration(context, AppDurations.slow),
+      curve: AppCurves.emphasized,
+      builder: (context, animatedScore, _) {
+        return Center(
+          child: Column(
+            children: [
+              SizedBox(
+                width: 160,
+                height: 160,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Text(
-                      '$score',
-                      style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                    SizedBox(
+                      width: 150,
+                      height: 150,
+                      child: CircularProgressIndicator(
+                        value: animatedScore / 100,
+                        strokeWidth: 12,
+                        backgroundColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                        valueColor: AlwaysStoppedAnimation(color),
+                      ),
                     ),
-                    Text(
-                      '/ 100',
-                      style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurfaceVariant),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${animatedScore.round()}',
+                          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '/ 100',
+                          style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _getScoreLabel(score),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            _getScoreLabel(score),
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -642,11 +654,18 @@ class _DimensionScoreBar extends StatelessWidget {
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: score / 100,
-                backgroundColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-                valueColor: AlwaysStoppedAnimation(color),
-                minHeight: 10,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: score / 100),
+                duration: AppMotion.duration(context, AppDurations.medium),
+                curve: AppCurves.emphasized,
+                builder: (context, value, _) {
+                  return LinearProgressIndicator(
+                    value: value,
+                    backgroundColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                    valueColor: AlwaysStoppedAnimation(color),
+                    minHeight: 10,
+                  );
+                },
               ),
             ),
           ),

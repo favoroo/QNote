@@ -22,6 +22,7 @@ class EmptyStateWidget extends StatefulWidget {
 class _EmptyStateWidgetState extends State<EmptyStateWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _animationsEnabled = true;
 
   @override
   void initState() {
@@ -34,6 +35,21 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 减弱动效开启时不要让控制器继续空转；开关变化后再恢复。
+    final enabled = !MediaQuery.disableAnimationsOf(context);
+    if (enabled == _animationsEnabled) return;
+    _animationsEnabled = enabled;
+    if (enabled) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.value = 0.0;
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -43,7 +59,7 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final disableAnimations = MediaQuery.of(context).disableAnimations;
+    final disableAnimations = !_animationsEnabled;
 
     Widget iconBox = Container(
       padding: const EdgeInsets.all(24),
@@ -70,22 +86,24 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget>
     );
 
     if (!disableAnimations) {
-      iconBox = AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          // 正弦波动：上下浮动 ±3px，微量缩放 0.98 ~ 1.02
-          final progress = _controller.value * 2 * math.pi;
-          final offsetY = math.sin(progress) * 3.0;
-          final scale = 1.0 + math.sin(progress) * 0.02;
-          return Transform.translate(
-            offset: Offset(0, offsetY),
-            child: Transform.scale(
-              scale: scale,
-              child: child,
-            ),
-          );
-        },
-        child: iconBox,
+      iconBox = RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            // 正弦波动：上下浮动 ±3px，微量缩放 0.98 ~ 1.02
+            final progress = _controller.value * 2 * math.pi;
+            final offsetY = math.sin(progress) * 3.0;
+            final scale = 1.0 + math.sin(progress) * 0.02;
+            return Transform.translate(
+              offset: Offset(0, offsetY),
+              child: Transform.scale(
+                scale: scale,
+                child: child,
+              ),
+            );
+          },
+          child: iconBox,
+        ),
       );
     }
 

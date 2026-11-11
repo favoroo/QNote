@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/stats_provider.dart';
@@ -116,7 +117,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
           },
           customBorder: const CircleBorder(),
           child: AnimatedContainer(
-            duration: AppDurations.normal,
+            duration: AppMotion.duration(context, AppDurations.normal),
+            curve: AppCurves.standard,
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -158,8 +160,18 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             activeTab: _activeTab,
             onTabChanged: _onTabChanged,
           ),
-          if (_activeTab != StatTab.score && _activeTab != StatTab.screenTime)
-            Padding(
+          AnimatedCrossFade(
+            duration: AppMotion.duration(context, AppDurations.normal),
+            sizeCurve: AppCurves.emphasized,
+            firstCurve: AppCurves.exit,
+            secondCurve: AppCurves.emphasized,
+            crossFadeState:
+                (_activeTab != StatTab.score && _activeTab != StatTab.screenTime)
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            alignment: Alignment.topCenter,
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               child: Stack(
                 alignment: Alignment.center,
@@ -176,9 +188,10 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                 ],
               ),
             ),
+          ),
           Expanded(
             child: AnimatedSwitcher(
-              duration: AppDurations.medium,
+              duration: AppMotion.duration(context, AppDurations.medium),
               switchInCurve: AppCurves.emphasized,
               switchOutCurve: AppCurves.exit,
               // 默认 layoutBuilder 为 center 对齐且约束 loose，内容较短的 tab
@@ -210,19 +223,21 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     if (_activeTab == StatTab.score) {
       return const SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: DailyScoreStats(),
+        child: RepaintBoundary(child: DailyScoreStats()),
       );
     }
     // healthDevice tab 呈现小米运动健康全量体征监测仪表盘
     if (_activeTab == StatTab.healthDevice) {
-      return HealthStatsView(
-        startDate: startDate,
-        endDate: endDate,
+      return RepaintBoundary(
+        child: HealthStatsView(
+          startDate: startDate,
+          endDate: endDate,
+        ),
       );
     }
     // screenTime tab 呈现手机屏幕使用时长与应用排行榜（复刻系统健康使用手机）
     if (_activeTab == StatTab.screenTime) {
-      return const ScreenUsageStatsView();
+      return const RepaintBoundary(child: ScreenUsageStatsView());
     }
 
     final query = StatsQuery(
@@ -232,10 +247,20 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     );
     final statsAsync = ref.watch(statsProvider(query));
 
-    return statsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, stack) => Center(child: Text('统计失败：$err')),
-      data: (stats) {
+    return AnimatedSwitcher(
+      duration: AppMotion.duration(context, AppDurations.normal),
+      switchInCurve: AppCurves.emphasized,
+      switchOutCurve: AppCurves.exit,
+      child: statsAsync.when(
+        loading: () => const Center(
+          key: ValueKey('stats_loading'),
+          child: CircularProgressIndicator(),
+        ),
+        error: (err, stack) => Center(
+          key: const ValueKey('stats_error'),
+          child: Text('统计失败：$err'),
+        ),
+        data: (stats) {
         // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
         final bool isEmpty;
         switch (_activeTab) {
@@ -253,6 +278,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         }
         if (isEmpty) {
           return const EmptyStateWidget(
+            key: ValueKey('stats_empty'),
             icon: Icons.bar_chart,
             message: '暂无数据',
           );
@@ -275,10 +301,12 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
         // 隔离统计卡片的重绘，fl_chart 动画跑动时不影响外部
         return SingleChildScrollView(
+          key: const ValueKey('stats_data'),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: RepaintBoundary(child: content),
         );
       },
+      ),
     );
   }
 }
@@ -384,8 +412,8 @@ class _TabSwitcherState extends State<_TabSwitcher> {
         widget.onTabChanged(config.tab);
       },
       child: AnimatedContainer(
-        duration: AppDurations.normal,
-        curve: Curves.easeInOut,
+        duration: AppMotion.duration(context, AppDurations.normal),
+        curve: AppCurves.standard,
         height: 38,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         alignment: Alignment.center,

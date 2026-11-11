@@ -78,14 +78,17 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
             onChanged: _switchTo,
           ),
           Expanded(
-            child: IndexedStack(
+            child: SettingsSegmentContent(
               index: _currentIndex,
-              children: [
-                const QPersonalityPage(embedded: true),
-                QSkillsPage(key: _skillsKey, embedded: true),
-                const QMemoryPage(embedded: true),
-                const QVoicePage(embedded: true),
-              ],
+              child: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  const QPersonalityPage(embedded: true),
+                  QSkillsPage(key: _skillsKey, embedded: true),
+                  const QMemoryPage(embedded: true),
+                  const QVoicePage(embedded: true),
+                ],
+              ),
             ),
           ),
         ],

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/folder.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
@@ -239,10 +240,12 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           ),
         );
       }),
-      floatingActionButton: AnimatedSwitcher(
-        duration: AppDurations.fast,
+      floatingActionButton: AppMotion.switcher(
+        context: context,
+        baseDuration: AppDurations.fast,
+        alignment: Alignment.bottomRight,
         child: _isSelectionMode
-            ? const SizedBox.shrink()
+            ? const SizedBox.shrink(key: ValueKey('notes_fabs_hidden'))
             : Column(
                 key: const ValueKey('notes_fabs'),
                 mainAxisSize: MainAxisSize.min,
@@ -271,9 +274,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               ),
       ),
       bottomNavigationBar: AnimatedSize(
-        duration: AppDurations.normal,
-        curve: AppCurves.standard,
+        duration: AppMotion.duration(context, AppDurations.normal),
+        curve: AppCurves.emphasized,
         alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
         child: _isSelectionMode
             ? Container(
                 key: const ValueKey('notes_batch_bar'),
@@ -1200,6 +1204,7 @@ class _FlattenedTile extends ConsumerStatefulWidget {
 class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
   final _tileKey = GlobalKey();
   bool _isDragging = false;
+  bool _isPressed = false;
   String? _hoverPosition; // 'before' | 'inside' | 'after' | null
 
   /// 日记体系节点不作为拖拽目标；日记节点自身不可拖出（双保险）
@@ -1349,8 +1354,8 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                 child: AnimatedRotation(
                   // 展开朝下，收起朝右（-0.25 圈 = 逆时针 90°）
                   turns: widget.item.folder!.isExpanded ? 0 : -0.25,
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
+                  duration: AppMotion.duration(context, AppDurations.normal),
+                  curve: AppCurves.emphasized,
                   child: Icon(
                     Icons.keyboard_arrow_down,
                     size: 11,
@@ -1483,10 +1488,14 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             ? () => widget.onToggleFolder(widget.item.folder!)
             : () => widget.onEditNote(widget.item.note!));
 
-    final Widget tileContent = Opacity(
+    final Widget tileContent = AnimatedOpacity(
       opacity: _isDragging ? 0.35 : 1.0,
-      child: Container(
+      duration: AppMotion.duration(context, AppDurations.press),
+      curve: AppCurves.standard,
+      child: AnimatedContainer(
         key: _tileKey,
+        duration: AppMotion.duration(context, AppDurations.fast),
+        curve: AppCurves.standard,
         padding: EdgeInsets.only(
           left: 12.0 + widget.item.depth * 16.0,
           right: 12,
@@ -1520,6 +1529,15 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             Expanded(
               child: GestureDetector(
                 onTap: onItemTap,
+                onTapDown: onItemTap == null
+                    ? null
+                    : (_) => setState(() => _isPressed = true),
+                onTapUp: onItemTap == null
+                    ? null
+                    : (_) => setState(() => _isPressed = false),
+                onTapCancel: onItemTap == null
+                    ? null
+                    : () => setState(() => _isPressed = false),
                 onLongPress: () {
                   if (widget.isSelectionMode || isJournal) return;
                   HapticFeedback.lightImpact();
@@ -1530,31 +1548,36 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                   }
                 },
                 behavior: HitTestBehavior.opaque,
-                child: Row(
-                  children: [
-                    _buildLeadingIconBox(theme, isFolder, isJournal),
-                    const SizedBox(width: 12),
-                    if (!isFolder && widget.item.isPinned) ...[
-                      Icon(
-                        Icons.push_pin,
-                        size: 14,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                    Expanded(
-                      child: Text(
-                        isFolder ? widget.item.folder!.name : widget.item.note!.title,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
-                          letterSpacing: 0.2,
-                          color: isJournal ? theme.colorScheme.tertiary : null,
+                child: AnimatedScale(
+                  scale: _isPressed ? 0.985 : 1.0,
+                  duration: AppMotion.duration(context, AppDurations.press),
+                  curve: AppCurves.standard,
+                  child: Row(
+                    children: [
+                      _buildLeadingIconBox(theme, isFolder, isJournal),
+                      const SizedBox(width: 12),
+                      if (!isFolder && widget.item.isPinned) ...[
+                        Icon(
+                          Icons.push_pin,
+                          size: 14,
+                          color: theme.colorScheme.primary,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
+                            letterSpacing: 0.2,
+                            color: isJournal ? theme.colorScheme.tertiary : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1573,32 +1596,45 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
       children: [
         tileContent,
 
-        if (_hoverPosition == 'before')
-          Positioned(
-            top: 0,
-            left: 12.0 + widget.item.depth * 16.0,
-            right: 12,
-            child: Container(
-              height: 3,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(1.5),
+        // 插入位置指示线常驻但默认透明：拖拽进出时淡入淡出，避免瞬现瞬消。
+        Positioned(
+          top: 0,
+          left: 12.0 + widget.item.depth * 16.0,
+          right: 12,
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: _hoverPosition == 'before' ? 1.0 : 0.0,
+              duration: AppMotion.duration(context, AppDurations.fast),
+              curve: AppCurves.standard,
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
               ),
             ),
           ),
-        if (_hoverPosition == 'after')
-          Positioned(
-            bottom: 0,
-            left: 12.0 + widget.item.depth * 16.0,
-            right: 12,
-            child: Container(
-              height: 3,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(1.5),
+        ),
+        Positioned(
+          bottom: 0,
+          left: 12.0 + widget.item.depth * 16.0,
+          right: 12,
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: _hoverPosition == 'after' ? 1.0 : 0.0,
+              duration: AppMotion.duration(context, AppDurations.fast),
+              curve: AppCurves.standard,
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
               ),
             ),
           ),
+        ),
 
         // 单一全覆盖 DragTarget：实时监听手势在 Item 内的精确局部坐标
         // 告别多层细碎切分与判定抖动

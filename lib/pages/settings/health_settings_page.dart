@@ -87,22 +87,25 @@ class _HealthSettingsPageState extends ConsumerState<HealthSettingsPage> {
           Expanded(
             // IndexedStack 让两段各自保留日期选择与滚动位置；两段数据源互不相干，
             // 重建成本也不低（都要查库 + 平台通道），不适合按需重建
-            child: IndexedStack(
+            child: SettingsSegmentContent(
               index: _currentIndex,
-              children: [
-                MiFitnessSettingsPage(
-                  key: _fitnessKey,
-                  initialDate: widget.initialDate,
-                  embedded: true,
-                  statusNotifier: _fitnessStatus,
-                ),
-                ScreenUsagePage(
-                  key: _screenKey,
-                  initialDate: widget.initialDate,
-                  embedded: true,
-                  refreshingNotifier: _screenRefreshing,
-                ),
-              ],
+              child: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  MiFitnessSettingsPage(
+                    key: _fitnessKey,
+                    initialDate: widget.initialDate,
+                    embedded: true,
+                    statusNotifier: _fitnessStatus,
+                  ),
+                  ScreenUsagePage(
+                    key: _screenKey,
+                    initialDate: widget.initialDate,
+                    embedded: true,
+                    refreshingNotifier: _screenRefreshing,
+                  ),
+                ],
+              ),
             ),
           ),
         ],

@@ -29,6 +29,7 @@ import 'package:qnote_flutter/providers/sync_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/widgets/log_viewer_page.dart';
+import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 
 /// 数据与同步页面
 ///
@@ -49,7 +50,11 @@ class DataSyncPage extends ConsumerStatefulWidget {
 }
 
 class _DataSyncPageState extends ConsumerState<DataSyncPage> {
-  static const _tabLabels = <String>['云同步', '备份恢复', '维护诊断'];
+  static const _tabItems = <SettingsSegmentItem>[
+    SettingsSegmentItem(title: '云同步', icon: Icons.cloud_sync_outlined),
+    SettingsSegmentItem(title: '备份恢复', icon: Icons.settings_backup_restore_rounded),
+    SettingsSegmentItem(title: '维护诊断', icon: Icons.build_outlined),
+  ];
 
   late int _currentIndex;
   final _syncKey = GlobalKey<SyncSettingsViewState>();
@@ -58,7 +63,7 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialTab.clamp(0, _tabLabels.length - 1);
+    _currentIndex = widget.initialTab.clamp(0, _tabItems.length - 1);
   }
 
   /// 切换分区；云同步存在未保存改动时先确认，用户取消则留在原分区
@@ -119,78 +124,32 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
         ),
         body: Column(
           children: [
-            _buildTabSelector(context),
+            SettingsSegmentBar(
+              items: _tabItems,
+              selectedIndex: _currentIndex,
+              onChanged: _switchTo,
+            ),
             Expanded(
-              child: IndexedStack(
+              child: SettingsSegmentContent(
                 index: _currentIndex,
-                children: [
-                  SyncSettingsView(
-                    key: _syncKey,
-                    onDirtyChanged: (dirty) {
-                      if (_syncDirty == dirty) return;
-                      setState(() => _syncDirty = dirty);
-                    },
-                  ),
-                  const _BackupRestoreTab(),
-                  const _MaintenanceTab(),
-                ],
+                child: IndexedStack(
+                  index: _currentIndex,
+                  children: [
+                    SyncSettingsView(
+                      key: _syncKey,
+                      onDirtyChanged: (dirty) {
+                        if (_syncDirty == dirty) return;
+                        setState(() => _syncDirty = dirty);
+                      },
+                    ),
+                    const _BackupRestoreTab(),
+                    const _MaintenanceTab(),
+                  ],
+                ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 分段式分区切换器
-  ///
-  /// 不用 TabBar 是为了在切换前拦截未保存的同步配置（TabBar 会先切换再回调）。
-  Widget _buildTabSelector(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: List.generate(_tabLabels.length, (index) {
-          final selected = index == _currentIndex;
-          return Expanded(
-            child: InkWell(
-              onTap: () => _switchTo(index),
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                decoration: BoxDecoration(
-                  color: selected ? colorScheme.surface : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  _tabLabels[index],
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
       ),
     );
   }
