@@ -5,6 +5,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 
@@ -96,7 +97,7 @@ class PersonalizationPage extends ConsumerWidget {
                           onTap: () => ref.read(accentColorProvider.notifier).setAccentColor(color),
                           // 外环用色块自身颜色，选荧光色时也能与圆点明确区分
                           child: AnimatedContainer(
-                            duration: AppDurations.fast,
+                            duration: AppMotion.duration(context, AppDurations.fast),
                             curve: AppCurves.standard,
                             width: 48,
                             height: 48,
@@ -108,14 +109,14 @@ class PersonalizationPage extends ConsumerWidget {
                             ),
                             padding: EdgeInsets.all(isSelected ? 4 : 2),
                             child: AnimatedContainer(
-                              duration: AppDurations.fast,
+                              duration: AppMotion.duration(context, AppDurations.fast),
                               curve: AppCurves.standard,
                               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                               // 选中时对勾缩放淡入，选中态更直观；对勾颜色按色块亮度自适应，
                               // 否则荧光黄绿等浅色块上的白勾几乎看不见
                               child: AnimatedScale(
                                 scale: isSelected ? 1.0 : 0.0,
-                                duration: AppDurations.fast,
+                                duration: AppMotion.duration(context, AppDurations.fast),
                                 curve: AppCurves.standard,
                                 child: Icon(Icons.check_rounded, size: 20, color: AppContrast.onColor(color)),
                               ),
@@ -214,7 +215,7 @@ class _BackgroundPresetTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: AppDurations.fast,
+        duration: AppMotion.duration(context, AppDurations.fast),
         curve: AppCurves.standard,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(

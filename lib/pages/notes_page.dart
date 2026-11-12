@@ -71,6 +71,22 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Timer? _autoScrollTimer;
   Timer? _springLoadTimer;
 
+  /// 自动滚动的触发距离与每帧步长（与原实现保持一致，避免改变手感）
+  static const double _autoScrollEdge = 72;
+  static const double _autoScrollStep = 9;
+
+  /// 拖拽期间的可放置性快照。
+  ///
+  /// `canDropNoteTreeItem` 内部会多次遍历笔记/文件夹列表并重建文件夹映射，
+  /// 每次指针移动都调用代价很高；同一次拖拽内数据不变时判定结果稳定，
+  /// 因此起拖时算好（滚动露出新行时按需补算），移动过程中只做查表。
+  final Map<String, bool> _dragDropAllowed = {};
+  List<Folder>? _dragFolders;
+  List<Note>? _dragNotes;
+
+  /// 合并同一帧内多次「滚动后重新命中」请求，避免重复计算
+  bool _dragHoverRefreshScheduled = false;
+
   // _flattenTree 结果缓存：folders/notes 引用未变时直接返回缓存，
   // 避免每次 rebuild（拖拽 hover、选择模式切换等）重算整棵树
   List<Folder>? _lastFolders;
@@ -188,8 +204,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final scaffold = Scaffold(
       appBar: AppBar(
         leading: _isSelectionMode
-            ? IconButton(icon: const Icon(Icons.close), onPressed: _exitSelectionMode)
-            : IconButton(icon: const Icon(Icons.menu), onPressed: () => rootScaffoldKey.currentState?.openDrawer()),
+            ? IconButton(icon: const Icon(Icons.close), tooltip: '退出选择', onPressed: _exitSelectionMode)
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  // 与待办页一致：开抽屉前先收键盘，避免键盘回落引起的二次布局位移
+                  FocusScope.of(context).unfocus();
+                  rootScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         title: _isSelectionMode
             ? Text('已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项')
             : const RecordsSectionSwitcher(active: RecordsSection.notes),
@@ -468,8 +491,14 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   }
 
   void _handleDragStarted(FlattenedItem item) {
-    _autoScrollTimer?.cancel();
-    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) => _tickAutoScroll());
+    _dragFolders = ref.read(folderListProvider).value ?? [];
+    _dragNotes = ref.read(noteListProvider).value ?? [];
+    _dragDropAllowed.clear();
+    // 起拖时一次性为当前可见行算好可放置性，避免指针每次移动都全量扫描数据
+    for (final id in _rowKeys.keys) {
+      _resolveDragDropAllowed(item.id, id);
+    }
+
     _dragStartGlobal = _lastDragGlobal;
     _dragMoved = false;
 
@@ -484,6 +513,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (pointer != null) {
       _updateDragHover(pointer);
     }
+    // 原地长按不动时不需要自动滚动，等指针真正靠近边缘再启动定时器
+    _syncAutoScrollTimer();
   }
 
   void _handleDragPosition(Offset globalPosition) {
@@ -497,13 +528,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       }
     }
     _updateDragHover(globalPosition);
+    _syncAutoScrollTimer();
   }
 
   void _handleDragEnded() {
-    _autoScrollTimer?.cancel();
-    _autoScrollTimer = null;
+    _stopAutoScrollTimer();
     _springLoadTimer?.cancel();
     _springLoadTimer = null;
+    // 拖拽结束后快照失效，释放引用并清空缓存，避免下次拖拽误用旧数据
+    _dragDropAllowed.clear();
+    _dragFolders = null;
+    _dragNotes = null;
     if (!mounted) return;
 
     setState(() {
@@ -618,8 +653,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       return;
     }
 
-    final folders = ref.read(folderListProvider).value ?? [];
-    final notes = ref.read(noteListProvider).value ?? [];
+    // 数据若在拖拽期间被外部改动（弹簧展开文件夹、同步等），清空旧判定按新数据重算
+    _refreshDragDropData();
 
     for (final entry in _rowKeys.entries) {
       final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
@@ -630,7 +665,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       final target = _cachedFlattenedById?[entry.key];
       if (target == null) continue;
 
-      if (!canDropNoteTreeItem(folders: folders, notes: notes, draggedId: dragged.id, targetId: target.id)) {
+      // 可放置性在起拖时已算好，这里只查表，不再逐行扫描笔记/文件夹
+      if (!_resolveDragDropAllowed(dragged.id, target.id)) {
         _setHover(targetId: null, position: null, rootHover: false, silent: silent);
         return;
       }
@@ -645,6 +681,30 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
 
     _setHover(targetId: null, position: null, rootHover: false, silent: silent);
+  }
+
+  /// 拖拽期间数据引用变化时丢弃旧判定结果，保证与实时读取数据的行为一致。
+  void _refreshDragDropData() {
+    final folders = ref.read(folderListProvider).value ?? [];
+    final notes = ref.read(noteListProvider).value ?? [];
+    if (identical(folders, _dragFolders) && identical(notes, _dragNotes)) return;
+    _dragFolders = folders;
+    _dragNotes = notes;
+    _dragDropAllowed.clear();
+  }
+
+  /// 查询某目标行的可放置性：命中快照直接返回，滚动露出的新行按需补算。
+  bool _resolveDragDropAllowed(String draggedId, String targetId) {
+    final cached = _dragDropAllowed[targetId];
+    if (cached != null) return cached;
+    final allowed = canDropNoteTreeItem(
+      folders: _dragFolders ?? const <Folder>[],
+      notes: _dragNotes ?? const <Note>[],
+      draggedId: draggedId,
+      targetId: targetId,
+    );
+    _dragDropAllowed[targetId] = allowed;
+    return allowed;
   }
 
   void _setHover({
@@ -685,37 +745,74 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     });
   }
 
-  /// 拖到列表上下边缘时持续滚动，滚动后主动重新命中（指针本身没动）。
-  void _tickAutoScroll() {
+  /// 指针是否位于列表视口上下边缘的自动滚动触发区。
+  bool _isPointerNearAutoScrollEdge() {
     final pointer = _lastDragGlobal;
-    if (pointer == null || _activeDraggingItem == null || !_dragMoved || _isRootDropHover) return;
-    if (!_scrollController.hasClients) return;
+    if (pointer == null || _activeDraggingItem == null || !_dragMoved || _isRootDropHover) return false;
+    if (!_scrollController.hasClients) return false;
 
     final viewportBox = _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
-    if (viewportBox == null || !viewportBox.hasSize) return;
+    if (viewportBox == null || !viewportBox.hasSize) return false;
     final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
-    if (!viewportRect.contains(pointer)) return;
+    if (!viewportRect.contains(pointer)) return false;
 
-    const edge = 72.0;
-    const step = 9.0;
-    double delta = 0;
-    if (pointer.dy < viewportRect.top + edge) {
-      delta = -step;
-    } else if (pointer.dy > viewportRect.bottom - edge) {
-      delta = step;
+    return pointer.dy < viewportRect.top + _autoScrollEdge || pointer.dy > viewportRect.bottom - _autoScrollEdge;
+  }
+
+  /// 仅在指针靠近边缘时启动 16ms 定时器，离开边缘立即停表，避免常驻空转。
+  void _syncAutoScrollTimer() {
+    if (_isPointerNearAutoScrollEdge()) {
+      // 复用已有定时器，避免指针每次微动都重置计时相位
+      _autoScrollTimer ??= Timer.periodic(const Duration(milliseconds: 16), (_) => _tickAutoScroll());
+    } else {
+      _stopAutoScrollTimer();
     }
-    if (delta == 0) return;
+  }
 
+  void _stopAutoScrollTimer() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
+  }
+
+  /// 拖到列表上下边缘时持续滚动，滚动后主动重新命中（指针本身没动）。
+  void _tickAutoScroll() {
+    if (!_isPointerNearAutoScrollEdge()) {
+      _stopAutoScrollTimer();
+      return;
+    }
+    final pointer = _lastDragGlobal!;
+
+    final viewportBox = _listViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) {
+      _stopAutoScrollTimer();
+      return;
+    }
+    final viewportRect = viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+
+    final delta = pointer.dy < viewportRect.top + _autoScrollEdge ? -_autoScrollStep : _autoScrollStep;
     final position = _scrollController.position;
     final next = (position.pixels + delta).clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
+    // 已到滚动边界时保持定时器，与原实现一致，等指针移动后自然继续
     if ((next - position.pixels).abs() < 0.5) return;
 
     _scrollController.jumpTo(next);
-    // 滚动后行位置变了但指针没动，主动补一次命中计算
+    // 滚动后行位置变了但指针没动，等本帧布局完成再补一次命中计算
+    _scheduleDragHoverRefresh();
+  }
+
+  /// 合并同一帧内的多次刷新请求，布局完成后再用最新行位置重新命中。
+  void _scheduleDragHoverRefresh() {
+    if (_dragHoverRefreshScheduled) return;
+    _dragHoverRefreshScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dragHoverRefreshScheduled = false;
       if (!mounted || _activeDraggingItem == null) return;
       final latest = _lastDragGlobal;
-      if (latest != null) _updateDragHover(latest);
+      if (latest != null) {
+        _updateDragHover(latest);
+      }
+      // 行集合可能因弹簧展开而变化，指针仍在边缘区时需要继续自动滚动
+      _syncAutoScrollTimer();
     });
   }
 
@@ -810,7 +907,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 height: 56,
                 child: AnimatedContainer(
                   key: _rootDropKey,
-                  duration: AppDurations.fast,
+                  duration: AppMotion.duration(context, AppDurations.fast),
                   curve: AppCurves.standard,
                   decoration: BoxDecoration(
                     color: _isRootDropHover

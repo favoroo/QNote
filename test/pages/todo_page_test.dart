@@ -313,31 +313,34 @@ void main() {
     await tester.tap(find.byIcon(Icons.checklist_outlined));
     await tester.pumpAndSettle();
 
+    // 顶栏计数与底栏工具条文案一致，用 AppBar 作用域来定位标题，避免匹配到两处
+    Finder appBarCount(int n) => find.descendant(of: find.byType(AppBar), matching: find.text('已选 $n 项'));
+
     // 验证进入选择模式：AppBar 标题、全选按钮、退出关闭按钮
-    expect(find.text('已选择 0 项'), findsOneWidget);
+    expect(appBarCount(0), findsOneWidget);
     expect(find.text('全选'), findsOneWidget);
     expect(find.byIcon(Icons.close), findsOneWidget);
 
     // 2. 点击「批量任务一」卡片进行勾选
     await tester.tap(find.text('批量任务一'));
     await tester.pumpAndSettle();
-    expect(find.text('已选择 1 项'), findsOneWidget);
+    expect(appBarCount(1), findsOneWidget);
 
     // 3. 点击「批量任务二」卡片进行勾选
     await tester.tap(find.text('批量任务二'));
     await tester.pumpAndSettle();
-    expect(find.text('已选择 2 项'), findsOneWidget);
+    expect(appBarCount(2), findsOneWidget);
 
     // 4. 点击「全选」，当前分类下的 3 项全部被选中，按钮文案变为「取消全选」
     await tester.tap(find.text('全选'));
     await tester.pumpAndSettle();
-    expect(find.text('已选择 3 项'), findsOneWidget);
+    expect(appBarCount(3), findsOneWidget);
     expect(find.text('取消全选'), findsOneWidget);
 
     // 5. 点击「取消全选」，清空选中项
     await tester.tap(find.text('取消全选'));
     await tester.pumpAndSettle();
-    expect(find.text('已选择 0 项'), findsOneWidget);
+    expect(appBarCount(0), findsOneWidget);
     expect(find.text('全选'), findsOneWidget);
 
     // 6. 勾选前两项任务进行批量删除
@@ -345,7 +348,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('批量任务二'));
     await tester.pumpAndSettle();
-    expect(find.text('已选择 2 项'), findsOneWidget);
+    expect(appBarCount(2), findsOneWidget);
 
     // 7. 点击底栏红色「删除」按钮，触发 3 秒防误触二次确认
     await tester.tap(find.text('删除'));

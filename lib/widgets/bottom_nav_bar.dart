@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
-import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -33,16 +32,34 @@ class _ScaffoldWithNavBarState extends State<ScaffoldWithNavBar> {
   int _lastRecordsBranch = ShellBranch.notes;
 
   @override
+  void initState() {
+    super.initState();
+    _syncLastRecordsBranch();
+  }
+
+  @override
+  void didUpdateWidget(covariant ScaffoldWithNavBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncLastRecordsBranch();
+  }
+
+  /// 记下最近停留的记录分段。放在生命周期里更新，避免在 build 期间产生副作用。
+  void _syncLastRecordsBranch() {
+    final index = widget.navigationShell.currentIndex;
+    if (index == ShellBranch.notes || index == ShellBranch.todo) {
+      _lastRecordsBranch = index;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final currentIndex = widget.navigationShell.currentIndex;
-    if (currentIndex == ShellBranch.notes || currentIndex == ShellBranch.todo) {
-      _lastRecordsBranch = currentIndex;
-    }
 
     return Scaffold(
       key: rootScaffoldKey,
       drawer: const SideDrawer(),
-      body: _NavBranchTransition(currentIndex: currentIndex, child: widget.navigationShell),
+      // 分支过渡由 ShellBranchContainer 负责，这里直接放 navigationShell。
+      body: widget.navigationShell,
       bottomNavigationBar: BottomNavBar(
         currentIndex: currentIndex,
         lastRecordsBranch: _lastRecordsBranch,
@@ -57,82 +74,6 @@ class _ScaffoldWithNavBarState extends State<ScaffoldWithNavBar> {
             initialLocation: widget.navigationShell.currentIndex == ShellBranch.ai,
           );
         },
-      ),
-    );
-  }
-}
-
-/// 主导航分支切换平滑过渡组件。
-///
-/// 保持内部 navigationShell 不被重建，仅在其外层施加一次轻量淡入与微小位移动画，
-/// 避免 tab 切换时的生硬瞬切，同时几乎不产生额外渲染负担。
-class _NavBranchTransition extends StatefulWidget {
-  final int currentIndex;
-  final Widget child;
-
-  const _NavBranchTransition({required this.currentIndex, required this.child});
-
-  @override
-  State<_NavBranchTransition> createState() => _NavBranchTransitionState();
-}
-
-class _NavBranchTransitionState extends State<_NavBranchTransition> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  int _lastIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _lastIndex = widget.currentIndex;
-    _controller = AnimationController(vsync: this, duration: AppDurations.page);
-    // 从 0.86 起步而不是全透明：IndexedStack 已在同一帧换掉旧分支，
-    // 若从 0 开始会先露出 Scaffold 底色，形成一次可见的「闪白」。
-    _fadeAnimation = Tween<double>(
-      begin: 0.86,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: AppCurves.emphasized));
-    _slideAnimation = Tween<Offset>(begin: Offset.zero, end: Offset.zero).animate(_controller);
-    // 首次展示直接到达最终态
-    _controller.value = 1.0;
-  }
-
-  @override
-  void didUpdateWidget(covariant _NavBranchTransition oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentIndex != widget.currentIndex) {
-      // 判定切换方向：向右切（index变大）新页面由右向左微移，反之由左向右微移
-      final direction = widget.currentIndex > _lastIndex ? 0.018 : -0.018;
-      _lastIndex = widget.currentIndex;
-
-      if (AppMotion.reduce(context)) {
-        _controller.value = 1.0;
-        return;
-      }
-
-      _slideAnimation = Tween<Offset>(
-        begin: Offset(direction, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: _controller, curve: AppCurves.emphasized));
-
-      _controller.forward(from: 0.0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 独立重绘边界：切换/抽屉动画期间底层分支内容不再逐帧重绘
-    return RepaintBoundary(
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(position: _slideAnimation, child: widget.child),
       ),
     );
   }
@@ -426,13 +367,20 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
     }
   }
 
+  /// 当前是否停留在小Q 全页面。
+  ///
+  /// 眨眼循环的各处回调都靠它判断「还该不该继续眨眼」。历史上这里写死了字面量 4，
+  /// 而 [ShellBranch.ai] 实际是 3（统计移出底栏后分支前移），导致所有眨眼回调都在
+  /// 第一行提前 return，动效从未真正播放过。统一走这个 getter，避免再次与分支索引脱节。
+  bool get _isAiBranchActive => widget.currentIndex == ShellBranch.ai;
+
   void _startBlinkingLoop({bool immediateFirstBlink = false}) {
     if (AppMotion.reduce(context)) return;
     _blinkTimer?.cancel();
     if (immediateFirstBlink) {
       // 延时 350ms，配合页面切换完成产生轻微延迟交互感
       _blinkTimer = Timer(const Duration(milliseconds: 350), () {
-        if (!mounted || widget.currentIndex != 4) return;
+        if (!mounted || !_isAiBranchActive) return;
         _performBlinkSequence();
       });
     } else {
@@ -451,29 +399,29 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
 
   void _scheduleNextBlink() {
     _blinkTimer?.cancel();
-    if (!mounted || widget.currentIndex != 4) return;
+    if (!mounted || !_isAiBranchActive) return;
 
     // 3.0 ~ 5.5 秒随机间隔，节奏自然拟人
     final delayMillis = 3000 + _random.nextInt(2500);
     _blinkTimer = Timer(Duration(milliseconds: delayMillis), () {
-      if (!mounted || widget.currentIndex != 4) return;
+      if (!mounted || !_isAiBranchActive) return;
       _performBlinkSequence();
     });
   }
 
   void _performBlinkSequence() {
-    if (!mounted || widget.currentIndex != 4 || AppMotion.reduce(context)) return;
+    if (!mounted || !_isAiBranchActive || AppMotion.reduce(context)) return;
 
     _blinkController.forward(from: 0.0).then((_) {
-      if (!mounted || widget.currentIndex != 4) return;
+      if (!mounted || !_isAiBranchActive) return;
 
       // 约 25% 概率连眨一次，更显生动好奇
       final shouldDoubleBlink = _random.nextDouble() < 0.25;
       if (shouldDoubleBlink) {
         _blinkTimer = Timer(const Duration(milliseconds: 140), () {
-          if (!mounted || widget.currentIndex != 4) return;
+          if (!mounted || !_isAiBranchActive) return;
           _blinkController.forward(from: 0.0).then((_) {
-            if (!mounted || widget.currentIndex != 4) return;
+            if (!mounted || !_isAiBranchActive) return;
             _scheduleNextBlink();
           });
         });

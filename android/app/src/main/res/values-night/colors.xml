@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 深色兜底：与 App 深色画布一致（AppSurfacePalette.legacyDark.canvas） -->
+    <color name="launch_background">#111318</color>
     <color name="widget_background">#121214</color>
     <color name="widget_border">#2C2C2E</color>
     <color name="widget_text_primary">#F2F2F7</color>
@@ -13,14 +15,8 @@
     <color name="widget_todo_icon_bg">#1AFFFFFF</color>
     <color name="widget_priority">#0A84FF</color>
     <!-- 「问小Q」组件深色 token，与 values/colors.xml 同名项成对维护 -->
-    <color name="widget_ai_button_start">#66A9FF</color>
-    <color name="widget_ai_button_end">#0A5BD8</color>
-    <color name="widget_ai_button_ring">#33FFFFFF</color>
+    <color name="widget_ai_circle">#0A84FF</color>
     <color name="widget_ai_robot">#FFFFFFFF</color>
-    <color name="widget_ai_screen">#0A2E6E</color>
-    <color name="widget_ai_card_top">#1F232C</color>
-    <color name="widget_ai_card_bottom">#171A21</color>
-    <color name="widget_ai_card_stroke">#2E3442</color>
     <color name="dialog_bg">#1C1C1E</color>
     <color name="dialog_text">#F2F2F7</color>
     <color name="dialog_input_bg">#2C2C2E</color>

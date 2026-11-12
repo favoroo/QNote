@@ -3,11 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 
 class AppTheme {
   static const Color primaryDefault = Color(0xFF005BCB);
+
+  /// 全 App 底部面板/弹窗的统一进出场样式。
+  ///
+  /// Flutter 默认 250ms 线性，和 App 其他转场（强调曲线、起手快收尾缓）不同调；
+  /// 这里统一成 [AppCurves.emphasized] 进、[AppCurves.exit] 出，与路由转场同节奏。
+  /// 调用点只需 `showModalBottomSheet(..., sheetAnimationStyle: AppTheme.sheetAnimationStyle)`。
+  static const AnimationStyle sheetAnimationStyle = AnimationStyle(
+    duration: AppDurations.sheet,
+    curve: AppCurves.emphasized,
+    reverseDuration: AppDurations.normal,
+    reverseCurve: AppCurves.exit,
+  );
 
   /// 遵循 Material 3 规范的全局页面转场：
   /// - Android/桌面/Web 采用平滑的向前淡入 (FadeForwards)

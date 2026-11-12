@@ -21,6 +21,9 @@ import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/database_init.dart' if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
 import 'package:qnote_flutter/providers/diary_progress_provider.dart';
@@ -29,13 +32,23 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
+import 'package:qnote_flutter/widgets/platform_brightness_sync.dart';
+import 'package:qnote_flutter/widgets/startup_fade_in.dart';
 import 'package:qnote_flutter/widgets/update_dialog.dart';
 
 /// 关键路径初始化：必须在 runApp 前完成，确保数据库和配置就绪。
 ///
 /// 包括：Logger、日期格式化、数据库工厂、打开数据库、默认配置（快捷键/AI配置/AI角色/通知服务初始化）。
 Future<void> preInitializeApp() async {
-  await Future.wait([LoggerService.instance.init(), initializeDateFormatting('zh_CN'), initDatabaseFactory()]);
+  // 外观偏好预热放在第一批并行里：主题 Provider 首帧直接以用户设置构建，
+  // 避免「先跟随系统、读到偏好再切换」造成的深→浅闪变。SharedPreferences 是
+  // 进程级单例，与 Logger 的初始化共用同一份，只多一次同步读 map。
+  await Future.wait([
+    LoggerService.instance.init(),
+    initializeDateFormatting('zh_CN'),
+    initDatabaseFactory(),
+    AppearanceBootstrap.warmUp(),
+  ]);
 
   // 打开数据库与版本号读取互不依赖，并行执行缩短冷启动
   await Future.wait([DatabaseHelper.instance.database, AppVersion.init()]);
@@ -360,6 +373,10 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       theme: AppTheme.build(accentColor: accentColor, background: background, platformBrightness: Brightness.light),
       darkTheme: AppTheme.build(accentColor: accentColor, background: background, platformBrightness: Brightness.dark),
       themeMode: ThemeMode.system,
+      // 换背景/主题色时整页颜色平滑过渡：默认 kThemeAnimationDuration 是 200ms 线性，
+      // 大面积画布色线性推进会显得生硬；改用强调曲线，起手快、收尾柔和。
+      themeAnimationDuration: AppDurations.normal,
+      themeAnimationCurve: AppCurves.standard,
       routerConfig: router,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -410,7 +427,12 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
                 onPointerDown: (event) => ref.read(floatingQProvider.notifier).recordPointerDown(event.position),
                 child: Stack(
                   children: [
-                    child ?? const SizedBox.shrink(),
+                    // 首帧交叉淡入：原生启动窗口 → Flutter 首帧的交接期让内容轻微浮现，
+                    // 淡入结束后这层会自行摘除，不影响后续渲染
+                    StartupFadeIn(
+                      // iOS 原生控件（键盘/系统菜单）明暗跟随 App 背景，而不是手机系统设置
+                      child: PlatformBrightnessSync(child: child ?? const SizedBox.shrink()),
+                    ),
                     // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
                     // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
                     // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），

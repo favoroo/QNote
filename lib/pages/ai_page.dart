@@ -30,6 +30,7 @@ import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
@@ -108,6 +109,16 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   // 回填与撤回共用的忙窗口：期间不得再触发第二次进入或发送
   bool _reeditBusy = false;
+
+  // 会话消息派生结果缓存：时间线、生图去重键、可再次编辑下标都是 O(消息数) 的纯计算，
+  // 流式输出/键盘 inset 等会让页面频繁重建，只要消息列表引用没换就直接复用，
+  // 避免每次重建都把整段历史重扫一遍。provider 增删消息都会生成新 List，
+  // 因此用 identical 比较列表引用即可判定内容是否变化。
+  List<ChatMessage>? _cacheSource;
+  List<ChatTimelineEntry>? _cachedTimeline;
+  Set<String>? _cachedImageKeys;
+  // null 既可能是「还没算」也可能是「算出来就是 null」，有效性统一由 _cacheSource 判定
+  int? _cachedReeditIndex;
 
   // 输入增强状态：斜杠命令 / @ 引用浮层（非 null 即展示对应面板）
   String? _slashQuery;
@@ -658,6 +669,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheetCtx) {
@@ -926,6 +938,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   void _showAttachmentMenu(BuildContext context, ThemeData theme) {
     showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
@@ -1184,13 +1197,21 @@ class _AiPageState extends ConsumerState<AiPage> {
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
     final stateMessages = currentChat?.messages ?? const <ChatMessage>[];
 
-    // 生图卡片已展示过的图片键：assistant 正文里模型回显的同一张 `![image](<路径>)`
-    // 据此跳过渲染，避免一张生成图在会话流里出现两次
-    final generatedImageKeys = collectGeneratedImageKeys(stateMessages);
-
-    // 消息归一抽在纯函数里（思考步骤独立成行 + 连续工具聚合成折叠链），
-    // 便于在没有数据库和 UI 的环境下锁定顺序、可见性与撤回下标
-    final timeline = buildChatTimelineEntries(stateMessages);
+    // 三个派生结果一起重算：都以 stateMessages 为唯一输入，命中缓存时整组复用。
+    // 缓存键刻意不含 hasStreaming——流式开始/结束不改变历史消息，
+    // 不应因此击穿缓存重扫全部消息。
+    if (!identical(stateMessages, _cacheSource)) {
+      _cacheSource = stateMessages;
+      // 生图卡片已展示过的图片键：assistant 正文里模型回显的同一张 `![image](<路径>)`
+      // 据此跳过渲染，避免一张生成图在会话流里出现两次
+      _cachedImageKeys = collectGeneratedImageKeys(stateMessages);
+      // 消息归一抽在纯函数里（思考步骤独立成行 + 连续工具聚合成折叠链），
+      // 便于在没有数据库和 UI 的环境下锁定顺序、可见性与撤回下标
+      _cachedTimeline = buildChatTimelineEntries(stateMessages);
+      _cachedReeditIndex = reeditableUserIndex(stateMessages);
+    }
+    final generatedImageKeys = _cachedImageKeys!;
+    final timeline = _cachedTimeline!;
     final displayItems = timeline.isEmpty
         ? [
             // 空会话：虚拟一条小Q问候语，避免首屏空白
@@ -1213,7 +1234,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     // 「再次编辑」入口只挂在我最后发的那条提问上：更早的轮次回退会连带撤销其后
     // 所有真实数据修改，误触代价不可接受
-    final reeditIndex = reeditableUserIndex(stateMessages);
+    final reeditIndex = _cachedReeditIndex;
 
     final totalCount = displayItems.length + (showTyping ? 1 : 0) + (showStreaming ? 1 : 0);
 

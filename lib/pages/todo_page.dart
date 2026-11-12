@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/reorder_gesture.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/folder.dart';
@@ -27,6 +28,112 @@ part 'todo_page_sheets.dart';
 
 /// 已完成待办折叠状态本地持久化键
 const String _kTodoCompletedCollapsedKey = 'todo_completed_collapsed';
+
+/// 按分类聚合后的待办视图。
+///
+/// 页面 build、分类标签栏角标与 PageView 的每一页都依赖同一份分组结果，
+/// 集中计算一次即可避免「分类数 × 待办数」的重复扫描。
+class _TodoGrouping {
+  const _TodoGrouping({
+    required this.activeTodosByFolder,
+    required this.completedTodosByFolder,
+    required this.pendingCounts,
+    required this.allIdsByFolder,
+    required this.orphanTodayIds,
+  });
+
+  /// 与 folders 下标一一对应的未完成待办。
+  final List<List<Todo>> activeTodosByFolder;
+
+  /// 与 folders 下标一一对应的已完成待办。
+  final List<List<Todo>> completedTodosByFolder;
+
+  /// 与 folders 下标一一对应的未完成数量（分类 Chip 角标）。
+  final List<int> pendingCounts;
+
+  /// 与 folders 下标一一对应的「全选」id 集合（包含已完成）。
+  final List<Set<String>> allIdsByFolder;
+
+  /// 分类列表为空时，「今日」兜底规则命中的待办 id。
+  final Set<String> orphanTodayIds;
+}
+
+/// 待办是否归属指定分类。
+///
+/// 条件与原页面 where 保持逐字对应：有 folderId 的只认 id，folderId 为空的
+/// 继续走「长期 / 今日」兜底，因此同一条待办可能同时命中多个分类。
+bool _todoBelongsToFolder(Todo todo, Folder folder, int folderIndex) {
+  if (todo.folderId == folder.id) {
+    return true;
+  }
+  if (todo.folderId != null && todo.folderId!.isNotEmpty) {
+    return false;
+  }
+  if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
+    return todo.isLongTerm;
+  }
+  if (folder.id == 'todo_default_today' || folderIndex == 0) {
+    return !todo.isLongTerm;
+  }
+  return false;
+}
+
+/// 一次性把待办按分类拆成未完成 / 已完成 / 全选 id。
+///
+/// 纯函数：只读取入参，不依赖 BuildContext 或页面状态，缓存失效时可安全重算。
+_TodoGrouping _buildTodoGrouping(List<Todo> todos, List<Folder> folders) {
+  final activeTodosByFolder = <List<Todo>>[];
+  final completedTodosByFolder = <List<Todo>>[];
+  final pendingCounts = <int>[];
+  final allIdsByFolder = <Set<String>>[];
+
+  for (var index = 0; index < folders.length; index++) {
+    final folder = folders[index];
+    final active = <Todo>[];
+    final completed = <Todo>[];
+    final allIds = <String>{};
+    for (final todo in todos) {
+      if (todo.title.trim().isEmpty || !_todoBelongsToFolder(todo, folder, index)) {
+        continue;
+      }
+      allIds.add(todo.id);
+      if (todo.isCompleted) {
+        completed.add(todo);
+      } else {
+        active.add(todo);
+      }
+    }
+    activeTodosByFolder.add(active);
+    completedTodosByFolder.add(completed);
+    pendingCounts.add(active.length);
+    allIdsByFolder.add(allIds);
+  }
+
+  // 没有分类时页面仍会计算「全选」集合：原逻辑在 safeIndex == 0 时把
+  // 无分类且非长期的待办视作今日待办，这里保留同样的兜底结果。
+  final orphanTodayIds = <String>{};
+  if (folders.isEmpty) {
+    for (final todo in todos) {
+      if (todo.title.trim().isEmpty) {
+        continue;
+      }
+      if (todo.folderId != null && todo.folderId!.isNotEmpty) {
+        continue;
+      }
+      if (!todo.isLongTerm) {
+        orphanTodayIds.add(todo.id);
+      }
+    }
+  }
+
+  return _TodoGrouping(
+    activeTodosByFolder: activeTodosByFolder,
+    completedTodosByFolder: completedTodosByFolder,
+    pendingCounts: pendingCounts,
+    allIdsByFolder: allIdsByFolder,
+    orphanTodayIds: orphanTodayIds,
+  );
+}
 
 class TodoPage extends ConsumerStatefulWidget {
   const TodoPage({super.key});
@@ -67,6 +174,25 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   int? _reorderStartIndex;
   Offset? _pointerDownPosition;
   bool _pointerMoved = false;
+
+  /// 待办分组缓存：provider 的所有写操作都会换新 List，因此引用未变即可认为
+  /// 内容未变；分类名与顺序也参与分组规则，所以待办、分类两个引用都要比对。
+  _TodoGrouping? _todoGroupingCache;
+  List<Todo>? _todoGroupingTodos;
+  List<Folder>? _todoGroupingFolders;
+
+  /// 取得与当前输入对应的分组结果，仅在待办或分类列表换新对象时重算。
+  _TodoGrouping _todoGroupingFor(List<Todo> todos, List<Folder> folders) {
+    final cached = _todoGroupingCache;
+    if (cached != null && identical(todos, _todoGroupingTodos) && identical(folders, _todoGroupingFolders)) {
+      return cached;
+    }
+    final grouping = _buildTodoGrouping(todos, folders);
+    _todoGroupingCache = grouping;
+    _todoGroupingTodos = todos;
+    _todoGroupingFolders = folders;
+    return grouping;
+  }
 
   @override
   void initState() {
@@ -211,22 +337,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final safeIndex = activeFolderIndex >= 0 ? activeFolderIndex : 0;
 
     final allTodos = todosAsync.valueOrNull ?? const <Todo>[];
-    final currentFolderTodoIds = allTodos
-        .where((t) {
-          if (t.title.trim().isEmpty) return false;
-          if (activeFolderId != null && t.folderId == activeFolderId) return true;
-          if (t.folderId == null || t.folderId!.isEmpty) {
-            if (activeFolderId == 'todo_default_longterm' || (folders.isNotEmpty && folders[safeIndex].name == '长期')) {
-              return t.isLongTerm;
-            }
-            if (activeFolderId == 'todo_default_today' || safeIndex == 0) {
-              return !t.isLongTerm;
-            }
-          }
-          return false;
-        })
-        .map((t) => t.id)
-        .toSet();
+    // 分类分组、完成态拆分与角标计数只算一次，供标签栏和 PageView 各页复用。
+    final grouping = _todoGroupingFor(allTodos, folders);
+    final currentFolderTodoIds = folders.isEmpty ? grouping.orphanTodayIds : grouping.allIdsByFolder[safeIndex];
 
     final isCurrentFolderAllSelected =
         currentFolderTodoIds.isNotEmpty && currentFolderTodoIds.every((id) => _selectedTodoIds.contains(id));
@@ -242,21 +355,31 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: colorScheme.surface,
-        floatingActionButton: _isSelectionMode
-            ? null
-            : FloatingActionButton(
-                onPressed: () {
-                  final currentFolderId = (selectedFolderId != null && folders.any((f) => f.id == selectedFolderId))
-                      ? selectedFolderId
-                      : (folders.isNotEmpty ? folders.first.id : null);
-                  _addNewTodo(currentFolderId);
-                },
-                backgroundColor: colorScheme.primary,
-                foregroundColor: colorScheme.onPrimary,
-                elevation: 2,
-                shape: const CircleBorder(),
-                child: const Icon(Icons.add, size: 28),
-              ),
+        // 与笔记页保持一致：选择态下加号同样淡出/缩放退场，而不是瞬间消失，
+        // 切换批量选择时右下角不出现「一下子没了」的突兀感。
+        floatingActionButton: AppMotion.switcher(
+          context: context,
+          baseDuration: AppDurations.fast,
+          alignment: Alignment.bottomRight,
+          child: _isSelectionMode
+              ? const SizedBox.shrink(key: ValueKey('todo_fab_hidden'))
+              : FloatingActionButton(
+                  key: const ValueKey('todo_fab'),
+                  // 显式 heroTag：与笔记页策略一致，避免同屏分支常驻时的默认 tag 冲突
+                  heroTag: 'add_todo_fab',
+                  onPressed: () {
+                    final currentFolderId = (selectedFolderId != null && folders.any((f) => f.id == selectedFolderId))
+                        ? selectedFolderId
+                        : (folders.isNotEmpty ? folders.first.id : null);
+                    _addNewTodo(currentFolderId);
+                  },
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                  elevation: 2,
+                  shape: const CircleBorder(),
+                  child: const Icon(Icons.add, size: 28),
+                ),
+        ),
         appBar: AppBar(
           centerTitle: true,
           backgroundColor: colorScheme.surface,
@@ -271,7 +394,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   },
                 ),
           title: _isSelectionMode
-              ? Text('已选择 ${_selectedTodoIds.length} 项')
+              // 与笔记页统一文案：避免「已选 / 已选择」宽度不同导致居中标题两端来回移动
+              ? Text('已选 ${_selectedTodoIds.length} 项')
               : const RecordsSectionSwitcher(active: RecordsSection.todo),
           actions: [
             if (_isSelectionMode)
@@ -310,7 +434,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           ],
         ),
         bottomNavigationBar: AnimatedSize(
-          duration: AppDurations.normal,
+          // 多选工具条的出现/收起是大范围布局变化，走 normal 档并遵循减弱动效偏好
+          duration: AppMotion.duration(context, AppDurations.normal),
           curve: AppCurves.standard,
           alignment: Alignment.bottomCenter,
           child: _isSelectionMode
@@ -386,15 +511,13 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 _pageController.jumpToPage(safeIndex);
               }
 
-              final allTodos = todosAsync.valueOrNull ?? const <Todo>[];
-
               return Column(
                 children: [
                   // 动态横向分类标签栏
                   _TodoFolderTabBar(
                     folders: folders,
                     selectedFolderId: activeFolderId,
-                    todos: allTodos,
+                    pendingCounts: grouping.pendingCounts,
                     onSelect: (folderId) {
                       FocusScope.of(context).unfocus();
                       final targetIndex = folders.indexWhere((f) => f.id == folderId);
@@ -431,38 +554,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                       },
                       itemBuilder: (context, index) {
                         final folder = folders[index];
-                        // 筛选当前分类的未完成待办
-                        final activeTodos = allTodos.where((t) {
-                          if (t.isCompleted) return false;
-                          if (t.title.trim().isEmpty) return false;
-                          if (t.folderId == folder.id) return true;
-                          if (t.folderId == null || t.folderId!.isEmpty) {
-                            if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
-                              return t.isLongTerm;
-                            }
-                            if (folder.id == 'todo_default_today' || index == 0) {
-                              return !t.isLongTerm;
-                            }
-                          }
-                          return false;
-                        }).toList();
-
-                        // 筛选当前分类的已完成待办
-                        final completedTodos = allTodos.where((t) {
-                          if (!t.isCompleted) return false;
-                          if (t.title.trim().isEmpty) return false;
-                          if (t.folderId == folder.id) return true;
-                          if (t.folderId == null || t.folderId!.isEmpty) {
-                            if (folder.id == 'todo_default_longterm' || folder.name == '长期') {
-                              return t.isLongTerm;
-                            }
-                            if (folder.id == 'todo_default_today' || index == 0) {
-                              return !t.isLongTerm;
-                            }
-                          }
-                          return false;
-                        }).toList();
-
+                        // 直接复用按列表引用缓存的分组结果，不再让每一页各自扫描 allTodos。
+                        final activeTodos = grouping.activeTodosByFolder[index];
+                        final completedTodos = grouping.completedTodosByFolder[index];
                         return _buildTodoList(context, folder.id, todosAsync, activeTodos, completedTodos);
                       },
                     ),
@@ -702,6 +796,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     _isTodoSheetOpen = true;
     showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _TodoEditBottomSheet(
@@ -821,6 +916,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final theme = Theme.of(context);
     await showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
       builder: (ctx) {
@@ -882,6 +978,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final theme = Theme.of(context);
     await showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
       builder: (ctx) {
@@ -946,6 +1043,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
     await showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       isScrollControlled: true,
       backgroundColor: colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),

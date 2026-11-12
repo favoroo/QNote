@@ -26,4 +26,11 @@ abstract class AppDurations {
 
   /// 大范围布局变化或强调动效
   static const Duration slow = Duration(milliseconds: 450);
+
+  /// 弹窗/底部面板的进出场。
+  ///
+  /// Flutter 默认是 250ms 线性（`_kBottomSheetEnterDuration`），与 App 其他转场
+  /// （强调曲线、起手快收尾缓）不同调，面板滑上来会显得「匀速推到顶」。
+  /// 统一用 [page] 档 + [AppCurves.emphasized]，与路由转场同节奏。
+  static const Duration sheet = page;
 }

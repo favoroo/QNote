@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!--
+  启动窗口背景。颜色收口到 @color/launch_background（浅色/深色两套），
+  与 App 画布色保持一致，避免 Flutter 首帧前先露出一块纯白或系统默认色。
+  MainActivity 会在 onCreate 里按用户保存的背景设置再覆盖一次。
+-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+    <item android:drawable="@color/launch_background" />
 </layer-list>

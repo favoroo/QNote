@@ -206,7 +206,7 @@ void main() {
     expect(tester.getTopLeft(bubble).dx, closeTo(8, 1));
   });
 
-  testWidgets('模态打开时悬浮层淡出禁点但保持挂载，关闭后输入框文本保留', (tester) async {
+  testWidgets('模态打开时悬浮层隐藏禁点但保持挂载，关闭后输入框文本保留', (tester) async {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
     await _openPanel(tester);
@@ -214,8 +214,8 @@ void main() {
 
     floatingQModalCount.value = 1;
     await tester.pumpAndSettle();
-    // 整层未卸载（面板仍在树中，仅淡出并禁点）
-    expect(find.byKey(const ValueKey('panel')), findsOneWidget);
+    // 整层未卸载（面板仍在树中，仅不绘制并禁点；Offstage 后需显式跳过 offstage 查找）
+    expect(find.byKey(const ValueKey('panel'), skipOffstage: false), findsOneWidget);
     expect(_outerIgnorePointer(tester).ignoring, isTrue);
 
     floatingQModalCount.value = 0;

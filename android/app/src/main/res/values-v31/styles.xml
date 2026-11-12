@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Android 12+ 系统启动屏：系统会用 windowSplashScreenBackground 铺一块底色，
+      它优先于 windowBackground。不显式指定时系统按主题推导，可能与 App 画布不同色，
+      形成「系统启动屏一种颜色 → Flutter 首帧另一种颜色」的跳变。
+      这里与 launch_background 同源，保证启动全程一个颜色。
+    -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_background</item>
+    </style>
+</resources>

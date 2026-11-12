@@ -384,6 +384,10 @@ class TimelineItemWrapper extends StatefulWidget {
 }
 
 class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
+  /// 上一次上报的高度：父级重建会为每个可见项排一次测量，尺寸没变时直接跳过，
+  /// 避免把同一高度反复写进测量表。
+  double? _lastReportedHeight;
+
   @override
   void initState() {
     super.initState();
@@ -398,7 +402,10 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
   void _reportHeight() {
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox != null && renderBox.hasSize) {
-      widget.onHeightChange(widget.index, renderBox.size.height);
+      final height = renderBox.size.height;
+      if (_lastReportedHeight == height) return;
+      _lastReportedHeight = height;
+      widget.onHeightChange(widget.index, height);
     }
   }
 
@@ -407,6 +414,7 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.index != widget.index) {
       widget.onUnmount(oldWidget.index);
+      _lastReportedHeight = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           widget.onMount(widget.index, context);

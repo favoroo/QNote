@@ -155,24 +155,6 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
               child: ListView(
                 padding: const EdgeInsets.only(top: 4, bottom: 16),
                 children: [
-                  // 数据统计是主功能而非设置项：单独一张卡片置顶，
-                  // 与下面的设置列表分层，避免被当成又一个设置入口
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppRadius.large),
-                      border: Border.all(
-                        width: 1,
-                        color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.6 : 1.0),
-                      ),
-                    ),
-                    child: _DrawerMenuItem(
-                      entry: _statisticsEntry,
-                      onTap: () => _navigateTo(context, _statisticsEntry),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   // 设置类入口收进一张集合卡片：扁平无分组，行间以超细分隔线区隔。
                   // 卡片只描边、不填色——抽屉底色已是 surface，再铺一层不透明
                   // 填充会把 InkWell 的悬停/按下高亮盖住（Ink 特征画在 Material 层，
@@ -208,6 +190,20 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                     ),
                   ),
                 ],
+              ),
+            ),
+
+            // 数据统计固定在抽屉底部：它是主功能而非设置项，放在设置列表之外，
+            // 不随列表滚动，随时可达，也不抢占顶部品牌区
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadius.large),
+                  border: Border.all(width: 1, color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.6 : 1.0)),
+                ),
+                child: _DrawerMenuItem(entry: _statisticsEntry, onTap: () => _navigateTo(context, _statisticsEntry)),
               ),
             ),
 

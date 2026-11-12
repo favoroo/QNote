@@ -78,9 +78,17 @@ class _QuickRecordSettingsPageState extends ConsumerState<QuickRecordSettingsPag
               index: _currentIndex,
               child: IndexedStack(
                 index: _currentIndex,
+                // IndexedStack 只隐藏画面不暂停子树动画；用 TickerMode 静音非当前分段，
+                // 避免隐藏页的进度指示等 repeat() 动画持续唤醒 vsync
                 children: [
-                  ShortcutsPage(key: _shortcutsKey, embedded: true),
-                  FixedEventsPage(key: _fixedEventsKey, embedded: true),
+                  TickerMode(
+                    enabled: _currentIndex == 0,
+                    child: ShortcutsPage(key: _shortcutsKey, embedded: true),
+                  ),
+                  TickerMode(
+                    enabled: _currentIndex == 1,
+                    child: FixedEventsPage(key: _fixedEventsKey, embedded: true),
+                  ),
                 ],
               ),
             ),

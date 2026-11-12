@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
 
 /// 背景设置：预设 + 自定义颜色。
 ///
@@ -15,9 +17,15 @@ final backgroundSettingProvider = NotifierProvider<BackgroundSettingNotifier, Ap
 class BackgroundSettingNotifier extends Notifier<AppBackgroundSetting> {
   @override
   AppBackgroundSetting build() {
-    // 构造时异步加载持久化的偏好，加载完成前先用默认值，避免阻塞首帧
-    _load();
     _listenWorkspaceEvents();
+    // 冷启动时 [AppearanceBootstrap.warmUp] 已在 runApp 前读到偏好，直接以它为初始
+    // state：否则首帧只能用「跟随系统」的默认值，手机深色 + App 浅色设置会先闪一屏
+    // 深色再切浅色。没有预热（如 widget 测试）时仍走异步加载兜底。
+    final bootstrapped = AppearanceBootstrap.background;
+    if (bootstrapped != null) {
+      return bootstrapped;
+    }
+    _load();
     return const AppBackgroundSetting();
   }
 
@@ -36,22 +44,12 @@ class BackgroundSettingNotifier extends Notifier<AppBackgroundSetting> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final storedIndex = prefs.getInt('background_preset');
-    final customValue = prefs.getInt('background_custom_color');
-    final customColor = customValue == null ? AppBackgroundSetting.defaultCustomColor : Color(customValue);
-
-    final AppBackgroundPreset preset;
-    if (storedIndex != null) {
-      preset = AppBackgroundPreset.values[storedIndex.clamp(0, AppBackgroundPreset.values.length - 1)];
-    } else {
-      // 旧版本只存 theme_mode，这里迁移成对应背景预设
-      preset = switch (prefs.getInt('theme_mode') ?? 0) {
-        1 => AppBackgroundPreset.light,
-        2 => AppBackgroundPreset.dark,
-        _ => AppBackgroundPreset.system,
-      };
-    }
-    state = AppBackgroundSetting(preset: preset, customColor: customColor);
+    // 解析规则与首帧预热共用 [resolveBackgroundSetting]，避免两处迁移逻辑漂移
+    state = resolveBackgroundSetting(
+      presetIndex: prefs.getInt(AppearanceKeys.backgroundPreset),
+      customColorValue: prefs.getInt(AppearanceKeys.backgroundCustomColor),
+      legacyThemeMode: prefs.getInt(AppearanceKeys.legacyThemeMode),
+    );
   }
 
   Future<void> setPreset(AppBackgroundPreset preset) async {
@@ -71,11 +69,13 @@ class BackgroundSettingNotifier extends Notifier<AppBackgroundSetting> {
 
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('background_preset', state.preset.index);
-    await prefs.setInt('background_custom_color', state.customColor.toARGB32());
+    await prefs.setInt(AppearanceKeys.backgroundPreset, state.preset.index);
+    await prefs.setInt(AppearanceKeys.backgroundCustomColor, state.customColor.toARGB32());
     // 同步旧 theme_mode，旧的 VFS 读取方与历史数据仍能理解当前明暗
     final accentColor = ref.read(accentColorProvider);
-    await prefs.setInt('theme_mode', state.legacyThemeModeIndex(accentColor: accentColor));
+    await prefs.setInt(AppearanceKeys.legacyThemeMode, state.legacyThemeModeIndex(accentColor: accentColor));
+    // 同步原生启动窗口底色：下次冷启动时窗口首帧就与 App 一致
+    await AppearanceBootstrap.persistLaunchCanvas(prefs, background: state, accentColor: accentColor);
   }
 }
 
@@ -84,9 +84,14 @@ final accentColorProvider = NotifierProvider<AccentColorNotifier, Color>(AccentC
 class AccentColorNotifier extends Notifier<Color> {
   @override
   Color build() {
-    _load();
     _listenWorkspaceEvents();
-    return const Color(0xFF005BCB);
+    // 与背景同理：首帧就用预热到的强调色，否则默认蓝色会先闪一下再切到用户色
+    final bootstrapped = AppearanceBootstrap.accentColor;
+    if (bootstrapped != null) {
+      return bootstrapped;
+    }
+    _load();
+    return AppTheme.primaryDefault;
   }
 
   void _listenWorkspaceEvents() {
@@ -104,7 +109,7 @@ class AccentColorNotifier extends Notifier<Color> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getInt('accent_color');
+    final value = prefs.getInt(AppearanceKeys.accentColor);
     if (value != null) {
       state = Color(value);
     }
@@ -113,7 +118,13 @@ class AccentColorNotifier extends Notifier<Color> {
   Future<void> setAccentColor(Color color) async {
     state = color;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('accent_color', color.toARGB32());
+    await prefs.setInt(AppearanceKeys.accentColor, color.toARGB32());
+    // 主题色背景 / 自定义背景的启动色随强调色微调，换色后要同步给原生启动窗口
+    await AppearanceBootstrap.persistLaunchCanvas(
+      prefs,
+      background: ref.read(backgroundSettingProvider),
+      accentColor: color,
+    );
   }
 }
 

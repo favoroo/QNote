@@ -3,7 +3,10 @@ package com.appone.qnote_flutter
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.drawable.ColorDrawable
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -12,6 +15,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -40,9 +44,77 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private val iconExecutor = Executors.newSingleThreadExecutor()
+
+        /// shared_preferences 插件的存储文件与键前缀（见 LegacySharedPreferencesPlugin）。
+        private const val PREFS_NAME = "FlutterSharedPreferences"
+        private const val PREFS_KEY_PREFIX = "flutter."
+        private const val KEY_LAUNCH_CANVAS_LIGHT = "${PREFS_KEY_PREFIX}launch_canvas_light"
+        private const val KEY_LAUNCH_CANVAS_DARK = "${PREFS_KEY_PREFIX}launch_canvas_dark"
+        private const val KEY_LAUNCH_NIGHT_MODE = "${PREFS_KEY_PREFIX}launch_night_mode"
+
+        /// [KEY_LAUNCH_NIGHT_MODE] 的「跟随系统」取值：不做覆盖。
+        private const val NIGHT_MODE_SYSTEM = -1
+    }
+
+    /**
+     * 让启动屏主题解析到用户实际选择的明暗。
+     *
+     * Android 12+ 的系统启动屏由系统在 `onCreate` 之前绘制，改窗口底色已经来不及；
+     * 唯一能在它之前生效的钩子就是这里的 context uiMode。App 选浅色而手机是深色模式时，
+     * 系统默认会先画一屏深色启动屏，再跳到浅色 App——这就是用户看到的「深 → 浅」闪变。
+     *
+     * 只覆盖 `UI_MODE_NIGHT_MASK`，其余 configuration（语言、密度、字号）原样保留。
+     */
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = newBase.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val nightMode = prefs.getInt(KEY_LAUNCH_NIGHT_MODE, NIGHT_MODE_SYSTEM)
+        if (nightMode == NIGHT_MODE_SYSTEM) {
+            super.attachBaseContext(newBase)
+            return
+        }
+        val config = Configuration(newBase.resources.configuration)
+        config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+            (if (nightMode == 1) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
+    /**
+     * 把启动窗口底色改成用户保存的画布色。
+     *
+     * 系统只能按 uiMode 给一套固定的 `values` / `values-night` 兜底色，而 QNote 的
+     * 明暗由「背景预设」决定：手机深色 + App 选浅色时，系统会先铺一屏深色启动图，
+     * 等 Flutter 首帧才跳到浅色，形成明显的「深 → 浅」闪变。
+     *
+     * Dart 侧在每次改外观时把两种系统亮度下的画布色写进偏好，这里在窗口绘制前读出
+     * 对应那一份覆盖掉，原生窗口与 Flutter 首帧就是同一个颜色，闪变从源头消失。
+     */
+    private fun applySavedLaunchBackground() {
+        val isNight = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        val key = if (isNight) KEY_LAUNCH_CANVAS_DARK else KEY_LAUNCH_CANVAS_LIGHT
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val stored = prefs.getString(key, null)
+        // 没有偏好数据（首次安装）时退回资源兜底色——它与 App 画布同色，不会跳变。
+        // 注意不能用 windowBackground 的 TypedValue.data：那指向 layer-list 而非颜色。
+        val color = stored?.let(::parseHexColor) ?: ContextCompat.getColor(this, R.color.launch_background)
+        window.setBackgroundDrawable(ColorDrawable(color))
+    }
+
+    /** 解析 `#RRGGBB` / `#AARRGGBB`；格式不对返回 null 交给调用方兜底。 */
+    private fun parseHexColor(value: String): Int? {
+        val hex = value.removePrefix("#")
+        val argb = when (hex.length) {
+            6 -> "FF$hex"
+            8 -> hex
+            else -> return null
+        }
+        return argb.toLongOrNull(16)?.toInt()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 必须在 super.onCreate 之前：FlutterActivity 会在这里切到 NormalTheme 并创建
+        // SurfaceView，晚于它设置窗口底色会在首帧前露出一瞬系统主题色。
+        applySavedLaunchBackground()
         super.onCreate(savedInstanceState)
         handleIntent(intent)
         // 升级覆盖安装后系统不会自动触发小组件 onUpdate，冷启动时主动刷新一次，

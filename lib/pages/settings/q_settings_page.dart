@@ -74,11 +74,16 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
               index: _currentIndex,
               child: IndexedStack(
                 index: _currentIndex,
+                // IndexedStack 只隐藏画面不暂停子树动画；用 TickerMode 静音非当前分段，
+                // 否则 LoadingRing / EmptyState 的 repeat() 仍会持续唤醒 vsync
                 children: [
-                  const QPersonalityPage(embedded: true),
-                  QSkillsPage(key: _skillsKey, embedded: true),
-                  const QMemoryPage(embedded: true),
-                  const QVoicePage(embedded: true),
+                  TickerMode(enabled: _currentIndex == 0, child: const QPersonalityPage(embedded: true)),
+                  TickerMode(
+                    enabled: _currentIndex == 1,
+                    child: QSkillsPage(key: _skillsKey, embedded: true),
+                  ),
+                  TickerMode(enabled: _currentIndex == 2, child: const QMemoryPage(embedded: true)),
+                  TickerMode(enabled: _currentIndex == 3, child: const QVoicePage(embedded: true)),
                 ],
               ),
             ),

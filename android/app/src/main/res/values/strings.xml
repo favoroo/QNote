@@ -10,7 +10,6 @@
     <string name="widget_quick_record_label">快捷记录</string>
     <string name="widget_quick_record_description">不打开 App 也能随手记一条</string>
     <string name="widget_ai_label">问小Q</string>
-    <string name="widget_ai_description">一键打开小Q，支持 1×1 到 2×2 自由调整</string>
+    <string name="widget_ai_description">一颗圆钮直达小Q，支持 1×1 到 2×2 自由调整</string>
     <string name="widget_ai_open">打开问小Q</string>
-    <string name="widget_ai_tagline">问一句，记一笔</string>
 </resources>

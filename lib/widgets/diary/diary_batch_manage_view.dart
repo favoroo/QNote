@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -228,6 +229,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             children: _allTags.map((tag) {
                               final isSelected = tempSelectedTags.contains(tag);
                               final tagColor = _tagColor(tag);
+                              // 选中态文字压深到标签色淡底可读，避免琥珀等亮色直接当字色
+                              final tagInk = _contentInk(tagColor, colorScheme, 0.18);
                               return FilterChip(
                                 label: Text(tag),
                                 selected: isSelected,
@@ -241,11 +244,11 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                   });
                                 },
                                 selectedColor: tagColor.withValues(alpha: 0.18),
-                                checkmarkColor: tagColor,
+                                checkmarkColor: tagInk,
                                 labelStyle: TextStyle(
                                   fontSize: AppTypography.body,
                                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                  color: isSelected ? tagColor : colorScheme.onSurface,
+                                  color: isSelected ? tagInk : colorScheme.onSurface,
                                 ),
                                 side: BorderSide(
                                   color: isSelected
@@ -585,15 +588,18 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     if (record.tagEntries.isNotEmpty) {
       for (final entry in record.tagEntries) {
         final color = _tagColor(entry.name);
+        // 胶囊文字统一用同色系可读前景，避免亮色标签贴淡底时只剩 2~3:1
+        final nameInk = _contentInk(color, colorScheme, 0.12);
+        final fieldInk = _contentInk(color, colorScheme, 0.02);
 
-        // Add the primary tag pill (filled)
+        // Add the primary tag pill (tinted)
         rowItems.add(
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
             child: Text(
               entry.name,
-              style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.bold),
+              style: theme.textTheme.labelSmall?.copyWith(color: nameInk, fontWeight: FontWeight.bold),
             ),
           ),
         );
@@ -611,10 +617,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               ),
               child: Text(
                 tagText,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: color.withValues(alpha: 0.9),
-                  fontWeight: FontWeight.w500,
-                ),
+                style: theme.textTheme.labelSmall?.copyWith(color: fieldInk, fontWeight: FontWeight.w500),
               ),
             ),
           );
@@ -896,6 +899,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   void _openRecordDetails(DiaryRecord record) {
     showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {

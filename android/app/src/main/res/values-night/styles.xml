@@ -13,7 +13,8 @@
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- 与启动屏同色（深色版），避免主题切换瞬间闪出系统纯黑 -->
+        <item name="android:windowBackground">@color/launch_background</item>
     </style>
 
     <!-- 小组件原生弹窗（快捷记录 / 待办快速添加）共用的透明浮层主题（深色变体） -->

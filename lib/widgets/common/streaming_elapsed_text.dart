@@ -23,9 +23,23 @@ class StreamingElapsedText extends StatefulWidget {
 class _StreamingElapsedTextState extends State<StreamingElapsedText> {
   Timer? _timer;
 
+  /// 当前所在子树是否可见；TickerMode 关闭时暂停秒表，避免后台空转
+  bool _visible = true;
+
   @override
   void initState() {
     super.initState();
+    // 先按可见启动；若挂载时就处于隐藏子树，紧随其后的 didChangeDependencies 会立刻停表
+    _syncTicker();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // TickerMode 变化会通知依赖者（切 tab、被路由覆盖等），据此成对暂停/恢复
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (visible == _visible) return;
+    _visible = visible;
     _syncTicker();
   }
 
@@ -35,9 +49,9 @@ class _StreamingElapsedTextState extends State<StreamingElapsedText> {
     _syncTicker();
   }
 
-  /// 起点存在时每秒自增刷新；起点被清空即停表
+  /// 起点存在且可见时每秒自增刷新；起点被清空或子树隐藏即停表
   void _syncTicker() {
-    if (widget.startedAt == null) {
+    if (widget.startedAt == null || !_visible) {
       _timer?.cancel();
       _timer = null;
       return;

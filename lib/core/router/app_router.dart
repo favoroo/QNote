@@ -27,6 +27,7 @@ import 'package:qnote_flutter/widgets/diary/diary_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_batch_manage_view.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
 import 'package:qnote_flutter/widgets/bottom_nav_bar.dart';
+import 'package:qnote_flutter/widgets/shell_branch_container.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
@@ -46,9 +47,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     // 模态路由观察者：Dialog/BottomSheet 打开时全局悬浮小Q自动隐藏
     observers: [FloatingQModalRouteObserver()],
     routes: [
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (context, state, navigationShell) {
           return ScaffoldWithNavBar(navigationShell: navigationShell);
+        },
+        // 分支切换过渡收在自定义容器里：记录板块内切换零位移，其他分支带微位移溶解。
+        navigatorContainerBuilder: (context, navigationShell, children) {
+          return ShellBranchContainer(currentIndex: navigationShell.currentIndex, children: children);
         },
         branches: [
           StatefulShellBranch(

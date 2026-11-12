@@ -158,24 +158,13 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             ),
           ),
           Expanded(
-            child: AnimatedSwitcher(
-              duration: AppMotion.duration(context, AppDurations.medium),
-              switchInCurve: AppCurves.emphasized,
-              switchOutCurve: AppCurves.exit,
-              // 默认 layoutBuilder 为 center 对齐且约束 loose，内容较短的 tab
-              // （如饮食）会收缩高度后整体垂直居中，顶部留出大片空白；
-              // 改为撑满 + 顶部对齐，短内容贴顶显示，loading 圈仍居中
-              layoutBuilder: (currentChild, previousChildren) {
-                return Stack(
-                  alignment: Alignment.topCenter,
-                  fit: StackFit.expand,
-                  children: [...previousChildren, ?currentChild],
-                );
-              },
-              child: KeyedSubtree(
-                key: ValueKey('${_activeTab.name}_${_timeRange.name}'),
-                child: _buildContent(startDate, endDate),
-              ),
+            // 图表区不再包 AnimatedSwitcher：它会让新旧两份重图表同时挂载并
+            // 交叉淡入（StackFit.expand 还会强制双份布局），切 tab / 时间范围时
+            // 明显掉帧。这里按 key 直接替换子树，状态间的轻量淡入交给
+            // _buildContent 内那层只监听 AsyncValue 的 AnimatedSwitcher。
+            child: KeyedSubtree(
+              key: ValueKey('${_activeTab.name}_${_timeRange.name}'),
+              child: _buildContent(startDate, endDate),
             ),
           ),
         ],
@@ -205,10 +194,22 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     final query = StatsQuery(start: startDate, end: endDate, tab: _activeTab);
     final statsAsync = ref.watch(statsProvider(query));
 
+    // 图表区唯一的淡入层：只在 loading / error / empty / data 之间切换时使用，
+    // 此时对侧要么是轻量占位、要么只有一张图表，不会出现两张重图表同时布局。
     return AnimatedSwitcher(
       duration: AppMotion.duration(context, AppDurations.normal),
       switchInCurve: AppCurves.emphasized,
       switchOutCurve: AppCurves.exit,
+      // 默认 layoutBuilder 为 center 对齐且约束 loose，内容较短的 tab
+      // （如饮食）会收缩高度后整体垂直居中，顶部留出大片空白；
+      // 改为撑满 + 顶部对齐，短内容贴顶显示，loading 圈仍居中
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          alignment: Alignment.topCenter,
+          fit: StackFit.expand,
+          children: [...previousChildren, ?currentChild],
+        );
+      },
       child: statsAsync.when(
         loading: () => const Center(key: ValueKey('stats_loading'), child: CircularProgressIndicator()),
         error: (err, stack) => Center(key: const ValueKey('stats_error'), child: Text('统计失败：$err')),

@@ -3,7 +3,7 @@
   「问小Q」入口组件：默认 1×1 圆形按钮，可双向调整到 2×2。
   minWidth/minHeight 按 Android 官方「70×格数−30」口径取 1 格 40dp、2 格 110dp；
   targetCell 固定 1×1 让新加的组件先落在最小形态，maxResize*（API 31+）把上限锁在 2×2。
-  previewLayout 用 1×1 圆钮，选择器里就是用户最终看到的默认外观。
+  四种尺寸共用同一套圆形布局，previewLayout 即用户最终看到的默认外观。
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="40dp"

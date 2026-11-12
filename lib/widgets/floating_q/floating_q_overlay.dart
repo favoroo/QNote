@@ -365,51 +365,56 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
       }
     });
 
+    // 弹窗页只依赖屏幕尺寸/安全区与会话签名，morph 期间这些都不变：在 build
+    // 时构建一次，交给 AnimatedBuilder.child 复用。变形每帧只重建外壳
+    // （Positioned/圆角/阴影/裁剪），不再每帧重建整块对话面板与消息列表。
+    final showDialog = _closing || _minimizing || mode == FloatingQPanelMode.panel;
+    final Widget? dialogPage = showDialog ? _buildDialogPage(size) : null;
+
     return ValueListenableBuilder<int>(
       valueListenable: floatingQModalCount,
       builder: (context, modalCount, _) {
         // 模态弹窗（对话框/底部弹层）打开时隐藏悬浮层。
-        // 改用淡出+禁点而非整层卸载：隐藏/恢复获得淡入淡出过渡，
-        // 面板开着时弹出补充提问框也不再丢失输入框文本。
+        // 内容用 Offstage 隐藏而非整层 Opacity：既保留面板 Element/State
+        // （输入框文本、滚动位置不丢），又不会对整屏叠加层做 saveLayer。
         final layerHidden = modalCount > 0;
 
         return IgnorePointer(
           ignoring: layerHidden,
-          child: AnimatedOpacity(
-            opacity: layerHidden ? 0 : 1,
-            duration: AppDurations.normal,
-            curve: Curves.easeOut,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_morphController, _exitController]),
-              builder: (context, _) {
-                final showDialog = _closing || _minimizing || mode == FloatingQPanelMode.panel;
-                final showBubble = mode == FloatingQPanelMode.bubble && !_minimizing && !_closing;
-                return Stack(
-                  children: [
-                    if (showDialog) ..._buildDialogLayers(size, padding, keyboardInset, bubblePosition),
-                    if (showBubble)
-                      _FloatingQBubble(
-                        key: const ValueKey('floating-q-bubble'),
-                        position: _bubblePosition(size, padding, keyboardInset, bubblePosition),
-                        working: runActive,
-                        unread: unread,
-                        onTap: _handleBubbleTap,
-                        onDragUpdate: (position) {
-                          final clamped = _clampBubblePosition(position, size, padding, keyboardInset);
-                          setState(() => _liveBubblePosition = clamped);
-                        },
-                        onDragEnd: () {
-                          final current =
-                              _liveBubblePosition ?? _bubblePosition(size, padding, keyboardInset, bubblePosition);
-                          final snapped = _snapBubble(current, size);
-                          setState(() => _liveBubblePosition = null);
-                          ref.read(floatingQProvider.notifier).setBubblePosition(snapped);
-                        },
-                      ),
-                  ],
-                );
-              },
-            ),
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_morphController, _exitController]),
+            child: dialogPage,
+            builder: (context, child) {
+              final showBubble = mode == FloatingQPanelMode.bubble && !_minimizing && !_closing;
+              return Stack(
+                children: [
+                  if (showDialog)
+                    ..._buildDialogLayers(size, padding, keyboardInset, bubblePosition, child!, hidden: layerHidden),
+                  // 气泡根节点是 AnimatedPositioned，直接再包 Opacity/Offstage 会
+                  // 在 Stack 与 Positioned 之间插入 RenderObject、破坏 ParentData；
+                  // 它只有几十像素，模态遮挡时干脆不挂载（无需保留内部拖拽状态）。
+                  if (showBubble && !layerHidden)
+                    _FloatingQBubble(
+                      key: const ValueKey('floating-q-bubble'),
+                      position: _bubblePosition(size, padding, keyboardInset, bubblePosition),
+                      working: runActive,
+                      unread: unread,
+                      onTap: _handleBubbleTap,
+                      onDragUpdate: (position) {
+                        final clamped = _clampBubblePosition(position, size, padding, keyboardInset);
+                        setState(() => _liveBubblePosition = clamped);
+                      },
+                      onDragEnd: () {
+                        final current =
+                            _liveBubblePosition ?? _bubblePosition(size, padding, keyboardInset, bubblePosition);
+                        final snapped = _snapBubble(current, size);
+                        setState(() => _liveBubblePosition = null);
+                        ref.read(floatingQProvider.notifier).setBubblePosition(snapped);
+                      },
+                    ),
+                ],
+              );
+            },
           ),
         );
       },
@@ -420,20 +425,34 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
   // 变形层
   // ==========================================
 
-  List<Widget> _buildDialogLayers(Size size, EdgeInsets padding, double keyboardInset, Offset? bubblePosition) {
+  List<Widget> _buildDialogLayers(
+    Size size,
+    EdgeInsets padding,
+    double keyboardInset,
+    Offset? bubblePosition,
+    Widget page, {
+    required bool hidden,
+  }) {
     if (_closing) {
       final fade = Curves.easeInCubic.transform(_exitController.value);
       return [
-        Opacity(
-          opacity: (1 - fade).clamp(0.0, 1.0),
-          child: Transform.scale(
-            scale: 0.96 + 0.04 * (1 - fade),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _buildScrim(1, allowDismiss: false),
-                _buildContentWindow(Offset.zero & size, 0, size, clip: false, interactive: false),
-              ],
+        // × 关闭的整屏缩放淡出保持原样（仅 220ms）；模态遮挡时整层 Offstage，
+        // 避免与关闭自身的透明度合成再叠加一层离屏层。
+        Positioned.fill(
+          child: Offstage(
+            offstage: hidden,
+            child: Opacity(
+              opacity: (1 - fade).clamp(0.0, 1.0),
+              child: Transform.scale(
+                scale: 0.96 + 0.04 * (1 - fade),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildScrim(1, allowDismiss: false),
+                    _buildContentWindow(Offset.zero & size, 0, size, page, clip: false, interactive: false),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -445,7 +464,10 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     // Stack 的另一层会让 Element 重新挂载，输入框和焦点会被重置。
     final isSteady = !_minimizing && _morphController.value >= 1;
     if (isSteady) {
-      return [_buildScrim(1, allowDismiss: true), _buildContentWindow(Offset.zero & size, 0, size, clip: false)];
+      return [
+        _buildScrim(1, allowDismiss: true, hidden: hidden),
+        _buildBody(hidden, [_buildContentWindow(Offset.zero & size, 0, size, page, clip: false)]),
+      ];
     }
 
     final dialogRect = _readDialogRect() ?? _lastDialogRect ?? _fallbackDialogRect(size, padding, keyboardInset);
@@ -462,34 +484,60 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     final ghostRect = _minimizing ? bubbleRect : (_openOrigin ?? bubbleRect);
 
     return [
-      _buildScrim(_scrimProgress.value, allowDismiss: !_minimizing && !_closing && t > 0.4),
-      _buildContainer(rect, radius, color, shadow),
-      _buildContentWindow(rect, radius, size, interactive: !_minimizing && !_closing),
-      if (ghostOpacity > 0.001)
-        Positioned.fromRect(
-          key: const ValueKey('floating-q-bubble-ghost'),
-          rect: ghostRect,
-          child: IgnorePointer(
-            child: Opacity(
-              opacity: ghostOpacity,
-              child: _FloatingQBubbleVisual(working: ref.read(floatingQProvider).runActive, unread: false),
+      _buildScrim(_scrimProgress.value, allowDismiss: !_minimizing && !_closing && t > 0.4, hidden: hidden),
+      _buildBody(hidden, [
+        _buildContainer(rect, radius, color, shadow),
+        _buildContentWindow(rect, radius, size, page, interactive: !_minimizing && !_closing),
+        if (ghostOpacity > 0.001)
+          Positioned.fromRect(
+            key: const ValueKey('floating-q-bubble-ghost'),
+            rect: ghostRect,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: ghostOpacity,
+                child: _FloatingQBubbleVisual(working: ref.read(floatingQProvider).runActive, unread: false),
+              ),
             ),
           ),
-        ),
+      ]),
     ];
+  }
+
+  /// 把变形主体（容器 + 内容窗口 + 幽灵气泡）收进同一层，供模态遮挡时整体隐藏。
+  ///
+  /// [Offstage] 只跳过绘制与命中测试，不卸载子树：面板 State 里的输入框文本、
+  /// 消息滚动位置和选区都保留。相比给整块内容套 Opacity，它不会建立离屏层。
+  Widget _buildBody(bool hidden, List<Widget> children) {
+    return Positioned.fill(
+      child: Offstage(
+        offstage: hidden,
+        child: Stack(children: children),
+      ),
+    );
   }
 
   /// 自绘遮罩。
   ///
   /// 变形路径把路由的 barrier 设成透明，遮罩跟着容器一起动；[allowDismiss]
   /// 为 false 时仍然吃掉点击（空回调），防止穿透到下面的页面。
-  Widget _buildScrim(double opacity, {required bool allowDismiss}) {
+  ///
+  /// [hidden] 控制模态弹窗打开时的淡出：这里只插值纯色 alpha，不套 Opacity，
+  /// 因此不会为整屏建立 saveLayer。
+  Widget _buildScrim(double opacity, {required bool allowDismiss, bool hidden = false}) {
+    final baseAlpha = 0.4 * opacity.clamp(0.0, 1.0).toDouble();
     return Positioned.fill(
       key: const ValueKey('floating-q-scrim'),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: allowDismiss ? _handleMinimize : () {},
-        child: ColoredBox(color: Colors.black.withValues(alpha: 0.4 * opacity.clamp(0.0, 1.0).toDouble())),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: hidden ? 0 : 1),
+        duration: AppDurations.normal,
+        curve: Curves.easeOut,
+        builder: (context, visible, _) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: allowDismiss ? _handleMinimize : () {},
+            child: ColoredBox(color: Colors.black.withValues(alpha: baseAlpha * visible)),
+          );
+        },
       ),
     );
   }
@@ -513,7 +561,16 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
   /// [OverflowBox] 让弹窗仍按最终全屏尺寸布局，[Transform.translate] 再把
   /// 整页平移回全屏原点——外层 Positioned 的偏移和这里的平移恰好抵消，所以
   /// 窗口怎么变都不会触发弹窗重新布局，量到的卡片 Rect 也始终是最终值。
-  Widget _buildContentWindow(Rect rect, double radius, Size size, {bool clip = true, bool interactive = true}) {
+  ///
+  /// [page] 由外层 build 构建一次后跨帧复用，morph 每帧只更新这里的平移与裁剪。
+  Widget _buildContentWindow(
+    Rect rect,
+    double radius,
+    Size size,
+    Widget page, {
+    bool clip = true,
+    bool interactive = true,
+  }) {
     return Positioned.fromRect(
       key: const ValueKey('floating-q-window'),
       rect: rect,
@@ -531,7 +588,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
             maxHeight: size.height,
             child: Transform.translate(
               offset: -rect.topLeft,
-              child: RepaintBoundary(child: _buildDialogPage(size)),
+              child: RepaintBoundary(child: page),
             ),
           ),
         ),

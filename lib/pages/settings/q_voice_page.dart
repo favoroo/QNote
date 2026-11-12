@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/core/tts/tts_service.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -177,6 +178,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
   void _showVoicePicker() {
     showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -295,6 +297,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
   void _showRatePicker() {
     showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

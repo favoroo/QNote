@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  「问小Q」1×1 默认形态：整格就是一颗圆形按钮，不放文字。
-  1×1 单元格通常只有 56dp 左右，再塞标题会把圆钮压小；组件名在启动器的选择器里已有展示。
+  「问小Q」桌面入口：整格就是一颗实心圆形按钮，无文字。
 
-  圆钮本体是一个 56dp 矢量，ImageView 用 centerInside 等比缩放：
-  窄格自动缩小、宽格保持 56dp，不会像 shape 背景那样被拉成椭圆。
+  圆本身画在 ic_widget_ai_circle 矢量里，ImageView 用 centerInside 等比缩放：
+  2×1 / 1×2 / 2×2 等非正方格子下圆不会被拉成椭圆，直径始终跟随格子短边。
   透明四周也属于点击热区（root 设置 PendingIntent），比只点圆面更好按。
+
+  刻意不加任何 TextView：1×1 只有 56dp 左右，塞文字会把圆压小；
+  组件名称在启动器的选择器里已有展示。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_ai_entry_root"
@@ -18,8 +20,7 @@
         android:id="@+id/ai_entry_icon"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_margin="2dp"
         android:importantForAccessibility="no"
         android:scaleType="centerInside"
-        android:src="@drawable/ic_widget_ai_button" />
+        android:src="@drawable/ic_widget_ai_circle" />
 </FrameLayout>

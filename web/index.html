@@ -29,8 +29,43 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>qnote_flutter</title>
+  <title>QNote</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    启动底色预置：Flutter 引擎加载完成前 body 默认是纯白，深色背景用户会先看到一屏白。
+    这里同步读取 shared_preferences 写下的画布色（localStorage 键带 `flutter.` 前缀、
+    值经 JSON 编码），在首帧前把 body 铺成 App 的真实底色，与原生端启动窗口策略一致。
+    脚本必须内联且放在 head 里：任何外部资源都会让白底多停留一帧。
+  -->
+  <script>
+    (function () {
+      var FALLBACK_LIGHT = '#F9F9FF';
+      var FALLBACK_DARK = '#111318';
+      function readPref(key) {
+        try {
+          var raw = window.localStorage.getItem('flutter.' + key);
+          return raw === null ? null : JSON.parse(raw);
+        } catch (e) {
+          return null;
+        }
+      }
+      try {
+        var nightMode = readPref('launch_night_mode');
+        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = nightMode === 1 || (nightMode !== 0 && prefersDark);
+        var stored = readPref(isDark ? 'launch_canvas_dark' : 'launch_canvas_light');
+        var color = stored || (isDark ? FALLBACK_DARK : FALLBACK_LIGHT);
+        document.documentElement.style.backgroundColor = color;
+        document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+        document.addEventListener('DOMContentLoaded', function () {
+          document.body.style.backgroundColor = color;
+        });
+      } catch (e) {
+        // 取不到偏好时保持浏览器默认底色，不影响正常加载
+      }
+    })();
+  </script>
 </head>
 <body>
   <!--

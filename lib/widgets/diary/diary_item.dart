@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
@@ -536,10 +537,12 @@ class _DiaryItemState extends State<DiaryItem> {
                           padding: const EdgeInsets.only(top: 12),
                           child: AnimatedScale(
                             scale: isTimeDragging ? 1.12 : 1,
-                            duration: const Duration(milliseconds: 140),
-                            curve: Curves.easeOut,
+                            // 拖时反馈走 press 档：与全 App 其他按压/拖拽反馈同一手感，
+                            // 且系统开启减弱动效时直接落在终态
+                            duration: AppMotion.duration(context, AppDurations.press),
+                            curve: AppCurves.standard,
                             child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 140),
+                              duration: AppMotion.duration(context, AppDurations.press),
                               width: 32,
                               height: 32,
                               decoration: BoxDecoration(
@@ -596,11 +599,11 @@ class _DiaryItemState extends State<DiaryItem> {
                   behavior: HitTestBehavior.opaque,
                   child: AnimatedOpacity(
                     opacity: isTimeDragging ? 0.24 : 1,
-                    duration: const Duration(milliseconds: 140),
+                    duration: AppMotion.duration(context, AppDurations.press),
                     child: AnimatedScale(
                       scale: isTimeDragging ? 0.97 : 1,
-                      duration: const Duration(milliseconds: 140),
-                      curve: Curves.easeOut,
+                      duration: AppMotion.duration(context, AppDurations.press),
+                      curve: AppCurves.standard,
                       child: AnimatedGradientBorder(
                         isAnimating: isExtracting,
                         borderRadius: 16,
@@ -608,7 +611,7 @@ class _DiaryItemState extends State<DiaryItem> {
                         child: AnimatedContainer(
                           key: _effectiveCardKey,
                           duration: AppMotion.duration(context, AppDurations.fast),
-                          curve: Curves.easeOutCubic,
+                          curve: AppCurves.emphasized,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surface,
@@ -815,6 +818,9 @@ class _DiaryItemState extends State<DiaryItem> {
     final hasCategory = categoryTag != null && categoryTag.isNotEmpty;
     // 时间胶囊前景压深到可读：标签色里琥珀/翡翠绿贴淡底只有 2:1 左右
     final pillInk = AppContrast.inkOnTint(primaryTagColor, theme.colorScheme.surface, 0.1);
+    // 种类标签用淡彩底而非实心底：饱和实心块配黑字在亮色标签上显得沉重，
+    // 淡底 + 同色系压深文字既保留色相识别，又和卡片内其它胶囊保持一致。
+    final categoryInk = AppContrast.inkOnTint(primaryTagColor, theme.colorScheme.surface, 0.12);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -856,18 +862,13 @@ class _DiaryItemState extends State<DiaryItem> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
             decoration: BoxDecoration(
-              color: primaryTagColor,
+              color: primaryTagColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(color: primaryTagColor.withValues(alpha: 0.22), blurRadius: 4, offset: const Offset(0, 1.5)),
-              ],
+              border: Border.all(color: primaryTagColor.withValues(alpha: 0.24)),
             ),
             child: Text(
               categoryTag,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: AppContrast.onColor(primaryTagColor),
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.labelSmall?.copyWith(color: categoryInk, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -881,6 +882,8 @@ class _DiaryItemState extends State<DiaryItem> {
     if (record.tagEntries.isNotEmpty) {
       for (final entry in record.tagEntries) {
         final color = _tagColor(entry.name);
+        // 属性胶囊文字用同色系可读前景：亮色标签直接取原色贴淡底只有 2~3:1
+        final ink = AppContrast.inkOnTint(color, theme.colorScheme.surface, 0.1);
 
         // 仅添加属性字段胶囊（种类标签已固定展示在卡片右上角，单标签模式下无需在此重复显示）
         final additionalTags = _buildAdditionalTags(entry);
@@ -891,10 +894,7 @@ class _DiaryItemState extends State<DiaryItem> {
               decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
               child: Text(
                 tagText,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: color.withValues(alpha: 0.9),
-                  fontWeight: FontWeight.w600,
-                ),
+                style: theme.textTheme.labelSmall?.copyWith(color: ink, fontWeight: FontWeight.w600),
               ),
             ),
           );
@@ -942,28 +942,28 @@ class _DiaryItemState extends State<DiaryItem> {
   Widget _buildTagEntryPills(ThemeData theme, TagEntry entry, {bool showIcon = false, String? showTime}) {
     final color = _tagColor(entry.name);
     final icon = _tagIcon(entry.name);
+    // 标签名胶囊走淡彩底：多标签卡片里每段都铺一块饱和实心，视觉重量会盖过正文
+    final nameInk = AppContrast.inkOnTint(color, theme.colorScheme.surface, 0.14);
+    final fieldInk = AppContrast.inkOnTint(color, theme.colorScheme.surface, 0.1);
 
     final rowItems = <Widget>[];
 
-    // 1. Tag name pill (filled)
+    // 1. Tag name pill (tinted)
     rowItems.add(
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: color,
+          color: color.withValues(alpha: 0.14),
           borderRadius: BorderRadius.circular(8),
-          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 4, offset: const Offset(0, 2))],
+          border: Border.all(color: color.withValues(alpha: 0.28)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showIcon) ...[Icon(icon, size: 12, color: AppContrast.onColor(color)), const SizedBox(width: 4)],
+            if (showIcon) ...[Icon(icon, size: 12, color: nameInk), const SizedBox(width: 4)],
             Text(
               entry.name,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: AppContrast.onColor(color),
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.labelSmall?.copyWith(color: nameInk, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -979,10 +979,7 @@ class _DiaryItemState extends State<DiaryItem> {
           decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
           child: Text(
             tagText,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color.withValues(alpha: 0.9),
-              fontWeight: FontWeight.w600,
-            ),
+            style: theme.textTheme.labelSmall?.copyWith(color: fieldInk, fontWeight: FontWeight.w600),
           ),
         ),
       );

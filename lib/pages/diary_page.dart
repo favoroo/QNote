@@ -2484,8 +2484,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                               const SizedBox(width: 4),
                                               AnimatedRotation(
                                                 turns: isExpanded ? 0.0 : -0.25,
-                                                duration: const Duration(milliseconds: 200),
-                                                curve: Curves.easeInOut,
+                                                duration: AppMotion.duration(context, AppDurations.normal),
+                                                curve: AppCurves.standard,
                                                 child: Icon(
                                                   Icons.keyboard_arrow_down_rounded,
                                                   size: 18,

@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      启动窗口底色。取值与 App 浅色画布一致（AppSurfacePalette.legacyLight.canvas），
+      避免 Flutter 首帧画出来之前先露出一块纯白。MainActivity 会在 onCreate 里按用户
+      保存的背景设置覆盖它，这里只是没有偏好数据时的兜底。
+    -->
+    <color name="launch_background">#F9F9FF</color>
     <color name="widget_background">#F5F6FA</color>
     <color name="widget_border">#E2E4EB</color>
     <color name="widget_text_primary">#1C1C1E</color>
@@ -17,17 +23,11 @@
     <color name="widget_priority">#007AFF</color>
     <color name="widget_badge_text">#FFFFFFFF</color>
     <!--
-      「问小Q」多尺寸组件专属 token（深色版见 values-night/colors.xml）。
-      圆钮渐变、机器人屏幕色与卡片渐变都收口在这里，布局/矢量里不出现裸 hex。
+      「问小Q」组件专属 token（深色版见 values-night/colors.xml）。
+      整个组件是一颗纯色圆，只留圆底色与机器人色两个 token，矢量里不出现裸 hex。
     -->
-    <color name="widget_ai_button_start">#4D97FF</color>
-    <color name="widget_ai_button_end">#0056D6</color>
-    <color name="widget_ai_button_ring">#38FFFFFF</color>
+    <color name="widget_ai_circle">#007AFF</color>
     <color name="widget_ai_robot">#FFFFFFFF</color>
-    <color name="widget_ai_screen">#0B3F9E</color>
-    <color name="widget_ai_card_top">#FFFFFFFF</color>
-    <color name="widget_ai_card_bottom">#F2F6FF</color>
-    <color name="widget_ai_card_stroke">#E4EAF7</color>
     <color name="dialog_bg">#FFFFFF</color>
     <color name="dialog_text">#1C1C1E</color>
     <color name="dialog_input_bg">#F2F2F7</color>

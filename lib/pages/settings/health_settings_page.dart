@@ -85,18 +85,26 @@ class _HealthSettingsPageState extends ConsumerState<HealthSettingsPage> {
               index: _currentIndex,
               child: IndexedStack(
                 index: _currentIndex,
+                // IndexedStack 只隐藏画面不暂停子树动画；用 TickerMode 静音非当前分段，
+                // 避免隐藏页的加载动画（正在同步/刷新时尤为明显）持续唤醒 vsync
                 children: [
-                  MiFitnessSettingsPage(
-                    key: _fitnessKey,
-                    initialDate: widget.initialDate,
-                    embedded: true,
-                    statusNotifier: _fitnessStatus,
+                  TickerMode(
+                    enabled: _currentIndex == 0,
+                    child: MiFitnessSettingsPage(
+                      key: _fitnessKey,
+                      initialDate: widget.initialDate,
+                      embedded: true,
+                      statusNotifier: _fitnessStatus,
+                    ),
                   ),
-                  ScreenUsagePage(
-                    key: _screenKey,
-                    initialDate: widget.initialDate,
-                    embedded: true,
-                    refreshingNotifier: _screenRefreshing,
+                  TickerMode(
+                    enabled: _currentIndex == 1,
+                    child: ScreenUsagePage(
+                      key: _screenKey,
+                      initialDate: widget.initialDate,
+                      embedded: true,
+                      refreshingNotifier: _screenRefreshing,
+                    ),
                   ),
                 ],
               ),

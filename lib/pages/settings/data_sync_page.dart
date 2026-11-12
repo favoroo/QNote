@@ -124,16 +124,21 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
                 index: _currentIndex,
                 child: IndexedStack(
                   index: _currentIndex,
+                  // IndexedStack 只隐藏画面不暂停子树动画；用 TickerMode 静音非当前分段，
+                  // 避免备份/恢复等隐藏页的进度动画持续唤醒 vsync
                   children: [
-                    SyncSettingsView(
-                      key: _syncKey,
-                      onDirtyChanged: (dirty) {
-                        if (_syncDirty == dirty) return;
-                        setState(() => _syncDirty = dirty);
-                      },
+                    TickerMode(
+                      enabled: _currentIndex == 0,
+                      child: SyncSettingsView(
+                        key: _syncKey,
+                        onDirtyChanged: (dirty) {
+                          if (_syncDirty == dirty) return;
+                          setState(() => _syncDirty = dirty);
+                        },
+                      ),
                     ),
-                    const _BackupRestoreTab(),
-                    const _MaintenanceTab(),
+                    TickerMode(enabled: _currentIndex == 1, child: const _BackupRestoreTab()),
+                    TickerMode(enabled: _currentIndex == 2, child: const _MaintenanceTab()),
                   ],
                 ),
               ),
