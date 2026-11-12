@@ -1,38 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  「问小Q」1×1 默认形态：整格就是一颗圆形按钮，不放文字。
+  1×1 单元格通常只有 56dp 左右，再塞标题会把圆钮压小；组件名在启动器的选择器里已有展示。
+
+  圆钮本体是一个 56dp 矢量，ImageView 用 centerInside 等比缩放：
+  窄格自动缩小、宽格保持 56dp，不会像 shape 背景那样被拉成椭圆。
+  透明四周也属于点击热区（root 设置 PendingIntent），比只点圆面更好按。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_ai_entry_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="12dp">
+    android:background="@android:color/transparent"
+    android:contentDescription="@string/widget_ai_open">
 
     <ImageView
         android:id="@+id/ai_entry_icon"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:contentDescription="问小Q"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_ai_entry" />
-
-    <TextView
-        android:id="@+id/ai_entry_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="问小Q"
-        android:textColor="@color/widget_text_primary"
-        android:textSize="15sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/ai_entry_subtitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:gravity="center"
-        android:text="随手提问、记录与整理"
-        android:textColor="@color/widget_text_secondary"
-        android:textSize="11sp" />
-</LinearLayout>
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_margin="2dp"
+        android:importantForAccessibility="no"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_ai_button" />
+</FrameLayout>

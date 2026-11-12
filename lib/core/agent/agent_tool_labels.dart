@@ -3,12 +3,13 @@
 /// 仅用于 UI 展示（执行中状态、反馈卡标题等），不改动发给模型的工具定义
 /// 与会话持久化里的原始工具名，历史消息在渲染时读此映射做转换。
 abstract final class AgentToolLabels {
-  /// 各工具的执行中文案（进行时措辞），覆盖 15 个注册工具。
+  /// 各工具的执行中文案（进行时措辞），覆盖 16 个注册工具。
   static const Map<String, String> _progressLabels = {
     'generate_image': '正在生成图片',
     'describe_image': '正在识别图片',
     'web_search': '正在联网搜索',
     'fetch_url': '正在读取网页',
+    'skill_market': '正在查询技能市场',
     'read_file': '正在读取文件',
     'write_file': '正在写入文件',
     'write_files': '正在批量写入',
@@ -28,6 +29,7 @@ abstract final class AgentToolLabels {
     'describe_image': '识别图片',
     'web_search': '联网搜索',
     'fetch_url': '读取网页',
+    'skill_market': '技能市场',
     'read_file': '读取文件',
     'write_file': '写入文件',
     'write_files': '批量写入',
@@ -80,6 +82,7 @@ abstract final class AgentToolLabels {
       'grep' => const ['pattern', 'query', 'keyword'],
       'web_search' => const ['query'],
       'skill' => const ['name', 'skill'],
+      'skill_market' => const ['search', 'install', 'as'],
       'fetch_url' => const ['url'],
       'generate_image' => const ['prompt'],
       _ => const <String>[],
@@ -167,6 +170,11 @@ abstract final class AgentToolLabels {
         final skills = data['skills'];
         if (skills is List) return '${skills.length} 个可用技能';
         return _stringOf(data, const ['name', 'skill']);
+      case 'skill_market':
+        if (data['action'] == 'install') return _stringOf(data, const ['name', 'install']);
+        final results = data['results'];
+        if (results is List) return '${results.length} 个结果';
+        return _stringOf(data, const ['search', 'install']);
       case 'fetch_url':
         final url = _stringOf(data, const ['url']);
         if (url == null) return null;

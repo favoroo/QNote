@@ -9,6 +9,7 @@ import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/utils/health_step_trend.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/statistics/steps_trend_chart.dart';
 
@@ -86,15 +87,8 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
         child: Column(
           children: [
             const SizedBox(height: 32),
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withValues(alpha: 0.6),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.favorite_rounded, size: 40, color: colorScheme.primary),
-            ),
+            // 未授权占位图标：实心主题色圆底 + 黑/白图标
+            const AppIconBadge(icon: Icons.favorite_rounded, size: 80, iconSize: 40),
             const SizedBox(height: 20),
             Text('开启健康监测', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
@@ -467,11 +461,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: colorScheme.primaryContainer, shape: BoxShape.circle),
-            child: Icon(_getSportIcon(r.category), color: colorScheme.primary, size: 20),
-          ),
+          AppIconBadge(icon: _getSportIcon(r.category), size: 40, iconSize: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

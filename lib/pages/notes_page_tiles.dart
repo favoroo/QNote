@@ -1,5 +1,12 @@
 part of 'notes_page.dart';
 
+/// 日记体系节点图标底座色：统一用 EEF736 荧光黄绿，与普通节点的主题色底座区分。
+///
+/// 该色亮度极高（对纯黑约 18:1，对纯白仅约 1.2:1），因此日记图标固定取深色前景，
+/// 不跟随普通节点那套 `AppContrast.onColor(colorScheme.primary)` 的黑/白档位
+/// （见 [_FlattenedTile._buildLeadingIconBox]）——否则换了主题后白图标会糊在亮底上。
+const Color _journalBadgeColor = Color(0xFFEEF736);
+
 class FlattenedItem {
   final String id;
   final bool isFolder;
@@ -104,72 +111,62 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     super.dispose();
   }
 
-  /// 节点图标：日记体系用书本/日历图标并统一青色，普通节点维持原样式
-  Widget _buildLeadingIcon(ThemeData theme, bool isFolder, bool isJournal) {
+  /// 节点图标：日记体系用书本/日历图标并统一日记黄底座，普通节点维持原样式
+  IconData _leadingIconData(bool isFolder, bool isJournal) {
     if (isJournal) {
       if (!isFolder) {
-        return Icon(Icons.menu_book, size: 18, color: theme.colorScheme.tertiary);
+        return Icons.menu_book;
       }
       final isRoot = widget.item.folder!.type == JournalService.rootFolderType;
       final isExpanded = widget.item.folder!.isExpanded;
-      return Icon(
-        isRoot
-            ? (isExpanded ? Icons.auto_stories : Icons.auto_stories_outlined)
-            : (isExpanded ? Icons.calendar_month : Icons.calendar_month_outlined),
-        size: 18,
-        color: theme.colorScheme.tertiary,
-      );
+      return isRoot
+          ? (isExpanded ? Icons.auto_stories : Icons.auto_stories_outlined)
+          : (isExpanded ? Icons.calendar_month : Icons.calendar_month_outlined);
     }
     if (isFolder) {
-      return Icon(
-        widget.item.folder!.isExpanded ? Icons.folder_open : Icons.folder,
-        size: 18,
-        color: theme.colorScheme.primary,
-      );
+      return widget.item.folder!.isExpanded ? Icons.folder_open : Icons.folder;
     }
     // 按文件类型显示图标，便于识别小Q生成的网页/数据文件
-    final icon = _noteTypeIcon(theme);
-    if (icon != null) return icon;
-    return Icon(Icons.description, size: 18, color: theme.colorScheme.primary);
+    return _noteTypeIconData() ?? Icons.description;
   }
 
   /// 依据标题后缀返回文件类型图标；普通 Markdown 笔记返回 null 走默认图标
-  Icon? _noteTypeIcon(ThemeData theme) {
+  IconData? _noteTypeIconData() {
     final note = widget.item.note;
     if (note == null) return null;
     switch (NoteFileTypeHelper.fromTitle(note.title)) {
       case NoteFileType.html:
-        return Icon(Icons.language, size: 18, color: theme.colorScheme.primary);
+        return Icons.language;
       case NoteFileType.svg:
-        return Icon(Icons.palette_outlined, size: 18, color: theme.colorScheme.primary);
+        return Icons.palette_outlined;
       case NoteFileType.json:
-        return Icon(Icons.data_object, size: 18, color: theme.colorScheme.primary);
+        return Icons.data_object;
       case NoteFileType.code:
-        return Icon(Icons.code, size: 18, color: theme.colorScheme.primary);
+        return Icons.code;
       case NoteFileType.markdown:
         return null;
     }
   }
 
-  /// 前置图标容器：32×32 圆角底色 + 图标。
+  /// 前置图标底座：32×32 实心底座 + 黑/白图标（日记体系用专用 EEF736 亮底配深色图标，
+  /// 普通节点用主题色底座、前景按 `onColor(primary)` 取黑/白）。
   /// 文件夹在右下角叠加迷你展开箭头（原独立箭头并入此处，节省行首宽度）
   Widget _buildLeadingIconBox(ThemeData theme, bool isFolder, bool isJournal) {
+    // 普通节点的前景档位仍与主题色同源；日记体系固定深色图标（EEF736 亮底承白图标不可读）
+    final foreground = AppContrast.onColor(theme.colorScheme.primary);
     return SizedBox(
       width: 32,
       height: 32,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: isJournal
-                  ? theme.colorScheme.tertiary.withValues(alpha: 0.12)
-                  : theme.colorScheme.primary.withValues(alpha: isFolder ? 0.08 : 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: _buildLeadingIcon(theme, isFolder, isJournal),
+          AppIconBadge(
+            icon: _leadingIconData(isFolder, isJournal),
+            size: 32,
+            iconSize: 18,
+            backgroundColor: isJournal ? _journalBadgeColor : theme.colorScheme.primary,
+            foregroundColor: isJournal ? AppContrast.darkInk : foreground,
+            borderRadius: BorderRadius.circular(8),
           ),
           if (isFolder)
             Positioned(
@@ -219,7 +216,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(isFolder ? Icons.folder : Icons.description, color: theme.colorScheme.primary),
+            Icon(isFolder ? Icons.folder : Icons.description, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -431,7 +428,13 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
                             letterSpacing: 0.2,
-                            color: isJournal ? theme.colorScheme.tertiary : null,
+                            // 日记体系标题用纯黑，与 EEF736 亮底图标形成强对比；
+                            // 深色主题下纯黑会糊进深底，退回 onSurface 保证可读
+                            color: isJournal
+                                ? (theme.brightness == Brightness.dark
+                                      ? theme.colorScheme.onSurface
+                                      : AppContrast.darkInk)
+                                : null,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

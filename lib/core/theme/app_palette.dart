@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
-/// 统计卡片与日记列表共用的中性语义色板。
+/// 统计卡片、日记列表与通用控件共用的语义色板。
 ///
-/// 这里只收敛「语义一致、深浅色成对」的中性色，且保留调用方原有的
-/// ARGB 值。图表色板、评分色、标签分类色等业务专属颜色不进入本文件，
-/// 避免把语义色板变成万能调色盘。
+/// 以「语义一致、深浅色成对」的中性色为主，并保留调用方原有的
+/// ARGB 值；另收一对警示黄，供与 `ColorScheme.error` 配套的
+/// 「可恢复 / 破坏性」操作区分。图表色板、评分色、标签分类色等
+/// 业务专属颜色不进入本文件，避免把语义色板变成万能调色盘。
 ///
 /// 注意：这些值并不总是与 [ColorScheme] 的同名字段一致（例如统计页的
 /// 次要文字比 `onSurfaceVariant` 更深），因此调用方继续按 `isDark`
@@ -24,6 +25,9 @@ abstract class AppPalette {
 
   static const Color _lightChartGrid = Color(0xFFE4E4E7);
   static const Color _darkChartGrid = Color(0xFF2A2D36);
+
+  static const Color _lightWarning = Color(0xFFF2B300);
+  static const Color _darkWarning = Color(0xFFF7C948);
 
   /// 主要文字：卡片标题、关键数值。
   static Color textPrimary(bool isDark) => isDark ? _darkTextPrimary : _lightTextPrimary;
@@ -49,4 +53,10 @@ abstract class AppPalette {
 
   /// 图表水平网格线。
   static Color chartGrid(bool isDark) => isDark ? _darkChartGrid : _lightChartGrid;
+
+  /// 警示/暂存类操作的填充底色（如悬浮窗「最小化成气泡」）。
+  ///
+  /// 与 [ColorScheme.error] 的破坏性红成对出现：黄色代表可恢复操作。
+  /// 深浅色都取纯黄系，前景交给 `AppContrast.onColor` 自动取黑字保证对比度。
+  static Color warning(bool isDark) => isDark ? _darkWarning : _lightWarning;
 }

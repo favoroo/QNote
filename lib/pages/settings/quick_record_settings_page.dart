@@ -54,11 +54,7 @@ class _QuickRecordSettingsPageState extends ConsumerState<QuickRecordSettingsPag
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Scaffold(
-      backgroundColor: colorScheme.surfaceContainerLowest,
       appBar: AppBar(
         title: const Text('快捷记录'),
         centerTitle: false,

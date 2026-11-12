@@ -739,21 +739,71 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         throw Exception('appearance.json 必须是 JSON 对象');
       }
       final prefs = await SharedPreferences.getInstance();
-      if (decoded.containsKey('themeMode')) {
+      final hasBackgroundStyle = decoded.containsKey('backgroundStyle');
+      final hasCustomColor = decoded.containsKey('customBackgroundColor') || decoded.containsKey('backgroundColor');
+
+      // 兼容旧字段：只有没显式指定 backgroundStyle 时，themeMode 才回落成基础背景预设
+      if (!hasBackgroundStyle && decoded.containsKey('themeMode')) {
         final mode = _parseThemeMode(decoded['themeMode']);
-        await prefs.setInt('theme_mode', mode.index);
+        final preset = switch (mode) {
+          ThemeMode.light => AppBackgroundPreset.light,
+          ThemeMode.dark => AppBackgroundPreset.dark,
+          ThemeMode.system => AppBackgroundPreset.system,
+        };
+        await prefs.setInt('background_preset', preset.index);
       }
+
+      if (hasCustomColor) {
+        final rawColor = decoded['customBackgroundColor'] ?? decoded['backgroundColor'];
+        final color = _parseColor(rawColor);
+        if (color != null) {
+          await prefs.setInt('background_custom_color', color.toARGB32());
+          // 只给颜色、没指定风格和 themeMode 时，默认切到自定义背景
+          if (!hasBackgroundStyle && !decoded.containsKey('themeMode')) {
+            await prefs.setInt('background_preset', AppBackgroundPreset.custom.index);
+          }
+        }
+      }
+
+      if (hasBackgroundStyle) {
+        final preset = _parseBackgroundPreset(decoded['backgroundStyle']);
+        await prefs.setInt('background_preset', preset.index);
+      }
+
       if (decoded.containsKey('accentColor')) {
         final color = _parseColor(decoded['accentColor']);
         if (color != null) {
           await prefs.setInt('accent_color', color.toARGB32());
         }
       }
-      final currentThemeIndex = prefs.getInt('theme_mode') ?? 0;
-      final currentColorVal = prefs.getInt('accent_color') ?? 0xFF005BCB;
+
+      final currentPresetIndex = prefs.getInt('background_preset');
+      final currentPreset = currentPresetIndex == null
+          ? switch (prefs.getInt('theme_mode') ?? 0) {
+              1 => AppBackgroundPreset.light,
+              2 => AppBackgroundPreset.dark,
+              _ => AppBackgroundPreset.system,
+            }
+          : AppBackgroundPreset.values[currentPresetIndex.clamp(0, AppBackgroundPreset.values.length - 1)];
+      final currentAccentVal = prefs.getInt('accent_color') ?? 0xFF005BCB;
+      final currentAccent = Color(currentAccentVal);
+      final currentCustomVal =
+          prefs.getInt('background_custom_color') ?? AppBackgroundSetting.defaultCustomColor.toARGB32();
+      final setting = AppBackgroundSetting(preset: currentPreset, customColor: Color(currentCustomVal));
+      final resolvedCanvas = currentPreset == AppBackgroundPreset.system
+          ? null
+          : setting.resolveCanvas(accentColor: currentAccent, platformBrightness: Brightness.light);
+      final legacyThemeMode = resolvedCanvas == null
+          ? ThemeMode.system
+          : (AppContrast.onColor(resolvedCanvas) == AppContrast.lightInk ? ThemeMode.dark : ThemeMode.light);
+      // 旧读取方仍看 theme_mode，这里按实际画布亮度回写，保持兼容
+      await prefs.setInt('theme_mode', legacyThemeMode.index);
+
       final updatedData = {
-        'themeMode': _themeModeToString(ThemeMode.values[currentThemeIndex]),
-        'accentColor': _colorToHex(Color(currentColorVal)),
+        'themeMode': _themeModeToString(legacyThemeMode),
+        'backgroundStyle': workspaceBackgroundPresetToString(currentPreset),
+        'customBackgroundColor': _colorToHex(Color(currentCustomVal)),
+        'accentColor': _colorToHex(currentAccent),
       };
       WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, updatedData);
       return {'status': 'updated', 'path': path, 'data': updatedData};
@@ -1417,4 +1467,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
 
   /// 将 ThemeMode 转为字符串
   String _themeModeToString(ThemeMode mode) => workspaceThemeModeToString(mode);
+
+  /// 解析背景预设（支持 system/light/dark/oled/accent/custom 及其中文别名）
+  AppBackgroundPreset _parseBackgroundPreset(dynamic raw) => parseWorkspaceBackgroundPreset(raw);
 }

@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/models/screen_usage_daily.dart';
 import 'package:qnote_flutter/providers/screen_usage_provider.dart';
 import 'package:qnote_flutter/providers/selected_date_provider.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
 
@@ -198,15 +199,8 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       child: Column(
         children: [
           const SizedBox(height: 32),
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withValues(alpha: 0.6),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.hourglass_top_rounded, size: 40, color: colorScheme.primary),
-          ),
+          // 未授权占位图标：实心主题色圆底 + 黑/白图标
+          const AppIconBadge(icon: Icons.hourglass_top_rounded, size: 80, iconSize: 40),
           const SizedBox(height: 20),
           Text('获取屏幕使用数据', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
@@ -235,10 +229,13 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     return Row(
       children: [
         if (icon != null) ...[
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(color: _accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-            child: Icon(icon, size: 16, color: _accent),
+          // 固定品牌蓝也铺实心小底座，前景自动取黑/白
+          AppIconBadge(
+            icon: icon,
+            size: 24,
+            iconSize: 16,
+            backgroundColor: _accent,
+            borderRadius: BorderRadius.circular(6),
           ),
           const SizedBox(width: 8),
         ],
@@ -279,13 +276,12 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     double? minHeight,
     EdgeInsetsGeometry padding = const EdgeInsets.all(20),
   }) {
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       constraints: minHeight == null ? null : BoxConstraints(minHeight: minHeight),
       padding: padding,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: theme.colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(AppRadius.large),
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15), width: 0.8),
       ),
@@ -503,7 +499,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : colorScheme.surface.withValues(alpha: 0.72),
+        color: isDark ? colorScheme.onSurface.withValues(alpha: 0.05) : colorScheme.surface.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(AppRadius.medium),
         border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5)),
       ),
@@ -572,7 +568,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
       final item = points[i];
       final isSelected = _sameDay(item.date, selectedDate);
       final color = !item.collected
-          ? (isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.06))
+          ? colorScheme.onSurface.withValues(alpha: isDark ? 0.07 : 0.06)
           : isSelected
           ? _accent
           : _accent.withValues(alpha: isDark ? 0.75 : 0.6);
@@ -591,7 +587,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
                 toY: maxY,
-                color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
+                color: colorScheme.onSurface.withValues(alpha: isDark ? 0.04 : 0.03),
               ),
             ),
           ],
@@ -606,7 +602,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         alignment: BarChartAlignment.spaceAround,
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (_) => isDark ? const Color(0xFF2C2C2E) : colorScheme.surfaceContainerHigh,
+            getTooltipColor: (_) => colorScheme.surfaceContainerHigh,
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
               if (groupIndex < 0 || groupIndex >= points.length) {
                 return null;
@@ -615,11 +611,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               final body = item.collected ? formatScreenDuration(item.totalTimeMs) : '未采集';
               return BarTooltipItem(
                 '${_weekdayLabel(item.date)} ${shortDayLabel(item.date)}\n$body',
-                TextStyle(
-                  color: isDark ? Colors.white : colorScheme.onSurface,
-                  fontWeight: FontWeight.bold,
-                  fontSize: AppTypography.bodySmall,
-                ),
+                TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: AppTypography.bodySmall),
               );
             },
           ),
@@ -646,9 +638,9 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
               interval: maxY / 2,
               getTitlesWidget: (value, meta) {
                 if (value == 0) {
-                  return const Text(
+                  return Text(
                     ' 0',
-                    style: TextStyle(fontSize: AppTypography.caption, color: Colors.grey),
+                    style: TextStyle(fontSize: AppTypography.caption, color: colorScheme.onSurfaceVariant),
                   );
                 }
                 final h = value.toInt();
@@ -656,7 +648,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                 final text = m > 0 ? '$h小时$m分' : '$h小时';
                 return Text(
                   ' $text',
-                  style: const TextStyle(fontSize: AppTypography.caption, color: Colors.grey),
+                  style: TextStyle(fontSize: AppTypography.caption, color: colorScheme.onSurfaceVariant),
                 );
               },
             ),
@@ -680,9 +672,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                     style: TextStyle(
                       fontSize: AppTypography.caption,
                       fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                      color: selected
-                          ? (isDark ? Colors.white : colorScheme.primary)
-                          : (isDark ? Colors.white54 : colorScheme.outline),
+                      color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
                     ),
                   ),
                 );
@@ -696,7 +686,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
           horizontalInterval: maxY / 2,
           getDrawingHorizontalLine: (value) {
             return FlLine(
-              color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+              color: colorScheme.outlineVariant.withValues(alpha: 0.6),
               strokeWidth: 1,
               dashArray: const [4, 4],
             );

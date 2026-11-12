@@ -16,6 +16,13 @@ import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_range_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
+/// 内容色（健康/标签色）贴同色淡底时的可读前景。
+///
+/// 琥珀、翡翠绿、天蓝等亮色系在 6%~10% 淡底上只有 2~3:1，徽标里的图标与文字
+/// 必须压深后才能辨认；统一走这里，避免每处各写一遍 readable + alphaBlend。
+Color _contentInk(Color color, ColorScheme scheme, double tintAlpha) =>
+    AppContrast.inkOnTint(color, scheme.surface, tintAlpha);
+
 class DiaryBatchManageView extends ConsumerStatefulWidget {
   final List<String>? initialTags;
   final DateTimeRange? initialDateRange;
@@ -193,7 +200,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             child: Text(
                               '清空',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.primary,
+                                color: colorScheme.onSurface,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -712,7 +719,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.directions_walk_rounded, size: 16, color: brandGreen),
+                    Icon(Icons.directions_walk_rounded, size: 16, color: _contentInk(brandGreen, colorScheme, 0.06)),
                     const SizedBox(width: 4),
                     Text(
                       NumberFormat('#,###').format(steps),
@@ -741,7 +748,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         style: TextStyle(
                           fontSize: AppTypography.caption,
                           fontWeight: FontWeight.bold,
-                          color: isTargetReached ? brandGreen : colorScheme.primary,
+                          // 达标态保留品牌绿（压深可读），未达标态走中性墨色
+                          color: isTargetReached ? _contentInk(brandGreen, colorScheme, 0.12) : colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -763,7 +771,10 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                   children: [
                     Text(
                       '🔥 ${calories.toStringAsFixed(0)} kcal',
-                      style: theme.textTheme.labelSmall?.copyWith(color: activityOrange, fontWeight: FontWeight.w600),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: _contentInk(activityOrange, colorScheme, 0.0),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     Text(
                       '⏱ $activeMinutes 分钟',
@@ -802,14 +813,14 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.nightlight_round, size: 10, color: sleepPurple),
+                        Icon(Icons.nightlight_round, size: 10, color: _contentInk(sleepPurple, colorScheme, 0.08)),
                         const SizedBox(width: 3),
                         Text(
                           '${sleepMinutes ~/ 60}h${sleepMinutes % 60}m${sleepScore != null ? ' · $sleepScore分' : ''}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: AppTypography.caption,
                             fontWeight: FontWeight.bold,
-                            color: sleepPurple,
+                            color: _contentInk(sleepPurple, colorScheme, 0.08),
                           ),
                         ),
                       ],
@@ -840,10 +851,10 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     ),
                     child: Text(
                       '压力 $avgStress',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: AppTypography.caption,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF8B5CF6),
+                        color: _contentInk(const Color(0xFF8B5CF6), colorScheme, 0.08),
                       ),
                     ),
                   ),
@@ -857,14 +868,18 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.phone_android_rounded, size: 10, color: Color(0xFF0284C7)),
+                        Icon(
+                          Icons.phone_android_rounded,
+                          size: 10,
+                          color: _contentInk(const Color(0xFF0284C7), colorScheme, 0.08),
+                        ),
                         const SizedBox(width: 3),
                         Text(
                           '屏幕 $screenStr',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: AppTypography.caption,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF0284C7),
+                            color: _contentInk(const Color(0xFF0284C7), colorScheme, 0.08),
                           ),
                         ),
                       ],
@@ -1043,7 +1058,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         onTap: _clearDateRange,
                         child: Padding(
                           padding: const EdgeInsets.only(left: 4),
-                          child: Icon(Icons.close_rounded, size: 14, color: colorScheme.primary),
+                          child: Icon(Icons.close_rounded, size: 14, color: colorScheme.onSurfaceVariant),
                         ),
                       )
                     else
@@ -1103,7 +1118,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                         },
                         child: Padding(
                           padding: const EdgeInsets.only(left: 4),
-                          child: Icon(Icons.close_rounded, size: 14, color: colorScheme.primary),
+                          child: Icon(Icons.close_rounded, size: 14, color: colorScheme.onSurfaceVariant),
                         ),
                       )
                     else
@@ -1122,7 +1137,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               borderRadius: BorderRadius.circular(10),
               child: Padding(
                 padding: const EdgeInsets.all(6),
-                child: Icon(Icons.refresh_rounded, size: 18, color: colorScheme.primary),
+                child: Icon(Icons.refresh_rounded, size: 18, color: colorScheme.onSurfaceVariant),
               ),
             ),
           ],
@@ -1154,7 +1169,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
               const SizedBox(width: 4),
               Text(
                 isAllSelected ? '取消全选' : '全选',
-                style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.bold),
+                style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurface, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1207,6 +1222,8 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
           final record = _filteredRecords[index];
           final isSelected = _selectedIds.contains(record.id);
           final tagColor = _tagColor(record.displayTag);
+          // 时间标签胶囊前景：内容色贴 8% 淡底需压深才可读
+          final pillInk = _contentInk(_isHealthDailySummary(record) ? TagColors.health : tagColor, colorScheme, 0.08);
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: GestureDetector(
@@ -1247,14 +1264,14 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                     Icon(
                                       _isHealthDailySummary(record) ? Icons.favorite_rounded : Icons.access_time,
                                       size: 12,
-                                      color: _isHealthDailySummary(record) ? TagColors.health : tagColor,
+                                      color: pillInk,
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
                                       _formatTimeRange(record),
                                       style: theme.textTheme.labelSmall?.copyWith(
                                         fontWeight: FontWeight.bold,
-                                        color: _isHealthDailySummary(record) ? TagColors.health : tagColor,
+                                        color: pillInk,
                                       ),
                                     ),
                                   ],
@@ -1268,12 +1285,12 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                     color: TagColors.health.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
-                                  child: const Text(
+                                  child: Text(
                                     '系统同步',
                                     style: TextStyle(
                                       fontSize: AppTypography.caption,
                                       fontWeight: FontWeight.w600,
-                                      color: TagColors.health,
+                                      color: _contentInk(TagColors.health, colorScheme, 0.1),
                                     ),
                                   ),
                                 ),
@@ -1339,7 +1356,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       onTap: () => _editRecord(record),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                        child: Icon(Icons.edit_outlined, color: colorScheme.primary, size: 20),
+                        child: Icon(Icons.edit_outlined, color: colorScheme.onSurfaceVariant, size: 20),
                       ),
                     ),
                   ],
@@ -1607,7 +1624,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: Icon(Icons.edit_outlined, color: colorScheme.primary),
+                            icon: Icon(Icons.edit_outlined, color: colorScheme.onSurfaceVariant),
                             onPressed: () => _editRecord(currentRecord),
                           ),
                           const SizedBox(width: 4),
@@ -1656,6 +1673,9 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
     final tagColor = _tagColor(record.displayTag);
     final tagIcon = _tagIcon(record.displayTag);
     final fields = record.bodyState ?? {};
+    // 内容色淡底胶囊的前景：按各自淡底透明度压深到可读
+    final timeInk = _contentInk(tagColor, colorScheme, 0.08);
+    final tagInk = _contentInk(tagColor, colorScheme, 0.1);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -1674,11 +1694,11 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.access_time, size: 14, color: tagColor),
+                    Icon(Icons.access_time, size: 14, color: timeInk),
                     const SizedBox(width: 6),
                     Text(
                       _formatTimeRange(record),
-                      style: theme.textTheme.labelSmall?.copyWith(color: tagColor, fontWeight: FontWeight.bold),
+                      style: theme.textTheme.labelSmall?.copyWith(color: timeInk, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -1694,11 +1714,11 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(tagIcon, size: 14, color: tagColor),
+                      Icon(tagIcon, size: 14, color: tagInk),
                       const SizedBox(width: 6),
                       Text(
                         record.displayTag,
-                        style: theme.textTheme.labelSmall?.copyWith(color: tagColor, fontWeight: FontWeight.bold),
+                        style: theme.textTheme.labelSmall?.copyWith(color: tagInk, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),

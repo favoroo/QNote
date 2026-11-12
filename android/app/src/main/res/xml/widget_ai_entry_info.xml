@@ -1,14 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  「问小Q」入口组件：默认 1×1 圆形按钮，可双向调整到 2×2。
+  minWidth/minHeight 按 Android 官方「70×格数−30」口径取 1 格 40dp、2 格 110dp；
+  targetCell 固定 1×1 让新加的组件先落在最小形态，maxResize*（API 31+）把上限锁在 2×2。
+  previewLayout 用 1×1 圆钮，选择器里就是用户最终看到的默认外观。
+-->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="110dp"
-    android:minHeight="110dp"
+    android:minWidth="40dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="40dp"
+    android:minResizeHeight="40dp"
+    android:maxResizeWidth="110dp"
+    android:maxResizeHeight="110dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_ai_entry"
     android:previewLayout="@layout/widget_ai_entry"
     android:label="@string/widget_ai_label"
     android:description="@string/widget_ai_description"
-    android:resizeMode="none"
-    android:targetCellWidth="2"
-    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
     android:widgetCategory="home_screen">
 </appwidget-provider>

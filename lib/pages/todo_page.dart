@@ -19,6 +19,7 @@ import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
+import 'package:qnote_flutter/widgets/records_section_switcher.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 
 part 'todo_page_widgets.dart';
@@ -269,7 +270,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     rootScaffoldKey.currentState?.openDrawer();
                   },
                 ),
-          title: Text(_isSelectionMode ? '已选择 ${_selectedTodoIds.length} 项' : '待办'),
+          title: _isSelectionMode
+              ? Text('已选择 ${_selectedTodoIds.length} 项')
+              : const RecordsSectionSwitcher(active: RecordsSection.todo),
           actions: [
             if (_isSelectionMode)
               TextButton(
@@ -729,7 +732,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final folders = ref.read(todoFolderListProvider).valueOrNull ?? [];
     final items = <ActionMenuItem>[
       ActionMenuItem(
-        iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.primary),
+        iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
         label: '给小Q',
         onTap: () => _quoteTodoToQ(todo),
       ),
@@ -832,7 +835,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.repeat, color: theme.colorScheme.primary, size: 20),
+                      Icon(Icons.repeat, color: theme.colorScheme.onSurfaceVariant, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         '重复周期',
@@ -847,13 +850,13 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   return ListTile(
                     leading: Icon(
                       isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outline,
+                      color: isSelected ? theme.colorScheme.onSurface : theme.colorScheme.outline,
                     ),
                     title: Text(
                       r['label']!,
                       style: TextStyle(
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                        color: isSelected ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     subtitle: Text(
@@ -893,7 +896,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.drive_file_move_outlined, color: theme.colorScheme.primary, size: 20),
+                      Icon(Icons.drive_file_move_outlined, color: theme.colorScheme.onSurfaceVariant, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         '移动到分类',
@@ -964,7 +967,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.category, color: colorScheme.primary, size: 20),
+                              Icon(Icons.category, color: colorScheme.onSurfaceVariant, size: 20),
                               const SizedBox(width: 8),
                               Text(
                                 '分类管理',
@@ -994,7 +997,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                           final folder = folders[index];
                           final isOnlyOne = folders.length <= 1;
                           return ListTile(
-                            leading: Icon(Icons.folder_open, color: colorScheme.primary),
+                            leading: Icon(Icons.folder_open, color: colorScheme.onSurfaceVariant),
                             title: Text(
                               folder.name,
                               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),

@@ -27,21 +27,35 @@ class ScaffoldWithNavBar extends StatefulWidget {
 }
 
 class _ScaffoldWithNavBarState extends State<ScaffoldWithNavBar> {
+  /// 「记录」合并入口最近停留的分支（笔记 / 待办）。
+  ///
+  /// 离开记录板块后，底部按钮仍回到用户上次停留的一侧；首次启动默认进笔记。
+  int _lastRecordsBranch = ShellBranch.notes;
+
   @override
   Widget build(BuildContext context) {
+    final currentIndex = widget.navigationShell.currentIndex;
+    if (currentIndex == ShellBranch.notes || currentIndex == ShellBranch.todo) {
+      _lastRecordsBranch = currentIndex;
+    }
+
     return Scaffold(
       key: rootScaffoldKey,
       drawer: const SideDrawer(),
-      body: _NavBranchTransition(currentIndex: widget.navigationShell.currentIndex, child: widget.navigationShell),
+      body: _NavBranchTransition(currentIndex: currentIndex, child: widget.navigationShell),
       bottomNavigationBar: BottomNavBar(
-        currentIndex: widget.navigationShell.currentIndex,
+        currentIndex: currentIndex,
+        lastRecordsBranch: _lastRecordsBranch,
         onTap: (index) {
           widget.navigationShell.goBranch(index, initialLocation: index == widget.navigationShell.currentIndex);
         },
         onMenuTap: () => rootScaffoldKey.currentState?.openDrawer(),
         onQTap: () {
           // 单击中央按钮：面板打开时收起，否则进入 /ai 全页面
-          widget.navigationShell.goBranch(4, initialLocation: widget.navigationShell.currentIndex == 4);
+          widget.navigationShell.goBranch(
+            ShellBranch.ai,
+            initialLocation: widget.navigationShell.currentIndex == ShellBranch.ai,
+          );
         },
       ),
     );
@@ -124,12 +138,16 @@ class _NavBranchTransitionState extends State<_NavBranchTransition> with SingleT
   }
 }
 
-/// 自定义底部导航栏：4 个导航项 + 中央小Q导航按钮。
+/// 自定义底部导航栏：2 个导航项 + 中央小Q导航按钮。
 ///
-/// 采用简洁无边框图标风格与其他导航项完全统一，无外部圆形边框。
-/// 中央小Q按钮单击进入 /ai 全页面，长按唤起悬浮快捷面板。
+/// 「时间线」与「记录（笔记 / 待办）」分列小Q两侧，笔记与待办共用一个入口，
+/// 具体落在哪一侧由最近一次停留的分支决定。中央小Q按钮单击进入 /ai 全页面，
+/// 长按唤起悬浮快捷面板。
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
+
+  /// 「记录」入口最近停留的分支（[ShellBranch.notes] / [ShellBranch.todo]）
+  final int lastRecordsBranch;
   final ValueChanged<int> onTap;
   final VoidCallback? onMenuTap;
   final VoidCallback onQTap;
@@ -137,6 +155,7 @@ class BottomNavBar extends StatelessWidget {
   const BottomNavBar({
     super.key,
     required this.currentIndex,
+    required this.lastRecordsBranch,
     required this.onTap,
     this.onMenuTap,
     required this.onQTap,
@@ -144,7 +163,13 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _BottomNavContent(currentIndex: currentIndex, onTap: onTap, onMenuTap: onMenuTap, onQTap: onQTap);
+    return _BottomNavContent(
+      currentIndex: currentIndex,
+      lastRecordsBranch: lastRecordsBranch,
+      onTap: onTap,
+      onMenuTap: onMenuTap,
+      onQTap: onQTap,
+    );
   }
 }
 
@@ -153,16 +178,29 @@ class _BottomNavContent extends ConsumerWidget {
   /// 设为 66.0，适度提升单手操作触控热区与上下留白呼吸感。
   static const double _navBarContentHeight = 66.0;
 
-  /// 待办导航项连击计数与时间戳，连击 5 次触发日志控制台
-  static int _todoTapCount = 0;
-  static DateTime? _lastTodoTapTime;
+  /// 宽屏下底栏内容的最大宽度：只剩 3 个入口时若仍拉满整行，
+  /// 图标会被摊到屏幕两端，视觉上过于松散。
+  static const double _navBarMaxContentWidth = 480.0;
+
+  /// 「记录」入口连击计数与时间戳，连击 5 次触发日志控制台
+  static int _recordsTapCount = 0;
+  static DateTime? _lastRecordsTapTime;
 
   final int currentIndex;
+
+  /// 「记录」入口最近停留的分支（[ShellBranch.notes] / [ShellBranch.todo]）
+  final int lastRecordsBranch;
   final ValueChanged<int> onTap;
   final VoidCallback? onMenuTap;
   final VoidCallback onQTap;
 
-  const _BottomNavContent({required this.currentIndex, required this.onTap, this.onMenuTap, required this.onQTap});
+  const _BottomNavContent({
+    required this.currentIndex,
+    required this.lastRecordsBranch,
+    required this.onTap,
+    this.onMenuTap,
+    required this.onQTap,
+  });
 
   /// 长按唤起悬浮快捷面板：有编辑器选区时带引用打开，并按按钮位置设定弹出锚点
   static void _handleQuickQTrigger(WidgetRef ref, {required Alignment anchorAlignment}) {
@@ -181,19 +219,24 @@ class _BottomNavContent extends ConsumerWidget {
     }
   }
 
-  /// 计算底部各导航按钮在屏幕水平方向的相对锚点，使弹窗从被长按的按钮位置向上生长展开
-  static Alignment _navItemAlignment(int index) {
-    switch (index) {
-      case 0: // 日记
-        return const Alignment(-0.8, 1.0);
-      case 1: // 笔记
-        return const Alignment(-0.4, 1.0);
-      case 2: // 待办
-        return const Alignment(0.4, 1.0);
-      case 3: // 统计
-        return const Alignment(0.8, 1.0);
-      default:
-        return Alignment.bottomCenter;
+  /// 记录入口当前归属：在笔记/待办分支时就地取当前分支，否则回落到上次停留的一侧
+  int get _recordsBranch =>
+      (currentIndex == ShellBranch.notes || currentIndex == ShellBranch.todo) ? currentIndex : lastRecordsBranch;
+
+  bool get _recordsSelected => currentIndex == ShellBranch.notes || currentIndex == ShellBranch.todo;
+
+  /// 记录入口连点 5 次触发日志控制台（间隔小于 800ms 视为连击）
+  void _registerRecordsTap(BuildContext context) {
+    final now = DateTime.now();
+    if (_lastRecordsTapTime != null && now.difference(_lastRecordsTapTime!) > const Duration(milliseconds: 800)) {
+      _recordsTapCount = 0;
+    }
+    _lastRecordsTapTime = now;
+    _recordsTapCount++;
+    if (_recordsTapCount >= 5) {
+      _recordsTapCount = 0;
+      _lastRecordsTapTime = null;
+      showDebugConsole(context);
     }
   }
 
@@ -210,77 +253,95 @@ class _BottomNavContent extends ConsumerWidget {
           color: theme.colorScheme.surface,
           border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5)),
         ),
-        child: Row(
-          children: [
-            // 日记
-            Expanded(child: _buildNavItem(context, ref, theme, items, 0)),
-            // 笔记
-            Expanded(child: _buildNavItem(context, ref, theme, items, 1)),
-            // 中央小Q：与其他导航栏图标风格完全统一
-            Expanded(
-              child: _QNavButton(currentIndex: currentIndex, onTap: onQTap),
+        // 只剩 3 个入口：宽屏下限制内容宽度并居中，避免图标被摊到屏幕两端
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: _navBarMaxContentWidth),
+            child: Row(
+              children: [
+                // 时间线
+                Expanded(
+                  child: _buildNavItem(
+                    context,
+                    ref,
+                    theme,
+                    items[ShellBranch.diary],
+                    isSelected: currentIndex == ShellBranch.diary,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      onTap(ShellBranch.diary);
+                    },
+                    // 双击时间线：跳到当前时间
+                    onDoubleTap: () {
+                      if (currentIndex != ShellBranch.diary) onTap(ShellBranch.diary);
+                      ProviderScope.containerOf(
+                        context,
+                        listen: false,
+                      ).read(diaryScrollTriggerProvider.notifier).state = DateTime.now().millisecondsSinceEpoch;
+                    },
+                    longPressAlignment: const Alignment(-0.55, 1.0),
+                  ),
+                ),
+                // 中央小Q：与其他导航栏图标风格完全统一
+                Expanded(
+                  child: _QNavButton(currentIndex: currentIndex, onTap: onQTap),
+                ),
+                // 记录（笔记 / 待办）：图标随最近停留的分段变化，点进去就是上次那一侧
+                Expanded(
+                  child: _buildNavItem(
+                    context,
+                    ref,
+                    theme,
+                    items[_recordsBranch],
+                    isSelected: _recordsSelected,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      onTap(_recordsBranch);
+                      _registerRecordsTap(context);
+                    },
+                    longPressAlignment: const Alignment(0.55, 1.0),
+                  ),
+                ),
+              ],
             ),
-            // 待办
-            Expanded(child: _buildNavItem(context, ref, theme, items, 2)),
-            // 统计
-            Expanded(child: _buildNavItem(context, ref, theme, items, 3)),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(BuildContext context, WidgetRef ref, ThemeData theme, List<NavigationItem> items, int index) {
-    final item = items[index];
-    final isSelected = index == currentIndex;
-
+  Widget _buildNavItem(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    NavigationItem item, {
+    required bool isSelected,
+    required VoidCallback onTap,
+    required Alignment longPressAlignment,
+    VoidCallback? onDoubleTap,
+  }) {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap(index);
-
-        // 待办按钮（index == 2）连点 5 次触发日志控制台（间隔小于 800ms 视为连击）
-        if (index == 2) {
-          final now = DateTime.now();
-          if (_lastTodoTapTime != null && now.difference(_lastTodoTapTime!) > const Duration(milliseconds: 800)) {
-            _todoTapCount = 0;
-          }
-          _lastTodoTapTime = now;
-          _todoTapCount++;
-          if (_todoTapCount >= 5) {
-            _todoTapCount = 0;
-            _lastTodoTapTime = null;
-            showDebugConsole(context);
-          }
-        } else {
-          _todoTapCount = 0;
-          _lastTodoTapTime = null;
-        }
-      },
-      // 长按底部栏任意按钮均在当前位置触发小Q悬浮弹窗
+      onTap: onTap,
+      // 长按底栏任意按钮均在当前位置触发小Q悬浮弹窗
       onLongPress: () {
         HapticFeedback.selectionClick();
-        _handleQuickQTrigger(ref, anchorAlignment: _navItemAlignment(index));
+        _handleQuickQTrigger(ref, anchorAlignment: longPressAlignment);
       },
-      // index 0：双击跳转到当前时间
-      onDoubleTap: index == 0
-          ? () {
-              if (!isSelected) onTap(0);
-              ProviderScope.containerOf(context, listen: false).read(diaryScrollTriggerProvider.notifier).state =
-                  DateTime.now().millisecondsSinceEpoch;
-            }
-          : null,
+      onDoubleTap: onDoubleTap,
       child: Center(
         // 选中态 outlined ↔ filled 交叉淡化，避免图标「瞬间换脸」；
         // 颜色随新图标一起过渡，旧图标退场时仍保持原色。
+        // key 带上 path：笔记↔待办切换时即使都处于选中态，图标也能交叉淡化。
         child: AppMotion.switcher(
           context: context,
           baseDuration: AppDurations.fast,
           child: Icon(
             isSelected ? item.activeIcon : item.icon,
-            key: ValueKey(isSelected),
+            key: ValueKey('${item.path}_$isSelected'),
             size: 24,
+            // 选中态直接用主题色 primary，与全 App 其他选中态保持同一颜色；
+            // 极亮主题色的可读性由主题层统一决策，组件层不再二次压色改观感
             color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
           ),
         ),
@@ -345,7 +406,7 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
 
     if (reduce) {
       _stopBlinkingLoop();
-    } else if (widget.currentIndex == 4) {
+    } else if (widget.currentIndex == ShellBranch.ai) {
       _startBlinkingLoop(immediateFirstBlink: true);
     }
   }
@@ -353,8 +414,8 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
   @override
   void didUpdateWidget(covariant _QNavButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final wasActive = oldWidget.currentIndex == 4;
-    final isNowActive = widget.currentIndex == 4;
+    final wasActive = oldWidget.currentIndex == ShellBranch.ai;
+    final isNowActive = widget.currentIndex == ShellBranch.ai;
 
     if (!wasActive && isNowActive) {
       // 刚切到小Q页面：立即眨眼一次并开启周期循环
@@ -436,8 +497,8 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
     final panelMode = ref.watch(floatingQProvider.select((s) => s.panelMode));
     final panelOpen = panelMode == FloatingQPanelMode.panel;
     final isWorking = phase == FloatingQPhase.working;
-    // /ai 分支激活态（index 4）
-    final isActive = widget.currentIndex == 4;
+    // /ai 分支激活态（ShellBranch.ai）
+    final isActive = widget.currentIndex == ShellBranch.ai;
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -485,9 +546,9 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
   }
 
   Widget _buildIcon(ThemeData theme, bool isWorking, bool isActive, bool panelOpen) {
+    // 选中/工作态都直接用主题色 primary，与导航项及其他页面的选中态保持一致
     final primary = theme.colorScheme.primary;
     final inactiveColor = theme.colorScheme.onSurfaceVariant;
-    final isDark = theme.brightness == Brightness.dark;
 
     // 工作态：简约无限循环动画
     if (isWorking) {
@@ -501,7 +562,7 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
 
     // 未选中走细线稿轮廓（线条重量与其余 Material 图标一致），选中走实心填充
     final color = isActive ? primary : inactiveColor;
-    final screenColor = isActive ? (isDark ? theme.colorScheme.surface : Colors.white) : theme.colorScheme.surface;
+    final screenColor = theme.colorScheme.surface;
     final eyeColor = isActive ? primary : inactiveColor;
 
     return AnimatedBuilder(

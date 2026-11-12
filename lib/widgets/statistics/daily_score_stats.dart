@@ -13,6 +13,7 @@ import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/providers/daily_score_provider.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/statistics/batch_score_adjust_sheet.dart';
@@ -198,13 +199,11 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                           children: [
                             Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(Icons.bar_chart, size: 18, color: theme.colorScheme.primary),
+                                AppIconBadge(
+                                  icon: Icons.bar_chart,
+                                  size: 30,
+                                  iconSize: 18,
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 const SizedBox(width: 8),
                                 const Text(
@@ -380,14 +379,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
               children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.grid_on, size: 18, color: theme.colorScheme.primary),
-                    ),
+                    AppIconBadge(icon: Icons.grid_on, size: 30, iconSize: 18, borderRadius: BorderRadius.circular(8)),
                     const SizedBox(width: 8),
                     const Text(
                       '评分热力图（近3个月）',
@@ -421,13 +413,11 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
               children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.show_chart, size: 18, color: theme.colorScheme.primary),
+                    AppIconBadge(
+                      icon: Icons.show_chart,
+                      size: 30,
+                      iconSize: 18,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     const SizedBox(width: 8),
                     const Text(
@@ -665,13 +655,11 @@ class _AiSuggestionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.chat_bubble_outline, size: 18, color: theme.colorScheme.primary),
+                AppIconBadge(
+                  icon: Icons.chat_bubble_outline,
+                  size: 30,
+                  iconSize: 18,
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 const SizedBox(width: 8),
                 const Text(
@@ -744,8 +732,7 @@ class _ScoreHistoryChart extends StatelessWidget {
             show: true,
             drawVerticalLine: false,
             horizontalInterval: 20,
-            getDrawingHorizontalLine: (value) =>
-                FlLine(color: isDark ? const Color(0xFF2A2D36) : const Color(0xFFE4E4E7), strokeWidth: 1),
+            getDrawingHorizontalLine: (value) => FlLine(color: theme.colorScheme.outlineVariant, strokeWidth: 1),
           ),
           titlesData: FlTitlesData(
             bottomTitles: AxisTitles(
@@ -761,10 +748,7 @@ class _ScoreHistoryChart extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       label,
-                      style: TextStyle(
-                        fontSize: AppTypography.caption,
-                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                      ),
+                      style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
                     ),
                   );
                 },
@@ -780,10 +764,7 @@ class _ScoreHistoryChart extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 4),
                     child: Text(
                       '${value.toInt()}',
-                      style: TextStyle(
-                        fontSize: AppTypography.caption,
-                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                      ),
+                      style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
                       textAlign: TextAlign.end,
                     ),
                   );

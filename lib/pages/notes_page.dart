@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -19,9 +20,11 @@ import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/notes/note_editor_view.dart';
+import 'package:qnote_flutter/widgets/records_section_switcher.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 
@@ -187,7 +190,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         leading: _isSelectionMode
             ? IconButton(icon: const Icon(Icons.close), onPressed: _exitSelectionMode)
             : IconButton(icon: const Icon(Icons.menu), onPressed: () => rootScaffoldKey.currentState?.openDrawer()),
-        title: Text(_isSelectionMode ? '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项' : '笔记'),
+        title: _isSelectionMode
+            ? Text('已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项')
+            : const RecordsSectionSwitcher(active: RecordsSection.notes),
+        centerTitle: true,
         actions: [
           if (_isSelectionMode)
             Consumer(
@@ -991,7 +997,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       key: key,
       items: [
         ActionMenuItem(
-          iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.primary),
+          iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
           label: '给小Q',
           onTap: () => _quoteNoteToQ(note),
         ),

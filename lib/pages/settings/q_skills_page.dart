@@ -281,7 +281,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
         children: [
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.restore_rounded, size: 20, color: theme.colorScheme.primary),
+            icon: Icon(Icons.restore_rounded, size: 20, color: theme.colorScheme.onSurfaceVariant),
             tooltip: '恢复',
             onPressed: () => _archiveSkill(name, false),
           ),

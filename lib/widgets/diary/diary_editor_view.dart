@@ -1250,7 +1250,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.schedule, size: 16, color: colorScheme.primary),
+                    Icon(Icons.schedule, size: 16, color: colorScheme.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
@@ -1279,7 +1279,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.access_time, size: 16, color: colorScheme.primary),
+                      Icon(Icons.access_time, size: 16, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -1466,11 +1466,15 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(icon, size: 14, color: color),
+                              // 标签色淡底胶囊：前景压深到可读，保留标签色相
+                              Icon(icon, size: 14, color: AppContrast.inkOnTint(color, colorScheme.surface, 0.1)),
                               const SizedBox(width: 6),
                               Text(
                                 entry.name,
-                                style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.bold),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: AppContrast.inkOnTint(color, colorScheme.surface, 0.1),
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -1921,7 +1925,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         ),
         child: Row(
           children: [
-            Icon(Icons.access_time, size: 14, color: theme.colorScheme.primary),
+            Icon(Icons.access_time, size: 14, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 8),
             Text(
               currentValue ?? '选择${field.label}',
@@ -2224,12 +2228,11 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(AppRadius.medium),
-                  border: Border.all(
-                    color: _isExtracting ? colorScheme.outlineVariant : colorScheme.primary.withValues(alpha: 0.4),
-                  ),
+                  // 次级动作走中性描边，把实心主色留给右侧保存键
+                  border: Border.all(color: _isExtracting ? colorScheme.outlineVariant : colorScheme.outline),
                   color: _isExtracting
                       ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
-                      : colorScheme.primary.withValues(alpha: 0.06),
+                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2238,14 +2241,14 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                       SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.onSurfaceVariant),
                       )
                     else
-                      Icon(Icons.auto_awesome, size: 18, color: colorScheme.primary),
+                      Icon(Icons.auto_awesome, size: 18, color: colorScheme.onSurfaceVariant),
                     const SizedBox(width: 6),
                     Text(
                       _isExtracting ? '优化中...' : '智能优化',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                     ),
                   ],
                 ),

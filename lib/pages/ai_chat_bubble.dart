@@ -474,7 +474,8 @@ class ChatBubble extends ConsumerWidget {
                                         code: TextStyle(
                                           fontFamily: 'monospace',
                                           fontSize: 13,
-                                          color: theme.colorScheme.primary,
+                                          // 行内代码贴浅色底，亮主题色原字会看不清，改中性墨色
+                                          color: theme.colorScheme.onSurface,
                                           backgroundColor: Colors.transparent,
                                         ),
                                         codeblockDecoration: BoxDecoration(
@@ -558,11 +559,11 @@ class ChatBubble extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.help_outline_rounded, size: 16, color: theme.colorScheme.primary),
+                Icon(Icons.help_outline_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Text(
                   '小Q询问',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                 ),
                 const Spacer(),
                 if (isConfirmed)
@@ -638,11 +639,11 @@ class ChatBubble extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.auto_awesome_rounded, size: 14, color: theme.colorScheme.primary),
+                Icon(Icons.auto_awesome_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Text(
                   model.isEmpty ? '生图完成' : '生图完成 · $model',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                 ),
               ],
             ),
@@ -758,7 +759,7 @@ class ChatBubble extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
+              Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -774,7 +775,7 @@ class ChatBubble extends ConsumerWidget {
                   onTap: () => _showSkillHandbookDialog(context, '技能列表', message.content),
                   child: Text(
                     '查看',
-                    style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -797,7 +798,7 @@ class ChatBubble extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
+            Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -817,7 +818,71 @@ class ChatBubble extends ConsumerWidget {
                 onTap: () => _showSkillHandbookDialog(context, skillTitle, message.content),
                 child: Text(
                   '查看',
-                  style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // skill_market 的搜索/安装结果：搜索卡片可展开候选列表，安装结果只展示名称与来源
+    if (message.toolName == 'skill_market') {
+      final isError = message.isError == true;
+      final action = uiDetails?['action'] as String? ?? '';
+      final isInstall = action == 'install';
+      final name = uiDetails?['name'] as String? ?? '';
+      final source = uiDetails?['source'] as String? ?? '';
+      final results = uiDetails?['results'];
+      final count = results is List ? results.length : 0;
+
+      final containerColor = isError
+          ? theme.colorScheme.errorContainer.withValues(alpha: 0.3)
+          : theme.colorScheme.primaryContainer.withValues(alpha: 0.2);
+      final borderColor = isError
+          ? theme.colorScheme.error.withValues(alpha: 0.3)
+          : theme.colorScheme.outlineVariant.withValues(alpha: 0.4);
+      final icon = isError
+          ? Icons.error_outline
+          : (isInstall ? Icons.download_done_rounded : Icons.travel_explore_rounded);
+      final iconColor = isError ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant;
+      final textColor = isError ? theme.colorScheme.error : theme.colorScheme.onSurface.withValues(alpha: 0.85);
+      final title = isError
+          ? (message.content.trim().isNotEmpty ? message.content.trim() : '技能市场操作失败')
+          : switch (action) {
+              'install' => '已安装技能 · $name${source.isEmpty ? '' : '（$source）'}',
+              _ => '已搜索技能市场 · $count 个结果',
+            };
+
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: containerColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: borderColor),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: iconColor),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: textColor),
+              ),
+            ),
+            if (!isError && !isInstall && message.content.trim().isNotEmpty) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => _showSkillHandbookDialog(context, '技能市场搜索结果', message.content),
+                child: Text(
+                  '查看',
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -871,7 +936,7 @@ class ChatBubble extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.primary),
+            Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -887,7 +952,7 @@ class ChatBubble extends ConsumerWidget {
                 onTap: () => _showFilePreviewDialog(context, displayPath, message.content),
                 child: Text(
                   '预览',
-                  style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -925,7 +990,7 @@ class ChatBubble extends ConsumerWidget {
             Icon(
               hasError ? Icons.link_off : Icons.language,
               size: 14,
-              color: hasError ? theme.colorScheme.error : theme.colorScheme.primary,
+              color: hasError ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: 6),
             Expanded(
@@ -940,7 +1005,7 @@ class ChatBubble extends ConsumerWidget {
             if (!hasError && url.isNotEmpty)
               GestureDetector(
                 onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-                child: Icon(Icons.open_in_new, size: 14, color: theme.colorScheme.primary),
+                child: Icon(Icons.open_in_new, size: 14, color: theme.colorScheme.onSurfaceVariant),
               ),
           ],
         ),
@@ -1004,7 +1069,7 @@ class ChatBubble extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.auto_awesome, size: 18, color: theme.colorScheme.primary),
+                    Icon(Icons.auto_awesome, size: 18, color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1050,7 +1115,7 @@ class ChatBubble extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.description_outlined, size: 18, color: theme.colorScheme.primary),
+                    Icon(Icons.description_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

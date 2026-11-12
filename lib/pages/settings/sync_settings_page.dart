@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 
 /// 云同步设置视图
@@ -376,14 +377,8 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(Icons.dns_rounded, color: colorScheme.primary, size: 18),
-              ),
+              // 行首图标统一实心主题色底座：淡底配同色图标在荧光黄绿下看不清
+              AppIconBadge(icon: Icons.dns_rounded, size: 32, iconSize: 18, borderRadius: BorderRadius.circular(10)),
               const SizedBox(width: 10),
               Text(
                 'WebDAV 服务器',
@@ -393,14 +388,15 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                 ),
               ),
               const Spacer(),
-              // 内嵌连接测试按钮
+              // 内嵌连接测试按钮：次级操作用中性色，避免亮主题色贴白底看不清
               OutlinedButton.icon(
                 onPressed: _testing ? null : _testConnection,
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.5)),
+                  side: BorderSide(color: colorScheme.outlineVariant),
+                  foregroundColor: colorScheme.onSurface,
                 ),
                 icon: _testing
                     ? SizedBox(
@@ -408,16 +404,16 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                         height: 12,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                          valueColor: AlwaysStoppedAnimation<Color>(colorScheme.onSurface),
                         ),
                       )
-                    : Icon(Icons.wifi_tethering, size: 14, color: colorScheme.primary),
+                    : Icon(Icons.wifi_tethering, size: 14, color: colorScheme.onSurface),
                 label: Text(
                   _testing ? '测试中' : '测试连接',
                   style: TextStyle(
                     fontSize: AppTypography.bodySmall,
                     fontWeight: FontWeight.w600,
-                    color: colorScheme.primary,
+                    color: colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -590,11 +586,8 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           // 状态信息行
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: Icon(_statusIcon(syncStatus), color: statusColor, size: 20),
-              ),
+              // 状态色同样铺实心圆底，前景由底座自动取黑/白
+              AppIconBadge(icon: _statusIcon(syncStatus), size: 36, iconSize: 20, backgroundColor: statusColor),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -694,10 +687,13 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, color: iconColor, size: 18),
+          // 行首图标统一实心底座；iconColor 跟随调用方（当前为主题色）
+          AppIconBadge(
+            icon: icon,
+            size: 32,
+            iconSize: 18,
+            backgroundColor: iconColor,
+            borderRadius: BorderRadius.circular(10),
           ),
           const SizedBox(width: 14),
           Expanded(

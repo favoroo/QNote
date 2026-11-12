@@ -118,8 +118,9 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
   }
 
   Widget _buildHeader(ThemeData theme, String title) {
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 10, 8),
       child: Row(
         children: [
           const QAvatar(size: 24, withBackground: true),
@@ -132,38 +133,30 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          // 自动朗读开关：与语音设置页同一真源，随手切换不必跳设置
-          const AutoReadToggleButton(),
-          // 手动开启新对话（同一页面继续开新对话）
-          _headerButton(
-            key: const ValueKey('floating-q-new'),
-            theme: theme,
-            icon: Icons.refresh_rounded,
-            tooltip: '开启新对话',
-            onPressed: () => ref.read(floatingQProvider.notifier).newConversation(),
-          ),
           // 展开到 /ai 全页面：把当前临时对话迁移成正式会话再继续
           _headerButton(
             key: const ValueKey('floating-q-expand'),
-            theme: theme,
             icon: Icons.open_in_full_rounded,
             tooltip: '展开全页面',
+            backgroundColor: theme.colorScheme.primaryContainer,
+            foregroundColor: theme.colorScheme.onPrimaryContainer,
             onPressed: () => widget.onExpand(),
           ),
-          // 减号：临时收成气泡，会话和草稿都保留
+          // 减号：临时收成气泡，会话和草稿都保留。黄色表示「可恢复」，与红色关闭区分
           _headerButton(
             key: const ValueKey('floating-q-minimize'),
-            theme: theme,
             icon: Icons.remove_rounded,
             tooltip: '最小化成气泡',
+            backgroundColor: AppPalette.warning(isDark),
             onPressed: widget.onMinimize,
           ),
           // ×：彻底结束本次对话
           _headerButton(
             key: const ValueKey('floating-q-close'),
-            theme: theme,
             icon: Icons.close_rounded,
             tooltip: '结束对话',
+            backgroundColor: theme.colorScheme.error,
+            foregroundColor: theme.colorScheme.onError,
             onPressed: () => widget.onClose(),
           ),
         ],
@@ -171,23 +164,30 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
     );
   }
 
+  /// 头部圆形操作按钮。
+  ///
+  /// 底色统一走 [AppIconBadge] 的实心圆形样式：任意主题色下前景自动取黑/白，
+  /// 与左侧小Q头像的视觉语言一致；圆角窗口式的黄/红语义让「暂存」和「销毁」
+  /// 一眼可辨，不用读 tooltip 也不会点错。
   Widget _headerButton({
     required Key key,
-    required ThemeData theme,
     required IconData icon,
     required String tooltip,
+    required Color backgroundColor,
     required VoidCallback onPressed,
+    Color? foregroundColor,
   }) {
-    return Tooltip(
-      message: tooltip,
-      child: IconButton(
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: AppIconBadge(
         key: key,
-        icon: Icon(icon, size: 20),
-        color: theme.colorScheme.onSurfaceVariant,
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-        onPressed: onPressed,
+        icon: icon,
+        size: 32,
+        iconSize: 18,
+        tooltip: tooltip,
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+        onTap: onPressed,
       ),
     );
   }

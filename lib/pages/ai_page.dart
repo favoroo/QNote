@@ -41,6 +41,7 @@ import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
@@ -952,7 +953,6 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.camera_alt_rounded,
                         label: '相机',
                         iconColor: const Color(0xFF3F51B5),
-                        bgColor: const Color(0xFF3F51B5).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickFromCamera();
@@ -964,7 +964,6 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.photo_library_rounded,
                         label: '相册',
                         iconColor: const Color(0xFF009688),
-                        bgColor: const Color(0xFF009688).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickFromGallery();
@@ -976,7 +975,6 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.auto_stories_rounded,
                         label: '日记',
                         iconColor: const Color(0xFFE91E63),
-                        bgColor: const Color(0xFFE91E63).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickJournals();
@@ -988,7 +986,6 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.description_rounded,
                         label: '笔记',
                         iconColor: const Color(0xFFFF9800),
-                        bgColor: const Color(0xFFFF9800).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickNotes();
@@ -1000,7 +997,6 @@ class _AiPageState extends ConsumerState<AiPage> {
                         icon: Icons.check_circle_outline_rounded,
                         label: '待办',
                         iconColor: const Color(0xFF4CAF50),
-                        bgColor: const Color(0xFF4CAF50).withValues(alpha: 0.12),
                         onTap: () {
                           Navigator.pop(ctx);
                           _pickTodos();
@@ -1023,7 +1019,6 @@ class _AiPageState extends ConsumerState<AiPage> {
     required IconData icon,
     required String label,
     required Color iconColor,
-    required Color bgColor,
     required VoidCallback onTap,
     required ThemeData theme,
   }) {
@@ -1033,11 +1028,13 @@ class _AiPageState extends ConsumerState<AiPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(16)),
-            child: Icon(icon, color: iconColor, size: 28),
+          // 附件入口铺实心彩底，前景自动取黑/白；淡彩底配同色图标在荧光黄绿下看不清
+          AppIconBadge(
+            icon: icon,
+            size: 56,
+            iconSize: 28,
+            backgroundColor: iconColor,
+            borderRadius: BorderRadius.circular(16),
           ),
           const SizedBox(height: 8),
           Text(
@@ -1587,7 +1584,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       ),
       child: Row(
         children: [
-          Icon(Icons.format_quote_rounded, size: 16, color: theme.colorScheme.primary),
+          Icon(Icons.format_quote_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -1713,7 +1710,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.primary),
+                      Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 100),
@@ -1793,9 +1790,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add, size: 14, color: theme.colorScheme.primary),
+                    Icon(Icons.add, size: 14, color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(width: 2),
-                    Text('添加', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
+                    Text('添加', style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
                   ],
                 ),
               ),

@@ -1828,7 +1828,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             child: Row(
                               children: [
-                                Icon(Icons.tune_rounded, size: 12, color: colorScheme.primary),
+                                Icon(Icons.tune_rounded, size: 12, color: colorScheme.onSurfaceVariant),
                                 const SizedBox(width: 3),
                                 Flexible(
                                   child: Text(
@@ -1837,7 +1837,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       fontSize: 11,
-                                      color: colorScheme.primary,
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ),

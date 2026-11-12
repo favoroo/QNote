@@ -521,8 +521,9 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                                     fit: BoxFit.cover,
                                   )
                                 : Container(
-                                    color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-                                    child: Icon(Icons.person_rounded, size: 26, color: theme.colorScheme.primary),
+                                    // 无头像占位：实心主题色圆 + 黑/白人形，避免亮主题色贴淡底看不清
+                                    color: theme.colorScheme.primary,
+                                    child: Icon(Icons.person_rounded, size: 26, color: theme.colorScheme.onPrimary),
                                   ),
                           ),
                         ),

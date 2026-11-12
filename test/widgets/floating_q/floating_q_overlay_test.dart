@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
 
 /// 测试宿主：与真实挂载方式一致（MaterialApp.builder 内用局部 Overlay 叠
@@ -324,6 +325,25 @@ void main() {
 
       expect(find.byKey(const ValueKey('panel')), findsOneWidget);
       expect(find.byKey(const ValueKey('quote-card')), findsNothing);
+    });
+  });
+
+  group('弹窗头部操作', () {
+    testWidgets('只保留展开 / 最小化 / 关闭三个圆形按钮', (tester) async {
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+      await _openPanel(tester);
+
+      expect(find.byKey(const ValueKey('floating-q-expand')), findsOneWidget);
+      expect(find.byKey(const ValueKey('floating-q-minimize')), findsOneWidget);
+      expect(find.byKey(const ValueKey('floating-q-close')), findsOneWidget);
+      // 弹窗空间有限：朗读开关与新对话刷新入口只在 /ai 全页面提供
+      expect(find.byKey(const ValueKey('floating-q-new')), findsNothing);
+      expect(find.byIcon(Icons.volume_off_rounded), findsNothing);
+      expect(find.byIcon(Icons.volume_up_rounded), findsNothing);
+      expect(find.byIcon(Icons.refresh_rounded), findsNothing);
+      // 三个圆形操作底座（AppIconBadge 为圆形实心底）
+      expect(find.byType(AppIconBadge), findsNWidgets(3));
     });
   });
 

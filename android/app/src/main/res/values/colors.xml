@@ -16,6 +16,18 @@
     <color name="widget_todo_icon_bg">#12000000</color>
     <color name="widget_priority">#007AFF</color>
     <color name="widget_badge_text">#FFFFFFFF</color>
+    <!--
+      「问小Q」多尺寸组件专属 token（深色版见 values-night/colors.xml）。
+      圆钮渐变、机器人屏幕色与卡片渐变都收口在这里，布局/矢量里不出现裸 hex。
+    -->
+    <color name="widget_ai_button_start">#4D97FF</color>
+    <color name="widget_ai_button_end">#0056D6</color>
+    <color name="widget_ai_button_ring">#38FFFFFF</color>
+    <color name="widget_ai_robot">#FFFFFFFF</color>
+    <color name="widget_ai_screen">#0B3F9E</color>
+    <color name="widget_ai_card_top">#FFFFFFFF</color>
+    <color name="widget_ai_card_bottom">#F2F6FF</color>
+    <color name="widget_ai_card_stroke">#E4EAF7</color>
     <color name="dialog_bg">#FFFFFF</color>
     <color name="dialog_text">#1C1C1E</color>
     <color name="dialog_input_bg">#F2F2F7</color>

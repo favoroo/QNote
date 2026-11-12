@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -28,6 +30,9 @@ class DiaryItem extends StatefulWidget {
   final VoidCallback? onUndo;
   final bool isUndoable;
   final Animation<double>? undoAnimation;
+
+  /// 刚通过批量确认栏箭头跳转到该记录：短暂描边高亮，方便定位。
+  final bool isReviewHighlighted;
 
   /// 时间线左侧圆形节点图标的 Key。
   ///
@@ -59,6 +64,7 @@ class DiaryItem extends StatefulWidget {
     this.onUndo,
     this.isUndoable = false,
     this.undoAnimation,
+    this.isReviewHighlighted = false,
     this.timeDragHandleKey,
     this.isTimeDragging = false,
     this.cardKey,
@@ -86,6 +92,7 @@ class _DiaryItemState extends State<DiaryItem> {
   VoidCallback? get onUndo => widget.onUndo;
   bool get isUndoable => widget.isUndoable;
   Animation<double>? get undoAnimation => widget.undoAnimation;
+  bool get isReviewHighlighted => widget.isReviewHighlighted;
 
   /// 当日屏幕使用时间（仅在日结卡片无持久化屏幕时长时异步获取并补全展示）
   TodayScreenUsage? _liveScreenUsage;
@@ -551,16 +558,24 @@ class _DiaryItemState extends State<DiaryItem> {
                                   ),
                                 ],
                               ),
-                              child: Center(
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: tagColor.withValues(alpha: 0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(_tagIcon(record.displayTag), size: 14, color: tagColor),
-                                ),
+                              child: Builder(
+                                builder: (context) {
+                                  // 标签色淡底小圆：前景压深到可读，保留标签色相
+                                  final ink = AppContrast.inkOnTint(
+                                    tagColor,
+                                    Theme.of(context).colorScheme.surface,
+                                    0.1,
+                                  );
+                                  return Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: tagColor.withValues(alpha: 0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(_tagIcon(record.displayTag), size: 14, color: ink),
+                                  );
+                                },
                               ),
                             ),
                           ),
@@ -590,14 +605,20 @@ class _DiaryItemState extends State<DiaryItem> {
                         isAnimating: isExtracting,
                         borderRadius: 16,
                         strokeWidth: 2,
-                        child: Container(
+                        child: AnimatedContainer(
                           key: _effectiveCardKey,
+                          duration: AppMotion.duration(context, AppDurations.fast),
+                          curve: Curves.easeOutCubic,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: isExtracting ? Colors.transparent : tagColor.withValues(alpha: 0.15),
+                              color: isExtracting
+                                  ? Colors.transparent
+                                  : isReviewHighlighted
+                                  ? theme.colorScheme.primary.withValues(alpha: 0.55)
+                                  : tagColor.withValues(alpha: 0.15),
                             ),
                             boxShadow: [
                               BoxShadow(
@@ -610,6 +631,12 @@ class _DiaryItemState extends State<DiaryItem> {
                                 blurRadius: 4,
                                 offset: const Offset(0, 1),
                               ),
+                              if (isReviewHighlighted)
+                                BoxShadow(
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.16),
+                                  blurRadius: 16,
+                                  spreadRadius: 1,
+                                ),
                             ],
                           ),
                           child: Stack(
@@ -703,40 +730,68 @@ class _DiaryItemState extends State<DiaryItem> {
                                             ),
                                           ],
                                         ),
-                                        child: isUndoable
-                                            ? (undoAnimation != null
-                                                  ? AnimatedBuilder(
-                                                      animation: undoAnimation!,
-                                                      builder: (context, child) {
-                                                        return Stack(
-                                                          alignment: Alignment.center,
-                                                          children: [
-                                                            SizedBox(
-                                                              width: 28,
-                                                              height: 28,
-                                                              child: CustomPaint(
-                                                                painter: _UndoCountdownPainter(
-                                                                  progress: undoAnimation!.value,
-                                                                  color: theme.colorScheme.error,
+                                        // 提取中 → 可撤回的状态切换用淡入缩放，避免图标生硬闪替
+                                        child: AnimatedSwitcher(
+                                          duration: AppMotion.duration(context, AppDurations.fast),
+                                          switchInCurve: Curves.easeOutCubic,
+                                          switchOutCurve: Curves.easeIn,
+                                          transitionBuilder: (child, animation) {
+                                            return FadeTransition(
+                                              opacity: animation,
+                                              child: ScaleTransition(
+                                                scale: Tween<double>(begin: 0.82, end: 1).animate(animation),
+                                                child: child,
+                                              ),
+                                            );
+                                          },
+                                          child: isUndoable
+                                              ? KeyedSubtree(
+                                                  key: const ValueKey('undo'),
+                                                  child: undoAnimation != null
+                                                      ? AnimatedBuilder(
+                                                          animation: undoAnimation!,
+                                                          builder: (context, child) {
+                                                            return Stack(
+                                                              alignment: Alignment.center,
+                                                              children: [
+                                                                SizedBox(
+                                                                  width: 28,
+                                                                  height: 28,
+                                                                  child: CustomPaint(
+                                                                    painter: _UndoCountdownPainter(
+                                                                      progress: undoAnimation!.value,
+                                                                      color: theme.colorScheme.error,
+                                                                    ),
+                                                                  ),
                                                                 ),
-                                                              ),
-                                                            ),
-                                                            child!,
-                                                          ],
-                                                        );
-                                                      },
-                                                      child: Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
-                                                    )
-                                                  : Icon(Icons.undo, size: 14, color: theme.colorScheme.error))
-                                            : isExtracting
-                                            ? Center(
-                                                child: SizedBox(
-                                                  width: 16,
-                                                  height: 16,
-                                                  child: CircularProgressIndicator(strokeWidth: 2.0, color: tagColor),
+                                                                child!,
+                                                              ],
+                                                            );
+                                                          },
+                                                          child: Icon(
+                                                            Icons.undo,
+                                                            size: 14,
+                                                            color: theme.colorScheme.error,
+                                                          ),
+                                                        )
+                                                      : Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
+                                                )
+                                              : isExtracting
+                                              ? Center(
+                                                  key: const ValueKey('extracting'),
+                                                  child: SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child: CircularProgressIndicator(strokeWidth: 2.0, color: tagColor),
+                                                  ),
+                                                )
+                                              : Icon(
+                                                  Icons.auto_awesome,
+                                                  key: const ValueKey('idle'),
+                                                  size: 16,
+                                                  color: tagColor,
                                                 ),
-                                              )
-                                            : Icon(Icons.auto_awesome, size: 16, color: tagColor),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -758,6 +813,8 @@ class _DiaryItemState extends State<DiaryItem> {
 
   Widget _buildHeader(ThemeData theme, Color primaryTagColor, {String? categoryTag}) {
     final hasCategory = categoryTag != null && categoryTag.isNotEmpty;
+    // 时间胶囊前景压深到可读：标签色里琥珀/翡翠绿贴淡底只有 2:1 左右
+    final pillInk = AppContrast.inkOnTint(primaryTagColor, theme.colorScheme.surface, 0.1);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -779,14 +836,11 @@ class _DiaryItemState extends State<DiaryItem> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.access_time_filled, size: 13, color: primaryTagColor),
+                      Icon(Icons.access_time_filled, size: 13, color: pillInk),
                       const SizedBox(width: 4),
                       Text(
                         _formatTimeRangeWithDate(),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: primaryTagColor,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: theme.textTheme.labelSmall?.copyWith(color: pillInk, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -1282,6 +1336,11 @@ class _DiaryItemState extends State<DiaryItem> {
   Widget _buildHealthDailySummaryCard(ThemeData theme, Color primaryColor) {
     final colorScheme = theme.colorScheme;
     final bs = record.bodyState ?? {};
+    // 睡眠紫贴中性卡偏淡，先在卡片真实底色上压深到可读，再作图标/文字前景
+    final sleepInk = AppContrast.readable(
+      TagColors.sleep,
+      Color.alphaBlend(colorScheme.surfaceContainerHighest.withValues(alpha: 0.28), colorScheme.surface),
+    );
 
     final steps = (bs['steps'] as num?)?.toInt() ?? 0;
     final stepTarget = (bs['step_target'] as num?)?.toInt() ?? 8000;
@@ -1515,7 +1574,7 @@ class _DiaryItemState extends State<DiaryItem> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.nightlight_round, size: 16, color: sleepPurple),
+                      Icon(Icons.nightlight_round, size: 16, color: sleepInk),
                       const SizedBox(width: 6),
                       Text('睡眠', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                       const Spacer(),
@@ -1528,7 +1587,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                 '${sleepMinutes ~/ 60}小时${sleepMinutes % 60}分',
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: sleepPurple,
+                                  color: sleepInk,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1543,10 +1602,10 @@ class _DiaryItemState extends State<DiaryItem> {
                                 ),
                                 child: Text(
                                   '$sleepScore分',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: AppTypography.label,
                                     fontWeight: FontWeight.bold,
-                                    color: sleepPurple,
+                                    color: sleepInk,
                                   ),
                                 ),
                               ),

@@ -25,6 +25,7 @@ void main() {
     'stats-analyst',
     'frontend-design',
     'life-decision-guide',
+    'find-skills',
   ];
 
   group('SkillRegistry 技能手册文档', () {
@@ -188,6 +189,27 @@ void main() {
           reason: '别名 "$key" 应解析到同一份手册',
         );
       }
+    });
+
+    test('find-skills 覆盖市场搜索、安装、质量评估与安全边界', () {
+      final doc = registry.getSkillContent('find-skills')!;
+      expect(doc.contains('skill_market(search'), isTrue, reason: '应指引先用市场搜索');
+      expect(doc.contains('skill_market(install'), isTrue, reason: '应指引确认后安装');
+      expect(doc.contains('skill(name'), isTrue, reason: '安装后应载入手册');
+      expect(doc.contains('英文关键词'), isTrue, reason: '市场索引以英文为主，应提示翻译关键词');
+      expect(doc.contains('安装量'), isTrue, reason: '应要求按安装量评估质量');
+      expect(doc.contains('npx skills'), isTrue, reason: '应明确说明不要假装执行 npx skills');
+      expect(doc.contains('第三方数据'), isTrue, reason: '应声明第三方手册不是系统指令');
+      expect(doc.contains('overwrite: true'), isTrue, reason: '覆盖同名技能须先确认');
+      expect(doc.contains('write_file("/skills/<名称>.md")'), isTrue, reason: '市场不可用时应能落为本地自定义技能');
+    });
+
+    test('find-skills 支持别名与虚拟路径解析', () {
+      for (final key in ['find_skills', 'skill-finder', 'skill-discovery', 'skill-market', '/skills/find-skills.md']) {
+        expect(registry.getSkillContent(key), registry.getSkillContent('find-skills'), reason: '别名 "$key" 应解析到同一份手册');
+      }
+      expect(registry.isReservedName('find-skills'), isTrue);
+      expect(registry.isReservedName('skill-market'), isTrue);
     });
   });
 

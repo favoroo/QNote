@@ -8,7 +8,6 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
-import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/stats_provider.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
@@ -103,19 +102,18 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             );
           },
           customBorder: const CircleBorder(),
+          // 右上入口改实心主题色圆钮：淡描边圆在荧光黄绿下几乎隐形
           child: AnimatedContainer(
             duration: AppMotion.duration(context, AppDurations.normal),
             curve: AppCurves.standard,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2), width: 1),
-              color: colorScheme.primary.withValues(alpha: 0.05),
-            ),
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: colorScheme.primary),
             child: Icon(
               isHealthDevice ? Icons.settings_outlined : Icons.analytics_outlined,
               size: 20,
-              color: colorScheme.primary,
+              color: colorScheme.onPrimary,
             ),
           ),
         ),
@@ -130,7 +128,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.menu), onPressed: () => rootScaffoldKey.currentState?.openDrawer()),
+        // 统计已改为根路由全屏打开，返回按钮由 AppBar 自动提供
         title: const Text('数据统计'),
         centerTitle: true,
       ),

@@ -454,15 +454,13 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                   margin: const EdgeInsets.only(right: 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
+                    // 完成态做成实心主题色勾选框（与主题 checkbox 一致），
+                    // 淡底 + 同色勾在荧光黄绿下几乎看不见
                     border: Border.all(
-                      color: isDone
-                          ? (isDark ? Colors.white30 : colorScheme.outline.withValues(alpha: 0.4))
-                          : colorScheme.outline.withValues(alpha: 0.5),
+                      color: isDone ? colorScheme.primary : colorScheme.outline.withValues(alpha: 0.5),
                       width: 1.8,
                     ),
-                    color: isDone
-                        ? (isDark ? Colors.white24 : colorScheme.primary.withValues(alpha: 0.15))
-                        : Colors.transparent,
+                    color: isDone ? colorScheme.primary : Colors.transparent,
                   ),
                   child: isDone
                       ? TweenAnimationBuilder<double>(
@@ -472,7 +470,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                           builder: (context, value, child) {
                             return Transform.scale(scale: value, child: child);
                           },
-                          child: Icon(Icons.check, size: 14, color: isDark ? Colors.white70 : colorScheme.primary),
+                          child: Icon(Icons.check, size: 14, color: colorScheme.onPrimary),
                         )
                       : null,
                 ),
@@ -535,14 +533,14 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.repeat, size: 11, color: colorScheme.primary),
+                                  Icon(Icons.repeat, size: 11, color: colorScheme.onSurfaceVariant),
                                   const SizedBox(width: 3),
                                   Text(
                                     todo.repeatRuleLabel,
                                     style: TextStyle(
                                       fontSize: 10.5,
                                       fontWeight: FontWeight.bold,
-                                      color: colorScheme.primary,
+                                      color: colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ],

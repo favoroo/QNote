@@ -206,7 +206,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                         trailing: _current.voice == QVoiceConfig.systemVoiceId
-                            ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
+                            ? Icon(Icons.check_circle, color: theme.colorScheme.onSurface)
                             : null,
                         onTap: () => _selectVoice(QVoiceConfig.systemVoiceId, sheetSetState),
                       ),
@@ -219,7 +219,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                           ),
                           trailing: voice.id == _current.voice
-                              ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
+                              ? Icon(Icons.check_circle, color: theme.colorScheme.onSurface)
                               : null,
                           onTap: () => _selectVoice(voice.id, sheetSetState),
                         ),
@@ -329,7 +329,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
                           width: _kRateSlotWidth,
                           height: _kRateSlotWidth,
                           child: entry.key == _current.rate
-                              ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
+                              ? Icon(Icons.check_circle, color: theme.colorScheme.onSurface)
                               : null,
                         ),
                         onTap: () => _selectRate(entry.key, sheetSetState),

@@ -49,11 +49,7 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Scaffold(
-      backgroundColor: colorScheme.surfaceContainerLowest,
       appBar: AppBar(
         title: const Text('小Q设置'),
         centerTitle: false,

@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/agent/tools/workspace/edit_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/list_dir_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/move_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/read_file_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/workspace/skill_market_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/skill_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/view_image_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/write_file_tool.dart';
@@ -27,6 +28,7 @@ class AgentToolRegistry {
   static const Set<String> optionalToolNames = {
     'fetch_url',
     'web_search',
+    'skill_market',
     'generate_image',
     // 关掉它不会让模型突然会看图：图片仍会按能力被剥离，只是小Q 从此只能如实说看不到画面
     'describe_image',
@@ -58,6 +60,7 @@ class AgentToolRegistry {
       GrepTool(),
       if (!disabled.contains('fetch_url')) FetchUrlTool(),
       if (!disabled.contains('web_search')) WebSearchTool(),
+      if (!disabled.contains('skill_market')) SkillMarketTool(),
       if (!disabled.contains('generate_image')) GenerateImageTool(),
       if (!disabled.contains('describe_image')) DescribeImageTool(),
       AskUserTool(),

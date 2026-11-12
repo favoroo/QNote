@@ -104,14 +104,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [GoRoute(path: '/todo', builder: (context, state) => const TodoPage())],
           ),
-          StatefulShellBranch(
-            routes: [GoRoute(path: '/statistics', builder: (context, state) => const StatisticsPage())],
-          ),
           // /ai 小Q全页面：不作为导航栏 tab 显示，由中央停靠按钮单击进入
           StatefulShellBranch(
             routes: [GoRoute(path: '/ai', builder: (context, state) => const AiPage())],
           ),
         ],
+      ),
+      GoRoute(
+        // 数据统计已移出底栏：从抽屉以根路由全屏打开，返回即回到原分支
+        path: '/statistics',
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (context, state) => _fadeTransitionPage(const StatisticsPage()),
       ),
       GoRoute(
         path: '/settings/profile',

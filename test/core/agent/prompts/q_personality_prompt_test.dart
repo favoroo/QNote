@@ -62,6 +62,13 @@ void main() {
       expect(all, contains('图片生成（generate_image）'));
       expect(withoutImage, isNot(contains('图片生成（generate_image）')));
       expect(withoutImage, contains('网页阅读（fetch_url）'));
+
+      final withoutMarket = QSystemPrompt.buildSystemPrompt(
+        enabledOptionalTools: AgentToolRegistry.optionalToolNames.difference({'skill_market'}),
+      );
+      expect(all, contains('技能市场（skill_market）'));
+      expect(withoutMarket, isNot(contains('技能市场（skill_market）')));
+      expect(withoutMarket, contains('网页搜索（web_search）'));
     });
   });
 

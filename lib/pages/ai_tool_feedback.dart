@@ -34,7 +34,8 @@ class _GenericToolFeedbackWidgetState extends State<_GenericToolFeedbackWidget> 
       code: TextStyle(
         fontFamily: 'monospace',
         fontSize: 13,
-        color: theme.colorScheme.primary,
+        // 行内代码贴浅色底，亮主题色原字会看不清，改中性墨色
+        color: theme.colorScheme.onSurface,
         backgroundColor: Colors.transparent,
       ),
       codeblockDecoration: BoxDecoration(
@@ -108,7 +109,7 @@ class _GenericToolFeedbackWidgetState extends State<_GenericToolFeedbackWidget> 
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.check_circle_outline, size: 15, color: theme.colorScheme.primary),
+                  Icon(Icons.check_circle_outline, size: 15, color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -225,7 +226,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.folder_open_outlined, size: 15, color: theme.colorScheme.primary),
+                  Icon(Icons.folder_open_outlined, size: 15, color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -275,7 +276,7 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
                           Icon(
                             isDir ? Icons.folder_outlined : Icons.insert_drive_file_outlined,
                             size: 13,
-                            color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                           const SizedBox(width: 6),
                           Expanded(
@@ -373,7 +374,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.search_rounded, size: 15, color: theme.colorScheme.primary),
+                  Icon(Icons.search_rounded, size: 15, color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -534,17 +535,15 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                               child: Container(
                                 width: 16,
                                 height: 16,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                                  shape: BoxShape.circle,
-                                ),
+                                // 步骤序号改实心主题色小圆，淡底配同色数字看不清
+                                decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
                                 child: Center(
                                   child: Text(
                                     '${i + 1}',
                                     style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.primary,
+                                      color: theme.colorScheme.onPrimary,
                                     ),
                                   ),
                                 ),

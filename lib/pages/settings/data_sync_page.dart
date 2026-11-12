@@ -83,9 +83,6 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return PopScope(
       canPop: !_syncDirty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -97,7 +94,6 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: colorScheme.surfaceContainerLowest,
         appBar: AppBar(
           title: const Text('数据与同步'),
           centerTitle: false,

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 
 class PersonalizationPage extends ConsumerWidget {
@@ -11,8 +14,9 @@ class PersonalizationPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final themeMode = ref.watch(themeModeProvider);
     final accentColor = ref.watch(accentColorProvider);
+    final background = ref.watch(backgroundSettingProvider);
+    final platformBrightness = MediaQuery.platformBrightnessOf(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -49,32 +53,31 @@ class PersonalizationPage extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('显示模式', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  Text('背景', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ThemeModeButton(
-                          title: '浅色',
-                          icon: Icons.light_mode_outlined,
-                          isSelected:
-                              themeMode == ThemeMode.light ||
-                              (themeMode == ThemeMode.system && theme.brightness == Brightness.light),
-                          onTap: () => ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _ThemeModeButton(
-                          title: '深色',
-                          icon: Icons.dark_mode_outlined,
-                          isSelected:
-                              themeMode == ThemeMode.dark ||
-                              (themeMode == ThemeMode.system && theme.brightness == Brightness.dark),
-                          onTap: () => ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark),
-                        ),
-                      ),
-                    ],
+                  // 背景取代了原来的浅色/深色开关：选中哪个预设，整页明暗就由它推导
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1.35,
+                    children: AppBackgroundPreset.values.map((preset) {
+                      return _BackgroundPresetTile(
+                        preset: preset,
+                        accentColor: accentColor,
+                        customColor: background.customColor,
+                        platformBrightness: platformBrightness,
+                        isSelected: background.preset == preset,
+                        onTap: () => _onPresetTap(context, ref, preset),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '文字与图标会按背景自动选深浅色；主题色背景会自动微调，避免和按钮融在一起。',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 32),
                   Text('主题色', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
@@ -139,7 +142,7 @@ class PersonalizationPage extends ConsumerWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () {
-                    ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
+                    ref.read(backgroundSettingProvider.notifier).reset();
                     ref.read(accentColorProvider.notifier).setAccentColor(const Color(0xFF005BCB));
                   },
                   child: Row(
@@ -164,45 +167,311 @@ class PersonalizationPage extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _onPresetTap(BuildContext context, WidgetRef ref, AppBackgroundPreset preset) async {
+    if (preset != AppBackgroundPreset.custom) {
+      await ref.read(backgroundSettingProvider.notifier).setPreset(preset);
+      return;
+    }
+    final current = ref.read(backgroundSettingProvider);
+    final picked = await showDialog<Color>(
+      context: context,
+      builder: (context) =>
+          _BackgroundColorPickerDialog(initialColor: current.customColor, accentColor: ref.read(accentColorProvider)),
+    );
+    if (picked != null) {
+      await ref.read(backgroundSettingProvider.notifier).setCustomColor(picked);
+    }
+  }
 }
 
-class _ThemeModeButton extends StatelessWidget {
-  final String title;
-  final IconData icon;
+/// 单张背景预设卡：用真实的画布/表面/文字色画一个迷你界面，选之前就能看到效果。
+class _BackgroundPresetTile extends StatelessWidget {
+  const _BackgroundPresetTile({
+    required this.preset,
+    required this.accentColor,
+    required this.customColor,
+    required this.platformBrightness,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final AppBackgroundPreset preset;
+  final Color accentColor;
+  final Color customColor;
+  final Brightness platformBrightness;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _ThemeModeButton({required this.title, required this.icon, required this.isSelected, required this.onTap});
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final setting = AppBackgroundSetting(preset: preset, customColor: customColor);
+    final palette = setting.resolvePalette(accentColor: accentColor, platformBrightness: platformBrightness);
+    // 预览圆点直接展示用户所选的主题色，与主题里按钮/FAB 使用的 primary 保持一致
+    final primary = accentColor;
+    final borderColor = isSelected ? AppContrast.onColor(palette.canvas) : palette.outlineVariant;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        height: 100,
+        duration: AppDurations.fast,
+        curve: AppCurves.standard,
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          color: palette.canvas,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(icon, size: 32, color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
-                fontWeight: FontWeight.bold,
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: palette.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: palette.outlineVariant, width: 0.8),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 4,
+                      decoration: BoxDecoration(color: palette.onSurface, borderRadius: BorderRadius.circular(2)),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: 24,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: palette.onSurfaceVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(color: primary, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: palette.outlineVariant,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _labelOf(preset),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.onSurface,
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (preset == AppBackgroundPreset.system)
+                  Icon(Icons.brightness_auto_rounded, size: 14, color: palette.onSurfaceVariant),
+                if (preset == AppBackgroundPreset.custom)
+                  Icon(Icons.tune_rounded, size: 14, color: palette.onSurfaceVariant),
+                if (isSelected) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.check_circle_rounded, size: 15, color: palette.onSurface),
+                ],
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  static String _labelOf(AppBackgroundPreset preset) {
+    switch (preset) {
+      case AppBackgroundPreset.system:
+        return '跟随系统';
+      case AppBackgroundPreset.light:
+        return '浅色';
+      case AppBackgroundPreset.dark:
+        return '深色';
+      case AppBackgroundPreset.oled:
+        return 'OLED 纯黑';
+      case AppBackgroundPreset.accent:
+        return '主题色';
+      case AppBackgroundPreset.custom:
+        return '自定义';
+    }
+  }
+}
+
+/// 自定义背景拾色对话框。
+///
+/// 顶部先展示「实际生效」的迷你界面，并在颜色被微调时明确提示，
+/// 避免用户觉得自己选的颜色被悄悄改掉。
+class _BackgroundColorPickerDialog extends StatefulWidget {
+  const _BackgroundColorPickerDialog({required this.initialColor, required this.accentColor});
+
+  final Color initialColor;
+  final Color accentColor;
+
+  @override
+  State<_BackgroundColorPickerDialog> createState() => _BackgroundColorPickerDialogState();
+}
+
+class _BackgroundColorPickerDialogState extends State<_BackgroundColorPickerDialog> {
+  late Color _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _color = widget.initialColor;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appliedColor = ensureAccentGap(_color, widget.accentColor);
+    final palette = AppSurfacePalette.derived(appliedColor);
+    final adjusted = appliedColor.toARGB32() != _color.toARGB32();
+
+    return AlertDialog(
+      title: const Text('自定义背景色'),
+      content: SizedBox(
+        width: 320,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 104,
+                decoration: BoxDecoration(
+                  color: palette.canvas,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: palette.outlineVariant),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: palette.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: palette.outlineVariant, width: 0.8),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '实际背景预览',
+                        style: TextStyle(color: palette.onSurface, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('次级文字会自动选深浅色', style: TextStyle(color: palette.onSurfaceVariant, fontSize: 11)),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(color: widget.accentColor, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: palette.outlineVariant,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (adjusted) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(Icons.auto_fix_high_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '所选颜色与主题色过近，已自动微调以保持区分。',
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              Text('快捷选择', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: presetAccentColors.map((color) {
+                  final selected = color.toARGB32() == _color.toARGB32();
+                  return GestureDetector(
+                    onTap: () => setState(() => _color = color),
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: selected ? AppContrast.onColor(color) : Colors.transparent,
+                          width: selected ? 2 : 0,
+                        ),
+                      ),
+                      child: selected ? Icon(Icons.check_rounded, size: 16, color: AppContrast.onColor(color)) : null,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              ColorPicker(
+                pickerColor: _color,
+                onColorChanged: (color) => setState(() => _color = color),
+                enableAlpha: false,
+                labelTypes: const [],
+                hexInputBar: true,
+                paletteType: PaletteType.hsvWithHue,
+                pickerAreaHeightPercent: 0.7,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.pop(context, _color), child: const Text('应用')),
+      ],
     );
   }
 }

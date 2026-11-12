@@ -215,7 +215,8 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
                   theme,
                   icon: Icons.file_download_outlined,
                   title: '导出 JSON 备份',
-                  color: theme.colorScheme.primary,
+                  // 主色只留作淡底品牌渲染，前景用中性墨色保证任意主题色可读
+                  color: theme.colorScheme.onSurface,
                   backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.08),
                   onTap: _isExporting ? null : _handleExport,
                   isLoading: _isExporting,
@@ -225,7 +226,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
                   theme,
                   icon: Icons.file_upload_outlined,
                   title: '导入备份',
-                  color: theme.colorScheme.primary,
+                  color: theme.colorScheme.onSurface,
                   backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.08),
                   onTap: _isImporting ? null : _handleImport,
                   isLoading: _isImporting,

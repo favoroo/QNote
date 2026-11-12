@@ -25,7 +25,6 @@ class StepsTrendChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
 
     // Y 轴上限至少包住目标线，再抬到 2000 的整数倍，保证刻度落在整千
     final peak = buckets.fold<double>(dailyTarget.toDouble(), (a, b) => a > b.value ? a : b.value);
@@ -98,7 +97,7 @@ class StepsTrendChart extends StatelessWidget {
                       ],
                       barTouchData: BarTouchData(
                         touchTooltipData: BarTouchTooltipData(
-                          getTooltipColor: (_) => isDark ? const Color(0xFF2C2C2E) : colorScheme.surfaceContainerHigh,
+                          getTooltipColor: (_) => colorScheme.surfaceContainerHigh,
                           getTooltipItem: (group, groupIndex, rod, rodIndex) {
                             if (groupIndex < 0 || groupIndex >= buckets.length) {
                               return null;
@@ -110,11 +109,7 @@ class StepsTrendChart extends StatelessWidget {
                                       '${NumberFormat('#,###').format(bucket.value.round())} 步';
                             return BarTooltipItem(
                               '${bucket.rangeLabel}\n$body',
-                              TextStyle(
-                                color: isDark ? Colors.white : colorScheme.onSurface,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
+                              TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 12),
                             );
                           },
                         ),
@@ -164,7 +159,7 @@ class StepsTrendChart extends StatelessWidget {
                         drawVerticalLine: false,
                         horizontalInterval: maxY / 2,
                         getDrawingHorizontalLine: (value) => FlLine(
-                          color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+                          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
                           strokeWidth: 1,
                           dashArray: const [4, 4],
                         ),

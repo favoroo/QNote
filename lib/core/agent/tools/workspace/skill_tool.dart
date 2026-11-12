@@ -24,7 +24,8 @@ class SkillTool extends AgentTool {
       '例如 GTD 清单整理、长文/卡片排版、日记复盘、数据洞察解读、分类目录维护、系统与 AI 配置、'
       '网页/海报/邀请函/可视化页面设计（frontend-design），以及用户自定义技能。'
       '不填 name 列出全部技能；只关心手册里某一章时传 section（序号或标题关键词），可只取该章、省下上下文。'
-      '用户可通过 write_file("/skills/<名称>.md") 创建自定义技能，内置技能只读。'
+      '用户可通过 write_file("/skills/<名称>.md") 创建自定义技能，内置技能只读；'
+      '本地没有合适手册、想扩展新能力时，用 skill_market 到 skills.sh 搜索并安装第三方技能。'
       '简单任务（记一条待办、写一条流水）不必查阅手册，直接照 /AGENTS.md 规范执行。';
 
   @override

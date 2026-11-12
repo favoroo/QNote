@@ -25,6 +25,8 @@ import 'package:qnote_flutter/core/storage/fixed_event_repository.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/utils/daily_score_adjust.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
@@ -804,15 +806,38 @@ class VirtualWorkspaceService {
     final name = path.substring('/settings/'.length).trim();
     if (name == 'appearance.json') {
       final prefs = await SharedPreferences.getInstance();
-      final themeIndex = prefs.getInt('theme_mode') ?? 0;
-      final themeMode = ThemeMode.values[themeIndex.clamp(0, ThemeMode.values.length - 1)];
+      final storedPreset = prefs.getInt('background_preset');
+      final preset = storedPreset == null
+          ? switch (prefs.getInt('theme_mode') ?? 0) {
+              1 => AppBackgroundPreset.light,
+              2 => AppBackgroundPreset.dark,
+              _ => AppBackgroundPreset.system,
+            }
+          : AppBackgroundPreset.values[storedPreset.clamp(0, AppBackgroundPreset.values.length - 1)];
       final accentVal = prefs.getInt('accent_color') ?? 0xFF005BCB;
-      final colorHex = _colorToHex(Color(accentVal));
+      final accentColor = Color(accentVal);
+      final customVal = prefs.getInt('background_custom_color') ?? AppBackgroundSetting.defaultCustomColor.toARGB32();
+      final customColor = Color(customVal);
+      final setting = AppBackgroundSetting(preset: preset, customColor: customColor);
+      final resolvedCanvas = preset == AppBackgroundPreset.system
+          ? null
+          : setting.resolveCanvas(accentColor: accentColor, platformBrightness: Brightness.light);
+      final themeMode = resolvedCanvas == null
+          ? ThemeMode.system
+          : (AppContrast.onColor(resolvedCanvas) == AppContrast.lightInk ? ThemeMode.dark : ThemeMode.light);
       final data = {
         'themeMode': _themeModeToString(themeMode),
-        'accentColor': colorHex,
+        'backgroundStyle': workspaceBackgroundPresetToString(preset),
+        'customBackgroundColor': _colorToHex(customColor),
+        'accentColor': _colorToHex(accentColor),
         'description':
-            'themeMode 可选: "system" | "light" | "dark"；accentColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、#E91E8C 玫瑰粉红、#00E676 春天亮绿、#FF3B30 活力红、#FF9500 活力橙、#00BCD4 湖水青、#7C4DFF 典雅紫）',
+            'themeMode 为兼容字段（由背景推导，仅 backgroundStyle=system 时为 "system"）；'
+            'backgroundStyle 可选: "system"(跟随系统) | "light"(浅色) | "dark"(深色) | '
+            '"oled"(OLED纯黑) | "accent"(主题色背景，自动微调避免与主题色融合) | '
+            '"custom"(自定义背景，颜色取 customBackgroundColor)；'
+            'accentColor / customBackgroundColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、'
+            '#E91E8C 玫瑰粉红、#00E676 春天亮绿、#FF3B30 活力红、#FF9500 活力橙、'
+            '#00BCD4 湖水青、#7C4DFF 典雅紫）',
       };
       return const JsonEncoder.withIndent('  ').convert(data);
     } else if (name == 'health.json') {

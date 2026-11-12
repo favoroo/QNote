@@ -348,16 +348,18 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(themeModeProvider);
+    final background = ref.watch(backgroundSettingProvider);
     final accentColor = ref.watch(accentColorProvider);
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
       title: 'QNote',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme(accentColor),
-      darkTheme: AppTheme.darkTheme(accentColor),
-      themeMode: themeMode,
+      // 背景预设自己决定明暗：浅色/深色/绝对背景两个槽位拿到同一套主题，
+      // 跟随系统才分别拿到 legacy 浅色/深色主题。
+      theme: AppTheme.build(accentColor: accentColor, background: background, platformBrightness: Brightness.light),
+      darkTheme: AppTheme.build(accentColor: accentColor, background: background, platformBrightness: Brightness.dark),
+      themeMode: ThemeMode.system,
       routerConfig: router,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -372,7 +374,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
           statusBarBrightness: theme.brightness == Brightness.dark ? Brightness.dark : Brightness.light,
-          systemNavigationBarColor: theme.colorScheme.surface,
+          systemNavigationBarColor: theme.scaffoldBackgroundColor,
           systemNavigationBarIconBrightness: theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
         );
 
@@ -395,7 +397,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
                 }
                 final router = GoRouter.of(context);
                 final location = router.routerDelegate.currentConfiguration.uri.toString();
-                final shellRoutes = ['/diary', '/notes', '/todo', '/ai', '/statistics'];
+                final shellRoutes = ['/diary', '/notes', '/todo', '/ai'];
                 if (shellRoutes.contains(location)) {
                   return;
                 }

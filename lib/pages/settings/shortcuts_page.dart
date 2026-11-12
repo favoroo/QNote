@@ -574,12 +574,12 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        // 「添加选项」小钮改实心主题色，淡描边款在荧光黄绿下看不清
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.05),
+                          color: theme.colorScheme.primary,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
                         ),
-                        child: Icon(Icons.add, size: 12, color: theme.colorScheme.primary),
+                        child: Icon(Icons.add, size: 12, color: theme.colorScheme.onPrimary),
                       ),
                     ),
                   ],

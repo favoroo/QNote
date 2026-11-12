@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
@@ -12,7 +13,9 @@ import 'package:qnote_flutter/pages/settings/health_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
 import 'package:qnote_flutter/pages/settings/about_page.dart';
 import 'package:qnote_flutter/providers/drawer_nav_provider.dart';
+import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 
 /// 侧边栏（抽屉）。
 ///
@@ -152,7 +155,25 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
               child: ListView(
                 padding: const EdgeInsets.only(top: 4, bottom: 16),
                 children: [
-                  // 全部入口收进一张集合卡片：扁平无分组，行间以超细分隔线区隔。
+                  // 数据统计是主功能而非设置项：单独一张卡片置顶，
+                  // 与下面的设置列表分层，避免被当成又一个设置入口
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadius.large),
+                      border: Border.all(
+                        width: 1,
+                        color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.6 : 1.0),
+                      ),
+                    ),
+                    child: _DrawerMenuItem(
+                      entry: _statisticsEntry,
+                      onTap: () => _navigateTo(context, _statisticsEntry),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // 设置类入口收进一张集合卡片：扁平无分组，行间以超细分隔线区隔。
                   // 卡片只描边、不填色——抽屉底色已是 surface，再铺一层不透明
                   // 填充会把 InkWell 的悬停/按下高亮盖住（Ink 特征画在 Material 层，
                   // 本容器是其后代、绘制在其之上），因此这里必须保持透明。
@@ -211,7 +232,23 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
   }
 
   void _navigateTo(BuildContext context, _MenuEntry entry) {
+    // 统计这类整页图表不塞进 360 宽的抽屉内嵌 Navigator：
+    // 先收起抽屉，再以根路由全屏打开
+    final route = entry.route;
+    if (route != null) {
+      _openFullScreen(context, route);
+      return;
+    }
     _navigatorKey.currentState!.pushNamed('$_entryRoutePrefix${entry.id}');
+  }
+
+  /// 收起抽屉后用根路由全屏打开二级页面。
+  ///
+  /// 先取到 router 再关闭抽屉：关闭动画会卸载抽屉子树，晚取 context 已失效。
+  void _openFullScreen(BuildContext context, String route) {
+    final router = GoRouter.of(context);
+    rootScaffoldKey.currentState?.closeDrawer();
+    router.push(route);
   }
 
   Route<void> _menuRoute() {
@@ -224,7 +261,8 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
   Route<void> _entryRoute(_MenuEntry entry) {
     return MaterialPageRoute<void>(
       settings: RouteSettings(name: '$_entryRoutePrefix${entry.id}'),
-      builder: (context) => entry.page,
+      // 带 route 的入口走根路由全屏打开，不会进入这里
+      builder: (context) => entry.page!,
     );
   }
 }
@@ -279,17 +317,29 @@ class _DrawerEntryTracker extends NavigatorObserver {
   }
 }
 
-/// 抽屉菜单项描述：icon 与 iconWidget 二选一
+/// 抽屉菜单项描述：icon 与 iconWidget 二选一。
+///
+/// [page] 与 [route] 二选一：前者在抽屉内嵌 Navigator 中展示，
+/// 后者（如数据统计）会先关闭抽屉、再以根路由全屏打开。
 class _MenuEntry {
   /// 稳定 id：用于记住「上次停在哪个入口」，必须与展示文案解耦
   final String id;
   final IconData? icon;
   final Widget? iconWidget;
   final String label;
-  final Widget page;
+  final Widget? page;
+  final String? route;
 
-  const _MenuEntry({required this.id, this.icon, this.iconWidget, required this.label, required this.page});
+  const _MenuEntry({required this.id, this.icon, this.iconWidget, required this.label, this.page, this.route});
 }
+
+/// 数据统计入口：不进入设置列表，单独置顶展示。
+const _MenuEntry _statisticsEntry = _MenuEntry(
+  id: 'statistics',
+  icon: Icons.insights_rounded,
+  label: '数据统计',
+  route: '/statistics',
+);
 
 /// 已合并入口的旧 id → 新 id。
 ///
@@ -341,16 +391,9 @@ class _DrawerMenuItem extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 统一品牌色小圆底，压低图标色彩权重，让列表主体保持干净
-    final Widget leading =
-        entry.iconWidget ??
-        Container(
-          width: 36,
-          height: 36,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: colorScheme.primaryContainer, shape: BoxShape.circle),
-          child: Icon(entry.icon, color: colorScheme.primary, size: 19),
-        );
+    // 统一品牌色实心圆底：亮色主题下淡底 + 亮图标会糊在一起，
+    // 实心底由 AppIconBadge 自动选黑/白前景，任意主题色都能看清
+    final Widget leading = entry.iconWidget ?? AppIconBadge(icon: entry.icon!, size: 36, iconSize: 19);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 14),

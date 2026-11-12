@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
+
 class EmptyStateWidget extends StatefulWidget {
   final IconData icon;
   final String message;
@@ -51,6 +53,7 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget> with SingleTickerPr
     final textTheme = Theme.of(context).textTheme;
     final disableAnimations = !_animationsEnabled;
 
+    // 外圈保留淡色光环，内圈改实心主题色「硬币」：淡底配同色图标在荧光黄绿下看不清
     Widget iconBox = Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -58,11 +61,7 @@ class _EmptyStateWidgetState extends State<EmptyStateWidget> with SingleTickerPr
         shape: BoxShape.circle,
         border: Border.all(color: colorScheme.primary.withValues(alpha: 0.06), width: 2),
       ),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
-        child: Icon(widget.icon, size: widget.iconSize, color: colorScheme.primary),
-      ),
+      child: AppIconBadge(icon: widget.icon, size: widget.iconSize + 32, iconSize: widget.iconSize),
     );
 
     if (!disableAnimations) {

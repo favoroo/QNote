@@ -9,10 +9,9 @@ class ChangelogPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('更新日志'),
         backgroundColor: Colors.transparent,
@@ -58,7 +57,7 @@ class ChangelogPage extends StatelessWidget {
             children: [
               Text(
                 'v${entry.version}',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary),
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurface),
               ),
               if (isCurrent) ...[
                 const SizedBox(width: 8),
@@ -71,7 +70,7 @@ class ChangelogPage extends StatelessWidget {
                   child: Text(
                     '当前版本',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.primary,
+                      color: colorScheme.onSurface,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

@@ -75,6 +75,22 @@ void main() {
       expect(AgentToolLabels.resultLabel('skill', {'name': 'frontend-design'}), '调用技能 · frontend-design');
     });
 
+    test('skill_market：搜索进度取关键词', () {
+      final detail = AgentToolLabels.detailFromPartialArguments('skill_market', '{"search": "pdf"');
+      expect(AgentToolLabels.progressLabel('skill_market', detail), '正在查询技能市场 · pdf');
+    });
+
+    test('skill_market：搜索与安装结果文案', () {
+      expect(
+        AgentToolLabels.resultLabel('skill_market', {
+          'action': 'search',
+          'results': [1, 2],
+        }),
+        '技能市场 · 2 个结果',
+      );
+      expect(AgentToolLabels.resultLabel('skill_market', {'action': 'install', 'name': 'pdf'}), '技能市场 · pdf');
+    });
+
     test('快照为空时回退纯工具文案', () {
       expect(AgentToolLabels.progressLabel('write_file', const {}), '正在写入文件');
     });

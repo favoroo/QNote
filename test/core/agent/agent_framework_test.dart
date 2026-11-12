@@ -18,6 +18,7 @@ void main() {
       expect(names.contains('edit_file'), true);
       expect(names.contains('delete_file'), true);
       expect(names.contains('skill'), true);
+      expect(names.contains('skill_market'), true);
       expect(names.contains('grep'), true);
       expect(names.contains('ask_user'), true);
 
@@ -25,6 +26,12 @@ void main() {
       expect(names.contains('manage_todo'), false);
       expect(names.contains('manage_note'), false);
       expect(names.contains('edit'), false);
+    });
+
+    test('可选工具被禁用后不再注册（skill_market 可独立关闭）', () {
+      final dispatcher = AgentToolRegistry.createDefaultDispatcher(disabledTools: {'skill_market'});
+      expect(dispatcher.hasTool('skill_market'), false);
+      expect(dispatcher.hasTool('skill'), true);
     });
 
     test('ToolDispatcher dispatch 未知工具能安全返回 isError 消息', () async {

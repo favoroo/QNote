@@ -10,6 +10,7 @@ import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
 /// 距今 [daysAgo] 天的日期键（`YYYY-MM-DD`）。评分端点按相对日期取，
@@ -217,6 +218,8 @@ void main() {
       // 2. 读默认 appearance.json
       final initialRead = await vfs.readFile('/settings/appearance.json');
       expect(initialRead, contains('themeMode'));
+      expect(initialRead, contains('backgroundStyle'));
+      expect(initialRead, contains('customBackgroundColor'));
       expect(initialRead, contains('accentColor'));
 
       // 3. 写入新外观配置（深色模式 + 玫瑰粉红 #E91E8C）
@@ -240,6 +243,29 @@ void main() {
       final readGreen = await vfs.readFile('/settings/appearance.json');
       expect(readGreen, contains('"themeMode": "light"'));
       expect(readGreen, contains('"accentColor": "#00E676"'));
+
+      // 6. 新字段：OLED 纯黑背景
+      await vfs.writeFile('/settings/appearance.json', '{"backgroundStyle": "oled"}');
+      expect(prefs.getInt('background_preset'), AppBackgroundPreset.oled.index);
+      expect(prefs.getInt('theme_mode'), 2); // OLED 推导为深色
+      final readOled = await vfs.readFile('/settings/appearance.json');
+      expect(readOled, contains('"backgroundStyle": "oled"'));
+
+      // 7. 新字段：自定义背景色
+      await vfs.writeFile(
+        '/settings/appearance.json',
+        '{"backgroundStyle": "custom", "customBackgroundColor": "#336699"}',
+      );
+      expect(prefs.getInt('background_preset'), AppBackgroundPreset.custom.index);
+      expect(prefs.getInt('background_custom_color'), 0xFF336699);
+      final readCustom = await vfs.readFile('/settings/appearance.json');
+      expect(readCustom, contains('"backgroundStyle": "custom"'));
+      expect(readCustom, contains('"customBackgroundColor": "#336699"'));
+
+      // 8. 旧 themeMode 写入会回落到基础背景预设
+      await vfs.writeFile('/settings/appearance.json', '{"themeMode": "light"}');
+      expect(prefs.getInt('background_preset'), AppBackgroundPreset.light.index);
+      expect(prefs.getInt('theme_mode'), 1);
     });
 
     test('10. settings: ai.json 角色分配与模型超参数读写', () async {

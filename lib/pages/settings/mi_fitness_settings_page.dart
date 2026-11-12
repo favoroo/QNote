@@ -15,6 +15,7 @@ import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
 import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 
 part 'mi_fitness_settings_widgets.dart';
@@ -233,30 +234,33 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               ),
               const SizedBox(height: 8),
               ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.12), shape: BoxShape.circle),
-                  child: const Icon(Icons.today_rounded, color: Colors.blue, size: 20),
+                leading: const AppIconBadge(
+                  icon: Icons.today_rounded,
+                  size: 36,
+                  iconSize: 20,
+                  backgroundColor: Colors.blue,
                 ),
                 title: const Text('同步最近 7 天'),
                 subtitle: const Text('日常快速同步'),
                 onTap: () => Navigator.of(ctx).pop(7),
               ),
               ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.12), shape: BoxShape.circle),
-                  child: const Icon(Icons.calendar_month_rounded, color: Colors.teal, size: 20),
+                leading: const AppIconBadge(
+                  icon: Icons.calendar_month_rounded,
+                  size: 36,
+                  iconSize: 20,
+                  backgroundColor: Colors.teal,
                 ),
                 title: const Text('同步最近 30 天'),
                 subtitle: const Text('近一个月数据与运动记录'),
                 onTap: () => Navigator.of(ctx).pop(30),
               ),
               ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.12), shape: BoxShape.circle),
-                  child: const Icon(Icons.history_rounded, color: Colors.purple, size: 20),
+                leading: const AppIconBadge(
+                  icon: Icons.history_rounded,
+                  size: 36,
+                  iconSize: 20,
+                  backgroundColor: Colors.purple,
                 ),
                 title: const Text('同步最近 90 天'),
                 subtitle: const Text('近一季度历史数据，首次同步推荐'),
@@ -630,7 +634,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                           style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(width: 6),
-                        Icon(Icons.calendar_month, size: 16, color: colorScheme.primary),
+                        Icon(Icons.calendar_month, size: 16, color: colorScheme.onSurfaceVariant),
                       ],
                     ),
                   ),
@@ -838,11 +842,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             // 头部：图标 + 标题 + 睡眠时长 + 评分
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: sleepPurple.withValues(alpha: 0.12), shape: BoxShape.circle),
-                  child: const Icon(Icons.nightlight_round, size: 18, color: sleepPurple),
-                ),
+                const AppIconBadge(icon: Icons.nightlight_round, size: 30, iconSize: 18, backgroundColor: sleepPurple),
                 const SizedBox(width: 8),
                 Text('作息睡眠', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const Spacer(),
@@ -1115,11 +1115,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             // 头部
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: hrColor.withValues(alpha: 0.12), shape: BoxShape.circle),
-                  child: const Icon(Icons.favorite_rounded, size: 18, color: hrColor),
-                ),
+                const AppIconBadge(icon: Icons.favorite_rounded, size: 30, iconSize: 18, backgroundColor: hrColor),
                 const SizedBox(width: 8),
                 Text('心率健康', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const Spacer(),
@@ -1465,11 +1461,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: colorScheme.primaryContainer, shape: BoxShape.circle),
-                      child: Icon(Icons.directions_run, color: colorScheme.primary, size: 18),
-                    ),
+                    const AppIconBadge(icon: Icons.directions_run, size: 34, iconSize: 18),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(

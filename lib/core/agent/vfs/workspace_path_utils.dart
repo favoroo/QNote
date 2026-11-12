@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_surface.dart';
+
 /// 虚拟工作区（VFS）中与实例状态、Repository 无关的纯计算逻辑
 ///
 /// 这里的函数从 [VirtualWorkspaceService] 中原样抽出，用于路径规范化、日期/值转换、
@@ -199,6 +201,31 @@ String workspaceThemeModeToString(ThemeMode mode) {
       return 'system';
   }
 }
+
+/// 解析背景预设（支持 system/light/dark/oled/accent/custom 及其中文别名）
+AppBackgroundPreset parseWorkspaceBackgroundPreset(dynamic raw) {
+  if (raw == null) return AppBackgroundPreset.system;
+  final s = raw.toString().trim().toLowerCase();
+  if (s == 'light' || s == '浅色' || s == '明亮' || s == '日间' || s == '白') {
+    return AppBackgroundPreset.light;
+  }
+  if (s == 'dark' || s == '深色' || s == '暗色' || s == '夜间' || s == '黑') {
+    return AppBackgroundPreset.dark;
+  }
+  if (s == 'oled' || s == 'oled黑' || s == 'oled纯黑' || s == '纯黑' || s == '极黑') {
+    return AppBackgroundPreset.oled;
+  }
+  if (s == 'accent' || s == '主题色' || s == '强调色') {
+    return AppBackgroundPreset.accent;
+  }
+  if (s == 'custom' || s == '自定义' || s == '自定义颜色' || s == '自定义背景色') {
+    return AppBackgroundPreset.custom;
+  }
+  return AppBackgroundPreset.system;
+}
+
+/// 将背景预设转为字符串
+String workspaceBackgroundPresetToString(AppBackgroundPreset preset) => preset.name;
 
 /// 单条 grep 命中文本（match）的最大长度，控制回传给模型的体积
 const int kWorkspaceGrepMatchMaxLength = 200;

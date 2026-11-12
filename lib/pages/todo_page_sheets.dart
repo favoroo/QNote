@@ -157,7 +157,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.repeat, color: theme.colorScheme.primary, size: 20),
+                      Icon(Icons.repeat, color: theme.colorScheme.onSurfaceVariant, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         '重复周期',
@@ -172,7 +172,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                   return ListTile(
                     leading: Icon(
                       isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outline,
+                      color: isSelected ? theme.colorScheme.onSurface : theme.colorScheme.outline,
                     ),
                     title: Text(
                       r['label']!,
@@ -221,7 +221,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.folder_outlined, color: theme.colorScheme.primary, size: 20),
+                      Icon(Icons.folder_outlined, color: theme.colorScheme.onSurfaceVariant, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         '选择分类',
@@ -297,7 +297,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     // 键盘避让外壳单独精确订阅 viewInsets，内容子树经 child 复用，
     // 键盘动画期间只有外壳逐帧重建，弹层内容不再整层 rebuild
     return _TodoSheetInsetShell(
-      decorationColor: isDark ? const Color(0xFF222222) : colorScheme.surface,
+      decorationColor: colorScheme.surface,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -390,8 +390,9 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
                           decoration: BoxDecoration(
+                            // 选中态做实心主题色胶囊，前景走 onPrimary
                             color: _reminderTime != null
-                                ? colorScheme.primary.withValues(alpha: 0.15)
+                                ? colorScheme.primary
                                 : (isDark
                                       ? Colors.white.withValues(alpha: 0.08)
                                       : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
@@ -404,7 +405,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                                 Icons.alarm,
                                 size: 15,
                                 color: _reminderTime != null
-                                    ? colorScheme.primary
+                                    ? colorScheme.onPrimary
                                     : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                               ),
                               const SizedBox(width: 4),
@@ -414,7 +415,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                                   fontSize: 13,
                                   fontWeight: _reminderTime != null ? FontWeight.w600 : FontWeight.normal,
                                   color: _reminderTime != null
-                                      ? colorScheme.primary
+                                      ? colorScheme.onPrimary
                                       : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                 ),
                               ),
@@ -424,7 +425,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                                   onTap: () {
                                     setState(() => _reminderTime = null);
                                   },
-                                  child: Icon(Icons.close, size: 13, color: colorScheme.primary),
+                                  child: Icon(Icons.close, size: 13, color: colorScheme.onPrimary),
                                 ),
                               ],
                             ],
@@ -440,7 +441,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
                           decoration: BoxDecoration(
                             color: _repeatRule != 'none'
-                                ? colorScheme.primary.withValues(alpha: 0.15)
+                                ? colorScheme.primary
                                 : (isDark
                                       ? Colors.white.withValues(alpha: 0.08)
                                       : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
@@ -453,7 +454,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                                 Icons.repeat,
                                 size: 15,
                                 color: _repeatRule != 'none'
-                                    ? colorScheme.primary
+                                    ? colorScheme.onPrimary
                                     : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                               ),
                               const SizedBox(width: 4),
@@ -463,7 +464,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                                   fontSize: 13,
                                   fontWeight: _repeatRule != 'none' ? FontWeight.w600 : FontWeight.normal,
                                   color: _repeatRule != 'none'
-                                      ? colorScheme.primary
+                                      ? colorScheme.onPrimary
                                       : (isDark ? Colors.white70 : colorScheme.onSurfaceVariant),
                                 ),
                               ),
@@ -510,7 +511,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                       if (widget.todo != null) ...[
                         const SizedBox(width: 6),
                         IconButton(
-                          icon: QIcon(size: 20, color: colorScheme.primary),
+                          icon: QIcon(size: 20, color: colorScheme.onSurfaceVariant),
                           tooltip: '给小Q',
                           onPressed: () {
                             Navigator.pop(context);

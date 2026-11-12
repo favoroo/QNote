@@ -97,17 +97,13 @@ class _AskUserDialogState extends State<AskUserDialog> {
       actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       title: Row(
         children: [
+          // 标题图标铺实心底（破坏性=error，其余=主题色），前景取对应的 on 色
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isDestructive
-                  ? colorScheme.errorContainer.withValues(alpha: 0.5)
-                  : colorScheme.primaryContainer.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
             child: isDestructive
-                ? Icon(Icons.warning_amber_rounded, size: 22, color: primaryColor)
-                : QIcon(size: 22, color: primaryColor),
+                ? Icon(Icons.warning_amber_rounded, size: 22, color: colorScheme.onError)
+                : QIcon(size: 22, color: colorScheme.onPrimary),
           ),
           const SizedBox(width: 12),
           Expanded(

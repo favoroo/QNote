@@ -546,7 +546,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.alt_route_rounded, size: 20, color: colorScheme.primary),
+                    Icon(Icons.alt_route_rounded, size: 20, color: colorScheme.onSurfaceVariant),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -710,7 +710,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Widget _buildToolSwitchCard(ThemeData theme, List<AiProvider> providers) {
-    const toolMeta = {'fetch_url': '网页阅读', 'web_search': '网页搜索', 'generate_image': '图片生成', 'describe_image': '图片识别'};
+    const toolMeta = {
+      'fetch_url': '网页阅读',
+      'web_search': '网页搜索',
+      'skill_market': '技能市场',
+      'generate_image': '图片生成',
+      'describe_image': '图片识别',
+    };
     final anthropicAssistant = _assistantUsesAnthropic(providers);
 
     return Column(

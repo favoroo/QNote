@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「问小Q」圆形按钮。整颗按钮画进一个矢量，ImageView 用 centerInside/fitCenter 等比缩放，
+  避免 shape 背景在非正方单元格里被拉成椭圆。
+
+  机身几何沿用 lib/widgets/ai/q_avatar.dart 的小Q母版（205×206）：
+  天线球 + 圆角头盔 + 液晶屏 + 胶囊眼，保证桌面入口与 App 内形象是同一只小Q。
+  圆底上叠 22% 白描边充当内高光，深色壁纸下也能看出按钮的圆润边缘。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="56dp"
+    android:height="56dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 渐变圆底：顶部偏亮、底部收深，形成轻微的上光质感 -->
+    <path android:pathData="M54,1 A53,53 0 1 0 54,107 A53,53 0 1 0 54,1 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="1"
+                android:endX="54"
+                android:endY="107"
+                android:startColor="@color/widget_ai_button_start"
+                android:endColor="@color/widget_ai_button_end" />
+        </aapt:attr>
+    </path>
+
+    <!-- 内高光圆环 -->
+    <path
+        android:pathData="M54,4.5 A49.5,49.5 0 1 0 54,103.5 A49.5,49.5 0 1 0 54,4.5 Z"
+        android:strokeColor="@color/widget_ai_button_ring"
+        android:strokeWidth="1.6" />
+
+    <!-- 小Q 机器人（母版 205×206，整体缩至圆钮约 60% 并居中） -->
+    <group
+        android:scaleX="0.322"
+        android:scaleY="0.322"
+        android:translateX="21.3"
+        android:translateY="20.8">
+
+        <!-- 天线球 -->
+        <path
+            android:fillColor="@color/widget_ai_robot"
+            android:pathData="M101.5,-1 A16.5,16.5 0 1 0 101.5,32 A16.5,16.5 0 1 0 101.5,-1 Z" />
+
+        <!-- 天线杆：底端被头盔盖住，不必做圆角 -->
+        <path
+            android:fillColor="@color/widget_ai_robot"
+            android:pathData="M95,30 L108,30 L108,60 L95,60 Z" />
+
+        <!-- 圆角头盔 -->
+        <path
+            android:fillColor="@color/widget_ai_robot"
+            android:pathData="M38,58 L165,58 A38,38 0 0 1 203,96 L203,167 A38,38 0 0 1 165,205 L38,205 A38,38 0 0 1 0,167 L0,96 A38,38 0 0 1 38,58 Z" />
+
+        <!-- 液晶屏：与白机身形成高对比，小尺寸下也能一眼认出机器人的脸 -->
+        <path
+            android:fillColor="@color/widget_ai_screen"
+            android:pathData="M38,92 L165,92 A4,4 0 0 1 169,96 L169,167 A4,4 0 0 1 165,171 L38,171 A4,4 0 0 1 34,167 L34,96 A4,4 0 0 1 38,92 Z" />
+
+        <!-- 左眼（胶囊形） -->
+        <path
+            android:fillColor="@color/widget_ai_robot"
+            android:pathData="M58.65,126.22 A9.39,9.39 0 0 1 77.43,126.22 L77.43,136.79 A9.39,9.39 0 0 1 58.65,136.79 Z" />
+
+        <!-- 右眼（胶囊形） -->
+        <path
+            android:fillColor="@color/widget_ai_robot"
+            android:pathData="M125.57,126.22 A9.39,9.39 0 0 1 144.35,126.22 L144.35,136.79 A9.39,9.39 0 0 1 125.57,136.79 Z" />
+    </group>
+</vector>

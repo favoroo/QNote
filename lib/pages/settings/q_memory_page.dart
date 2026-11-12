@@ -177,7 +177,7 @@ class _QMemoryPageState extends ConsumerState<QMemoryPage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Icon(Icons.circle, size: 6, color: theme.colorScheme.primary.withValues(alpha: 0.6)),
+            child: Icon(Icons.circle, size: 6, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
           ),
           const SizedBox(width: 10),
           Expanded(

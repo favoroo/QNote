@@ -27,12 +27,14 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/providers/image_repository_provider.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
 import 'package:qnote_flutter/widgets/diary/diary_record_fab.dart';
 
@@ -69,6 +71,12 @@ const Curve _kDialogExitCurve = Curves.easeInCubic;
 /// 面板卡片圆角与时间线卡片圆角：容器变形的两端。
 const double _kSheetRadius = 24;
 const double _kTimelineCardRadius = 16;
+
+/// 输入区固定高度：38（AI 提取钮）+ 20（间距）+ 46（发送键）。
+///
+/// 高度固定后，正文变长只在框内滚动，右侧操作列的位置不会跟着跳；
+/// 约四行的可视空间也够一次记完日常记录。
+const double _kComposerHeight = 104;
 
 /// 打开面板时记录按钮的位置与状态，作为容器变形的起点。
 class RecordFabAnchor {
@@ -2238,10 +2246,10 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
     return _SheetSurface(surfaceKey: widget.surfaceKey, child: _buildSheetContent(theme, shortcuts, selectedDate));
   }
 
-  /// 卡片内容：头部（时间 + 关闭）→ 标签 → 固定事件/字段 → 附件与 AI → 正文与发送。
+  /// 卡片内容：标签与关闭 → 固定事件/字段 → 时间与附件 → 正文与发送。
   ///
-  /// 只有中间那段跟着内容滚：时间、关闭、输入和发送始终钉在卡片里。
-  /// 键盘把卡片压矮时先让字段表单让位，发送键不会被挤出屏幕。
+  /// 只有中间那段跟着内容滚：标签、时间、附件、输入和发送始终钉在卡片里。
+  /// 键盘把卡片压矮时先让字段表单让位，输入区不会被挤出屏幕。
   Widget _buildSheetContent(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts, DateTime selectedDate) {
     final fixedEvents = ref.watch(fixedEventListProvider);
     final allRecords = ref.watch(diaryListProvider).valueOrNull ?? [];
@@ -2250,12 +2258,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Reveal(controller: _entryController, begin: 0, child: _buildHeader(theme, selectedDate)),
-        _Reveal(controller: _entryController, begin: 0.08, child: _buildShortcutRow(theme, shortcuts)),
+        _Reveal(controller: _entryController, begin: 0, child: _buildShortcutRow(theme, shortcuts)),
         Flexible(
           child: _Reveal(
             controller: _entryController,
-            begin: 0.16,
+            begin: 0.08,
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 2),
               child: Column(
@@ -2269,32 +2276,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
             ),
           ),
         ),
-        _Reveal(controller: _entryController, begin: 0.24, child: _buildMediaRow(theme)),
+        _Reveal(controller: _entryController, begin: 0.16, child: _buildTimeAndMediaRow(theme, selectedDate)),
         if (_activeDraft.selectedPhotos.isNotEmpty)
-          _Reveal(controller: _entryController, begin: 0.24, child: _buildPhotoPreview(theme)),
-        _Reveal(
-          controller: _entryController,
-          begin: 0.32,
-          child: Padding(padding: const EdgeInsets.only(bottom: 2), child: _buildInputAndActions(theme)),
-        ),
+          _Reveal(controller: _entryController, begin: 0.16, child: _buildPhotoPreview(theme)),
+        _Reveal(controller: _entryController, begin: 0.24, child: _buildInputAndActions(theme)),
       ],
-    );
-  }
-
-  /// 头部：时间胶囊组在左，圆形关闭键在右。
-  ///
-  /// 时间是这条记录的锚点，给最大的字号和实心底色；保存动作已经交给输入行末尾的
-  /// 发送键，这里只留「退出」，不再和发送键抢决策。
-  Widget _buildHeader(ThemeData theme, DateTime selectedDate) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 6),
-      child: Row(
-        children: [
-          Expanded(child: _buildTimeRangeEditor(theme, selectedDate)),
-          const SizedBox(width: 10),
-          _buildCloseButton(theme),
-        ],
-      ),
     );
   }
 
@@ -3097,9 +3083,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
     );
   }
 
+  /// 顶部工具栏：标签横向滚动，右侧是圆形关闭键。
+  ///
+  /// 时间胶囊移到下方便签行后，这一行不再需要单独占一条头部：标签钮和关闭键
+  /// 同为 32 高，并排正好，给加高的输入区省回一行高度。
   Widget _buildShortcutRow(ThemeData theme, AsyncValue<List<ShortcutConfig>> shortcuts) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 4),
       child: Row(
         children: [
           Expanded(
@@ -3173,6 +3163,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
               ),
             ),
           ),
+          const SizedBox(width: 10),
+          _buildCloseButton(theme),
           // 「更多字段」开关已撤掉：固定事件与标签字段现在常驻在下方滚动区，
           // 不再有需要主动展开的第二级。
         ],
@@ -3200,8 +3192,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
   /// 时间编辑组：开始时间胶囊、结束时间胶囊（或「+ 结束时间」）。
   ///
   /// 用内容宽而不是等分半行：两个时间都很短，等分会把它们撑成两条大色块，
-  /// 和下面的标签、附件钮不成比例，也把「关闭」挤到很远的地方。
-  /// 跨天补记会带上 MM-dd 前缀，宽度不够时这一行自己横向滚动，不会溢出。
+  /// 和右侧的相册 / 相机钮不成比例。跨天补记会带上 MM-dd 前缀，
+  /// 宽度不够时这一行自己横向滚动，不会溢出。
   Widget _buildTimeRangeEditor(ThemeData theme, DateTime selectedDate) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -3219,7 +3211,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
               child: Text(
                 '–',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.primary,
+                  // 贴在 surface 上的强调色文字，亮色主题需压深才可读
+                  color: AppContrast.readable(theme.colorScheme.primary, theme.colorScheme.surface),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -3247,18 +3240,19 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
       child: Container(
         height: 38,
         padding: EdgeInsets.only(left: 12, right: onClear == null ? 12 : 2),
-        decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(19)),
+        // 实心主题色 + 黑/白前景：淡底配亮主题色文字在荧光黄绿下几乎看不清
+        decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(19)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.access_time_rounded, size: 15, color: scheme.primary),
+            Icon(Icons.access_time_rounded, size: 15, color: scheme.onPrimary),
             const SizedBox(width: 5),
             Text(
               label,
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: scheme.primary,
+                color: scheme.onPrimary,
                 // 等宽数字：调时间时胶囊宽度不会跟着数字跳动
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
@@ -3270,7 +3264,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
-                  child: Icon(Icons.close_rounded, size: 15, color: scheme.primary),
+                  child: Icon(Icons.close_rounded, size: 15, color: scheme.onPrimary),
                 ),
               ),
           ],
@@ -3283,6 +3277,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
   /// 一眼能分出「已经确定的值」和「还可以补的值」。
   Widget _buildAddEndPill(ThemeData theme) {
     final scheme = theme.colorScheme;
+    // 描边款保留淡底观感，但文字/图标用压深后的强调色保证可读
+    final accentInk = AppContrast.readable(scheme.primary, scheme.surface);
     return GestureDetector(
       onTap: _pickEndTime,
       child: Container(
@@ -3295,15 +3291,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add_rounded, size: 15, color: scheme.primary),
+            Icon(Icons.add_rounded, size: 15, color: accentInk),
             const SizedBox(width: 4),
             Text(
               '结束时间',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: scheme.primary,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: accentInk),
             ),
           ],
         ),
@@ -3311,16 +3303,19 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
     );
   }
 
-  /// 附件与 AI 工具栏：相册、相机在左，AI 提取靠右。
+  /// 时间与附件行：左端是开始/结束时间，右端是相册、相机。
   ///
-  /// 提取从输入行挪到这里，是为了把输入行末尾那个最顺手的位置让给发送键 ——
-  /// 「写完就发」是主路径，「写完再让 AI 拆成结构化字段」是支路，不该占主路的位置。
-  Widget _buildMediaRow(ThemeData theme) {
+  /// 时间胶囊与附件钮同为 38 高，并成一行给加高的输入区腾出纵向空间；
+  /// 时间组用 Expanded + 横向滚动兜底，跨天补记（带 MM-dd 前缀）时
+  /// 只会滚动时间本身，不会把相册 / 相机挤出卡片。
+  Widget _buildTimeAndMediaRow(ThemeData theme, DateTime selectedDate) {
     final canAddPhoto = _activeDraft.selectedPhotos.length < 3;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 2, 12, 2),
+      padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
       child: Row(
         children: [
+          Expanded(child: _buildTimeRangeEditor(theme, selectedDate)),
+          const SizedBox(width: 8),
           _buildMediaButton(
             theme,
             icon: Icons.image_outlined,
@@ -3329,51 +3324,51 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
           ),
           const SizedBox(width: 8),
           _buildMediaButton(theme, icon: Icons.camera_alt_outlined, onTap: canAddPhoto ? _pickImageFromCamera : null),
-          const Spacer(),
-          _buildAiExtractButton(theme),
         ],
       ),
     );
   }
 
   Widget _buildMediaButton(ThemeData theme, {required IconData icon, VoidCallback? onTap, int badge = 0}) {
+    final scheme = theme.colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 160),
         opacity: onTap == null ? 0.45 : 1,
-        child: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, shape: BoxShape.circle),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(icon, size: 20, color: theme.colorScheme.primary),
-              if (badge > 0)
-                Positioned(
-                  top: 3,
-                  right: 3,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
-                    child: Text(
-                      '$badge',
-                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
-                    ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // 实心主题色圆底：淡底配亮图标在荧光黄绿主题下几乎看不清
+            AppIconBadge(icon: icon, size: 38, iconSize: 20),
+            if (badge > 0)
+              Positioned(
+                top: 3,
+                right: 3,
+                // 计数徽标改用 surface 反色小圆：底座已是实心主题色，原主题色徽标会融进去
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: scheme.outlineVariant, width: 0.8),
+                  ),
+                  child: Text(
+                    '$badge',
+                    style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: scheme.onSurface),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
   }
 
-  /// AI 提取钮：纯图标，和相册 / 相机同一排、同样大小。
+  /// AI 提取钮：纯图标 38 圆钮，放在输入框右侧操作列的上方。
   ///
-  /// 不写字：这一行都是图标动作，多一个文字胶囊会把「附件」和「AI」读成两种控件，
-  /// 也把行宽撑开。语义靠 ✨ 本身和长按换模型承载。
+  /// 不写字：右侧列宽只有 46，且「提取」是发送前的支路动作，图标足够；
+  /// 语义靠 ✨ 本身和长按换模型承载。下方贴底的是发送键，主次一眼可分。
   Widget _buildAiExtractButton(ThemeData theme) {
     final scheme = theme.colorScheme;
     final draft = _activeDraft;
@@ -3401,10 +3396,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
             width: 38,
             height: 38,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _canUndo ? scheme.error.withValues(alpha: 0.12) : scheme.primaryContainer,
-              shape: BoxShape.circle,
-            ),
+            // 实心底（撤销=error，其余=主题色），前景跟随 onError / onPrimary
+            decoration: BoxDecoration(color: _canUndo ? scheme.error : scheme.primary, shape: BoxShape.circle),
             child: _canUndo
                 ? AnimatedBuilder(
                     animation: _undoController,
@@ -3415,14 +3408,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                         alignment: Alignment.center,
                         children: [
                           CustomPaint(
-                            painter: _UndoCountdownPainter(progress: _undoController.value, color: scheme.error),
+                            painter: _UndoCountdownPainter(progress: _undoController.value, color: scheme.onError),
                             size: const Size(22, 22),
                           ),
                           child!,
                         ],
                       ),
                     ),
-                    child: Icon(Icons.undo_rounded, size: 14, color: scheme.error),
+                    child: Icon(Icons.undo_rounded, size: 14, color: scheme.onError),
                   )
                 : _isExtracting
                 ? SizedBox(
@@ -3430,10 +3423,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: _extractPhase == _ExtractPhase.sending ? scheme.primary : scheme.tertiary,
+                      // 实心主题色底上进度圈用 onPrimary；发送阶段全亮、其余阶段半透明以示区分
+                      color: _extractPhase == _ExtractPhase.sending
+                          ? scheme.onPrimary
+                          : scheme.onPrimary.withValues(alpha: 0.55),
                     ),
                   )
-                : Icon(Icons.auto_awesome, size: 20, color: scheme.primary),
+                : Icon(Icons.auto_awesome, size: 20, color: scheme.onPrimary),
           ),
         ),
       ),
@@ -3544,64 +3540,69 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
     );
   }
 
-  /// 输入行：正文 + 发送键。
+  /// 输入区：加高的正文框 + 右侧竖排操作列（上：AI 提取，下：发送）。
   ///
-  /// 发送是这条动线的终点，占住输入框右侧最顺手的位置；AI 提取挪到上一行工具栏，
-  /// 不再和「写完就发」抢这个位置。
+  /// 输入框固定 `_kComposerHeight` 高，约四行正文；写长记录时框内滚动，
+  /// 卡片高度和右侧按钮的位置都不会跟着文字跳动。发送是这条动线的终点，
+  /// 贴住右下角拇指最顺手的位置；AI 提取是发送前的支路，放在它正上方。
   Widget _buildInputAndActions(ThemeData theme) {
     final draft = _activeDraft;
     // 输入框里的红色 × 是否出现，取决于「有没有东西可清」：时间线上的选时也算。
     final timeSelect = ref.watch(diaryInputTimeProvider);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 12, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: AnimatedGradientBorder(
-              isAnimating: _isExtracting,
-              borderRadius: 24,
-              strokeWidth: 2,
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 140),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    TextField(
-                      controller: _textController,
-                      focusNode: _textFocusNode,
-                      minLines: 1,
-                      maxLines: 5,
-                      style: theme.textTheme.bodyMedium,
-                      decoration: InputDecoration(
-                        filled: false,
-                        hintText: draft.tagEntries.isNotEmpty
-                            ? '记录${draft.tagEntries.map((e) => e.name).join('、')}...'
-                            : '记录此刻...',
-                        hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+      padding: const EdgeInsets.fromLTRB(16, 4, 12, 12),
+      child: SizedBox(
+        height: _kComposerHeight,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: AnimatedGradientBorder(
+                isAnimating: _isExtracting,
+                borderRadius: 24,
+                strokeWidth: 2,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: TextField(
+                          controller: _textController,
+                          focusNode: _textFocusNode,
+                          // 固定高度 + 框内滚动：右侧操作列不会随行数上下漂移
+                          expands: true,
+                          maxLines: null,
+                          minLines: null,
+                          textAlignVertical: TextAlignVertical.top,
+                          style: theme.textTheme.bodyMedium,
+                          decoration: InputDecoration(
+                            filled: false,
+                            hintText: draft.tagEntries.isNotEmpty
+                                ? '记录${draft.tagEntries.map((e) => e.name).join('、')}...'
+                                : '记录此刻...',
+                            hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            ),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.only(left: 16, top: 14, bottom: 14, right: 48),
+                          ),
+                          onSubmitted: (_) {
+                            if (!_isSaveDisabled) _handleSend();
+                          },
                         ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.only(left: 16, top: 12, bottom: 12, right: 42),
                       ),
-                      onSubmitted: (_) {
-                        if (!_isSaveDisabled) _handleSend();
-                      },
-                    ),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
+                      // 清空草稿：贴右上角，避开从左上开始的正文
+                      Positioned(
+                        right: 2,
+                        top: 2,
                         child: ValueListenableBuilder<TextEditingValue>(
                           valueListenable: _textController,
                           builder: (context, value, _) {
@@ -3618,7 +3619,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                                 onTap: _clearCurrentDraft,
                                 behavior: HitTestBehavior.opaque,
                                 child: Padding(
-                                  padding: const EdgeInsets.all(10),
+                                  padding: const EdgeInsets.all(8),
                                   child: Container(
                                     width: 26,
                                     height: 26,
@@ -3641,15 +3642,19 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                           },
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          _buildSendButton(theme),
-        ],
+            const SizedBox(width: 10),
+            // 竖排操作列：提取贴顶、发送贴底，和输入框同高
+            Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [_buildAiExtractButton(theme), _buildSendButton(theme)],
+            ),
+          ],
+        ),
       ),
     );
   }

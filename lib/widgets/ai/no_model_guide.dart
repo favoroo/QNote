@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 
 /// 未配置模型时的统一引导弹窗
 ///
@@ -113,14 +114,11 @@ class NoModelGuideCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(Icons.extension_rounded, color: colorScheme.primary, size: 20),
+                AppIconBadge(
+                  icon: Icons.extension_rounded,
+                  size: 38,
+                  iconSize: 20,
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

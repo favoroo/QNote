@@ -28,23 +28,41 @@ abstract class AppContrast {
 
   /// 把 [color] 调整为在 [background] 上达到 [minRatio] 对比度的同色系颜色。
   ///
-  /// 用于「强调色当文字/图标贴在浅底上」的场景：背景偏亮就朝黑压、偏暗就朝白提，
-  /// 小步进逼近直到达标，尽量保留原色相。已达标时原样返回。
+  /// 同时尝试朝黑、朝白两个方向逼近，并按「最小调整步数」返回首个达标色：
+  /// 背景偏亮时通常朝黑压、偏暗时朝白提；中间亮度背景也不会只押一个方向而错过
+  /// 另一侧可达标的颜色。已达标时原样返回。
   static Color readable(Color color, Color background, {double minRatio = minimumTextRatio}) {
     if (contrastRatio(color, background) >= minRatio) {
       return color;
     }
-    // 朝与背景反差更大的方向调整，保证有限的调整量都能用在缩短对比度差距上。
-    final target = background.computeLuminance() > 0.5 ? darkInk : lightInk;
-    const step = 0.04;
+    const step = 0.02;
     for (var t = step; t <= 1.0; t += step) {
-      final candidate = Color.lerp(color, target, t)!;
-      if (contrastRatio(candidate, background) >= minRatio) {
-        return candidate;
+      Color? bestAtStep;
+      var bestRatio = 0.0;
+      // 同一步长下比较两侧，优先保留对比度更高的候选，避免为了达标而选到更易读性差的
+      for (final target in const [darkInk, lightInk]) {
+        final candidate = Color.lerp(color, target, t)!;
+        final ratio = contrastRatio(candidate, background);
+        if (ratio >= minRatio && ratio > bestRatio) {
+          bestAtStep = candidate;
+          bestRatio = ratio;
+        }
+      }
+      if (bestAtStep != null) {
+        return bestAtStep;
       }
     }
-    return target;
+    // 理论上黑白总有一侧能达标，这里只是兜底
+    return onColor(background);
   }
+
+  /// 内容色贴在自身 [tintAlpha] 透明度的淡底上时的可读前景。
+  ///
+  /// 标签色/健康数据色这类内容色常以「同色淡底 + 同色文字/图标」出现，而琥珀、
+  /// 翡翠绿、天蓝等亮色系在浅底上只有 2~3:1；这里先合成真实底色再压深，保留色相
+  /// 的同时把对比度拉到 [minRatio]。
+  static Color inkOnTint(Color color, Color background, double tintAlpha, {double minRatio = minimumTextRatio}) =>
+      readable(color, Color.alphaBlend(color.withValues(alpha: tintAlpha), background), minRatio: minRatio);
 
   /// WCAG 2.x 对比度，取值 1.0（无对比）~ 21.0（黑白）。
   static double contrastRatio(Color a, Color b) {
