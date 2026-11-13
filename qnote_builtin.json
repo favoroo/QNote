@@ -1,7 +1,7 @@
 {
-  "version": 2,
-  "updatedAt": "2026-11-13T03:21:03Z",
-  "minAppVersion": "0.1.94",
+  "version": 3,
+  "updatedAt": "2026-11-13T03:48:02Z",
+  "minAppVersion": "0.1.95",
   "enabled": true,
   "chat": {
     "enabled": true,
@@ -20,5 +20,5 @@
     "enabled": false,
     "message": ""
   },
-  "sig": "769ddc2392e4a4161e0ced18d859f26b168c16fc17d549311387dc76fd8f89af"
+  "sig": "6f8a5aa9ffd1902c4ca592aa4b3c3942f60cf8293c6afbab1849734b10643f24"
 }
