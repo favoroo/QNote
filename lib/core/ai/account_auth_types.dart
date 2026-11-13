@@ -12,11 +12,7 @@ class AccountAuthRequiredException implements Exception {
   /// 账号类型（`raccoon` / `autoclaw` / `loomy`），便于日志定位
   final String kind;
 
-  const AccountAuthRequiredException(
-    this.providerId, {
-    this.message = '账号未登录或已过期，请到「设置 → AI 模型配置」重新登录',
-    this.kind = '',
-  });
+  const AccountAuthRequiredException(this.providerId, {this.message = '账号未登录或已过期，请到「小Q设置 → 模型」重新登录', this.kind = ''});
 
   @override
   String toString() => message;
@@ -24,7 +20,7 @@ class AccountAuthRequiredException implements Exception {
 
 /// 商汤小浣熊的登录态异常（保留原名，现有调用方与测试无需改动）
 class RaccoonAuthRequiredException extends AccountAuthRequiredException {
-  const RaccoonAuthRequiredException(super.providerId, {super.message = '小浣熊账号未登录或已过期，请到「设置 → AI 模型配置」重新登录'})
+  const RaccoonAuthRequiredException(super.providerId, {super.message = '小浣熊账号未登录或已过期，请到「小Q设置 → 模型」重新登录'})
     : super(kind: AiAccount.kindRaccoon);
 }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
@@ -67,6 +68,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
 
   Future<void> _addMembers(List<AiProvider> providers) async {
     final picked = await showModalBottomSheet<List<AiModelRef>>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

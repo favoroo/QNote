@@ -38,7 +38,8 @@ class _TodoFolderTabBar extends StatelessWidget {
           // 未完成数量由页面统一缓存，这里直接取对应下标，避免重复全量扫描。
           final count = pendingCounts[index];
 
-          return GestureDetector(
+          return PressableScale(
+            pressedScale: 0.96,
             onTap: () => onSelect(folder.id),
             child: AnimatedContainer(
               // 分类 Chip 的选中反馈属于「小范围状态切换」，用 fast 档更跟手；
@@ -137,6 +138,9 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   late Animation<double> _heightFactor;
   late Animation<double> _opacityAnimation;
 
+  /// 从已完成区撤回时的「自下而上」归位位移；普通入场保持零位移。
+  late Animation<Offset> _riseAnimation;
+
   /// 控制左滑位移动画
   late AnimationController _slideAnimController;
   late Animation<double> _slideAnimation;
@@ -146,6 +150,9 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
 
   bool _localCompleted = false;
   bool _isCompleting = false;
+
+  /// 正在从已完成区撤回：先本地取消勾选并收起卡片，动画结束后再提交状态。
+  bool _isUncompleting = false;
 
   /// 入场动画是否已结束。结束后可以摘掉三层过渡包装，只保留卡片本体；
   /// 完成勾选时的收缩动画会先把该标志置回 false，避免动画失去渲染载体。
@@ -161,6 +168,10 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   /// initState，若每次都从 0 播入场，滚动时条目会不停「弹进来」。
   static final Set<String> _entrancePlayed = <String>{};
 
+  /// 刚从已完成区撤回、等待重新出现在未完成列表的待办 id。
+  /// 首次构建时据此改用「从下方滑入」的入场，形成向上归位的连续感。
+  static final Set<String> _resurfacingIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -170,7 +181,14 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
     // 新元素进入视口，exit 对应快速离场——三者语义与 AppCurves 的约定一致
     _scaleAnimation = CurvedAnimation(parent: _animController, curve: AppCurves.spring, reverseCurve: AppCurves.exit);
 
-    _heightFactor = CurvedAnimation(parent: _animController, curve: AppCurves.standard);
+    // 入参会话中「取消完成」的条目回到列表时不再走普通弹入，而是从下方滑入
+    // 并展开，补上与勾选完成对称的归位动效。收起/展开用快开曲线，
+    // 避免高度从 0 缓慢起步导致前半段看不到卡片。
+    final resurfaced = _resurfacingIds.remove(widget.todo.id);
+    _heightFactor = CurvedAnimation(
+      parent: _animController,
+      curve: resurfaced ? AppCurves.emphasized : AppCurves.standard,
+    );
 
     _opacityAnimation = CurvedAnimation(
       parent: _animController,
@@ -186,9 +204,16 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
 
     if (_entrancePlayed.length > 800) {
       _entrancePlayed.clear();
+      _resurfacingIds.clear();
     }
+    _riseAnimation = resurfaced
+        ? Tween<Offset>(
+            begin: const Offset(0, 0.45),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: _animController, curve: AppCurves.emphasized))
+        : const AlwaysStoppedAnimation<Offset>(Offset.zero);
     _animController.addStatusListener(_handleEntranceStatus);
-    if (widget.animateIn && _entrancePlayed.add(widget.todo.id)) {
+    if (widget.animateIn && (_entrancePlayed.add(widget.todo.id) || resurfaced)) {
       _animController.forward();
     } else {
       // 不播入场时直接标记结束，首次 build 就走静态分支。
@@ -265,7 +290,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
       return;
     }
     if (widget.todo.isCompleted) {
-      widget.onToggleComplete();
+      _uncompleteAndCommit();
       return;
     }
     if (_isCompleting) return;
@@ -280,6 +305,37 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
     setState(() {
       _localCompleted = true;
       // 收缩动画依赖 Size/Fade/Scale 过渡层，先退出静态分支再 reverse。
+      _entranceFinished = false;
+    });
+
+    _animController.reverse().then((_) {
+      if (mounted) {
+        _isCompleting = false;
+      }
+      widget.onToggleComplete();
+    });
+  }
+
+  /// 取消完成：先去掉勾选、让卡片原地收起，随后提交状态。
+  ///
+  /// 条目回到未完成列表时由 [initState] 依据 [_resurfacingIds] 播放
+  /// 「自下而上」的入场，避免像原来那样瞬间跳到上方列表。
+  void _uncompleteAndCommit() {
+    if (_isCompleting) return;
+
+    // 减弱动效时不做两段过渡，直接提交状态。
+    if (AppMotion.reduce(context)) {
+      widget.onToggleComplete();
+      return;
+    }
+
+    // 入场标记按 id 记忆，先移除，回到未完成列表时才允许重新播放。
+    _entrancePlayed.remove(widget.todo.id);
+    _resurfacingIds.add(widget.todo.id);
+    _isCompleting = true;
+    setState(() {
+      _isUncompleting = true;
+      // 收缩动画依赖过渡层，先退出静态分支再 reverse。
       _entranceFinished = false;
     });
 
@@ -393,9 +449,12 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
         : SizeTransition(
             sizeFactor: _heightFactor,
             alignment: const Alignment(-1.0, -1.0),
-            child: FadeTransition(
-              opacity: _opacityAnimation,
-              child: ScaleTransition(scale: _scaleAnimation, child: slideableCard),
+            child: SlideTransition(
+              position: _riseAnimation,
+              child: FadeTransition(
+                opacity: _opacityAnimation,
+                child: ScaleTransition(scale: _scaleAnimation, child: slideableCard),
+              ),
             ),
           );
 
@@ -414,7 +473,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
   /// 当前值（[_isSlidOpen]），不再依赖 build 时算出来的局部变量。
   Widget _buildCardBody(ThemeData theme, ColorScheme colorScheme, bool isDark) {
     final todo = widget.todo;
-    final isDone = todo.isCompleted || _localCompleted;
+    final isDone = (todo.isCompleted && !_isUncompleting) || _localCompleted;
     final isSelectionMode = widget.isSelectionMode;
     final isSelected = widget.isSelected;
 

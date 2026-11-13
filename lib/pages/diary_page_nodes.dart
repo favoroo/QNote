@@ -123,8 +123,8 @@ class _EmptyTimeNode extends StatelessWidget {
                   width: 48,
                   child: Center(
                     child: AnimatedContainer(
-                      duration: AppDurations.normal,
-                      curve: Curves.easeOut,
+                      duration: AppMotion.duration(context, AppDurations.normal),
+                      curve: AppCurves.standard,
                       width: circleSize,
                       height: circleSize,
                       decoration: BoxDecoration(
@@ -153,8 +153,8 @@ class _EmptyTimeNode extends StatelessWidget {
                   ),
                 ),
                 AnimatedDefaultTextStyle(
-                  duration: AppDurations.normal,
-                  curve: Curves.easeOut,
+                  duration: AppMotion.duration(context, AppDurations.normal),
+                  curve: AppCurves.standard,
                   style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
                     color: isSelected
                         ? theme.colorScheme.primary
@@ -185,8 +185,8 @@ class _EmptyTimeNode extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: AnimatedContainer(
-                    duration: AppDurations.normal,
-                    curve: Curves.easeOut,
+                    duration: AppMotion.duration(context, AppDurations.normal),
+                    curve: AppCurves.standard,
                     height: 1,
                     color: isSelected
                         ? theme.colorScheme.primary
@@ -468,11 +468,28 @@ class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper> with Sin
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = AppMotion.reduce(context);
+    _controller.duration = reduce ? Duration.zero : AppDurations.normal;
+    if (reduce) {
+      // 减弱动效下删除直接收掉，不播放收缩过程
+      _controller.stop();
+      _controller.value = widget.isCollapsing ? 0 : 1;
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant _CollapsingItemWrapper oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isCollapsing && !oldWidget.isCollapsing) {
+    if (widget.isCollapsing == oldWidget.isCollapsing) return;
+    if (AppMotion.reduce(context)) {
+      _controller.value = widget.isCollapsing ? 0 : 1;
+      return;
+    }
+    if (widget.isCollapsing) {
       _controller.reverse();
-    } else if (!widget.isCollapsing && oldWidget.isCollapsing) {
+    } else {
       _controller.forward();
     }
   }
@@ -622,6 +639,43 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with Singl
           position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(_grow),
           child: content,
         ),
+      ),
+    );
+  }
+}
+
+/// 把 `#RRGGBB` / `#AARRGGBB` 色值解析成颜色；格式异常时退回主题描边色。
+Color _hexToColor(BuildContext context, String hex) {
+  final hexStr = hex.replaceFirst('#', '');
+  if (hexStr.length == 6) {
+    return Color(int.parse('FF$hexStr', radix: 16));
+  }
+  if (hexStr.length == 8) {
+    return Color(int.parse(hexStr, radix: 16));
+  }
+  return Theme.of(context).colorScheme.outlineVariant;
+}
+
+/// 日期分隔条上的标色圆点：该日期有颜色标记时才出现。
+///
+/// 单独用 Consumer 只监听颜色标记，避免标色后整条时间线跟着重建。
+class _DateColorDot extends ConsumerWidget {
+  const _DateColorDot({required this.date});
+
+  final DateTime date;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colorMarks = ref.watch(diaryColorMarkProvider).valueOrNull ?? const <DateColorMark>[];
+    final mark = colorMarks.where((m) => isSameCalendarDay(m.date, date)).firstOrNull;
+    if (mark == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Container(
+        width: 7,
+        height: 7,
+        decoration: BoxDecoration(color: _hexToColor(context, mark.color), shape: BoxShape.circle),
       ),
     );
   }

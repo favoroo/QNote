@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_route_group.dart';
@@ -162,6 +166,7 @@ Future<void> showAssistantModelSheet(
   VoidCallback? onManageModels,
 }) {
   return showModalBottomSheet<void>(
+    sheetAnimationStyle: AppTheme.sheetAnimationStyle,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
@@ -390,6 +395,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       return;
     }
     final picked = await showModalBottomSheet<ReasoningEffortTarget>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -638,16 +644,19 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   }
 
   Widget _buildBody(ScrollController controller, ThemeData theme) {
-    switch (_level) {
-      case _SheetLevel.root:
-        return _buildRootList(controller, theme);
-      case _SheetLevel.providers:
-        return _buildProviderList(controller, theme);
-      case _SheetLevel.provider:
-        return _buildProviderModels(controller, theme);
-      case _SheetLevel.group:
-        return _buildGroupMembers(controller, theme);
-    }
+    final Widget body = switch (_level) {
+      _SheetLevel.root => _buildRootList(controller, theme),
+      _SheetLevel.providers => _buildProviderList(controller, theme),
+      _SheetLevel.provider => _buildProviderModels(controller, theme),
+      _SheetLevel.group => _buildGroupMembers(controller, theme),
+    };
+    // 进入/退出厂商或成员层级时交叉淡化，避免整个列表硬替
+    return AnimatedSwitcher(
+      duration: AppMotion.duration(context, AppDurations.fast),
+      switchInCurve: AppCurves.emphasized,
+      switchOutCurve: AppCurves.exit,
+      child: KeyedSubtree(key: ValueKey('${_level.name}:${_scopeId ?? ''}'), child: body),
+    );
   }
 
   // ── 一级：最近使用 + 路由组 + 全部模型 ───────────────────

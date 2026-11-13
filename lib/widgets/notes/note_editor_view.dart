@@ -7,7 +7,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/models/note.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/image_repository_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
@@ -470,7 +473,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: AnimatedSwitcher(
-        duration: AppDurations.fast,
+        duration: AppMotion.duration(context, AppDurations.fast),
         child: Text(
           label,
           key: ValueKey<String>(label),
@@ -1348,9 +1351,20 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         ),
         body: Column(
           children: [
-            Expanded(child: _isPreviewActive ? _buildPreviewBody(theme) : _buildEditorBody(theme)),
-            // 渲染预览模式下隐藏编辑工具栏
-            if (!_isPreviewActive) _buildToolbar(theme),
+            Expanded(
+              child: AnimatedSwitcher(
+                // 渲染预览 ↔ 源码编辑切换：交叉淡化，避免整页闪替
+                duration: AppMotion.duration(context, AppDurations.normal),
+                switchInCurve: AppCurves.emphasized,
+                switchOutCurve: AppCurves.exit,
+                child: KeyedSubtree(
+                  key: ValueKey(_isPreviewActive ? 'preview' : 'editor'),
+                  child: _isPreviewActive ? _buildPreviewBody(theme) : _buildEditorBody(theme),
+                ),
+              ),
+            ),
+            // 渲染预览模式下隐藏编辑工具栏：幕布式收放，而不是瞬间消失
+            AppCollapsible(expanded: !_isPreviewActive, rise: 0, child: _buildToolbar(theme)),
           ],
         ),
       ),

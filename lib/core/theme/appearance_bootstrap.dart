@@ -29,6 +29,14 @@ abstract final class AppearanceKeys {
   /// 那一套 `values` / `values-night`。这里把「用户期望的明暗」算好交给原生，
   /// 跟随系统时存 -1，不做覆盖。
   static const String launchNightMode = 'launch_night_mode';
+
+  /// 第 9 个「我的搭配」槽位保存的背景预设、自定义背景色与主题色。
+  ///
+  /// 三个键必须同时存在才算一份有效搭配；缺任意一个都按「尚未保存」处理，
+  /// 避免历史数据只写了一半时恢复出诡异的半套配色。
+  static const String savedSchemeBackgroundPreset = 'saved_scheme_background_preset';
+  static const String savedSchemeBackgroundCustomColor = 'saved_scheme_background_custom_color';
+  static const String savedSchemeAccentColor = 'saved_scheme_accent_color';
 }
 
 /// 从持久化值解析背景设置。

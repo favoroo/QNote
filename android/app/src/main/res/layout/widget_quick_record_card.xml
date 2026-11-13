@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录 · 大卡（3×2 及以上）：像一张嵌在桌面上的迷你记录卡。
+  头部是徽标 + 标题 + 副标题，中间输入区随高度伸缩，底部内嵌相册 / 相机 / 发送。
+  输入区用 FrameLayout 而不是垂直 LinearLayout：高度很小时直接隐藏占位文字，
+  操作钮仍能钉在底部，不会因为固定行高把卡片撑破。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_quick_record_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_quick_record_outer"
+    android:contentDescription="@string/widget_quick_record_action"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_widget_qr_badge"
+            android:importantForAccessibility="no"
+            android:padding="7dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_pen" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/qr_card_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="快速记录"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/qr_card_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="随手记下此刻"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="11sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/qr_card_input"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="10dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_widget_quick_record_input">
+
+        <ImageView
+            android:id="@+id/qr_card_watermark"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_widget_pen_watermark"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/qr_card_text_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp">
+
+            <TextView
+                android:id="@+id/qr_card_placeholder"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:text="记下此刻…"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/qr_card_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="支持文字与图片"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="11sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="9dp">
+
+            <ImageButton
+                android:id="@+id/qr_card_photo"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:background="@drawable/bg_widget_qr_icon_btn"
+                android:contentDescription="选择相册图片"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_gallery" />
+
+            <ImageButton
+                android:id="@+id/qr_card_camera"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_widget_qr_icon_btn"
+                android:contentDescription="启动相机拍照"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_camera" />
+
+            <!-- 空 TextView 只用来占位撑开左右两组操作，RemoteViews 不接受裸 <View> -->
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/qr_card_send"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_widget_qr_send"
+                android:contentDescription="开始记录"
+                android:padding="7dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_send_white" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!--
+      3×2 这类矮卡片放不下完整输入区时，隐藏上方的 input，只留下这一排操作钮；
+      高度够了再由 provider 切回 input 内的底排按钮，避免两套按钮同时出现。
+    -->
+    <LinearLayout
+        android:id="@+id/qr_card_short_actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/qr_card_photo_short"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/bg_widget_qr_icon_btn"
+            android:contentDescription="选择相册图片"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_gallery" />
+
+        <ImageButton
+            android:id="@+id/qr_card_camera_short"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_widget_qr_icon_btn"
+            android:contentDescription="启动相机拍照"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_camera" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/qr_card_send_short"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_widget_qr_send"
+            android:contentDescription="开始记录"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_send_white" />
+    </LinearLayout>
+</LinearLayout>

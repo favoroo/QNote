@@ -12,6 +12,7 @@ import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/side_drawer.dart';
 import 'package:qnote_flutter/widgets/debug_console.dart';
@@ -261,7 +262,7 @@ class _BottomNavContent extends ConsumerWidget {
     required Alignment longPressAlignment,
     VoidCallback? onDoubleTap,
   }) {
-    return GestureDetector(
+    return PressableScale(
       behavior: HitTestBehavior.translucent,
       onTap: onTap,
       // 长按底栏任意按钮均在当前位置触发小Q悬浮弹窗
@@ -448,7 +449,7 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
     // /ai 分支激活态（ShellBranch.ai）
     final isActive = widget.currentIndex == ShellBranch.ai;
 
-    return GestureDetector(
+    return PressableScale(
       behavior: HitTestBehavior.translucent,
       onTap: () {
         final notifier = ref.read(floatingQProvider.notifier);

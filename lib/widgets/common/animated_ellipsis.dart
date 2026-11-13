@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_motion.dart';
+
 /// 动态省略号：三个圆点依次渐显、周期尾整体淡出后循环，
 /// 用于流式占位状态行，弱化"卡住不动"的等待感。
 ///
@@ -24,10 +26,35 @@ class AnimatedEllipsis extends StatefulWidget {
 class _AnimatedEllipsisState extends State<AnimatedEllipsis> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
+  /// 系统「减弱动态效果」：停在三点全显的一帧，不再循环占用 ticker
+  bool _reduceMotion = false;
+
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1350))..repeat();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1350));
+    _sync();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = AppMotion.reduce(context);
+    if (reduce != _reduceMotion) {
+      _reduceMotion = reduce;
+      _sync();
+    }
+  }
+
+  void _sync() {
+    if (_reduceMotion) {
+      _controller
+        ..stop()
+        // 0.75 落在「三点全部显现且未开始整体淡出」的区间
+        ..value = 0.75;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override

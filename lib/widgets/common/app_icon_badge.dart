@@ -12,6 +12,7 @@ class AppIconBadge extends StatelessWidget {
   const AppIconBadge({
     super.key,
     required this.icon,
+    this.customIcon,
     this.size = 36,
     this.iconSize = 19,
     this.borderRadius,
@@ -23,6 +24,12 @@ class AppIconBadge extends StatelessWidget {
 
   /// 图标。
   final IconData icon;
+
+  /// 自定义图标内容，用于图标本身需要过渡的场景（如文件夹展开/收起时
+  /// `folder` ↔ `folder_open` 的淡入缩放）；提供时优先于 [icon]。
+  ///
+  /// 底座、圆角与前景色仍由本组件统一处理，调用方只需保证内容尺寸与 [iconSize] 一致。
+  final Widget? customIcon;
 
   /// 底座边长。
   final double size;
@@ -62,7 +69,7 @@ class AppIconBadge extends StatelessWidget {
         child: SizedBox.square(
           dimension: size,
           child: Center(
-            child: Icon(icon, size: iconSize, color: foreground),
+            child: customIcon ?? Icon(icon, size: iconSize, color: foreground),
           ),
         ),
       ),

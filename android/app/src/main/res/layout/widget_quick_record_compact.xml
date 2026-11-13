@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录 · 窄横条（2×1 / 3×1）：主色笔徽标 + 标题，整条可点。
+  3 格宽以上才露出相机快捷入口（provider 按实际 dp 控制），2 格宽放两颗图形会挤。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_quick_record_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_quick_record_outer"
+    android:contentDescription="@string/widget_quick_record_action">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="4dp">
+
+        <ImageView
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/bg_widget_qr_badge"
+            android:importantForAccessibility="no"
+            android:padding="7dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_pen" />
+
+        <TextView
+            android:id="@+id/qr_compact_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="快速记录"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/qr_compact_camera"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_widget_qr_icon_btn"
+            android:contentDescription="启动相机拍照"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_camera"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

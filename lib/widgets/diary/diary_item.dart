@@ -27,6 +27,9 @@ class DiaryItem extends StatefulWidget {
 
   /// 「给小Q」引用该条记录（非 null 时操作菜单与卡片长按展示该入口）
   final void Function(DiaryRecord)? onQuoteToQ;
+
+  /// 「批量管理」入口（非 null 时在长按操作菜单中展示）
+  final VoidCallback? onBatchManage;
   final bool isExtracting;
   final VoidCallback? onUndo;
   final bool isUndoable;
@@ -61,6 +64,7 @@ class DiaryItem extends StatefulWidget {
     this.onAiExtract,
     this.onAiExtractLongPress,
     this.onQuoteToQ,
+    this.onBatchManage,
     this.isExtracting = false,
     this.onUndo,
     this.isUndoable = false,
@@ -88,6 +92,7 @@ class _DiaryItemState extends State<DiaryItem> {
   VoidCallback? get onAiExtract => widget.onAiExtract;
   VoidCallback? get onAiExtractLongPress => widget.onAiExtractLongPress;
   void Function(DiaryRecord)? get onQuoteToQ => widget.onQuoteToQ;
+  VoidCallback? get onBatchManage => widget.onBatchManage;
   bool get isExtracting => widget.isExtracting;
   bool get isTimeDragging => widget.isTimeDragging;
   VoidCallback? get onUndo => widget.onUndo;
@@ -149,7 +154,7 @@ class _DiaryItemState extends State<DiaryItem> {
   }
 
   /// 卡片操作菜单：通过长按卡片触发；
-  /// 配置了 onQuoteToQ 时追加「给小Q」引用入口
+  /// 配置了 onQuoteToQ 时追加「给小Q」引用入口，配置了 onBatchManage 时追加批量管理入口
   void _showActionMenu() {
     HapticFeedback.lightImpact();
     ActionMenu.show(
@@ -162,15 +167,15 @@ class _DiaryItemState extends State<DiaryItem> {
             label: '给小Q',
             onTap: () => onQuoteToQ?.call(record),
           ),
-        if (!_isHealthDailySummary) ...[
-          ActionMenuItem(icon: Icons.edit, label: '编辑', onTap: () => onEdit?.call(record)),
+        if (!_isHealthDailySummary) ActionMenuItem(icon: Icons.edit, label: '编辑', onTap: () => onEdit?.call(record)),
+        if (onBatchManage != null) ActionMenuItem(icon: Icons.list_alt_rounded, label: '批量管理', onTap: onBatchManage!),
+        if (!_isHealthDailySummary)
           ActionMenuItem(
             icon: Icons.delete_outline,
             label: '删除',
             isDestructive: true,
             onTap: () => onDelete?.call(record),
           ),
-        ],
       ],
     );
   }
@@ -594,7 +599,7 @@ class _DiaryItemState extends State<DiaryItem> {
                 padding: const EdgeInsets.only(bottom: 16, right: 12),
                 child: GestureDetector(
                   onTap: onTap,
-                  // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q」，普通卡片含「给小Q/编辑/删除」）
+                  // 长按卡片弹出操作菜单（日结卡片仅保留「给小Q/批量管理」，普通卡片含「给小Q/编辑/批量管理/删除」）
                   onLongPress: _showActionMenu,
                   behavior: HitTestBehavior.opaque,
                   child: AnimatedOpacity(
@@ -736,8 +741,8 @@ class _DiaryItemState extends State<DiaryItem> {
                                         // 提取中 → 可撤回的状态切换用淡入缩放，避免图标生硬闪替
                                         child: AnimatedSwitcher(
                                           duration: AppMotion.duration(context, AppDurations.fast),
-                                          switchInCurve: Curves.easeOutCubic,
-                                          switchOutCurve: Curves.easeIn,
+                                          switchInCurve: AppCurves.emphasized,
+                                          switchOutCurve: AppCurves.exit,
                                           transitionBuilder: (child, animation) {
                                             return FadeTransition(
                                               opacity: animation,

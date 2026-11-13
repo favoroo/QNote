@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/token_usage_format.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_token_usage.dart';
@@ -13,6 +14,7 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 /// 弹层关闭后原页面与滚动位置保持不变。
 Future<void> showTokenUsageDetailSheet(BuildContext context) {
   return showModalBottomSheet<void>(
+    sheetAnimationStyle: AppTheme.sheetAnimationStyle,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

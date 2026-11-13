@@ -8,6 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/diary_record_sheet_logic.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
@@ -2319,6 +2323,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
 
   Future<void> _editInputBarTagTime(TagEntry entry) async {
     final result = await showModalBottomSheet<Map<String, dynamic>>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -3388,48 +3393,61 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         onTap: _canUndo ? _undoExtract : _handleAiExtract,
         onLongPress: _canUndo ? null : _showModelMenu,
         child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 160),
+          duration: AppMotion.duration(context, AppDurations.fast),
+          curve: AppCurves.standard,
           opacity: enabled ? 1 : 0.45,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
+            duration: AppMotion.duration(context, AppDurations.normal),
+            curve: AppCurves.standard,
             width: 38,
             height: 38,
             alignment: Alignment.center,
             // 实心底（撤销=error，其余=主题色），前景跟随 onError / onPrimary
             decoration: BoxDecoration(color: _canUndo ? scheme.error : scheme.primary, shape: BoxShape.circle),
-            child: _canUndo
-                ? AnimatedBuilder(
-                    animation: _undoController,
-                    builder: (context, child) => SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          CustomPaint(
-                            painter: _UndoCountdownPainter(progress: _undoController.value, color: scheme.onError),
-                            size: const Size(22, 22),
-                          ),
-                          child!,
-                        ],
+            child: AnimatedSwitcher(
+              // 倒计时 / 提取中 / 空闲三态交叉淡化 + 缩放，避免图标生硬闪替
+              duration: AppMotion.duration(context, AppDurations.fast),
+              switchInCurve: AppCurves.emphasized,
+              switchOutCurve: AppCurves.exit,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(scale: Tween<double>(begin: 0.8, end: 1).animate(animation), child: child),
+              ),
+              child: _canUndo
+                  ? AnimatedBuilder(
+                      key: const ValueKey('undo'),
+                      animation: _undoController,
+                      builder: (context, child) => SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CustomPaint(
+                              painter: _UndoCountdownPainter(progress: _undoController.value, color: scheme.onError),
+                              size: const Size(22, 22),
+                            ),
+                            child!,
+                          ],
+                        ),
                       ),
-                    ),
-                    child: Icon(Icons.undo_rounded, size: 14, color: scheme.onError),
-                  )
-                : _isExtracting
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      // 实心主题色底上进度圈用 onPrimary；发送阶段全亮、其余阶段半透明以示区分
-                      color: _extractPhase == _ExtractPhase.sending
-                          ? scheme.onPrimary
-                          : scheme.onPrimary.withValues(alpha: 0.55),
-                    ),
-                  )
-                : Icon(Icons.auto_awesome, size: 20, color: scheme.onPrimary),
+                      child: Icon(Icons.undo_rounded, size: 14, color: scheme.onError),
+                    )
+                  : _isExtracting
+                  ? SizedBox(
+                      key: const ValueKey('extracting'),
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        // 实心主题色底上进度圈用 onPrimary；发送阶段全亮、其余阶段半透明以示区分
+                        color: _extractPhase == _ExtractPhase.sending
+                            ? scheme.onPrimary
+                            : scheme.onPrimary.withValues(alpha: 0.55),
+                      ),
+                    )
+                  : Icon(Icons.auto_awesome, key: const ValueKey('idle'), size: 20, color: scheme.onPrimary),
+            ),
           ),
         ),
       ),

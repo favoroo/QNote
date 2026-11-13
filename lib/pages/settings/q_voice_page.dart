@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/core/tts/tts_service.dart';
@@ -424,7 +425,7 @@ class _PreviewButton extends ConsumerWidget {
       },
       // 合成需一次网络请求，转圈让"延迟"变成可见的加载而非卡住
       icon: AnimatedSwitcher(
-        duration: AppDurations.fast,
+        duration: AppMotion.duration(context, AppDurations.fast),
         child: isBusy
             ? const SizedBox(
                 key: ValueKey('busy'),

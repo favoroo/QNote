@@ -273,7 +273,7 @@ class DescribeImageTool extends AgentTool {
     if (!await VisionCapabilityProbe.ensure(roleConfig)) {
       throw StateError(
         '当前识图模型「${roleConfig.modelName}」不支持图片输入（识图）。'
-        '请在「AI 模型配置」中把「时间线提取」模型换成支持识图的模型（模型名通常含 vision / -vl / omni，'
+        '请在「小Q设置 → 模型」中把「时间线提取」模型换成支持识图的模型（模型名通常含 vision / -vl / omni，'
         '或 Gemini / Claude 系列），也可在设置页对该模型做一次「识图检测」以确认能力',
       );
     }

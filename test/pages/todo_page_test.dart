@@ -366,4 +366,72 @@ void main() {
     expect(find.text('待办'), findsOneWidget);
     expect(find.byIcon(Icons.checklist_outlined), findsOneWidget);
   });
+
+  testWidgets('取消已完成待办的勾选时先收起再向上归位，而不是瞬间跳回上方列表', (tester) async {
+    final todos = [
+      Todo(
+        id: 'keep-1',
+        title: '仍在进行的任务',
+        sortOrder: 1,
+        folderId: 'folder-1',
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      ),
+      Todo(
+        id: 'undo-1',
+        title: '要撤回的任务',
+        isCompleted: true,
+        sortOrder: 2,
+        folderId: 'folder-1',
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+      ),
+      Todo(
+        id: 'keep-done',
+        title: '保持完成的任务',
+        isCompleted: true,
+        sortOrder: 3,
+        folderId: 'folder-1',
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2025),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          todoListProvider.overrideWith(() => _MockTodoListNotifier(todos)),
+          todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
+        ],
+        child: const MaterialApp(home: TodoPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final undoCheckbox = find.descendant(
+      of: find.byKey(const ValueKey('todo_completed_undo-1')),
+      matching: find.byKey(const ValueKey('todo_done_detector')),
+    );
+    expect(undoCheckbox, findsOneWidget);
+
+    await tester.tap(undoCheckbox);
+    await tester.pump();
+    // 收起阶段：条目仍留在已完成区慢慢收起，而不是立刻跳到上方列表
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.byKey(const ValueKey('todo_completed_undo-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('todo_item_undo-1')), findsNothing);
+
+    // 收起结束后提交状态，条目在未完成列表从下方滑入
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('todo_item_undo-1')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 60));
+    final risingY = tester.getTopLeft(find.text('要撤回的任务')).dy;
+
+    await tester.pumpAndSettle();
+    final settledY = tester.getTopLeft(find.text('要撤回的任务')).dy;
+    // 归位过程中标题从下往上移动，最终停在「已完成」折叠栏上方
+    expect(risingY, greaterThan(settledY));
+    expect(settledY, lessThan(tester.getTopLeft(find.textContaining('已完成 ')).dy));
+  });
 }

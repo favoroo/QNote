@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/storage/daily_score_service.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/daily_score_adjust.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
@@ -28,6 +29,7 @@ class BatchScoreAdjustSheet extends StatefulWidget {
   static Future<void> show(BuildContext context, {required ScoreAdjustRunner adjust}) {
     final colorScheme = Theme.of(context).colorScheme;
     return showModalBottomSheet<void>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

@@ -101,7 +101,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
     final durationText = widget.isStreaming ? '' : thinkingDurationLabel(widget.durationSeconds);
 
     return AnimatedSize(
-      duration: AppDurations.medium,
+      duration: AppMotion.duration(context, AppDurations.medium),
       curve: AppCurves.emphasized,
       alignment: Alignment.topLeft,
       child: Column(
@@ -201,10 +201,23 @@ class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProvide
     duration: const Duration(milliseconds: 1100),
   );
 
+  /// 系统「减弱动态效果」：呼吸循环停转，避免无意义地持续占着 ticker
+  bool _reduceMotion = false;
+
   @override
   void initState() {
     super.initState();
     _sync();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = AppMotion.reduce(context);
+    if (reduce != _reduceMotion) {
+      _reduceMotion = reduce;
+      _sync();
+    }
   }
 
   @override
@@ -216,7 +229,7 @@ class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProvide
   }
 
   void _sync() {
-    if (widget.isStreaming) {
+    if (widget.isStreaming && !_reduceMotion) {
       _controller.repeat(reverse: true);
     } else {
       _controller
@@ -234,11 +247,11 @@ class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProvide
   @override
   Widget build(BuildContext context) {
     final icon = Icon(Icons.psychology_outlined, size: 15, color: widget.color);
-    if (!widget.isStreaming) {
+    if (!widget.isStreaming || _reduceMotion) {
       return icon;
     }
     return FadeTransition(
-      opacity: Tween(begin: 0.5, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      opacity: Tween(begin: 0.5, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: AppCurves.standard)),
       child: icon,
     );
   }

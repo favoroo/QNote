@@ -1,75 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录 · 宽横条（默认 4×1）：品牌徽标 + 输入提示 + 相册 / 相机 / 发送三颗操作钮。
+  控件高度统一压到 30～34dp，保证 1 格高（约 40dp）的格子也不会溢出；内容整体垂直居中。
+  发送钮用主色渐变圆 + 白色纸飞机，视觉权重高于两侧次级图标。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_quick_record_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_quick_record_outer"
+    android:contentDescription="@string/widget_quick_record_action">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="54dp"
-        android:layout_gravity="center"
-        android:background="@drawable/bg_widget_quick_record_outer"
-        android:orientation="horizontal"
+        android:layout_height="match_parent"
         android:gravity="center_vertical"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp">
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="4dp">
+
+        <ImageView
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/bg_widget_qr_badge"
+            android:importantForAccessibility="no"
+            android:padding="7dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_pen" />
 
         <!-- Fake text input bar click target -->
         <LinearLayout
             android:id="@+id/btn_input_target"
             android:layout_width="0dp"
-            android:layout_height="36dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="6dp"
             android:layout_weight="1"
             android:background="@drawable/bg_widget_quick_record_input"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingLeft="12dp"
-            android:paddingRight="12dp"
             android:clickable="true"
             android:focusable="true"
-            android:layout_marginEnd="8dp">
-            
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="快速记录..."
-                android:textColor="@color/widget_text_secondary"
-                android:textSize="13sp"
+                android:ellipsize="end"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:text="记一笔…"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <!-- Photo Button -->
         <ImageButton
             android:id="@+id/btn_widget_photo"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_gallery"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="5dp"
+            android:background="@drawable/bg_widget_qr_icon_btn"
             android:contentDescription="选择相册图片"
             android:scaleType="centerInside"
-            android:layout_marginEnd="4dp" />
+            android:src="@drawable/ic_gallery" />
 
         <!-- Camera Button -->
         <ImageButton
             android:id="@+id/btn_widget_camera"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_camera"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="5dp"
+            android:background="@drawable/bg_widget_qr_icon_btn"
             android:contentDescription="启动相机拍照"
             android:scaleType="centerInside"
-            android:layout_marginEnd="4dp" />
+            android:src="@drawable/ic_camera" />
 
         <!-- Send Button representation -->
         <ImageButton
             android:id="@+id/btn_widget_send"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_send"
-            android:contentDescription="发送"
-            android:scaleType="centerInside" />
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_widget_qr_send"
+            android:contentDescription="开始记录"
+            android:padding="7dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_send_white" />
     </LinearLayout>
 </FrameLayout>
-

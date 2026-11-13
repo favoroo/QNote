@@ -6,6 +6,7 @@ import 'package:qnote_flutter/config/ai_vendors.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
+import 'package:qnote_flutter/core/ai/builtin_provider.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
@@ -19,6 +20,7 @@ import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/pages/settings/ai_provider_edit_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_route_group_edit_page.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
+import 'package:qnote_flutter/widgets/ai/builtin_service_card.dart';
 import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/token_usage_card.dart';
@@ -35,16 +37,22 @@ import 'package:qnote_flutter/widgets/app_error_state.dart';
 ///
 /// 温度 / 最大 tokens / 提取图片等运行参数不在此页暴露：调参对普通用户学习成本
 /// 过高，统一走 [AiRoleSettings] 的内置默认值（老用户存量配置仍生效）。
+///
+/// 现在这一页作为「小Q设置 → 模型」分段嵌入综合页；添加入口是「模型服务」
+/// 标题右侧的圆形「+」，[embedded] 为 true 时不再重复生成 AppBar。
 class AiConfigPage extends ConsumerStatefulWidget {
   final bool autoOpenAdd;
 
-  const AiConfigPage({super.key, this.autoOpenAdd = false});
+  /// 嵌入模式：由「小Q设置」承载时为 true
+  final bool embedded;
+
+  const AiConfigPage({super.key, this.autoOpenAdd = false, this.embedded = false});
 
   @override
-  ConsumerState<AiConfigPage> createState() => _AiConfigPageState();
+  ConsumerState<AiConfigPage> createState() => AiConfigPageState();
 }
 
-class _AiConfigPageState extends ConsumerState<AiConfigPage> {
+class AiConfigPageState extends ConsumerState<AiConfigPage> {
   AiRoles _roles = const AiRoles();
   Set<String> _disabledTools = {};
   bool _toolsLoaded = false;
@@ -325,53 +333,73 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
     final providersAsync = ref.watch(aiProviderListProvider);
     final theme = Theme.of(context);
 
+    final body = providersAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => AppErrorState(error: e, onRetry: () => ref.invalidate(aiProviderListProvider)),
+      data: (providers) => ListView(
+        // 添加入口已内联在「模型服务」标题右侧，不再有浮动按钮遮挡，
+        // 底部只留常规留白
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          const TokenUsageCard(),
+          _buildProvidersSection(theme, providers),
+          const SizedBox(height: 4),
+          _buildRouteGroupsSection(theme, providers),
+          const SizedBox(height: 4),
+          _buildRoleSection(
+            theme,
+            providers,
+            ref.watch(aiRouteGroupListProvider).valueOrNull ?? const <AiRouteGroup>[],
+          ),
+          const SizedBox(height: 4),
+          _buildToolSwitchCard(theme, providers),
+        ],
+      ),
+    );
+
+    if (widget.embedded) return body;
+
     return Scaffold(
       appBar: AppBar(title: const Text('AI 模型配置')),
-      floatingActionButton: providersAsync.valueOrNull?.isNotEmpty == true
-          ? FloatingActionButton.extended(
-              onPressed: _addProvider,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('添加模型服务'),
-            )
-          : null,
-      body: providersAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => AppErrorState(error: e, onRetry: () => ref.invalidate(aiProviderListProvider)),
-        data: (providers) => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-          children: [
-            const TokenUsageCard(),
-            _buildProvidersSection(theme, providers),
-            const SizedBox(height: 4),
-            _buildRouteGroupsSection(theme, providers),
-            const SizedBox(height: 4),
-            _buildRoleSection(
-              theme,
-              providers,
-              ref.watch(aiRouteGroupListProvider).valueOrNull ?? const <AiRouteGroup>[],
-            ),
-            const SizedBox(height: 4),
-            _buildToolSwitchCard(theme, providers),
-          ],
-        ),
-      ),
+      body: body,
     );
   }
 
   Widget _buildProvidersSection(ThemeData theme, List<AiProvider> providers) {
-    if (providers.isEmpty) {
-      return const NoModelGuideCard(scene: '', padding: EdgeInsets.symmetric(vertical: 16));
-    }
+    // 内置免费模型是虚拟条目：始终显示在列表首位，且不参与用户厂商的增删改
+    final userProviders = providers.where((p) => !BuiltinProvider.isBuiltin(p)).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(theme, '模型服务', '点击卡片管理密钥与模型'),
-        ...providers.map((provider) => _providerCard(theme, provider)),
+        // 添加入口贴在区块标题右侧：顶栏那个「+」离列表内容太远，看不出加的是什么；
+        // 放到「模型服务」标题旁，语义与位置才对得上
+        _sectionTitle(theme, '模型服务', '内置免费模型 · 点击卡片管理', trailing: _addProviderButton(theme)),
+        const BuiltinServiceCard(),
+        ...userProviders.map((provider) => _providerCard(theme, provider)),
       ],
     );
   }
 
+  /// 「模型服务」标题右侧的圆形添加入口
+  Widget _addProviderButton(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    return IconButton(
+      onPressed: _addProvider,
+      tooltip: '添加模型服务',
+      padding: EdgeInsets.zero,
+      icon: const Icon(Icons.add_rounded, size: 20),
+      style: IconButton.styleFrom(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        minimumSize: const Size(38, 38),
+        shape: const CircleBorder(),
+      ),
+    );
+  }
+
   Widget _providerCard(ThemeData theme, AiProvider provider) {
+    // 内置条目用独立的只读卡片渲染，绝不走可编辑的用户厂商卡片
+    if (BuiltinProvider.isBuiltin(provider)) return const SizedBox.shrink();
     final colorScheme = theme.colorScheme;
     final disabled = !provider.enabled;
     return Padding(
@@ -428,7 +456,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                         provider.usesAccountAuth
                             ? '账号登录 · ${AccountRouting.fromId(provider.accountRouting).label} · '
                                   '${provider.models.length} 个模型'
-                            // 免密钥服务（本机 Ollama、免费网关）没有密钥是正常状态，
+                            // 免密钥服务（免费网关）没有密钥是正常状态，
                             // 显示「0 把密钥」会让人以为配错了
                             : provider.apiKeys.isEmpty && vendorAllowsKeyless(provider.vendorId)
                             ? '免密钥 · ${provider.models.length} 个模型'
@@ -602,20 +630,25 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle(theme, '模型分配', '同一模型或路由组可分给多个角色'),
-        Container(
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-          ),
-          child: Column(
-            children: [
-              _roleTile(theme, 'assistant', providers, groups),
-              _divider(theme),
-              _roleTile(theme, 'timelineOptimization', providers, groups),
-              _divider(theme),
-              _roleTile(theme, 'imageGeneration', providers, groups),
-            ],
+        // 底色放在 Material 上：角色行是 InkWell，若中间夹一层带底色的 Container，
+        // 水波纹会被盖住；只用 Container 画描边
+        Material(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: Column(
+              children: [
+                _roleTile(theme, 'assistant', providers, groups),
+                _divider(theme),
+                _roleTile(theme, 'timelineOptimization', providers, groups),
+                _divider(theme),
+                _roleTile(theme, 'imageGeneration', providers, groups),
+              ],
+            ),
           ),
         ),
       ],
@@ -723,66 +756,79 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle(theme, '小Q工具能力', '按需关闭以节省额度'),
-        Container(
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-          ),
-          child: Column(
-            children: [
-              if (anthropicAssistant)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '当前对话模型使用 Anthropic 原生接口，该接口暂不支持小Q工具，'
-                          '以下开关不生效；换用 OpenAI 兼容模型即恢复。',
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        // SwitchListTile 的水波纹同样画在最近的 Material 上，底色不能放在
+        // 中间的 Container 上（会触发「ink splashes may be invisible」断言）
+        Material(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: Column(
+              children: [
+                if (anthropicAssistant)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '当前对话模型使用 Anthropic 原生接口，该接口暂不支持小Q工具，'
+                            '以下开关不生效；换用 OpenAI 兼容模型即恢复。',
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              if (!_toolsLoaded)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                  ),
-                )
-              else
-                for (final entry in toolMeta.entries) ...[
-                  SwitchListTile(
-                    value: !_disabledTools.contains(entry.key),
-                    title: Text(entry.value),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    // 不生效的开关直接置灰：可点却无效果比不可点更让人困惑
-                    onChanged: anthropicAssistant ? null : (enabled) => _toggleTool(entry.key, enabled),
-                  ),
-                  if (entry.key != toolMeta.keys.last) _divider(theme),
-                ],
-            ],
+                if (!_toolsLoaded)
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                  )
+                else
+                  for (final entry in toolMeta.entries) ...[
+                    SwitchListTile(
+                      value: !_disabledTools.contains(entry.key),
+                      title: Text(entry.value),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      // 不生效的开关直接置灰：可点却无效果比不可点更让人困惑
+                      onChanged: anthropicAssistant ? null : (enabled) => _toggleTool(entry.key, enabled),
+                    ),
+                    if (entry.key != toolMeta.keys.last) _divider(theme),
+                  ],
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _sectionTitle(ThemeData theme, String title, String subtitle) {
+  Widget _sectionTitle(ThemeData theme, String title, String subtitle, {Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 2),
-          Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing],
         ],
       ),
     );

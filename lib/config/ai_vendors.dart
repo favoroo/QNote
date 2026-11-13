@@ -17,14 +17,15 @@ library;
 
 /// 厂商分组：驱动「添加模型服务」选择器的分区与筛选 chips
 ///
-/// 顺序即展示顺序：先按凭证类型（账号登录 / API Key），再按地理与服务形态。
+/// 顺序即展示顺序：自定义置顶（最常用的兜底入口，用户手上多半已有自建中转或
+/// 未收录的服务，不该滑到底才找得到），其后按凭证类型（账号登录 / API Key），
+/// 再按地理与服务形态。
 enum VendorCategory {
+  custom('custom', '自定义', '自建或未收录的服务，手动填写地址与协议'),
   account('account', '账号登录', '登录账号即可使用，Token 由账号额度提供'),
   cn('cn', '国内厂商', '厂商自有接口，密钥在其控制台申请'),
   intl('intl', '国际厂商', '官方接口，通常需要海外网络环境'),
-  relay('relay', '聚合中转', '一把密钥调用多家模型'),
-  local('local', '本地部署', '跑在本机的推理服务，通常无需密钥'),
-  custom('custom', '自定义', '自建或未收录的服务，手动填写地址与协议');
+  relay('relay', '聚合中转', '一把密钥调用多家模型');
 
   const VendorCategory(this.id, this.label, this.description);
 
@@ -78,7 +79,7 @@ class AiProviderConfig {
   /// 一行补充说明（选择器卡片与编辑页展示）
   final String note;
 
-  /// 是否允许不填密钥（本机服务与免密钥网关）
+  /// 是否允许不填密钥（免密钥网关）
   final bool keyOptional;
 
   /// 多端点：为空表示只有 [defaultBaseUrl] 一套
@@ -849,53 +850,6 @@ final aiProviders = <AiProviderConfig>[
     note: '去中心化算力聚合',
   ),
 
-  // ── 本地部署（无需密钥）────────────────────────────────────
-  const AiProviderConfig(
-    id: 'ollama',
-    name: 'Ollama（本机）',
-    category: VendorCategory.local,
-    provider: 'openai',
-    icon: 'ollama',
-    defaultBaseUrl: 'http://localhost:11434/v1',
-    models: [],
-    modelsEndpoint: '/v1/models',
-    authType: 'none',
-    requiresApiKeyForFetch: false,
-    keyOptional: true,
-    placeholder: '请输入本机已拉取的模型名（ollama list 可查）',
-    note: '本机 Ollama，默认端口 11434',
-  ),
-  const AiProviderConfig(
-    id: 'lmstudio',
-    name: 'LM Studio（本机）',
-    category: VendorCategory.local,
-    provider: 'openai',
-    icon: 'lmstudio',
-    defaultBaseUrl: 'http://localhost:1234/v1',
-    models: [],
-    modelsEndpoint: '/v1/models',
-    authType: 'none',
-    requiresApiKeyForFetch: false,
-    keyOptional: true,
-    placeholder: '请输入 LM Studio 已加载的模型名',
-    note: '本机 LM Studio，默认端口 1234',
-  ),
-  const AiProviderConfig(
-    id: 'vllm',
-    name: 'vLLM（本机）',
-    category: VendorCategory.local,
-    provider: 'openai',
-    icon: 'vllm-color',
-    defaultBaseUrl: 'http://localhost:8000/v1',
-    models: [],
-    modelsEndpoint: '/v1/models',
-    authType: 'none',
-    requiresApiKeyForFetch: false,
-    keyOptional: true,
-    placeholder: '请输入 vLLM 已加载的模型名',
-    note: '自建 vLLM 服务，默认端口 8000',
-  ),
-
   // ── 自定义 ──────────────────────────────────────────────────
   const AiProviderConfig(
     id: 'custom',
@@ -932,11 +886,19 @@ List<AiProviderConfig> aiAccountProviders() => aiProviders.where((p) => p.authMo
 /// 走 API Key 的厂商模板（含「自定义」）
 List<AiProviderConfig> aiApiKeyProviders() => aiProviders.where((p) => p.authMode == 'api_key').toList();
 
-/// 该厂商是否允许不填密钥（本机服务与免密钥网关）
+/// 内置免费模型服务的虚拟厂商 id
+///
+/// 它没有厂商模板（不出现在「添加模型服务」选择器里），但需要被判定为
+/// 「免密钥」，否则虚拟条目会因为缺少凭证从选路与选择器里静默消失。
+/// 定义在配置层是为了避免 `ai_providers → ai_vendors → builtin_provider` 的循环依赖。
+const String kBuiltinVendorId = 'qnote_builtin';
+
+/// 该厂商是否允许不填密钥（免密钥网关 + 内置免费服务）
 ///
 /// 保存校验、条目可用性与发信层的「缺少凭证」判断共用这一处口径，避免三处
 /// 各写一份判断后出现「能存不能发」。
 bool vendorAllowsKeyless(String? vendorId) {
   if (vendorId == null || vendorId.isEmpty) return false;
+  if (vendorId == kBuiltinVendorId) return true;
   return getProviderById(vendorId)?.keyOptional ?? false;
 }

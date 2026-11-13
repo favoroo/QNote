@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:qnote_flutter/core/theme/app_color_schemes.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
+import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 
 Future<void> _waitForPrefs() => Future<void>.delayed(const Duration(milliseconds: 20));
@@ -81,5 +83,67 @@ void main() {
     expect(setting.customColor, AppBackgroundSetting.defaultCustomColor);
     expect(prefs.getInt('background_preset'), AppBackgroundPreset.system.index);
     expect(prefs.getInt('theme_mode'), ThemeMode.system.index);
+  });
+
+  test('保存/删除「我的搭配」会读写持久化', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(savedColorSchemeProvider);
+    await _waitForPrefs();
+
+    const background = AppBackgroundSetting(preset: AppBackgroundPreset.oled, customColor: Color(0xFF123456));
+    await container.read(savedColorSchemeProvider.notifier).save(background, const Color(0xFFF80004));
+
+    final saved = container.read(savedColorSchemeProvider);
+    expect(saved, isNotNull);
+    expect(saved!.name, savedColorSchemeName);
+    expect(saved.background.preset, AppBackgroundPreset.oled);
+    expect(saved.accentColor, const Color(0xFFF80004));
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt(AppearanceKeys.savedSchemeBackgroundPreset), AppBackgroundPreset.oled.index);
+    expect(prefs.getInt(AppearanceKeys.savedSchemeBackgroundCustomColor), 0xFF123456);
+    expect(prefs.getInt(AppearanceKeys.savedSchemeAccentColor), 0xFFF80004);
+
+    await container.read(savedColorSchemeProvider.notifier).clear();
+    expect(container.read(savedColorSchemeProvider), isNull);
+    expect(prefs.getInt(AppearanceKeys.savedSchemeBackgroundPreset), isNull);
+    expect(prefs.getInt(AppearanceKeys.savedSchemeBackgroundCustomColor), isNull);
+    expect(prefs.getInt(AppearanceKeys.savedSchemeAccentColor), isNull);
+  });
+
+  test('冷启动能从偏好恢复「我的搭配」', () async {
+    SharedPreferences.setMockInitialValues({
+      AppearanceKeys.savedSchemeBackgroundPreset: AppBackgroundPreset.custom.index,
+      AppearanceKeys.savedSchemeBackgroundCustomColor: 0xFF002FA7,
+      AppearanceKeys.savedSchemeAccentColor: 0xFFFF6B18,
+    });
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(savedColorSchemeProvider);
+    await _waitForPrefs();
+
+    final saved = container.read(savedColorSchemeProvider);
+    expect(saved, isNotNull);
+    expect(saved!.background.preset, AppBackgroundPreset.custom);
+    expect(saved.background.customColor, const Color(0xFF002FA7));
+    expect(saved.accentColor, const Color(0xFFFF6B18));
+  });
+
+  test('缺键的「我的搭配」按未保存处理', () async {
+    SharedPreferences.setMockInitialValues({
+      AppearanceKeys.savedSchemeBackgroundPreset: AppBackgroundPreset.oled.index,
+      // 故意缺少自定义色与主题色两个键
+    });
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(savedColorSchemeProvider);
+    await _waitForPrefs();
+
+    expect(container.read(savedColorSchemeProvider), isNull);
   });
 }

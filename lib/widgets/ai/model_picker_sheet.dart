@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/image_model_detection.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
@@ -113,6 +114,7 @@ Future<ModelPickerResult?> showModelPickerSheet(
   bool imageGeneration = false,
 }) {
   return showModalBottomSheet<ModelPickerResult>(
+    sheetAnimationStyle: AppTheme.sheetAnimationStyle,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

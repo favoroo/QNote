@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/ai/ai_provider_migration.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/builtin_service_config_service.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_snapshot_service.dart';
@@ -26,6 +27,7 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/database_init.dart' if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
+import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
@@ -65,6 +67,10 @@ Future<void> preInitializeApp() async {
   // 旧版模型级配置（ai_configs）→ 厂商条目（ai_providers）的一次性迁移。
   // 必须在首帧前完成：用户可能一进来就发消息，角色解析不能读到旧格式绑定。
   await AiProviderMigration.instance.run();
+
+  // 内置免费模型的 last-known-good 配置：只读 SharedPreferences，不联网。
+  // 首帧后由 _runBuiltinServiceRefresh 异步刷新，避免冷启动阻塞。
+  await BuiltinServiceConfigService.instance.loadCache();
 }
 
 class QNoteApp extends ConsumerStatefulWidget {
@@ -89,6 +95,26 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     _runDeferredInitialization();
     _runStartupUpdateCheck();
     _runScreenUsageSnapshot(delay: const Duration(seconds: 2));
+    _runBuiltinServiceRefresh();
+  }
+
+  /// 内置免费模型：首帧后异步拉取远程配置。
+  ///
+  /// 不阻塞启动；失败保留 last-known-good，卡片会显示可重试状态。
+  Future<void> _runBuiltinServiceRefresh() async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    try {
+      final service = BuiltinServiceConfigService.instance;
+      final updated = await service.refreshIfStale();
+      if (mounted && updated) {
+        // 地址/开关变化后，厂商列表与角色展示名都要重算
+        ref.invalidate(aiProviderListProvider);
+        ref.invalidate(aiRolesProvider);
+      }
+    } catch (e) {
+      debugPrint('内置服务配置刷新失败: $e');
+    }
   }
 
   /// 屏幕时长每日快照：系统 UsageStats 只保留最近约 7 天，必须靠 App 主动把

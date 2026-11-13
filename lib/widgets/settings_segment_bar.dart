@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 
 /// 设置页分区切换器的单个分区描述
 class SettingsSegmentItem {
@@ -19,7 +20,8 @@ class SettingsSegmentItem {
 /// 之所以抽成组件而不是各页各写一份：这类页面靠「同一屏内的横向切换」表达
 /// 同一板块下的子功能，胶囊样式一旦各写一份就会在圆角、阴影、动效时长上慢慢分叉。
 ///
-/// [items] 按等分宽度排布，建议不超过 4 个（再多文字会挤成省略号）。
+/// [items] 按等分宽度排布，最多 5 个：抽屉 360 宽时每格约 64，双字标题
+/// （如小Q设置的五个分段）刚好排得下，再多或标题变长就会挤成省略号。
 class SettingsSegmentBar extends StatelessWidget {
   const SettingsSegmentBar({super.key, required this.items, required this.selectedIndex, required this.onChanged});
 
@@ -77,7 +79,8 @@ class SettingsSegmentBar extends StatelessWidget {
                     final selected = index == selectedIndex;
                     final item = items[index];
                     return Expanded(
-                      child: GestureDetector(
+                      child: PressableScale(
+                        pressedScale: 0.96,
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
                           if (selected) return;

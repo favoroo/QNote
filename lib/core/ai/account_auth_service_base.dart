@@ -87,7 +87,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
 
   @override
   AccountAuthRequiredException notLoggedIn(String providerId) =>
-      authRequired(providerId, '$vendorLabelPrefix账号未登录或已过期，请到「设置 → AI 模型配置」重新登录');
+      authRequired(providerId, '$vendorLabelPrefix账号未登录或已过期，请到「小Q设置 → 模型」重新登录');
 
   @override
   AccountAuthRequiredException authExpired(String providerId) =>
@@ -174,7 +174,7 @@ abstract class AccountAuthServiceBase extends AccountAuthService {
     if (selection == null) {
       final enabled = accounts.where((a) => a.enabled).toList();
       if (enabled.isEmpty) {
-        throw authRequired(providerId, '$vendorLabelPrefix账号已全部停用，请到「设置 → AI 模型配置」启用一个账号');
+        throw authRequired(providerId, '$vendorLabelPrefix账号已全部停用，请到「小Q设置 → 模型」启用一个账号');
       }
       final untried = enabled.where((a) => !triedAccountIds.contains(a.id)).toList();
       if (untried.isNotEmpty) {

@@ -588,14 +588,6 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                                   filled: false,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '完善档案，小Q建议更贴合你',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                  fontSize: 11,
-                                ),
-                              ),
                             ],
                           ),
                         ),

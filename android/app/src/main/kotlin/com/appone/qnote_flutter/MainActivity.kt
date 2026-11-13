@@ -15,6 +15,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -43,6 +44,7 @@ class MainActivity : FlutterActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
+        private const val TAG = "QNote"
         private val iconExecutor = Executors.newSingleThreadExecutor()
 
         /// shared_preferences 插件的存储文件与键前缀（见 LegacySharedPreferencesPlugin）。
@@ -64,18 +66,29 @@ class MainActivity : FlutterActivity() {
      * 系统默认会先画一屏深色启动屏，再跳到浅色 App——这就是用户看到的「深 → 浅」闪变。
      *
      * 只覆盖 `UI_MODE_NIGHT_MASK`，其余 configuration（语言、密度、字号）原样保留。
+     *
+     * 这段只是启动观感优化，任何异常都不能阻断 App 启动：失败时原样交还系统 context，
+     * 退回系统深色设置，至少保证能进主界面。
      */
     override fun attachBaseContext(newBase: Context) {
-        val prefs = newBase.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val nightMode = prefs.getInt(KEY_LAUNCH_NIGHT_MODE, NIGHT_MODE_SYSTEM)
-        if (nightMode == NIGHT_MODE_SYSTEM) {
-            super.attachBaseContext(newBase)
-            return
+        val base = try {
+            val prefs = newBase.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            // shared_preferences 在 Android 上把 Dart 的 int 写成 Long，
+            // 这里必须按 Number 读取；直接用 getInt 会抛 ClassCastException 把启动带崩。
+            val nightMode = (prefs.all[KEY_LAUNCH_NIGHT_MODE] as? Number)?.toInt() ?: NIGHT_MODE_SYSTEM
+            if (nightMode == NIGHT_MODE_SYSTEM) {
+                newBase
+            } else {
+                val config = Configuration(newBase.resources.configuration)
+                config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    (if (nightMode == 1) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+                newBase.createConfigurationContext(config)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "启动明暗覆盖失败，回退系统配置", e)
+            newBase
         }
-        val config = Configuration(newBase.resources.configuration)
-        config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
-            (if (nightMode == 1) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
-        super.attachBaseContext(newBase.createConfigurationContext(config))
+        super.attachBaseContext(base)
     }
 
     /**
@@ -89,15 +102,21 @@ class MainActivity : FlutterActivity() {
      * 对应那一份覆盖掉，原生窗口与 Flutter 首帧就是同一个颜色，闪变从源头消失。
      */
     private fun applySavedLaunchBackground() {
-        val isNight = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        val key = if (isNight) KEY_LAUNCH_CANVAS_DARK else KEY_LAUNCH_CANVAS_LIGHT
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val stored = prefs.getString(key, null)
-        // 没有偏好数据（首次安装）时退回资源兜底色——它与 App 画布同色，不会跳变。
-        // 注意不能用 windowBackground 的 TypedValue.data：那指向 layer-list 而非颜色。
-        val color = stored?.let(::parseHexColor) ?: ContextCompat.getColor(this, R.color.launch_background)
-        window.setBackgroundDrawable(ColorDrawable(color))
+        // 启动底色只是观感优化：任何机型/ROM 差异导致的异常都吞掉并保留主题默认背景，
+        // 绝不能让它在 super.onCreate 之前把进程带崩。
+        try {
+            val isNight = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+            val key = if (isNight) KEY_LAUNCH_CANVAS_DARK else KEY_LAUNCH_CANVAS_LIGHT
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val stored = prefs.getString(key, null)
+            // 没有偏好数据（首次安装）时退回资源兜底色——它与 App 画布同色，不会跳变。
+            // 注意不能用 windowBackground 的 TypedValue.data：那指向 layer-list 而非颜色。
+            val color = stored?.let(::parseHexColor) ?: ContextCompat.getColor(this, R.color.launch_background)
+            window.setBackgroundDrawable(ColorDrawable(color))
+        } catch (e: Exception) {
+            Log.w(TAG, "设置启动窗口底色失败，保留主题默认背景", e)
+        }
     }
 
     /** 解析 `#RRGGBB` / `#AARRGGBB`；格式不对返回 null 交给调用方兜底。 */

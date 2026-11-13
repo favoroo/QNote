@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
@@ -121,7 +122,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
         ],
       ),
       body: AnimatedSwitcher(
-        duration: AppDurations.fast,
+        duration: AppMotion.duration(context, AppDurations.fast),
         switchInCurve: AppCurves.emphasized,
         switchOutCurve: AppCurves.exit,
         layoutBuilder: (currentChild, previousChildren) {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1×1 形态的主按钮：整格都是热区，圆角略大以贴近 App 内的图标徽标。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="315"
+        android:endColor="@color/widget_qr_accent_end"
+        android:startColor="@color/widget_accent"
+        android:type="linear" />
+    <corners android:radius="18dp" />
+</shape>

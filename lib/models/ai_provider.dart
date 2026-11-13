@@ -335,7 +335,7 @@ class AiProvider {
 
   /// 是否已有可用凭证（账号型交给登录态判断，发信层再校验）
   ///
-  /// 免密钥服务（本机 Ollama/LM Studio、免费网关）按厂商模板
+  /// 免密钥服务（免费网关）按厂商模板
   /// `AiProviderConfig.keyOptional` 放行：把它们判成「无凭证」会让条目从选路
   /// 与选择器里静默消失，而这类服务本来就不需要密钥。
   bool get hasCredentials =>

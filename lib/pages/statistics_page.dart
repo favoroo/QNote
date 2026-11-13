@@ -304,7 +304,7 @@ class _TabSwitcherState extends State<_TabSwitcher> {
       if (key?.currentContext != null) {
         Scrollable.ensureVisible(
           key!.currentContext!,
-          duration: AppDurations.normal,
+          duration: AppMotion.duration(context, AppDurations.normal),
           curve: AppCurves.emphasized,
           alignment: 0.5,
         );

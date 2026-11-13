@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 
 /// 最后一条用户提问的「点一下再次编辑」承载层：整行可点 + 按下高亮 + 轻震动。
 ///
@@ -56,7 +57,7 @@ class _UserBubbleReeditTapState extends State<UserBubbleReeditTap> {
         widget.onTap();
       },
       child: AnimatedContainer(
-        duration: AppDurations.fast,
+        duration: AppMotion.duration(context, AppDurations.fast),
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
           // 三态底色：按下最重、编辑态常驻一档、其余不画。常驻色替代已移除的编辑图标，

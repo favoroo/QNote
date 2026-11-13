@@ -8,6 +8,8 @@ import 'package:qnote_flutter/core/agent/models/agent_tool.dart';
 import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
+import 'package:qnote_flutter/core/ai/builtin_provider.dart';
+import 'package:qnote_flutter/core/ai/builtin_request_signer.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/storage/ai_token_usage_repository.dart';
@@ -81,7 +83,7 @@ class GenerateImageTool extends AgentTool {
       '时间线时间块内写「- 图片: <路径>」，笔记/日记正文写「![image](<路径>)」；'
       '仅在对话中展示时无需写文件。本工具不支持图片编辑与图生图；'
       '需要查看已有图片请用 view_image，需要搜索网络图片请用 web_search。'
-      '若用户尚未配置生图模型，本工具会返回明确提示，请如实转告用户去「AI 模型配置」中配置。';
+      '若用户尚未配置生图模型，本工具会返回明确提示，请如实转告用户去「小Q设置 → 模型」中配置。';
 
   @override
   Map<String, dynamic> get parametersSchema => {
@@ -121,7 +123,7 @@ class GenerateImageTool extends AgentTool {
     }
     if (config == null) {
       return ToolResult.error(
-        '尚未配置生图模型：请如实告知用户前往「设置 → AI 模型配置」，'
+        '尚未配置生图模型：请如实告知用户前往「小Q设置 → 模型」，'
         '在「生图模型」中选择一个支持 OpenAI 兼容 images/generations 的模型'
         '（例如 gpt-image-1、dall-e-3、即梦、通义万相等生图模型），'
         '不要编造图片路径，也不要假装已经生成。',
@@ -307,10 +309,16 @@ class GenerateImageTool extends AgentTool {
       final sentKey = pooled ? (pool.acquireNext(providerId, keys) ?? config.apiKey) : config.apiKey;
       final startedAt = DateTime.now();
       try {
+        final headers = _authHeaderFor(config, sentKey);
+        // 内置免费服务走签名头（与 AiService 的对话请求一致），
+        // 这里是自己 new 的 Dio，不会经过那边的拦截器
+        if (BuiltinProvider.isBuiltinId(config.providerId)) {
+          headers.addAll(await BuiltinRequestSigner.headersForPath('/v1/images/generations'));
+        }
         final response = await dio.post<Map<String, dynamic>>(
           '${config.baseUrl}/images/generations',
           data: requestBody,
-          options: Options(headers: _authHeaderFor(config, sentKey)),
+          options: Options(headers: headers),
         );
         final body = response.data;
         if (body == null) {
@@ -474,7 +482,7 @@ class GenerateImageTool extends AgentTool {
       case ImageFailureKind.httpError:
         buffer.write(
           '生图服务返回错误（鉴权失效、限速或服务故障），建议稍后重试，'
-          '或在「AI 模型配置」里检查该厂商的 API 密钥。',
+          '或在「小Q设置 → 模型」里检查该厂商的 API 密钥。',
         );
       case ImageFailureKind.saveFailed:
         buffer.write('图片已生成但保存到本地失败，请检查存储空间与权限。');

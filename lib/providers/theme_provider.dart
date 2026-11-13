@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/theme/app_color_schemes.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
@@ -64,6 +65,16 @@ class BackgroundSettingNotifier extends Notifier<AppBackgroundSetting> {
 
   Future<void> reset() async {
     state = const AppBackgroundSetting();
+    await _persist();
+  }
+
+  /// 一键应用推荐搭配：背景与主题色同时切换。
+  ///
+  /// 先切主题色再落背景，最后一次 [_persist] 会用新的强调色重算 legacy theme_mode
+  /// 与原生启动画布，避免持久化字段短暂停在旧搭配上。
+  Future<void> applyScheme(AppBackgroundSetting background, Color accentColor) async {
+    await ref.read(accentColorProvider.notifier).setAccentColor(accentColor);
+    state = background;
     await _persist();
   }
 
@@ -138,3 +149,63 @@ final presetAccentColors = [
   const Color(0xFF00BCD4), // 湖水青 (Material Cyan 500)
   const Color(0xFF7C4DFF), // 典雅紫 (Deep Purple A200)
 ];
+
+/// 用户在第 9 个槽位保存的「我的搭配」。
+///
+/// 与内置推荐组合同构，方便复用预览、选中匹配与一键套用逻辑；
+/// 保存在本地 SharedPreferences 中，不参与外观的 WebDAV 同步。
+final savedColorSchemeProvider = NotifierProvider<SavedColorSchemeNotifier, AppColorSchemePreset?>(
+  SavedColorSchemeNotifier.new,
+);
+
+class SavedColorSchemeNotifier extends Notifier<AppColorSchemePreset?> {
+  /// 用户在本实例内改过槽位后，异步加载不能再把旧值盖回来。
+  bool _touched = false;
+
+  @override
+  AppColorSchemePreset? build() {
+    _load();
+    return null;
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_touched) {
+      return;
+    }
+    final presetIndex = prefs.getInt(AppearanceKeys.savedSchemeBackgroundPreset);
+    final customColorValue = prefs.getInt(AppearanceKeys.savedSchemeBackgroundCustomColor);
+    final accentColorValue = prefs.getInt(AppearanceKeys.savedSchemeAccentColor);
+    // 三个键缺一不可：历史数据只写了一半时按「未保存」处理，避免恢复出半套配色
+    if (presetIndex == null || customColorValue == null || accentColorValue == null) {
+      return;
+    }
+    // 索引越界（历史数据或降级安装）时夹到合法区间，不让页面崩在取值上
+    final preset = AppBackgroundPreset.values[presetIndex.clamp(0, AppBackgroundPreset.values.length - 1)];
+    state = AppColorSchemePreset(
+      name: savedColorSchemeName,
+      background: AppBackgroundSetting(preset: preset, customColor: Color(customColorValue)),
+      accentColor: Color(accentColorValue),
+    );
+  }
+
+  /// 把当前背景与主题色保存为「我的搭配」，已存在时直接覆盖。
+  Future<void> save(AppBackgroundSetting background, Color accentColor) async {
+    _touched = true;
+    state = AppColorSchemePreset(name: savedColorSchemeName, background: background, accentColor: accentColor);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(AppearanceKeys.savedSchemeBackgroundPreset, background.preset.index);
+    await prefs.setInt(AppearanceKeys.savedSchemeBackgroundCustomColor, background.customColor.toARGB32());
+    await prefs.setInt(AppearanceKeys.savedSchemeAccentColor, accentColor.toARGB32());
+  }
+
+  /// 清空保存槽位，界面回到「保存当前」。
+  Future<void> clear() async {
+    _touched = true;
+    state = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppearanceKeys.savedSchemeBackgroundPreset);
+    await prefs.remove(AppearanceKeys.savedSchemeBackgroundCustomColor);
+    await prefs.remove(AppearanceKeys.savedSchemeAccentColor);
+  }
+}

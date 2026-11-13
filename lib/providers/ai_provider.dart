@@ -8,6 +8,8 @@ import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_route_service.dart';
+import 'package:qnote_flutter/core/ai/builtin_provider.dart';
+import 'package:qnote_flutter/core/ai/builtin_service_config_service.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -117,6 +119,18 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
     ref.onDispose(() {
       WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
     });
+
+    // 内置服务的远程配置刷新后，虚拟厂商的地址/开关会变化，列表要跟着重算
+    final builtinConfig = BuiltinServiceConfigService.instance;
+    void onBuiltinConfigChanged() {
+      refresh();
+    }
+
+    builtinConfig.revision.addListener(onBuiltinConfigChanged);
+    ref.onDispose(() {
+      builtinConfig.revision.removeListener(onBuiltinConfigChanged);
+    });
+
     return AiProviderRepository.instance.getAll();
   }
 
@@ -136,6 +150,7 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   }
 
   Future<AiProvider> addProvider(AiProvider provider) async {
+    if (BuiltinProvider.isBuiltin(provider)) return provider;
     final saved = await AiProviderRepository.instance.upsert(provider);
     // 内存增量更新，避免全表重查
     state = AsyncData([...(state.valueOrNull ?? []), saved]);
@@ -143,6 +158,7 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   }
 
   Future<void> updateProvider(AiProvider provider) async {
+    if (BuiltinProvider.isBuiltin(provider)) return;
     final saved = await AiProviderRepository.instance.upsert(provider);
     // 内存替换目标项
     state = AsyncData((state.valueOrNull ?? []).map((p) => p.id == saved.id ? saved : p).toList());
@@ -153,6 +169,7 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   /// 只翻 [AiProvider.enabled]：密钥、已启用模型与角色绑定全部保留，因此可以
   /// 当成「临时下架」（额度用尽、想先换一家）而不是不可逆的删除。
   Future<void> setProviderEnabled(String id, bool enabled) async {
+    if (BuiltinProvider.isBuiltinId(id)) return;
     final index = (state.valueOrNull ?? []).indexWhere((p) => p.id == id);
     if (index < 0) return;
     final target = state.valueOrNull![index];
@@ -161,6 +178,7 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   }
 
   Future<void> deleteProvider(String id) async {
+    if (BuiltinProvider.isBuiltinId(id)) return;
     final target = state.valueOrNull?.where((provider) => provider.id == id).firstOrNull;
     await AiProviderRepository.instance.delete(id);
     // 订阅账号型厂商的本地登录态跟着条目一起删（可能是多个账号），
@@ -171,14 +189,16 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
     // 内存移除 + 收敛默认标记（默认项可能刚被删掉）
     state = AsyncData((state.valueOrNull ?? []).where((p) => p.id != id).toList());
     final providers = state.valueOrNull ?? const <AiProvider>[];
-    if (providers.isNotEmpty && providers.every((p) => !p.isDefault)) {
-      await AiProviderRepository.instance.setDefault(providers.first.id);
+    final candidates = providers.where((p) => !BuiltinProvider.isBuiltin(p)).toList();
+    if (candidates.isNotEmpty && candidates.every((p) => !p.isDefault)) {
+      await AiProviderRepository.instance.setDefault(candidates.first.id);
       await refresh();
     }
   }
 
   /// 设为默认厂商（全局唯一）
   Future<void> setDefault(String id) async {
+    if (BuiltinProvider.isBuiltinId(id)) return;
     await AiProviderRepository.instance.setDefault(id);
     await refresh();
   }

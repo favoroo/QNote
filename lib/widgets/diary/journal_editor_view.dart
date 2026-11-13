@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
@@ -239,7 +240,7 @@ class _JournalEditorViewState extends ConsumerState<JournalEditorView> {
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               AnimatedSwitcher(
-                duration: AppDurations.fast,
+                duration: AppMotion.duration(context, AppDurations.fast),
                 child: Text(
                   _isSaving
                       ? '保存中…'

@@ -122,9 +122,8 @@ class AiRoleService {
 
   /// 初始化：只跑仍在生效的迁移，不再自动写入任何角色绑定
   ///
-  /// 旧版本会在这里把两个角色默认指到内置免费模型（开箱即用）；内置模型下线后
-  /// 「开箱即用」不再成立——没有厂商条目时由「未配置模型」引导弹窗负责把用户
-  /// 带到添加页，因此这里刻意什么都不写。
+  /// 内置免费模型只作为「没有任何可用厂商时的兜底」，由 [resolveForRole] 的
+  /// 回落逻辑自然选中；这里刻意不写死绑定，避免覆盖用户已有的模型选择。
   Future<void> initAndEnsureDefaults() async {
     await _migrateExtractImagesDefault();
   }

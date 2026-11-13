@@ -44,6 +44,18 @@ class _MockFolderListNotifier extends FolderListNotifier {
   }
 }
 
+class _ToggleFolderNotifier extends _MockFolderListNotifier {
+  _ToggleFolderNotifier(super._initial);
+
+  @override
+  Future<void> toggleExpanded(String id, bool isExpanded) async {
+    state = AsyncData([
+      for (final folder in state.valueOrNull ?? _initial)
+        folder.id == id ? folder.copyWith(isExpanded: isExpanded) : folder,
+    ]);
+  }
+}
+
 Future<void> _dragNoteTo(WidgetTester tester, Finder note, Offset target) async {
   final gesture = await tester.startGesture(tester.getCenter(note));
   await tester.pump(const Duration(milliseconds: 600));
@@ -230,5 +242,52 @@ void main() {
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
+  });
+
+  testWidgets('点击文件夹时子级播放展开/收起动画，收起结束前保持挂载', (tester) async {
+    final now = DateTime.now();
+    final noteMock = _MockNoteListNotifier([
+      Note(id: 'child-1', title: '子级笔记', folderId: 'folder-1', createdAt: now, updatedAt: now),
+    ]);
+    final folderMock = _ToggleFolderNotifier([
+      Folder(id: 'folder-1', name: '动画文件夹', isExpanded: false, createdAt: now, updatedAt: now),
+    ]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteListProvider.overrideWith(() => noteMock), folderListProvider.overrideWith(() => folderMock)],
+        child: const MaterialApp(home: Scaffold(body: NotesPage())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final folderNode = find.byKey(const ValueKey('tree_folder-1'));
+    final bodyTransition = find.descendant(of: folderNode, matching: find.byType(SizeTransition));
+
+    // 折叠状态下子级不挂载、不占高度
+    expect(find.text('子级笔记'), findsNothing);
+    expect(bodyTransition, findsNothing);
+
+    // 展开：动画途中子级已挂载，但高度还没长到终态
+    await tester.tap(find.text('动画文件夹'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(find.text('子级笔记'), findsOneWidget);
+    final midHeight = tester.getSize(bodyTransition).height;
+
+    await tester.pumpAndSettle();
+    final expandedHeight = tester.getSize(bodyTransition).height;
+    expect(midHeight, greaterThan(0));
+    expect(midHeight, lessThan(expandedHeight));
+
+    // 收起：反向动画期间子级仍留在树上，避免「内容瞬消、留白再慢慢收」
+    await tester.tap(find.text('动画文件夹'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(find.text('子级笔记'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(find.text('子级笔记'), findsNothing);
+    expect(bodyTransition, findsNothing);
   });
 }

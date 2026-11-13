@@ -16,6 +16,7 @@ import 'package:qnote_flutter/core/utils/reorder_gesture.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/folder_provider.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
@@ -41,6 +42,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   bool _isSelectionMode = false;
   Set<String> _selectedNoteIds = {};
   Set<String> _selectedFolderIds = {};
+
+  /// 正在播放收起退场的笔记 / 文件夹 id：动画结束后才真正删除
+  final Set<String> _deletingNoteIds = <String>{};
+  final Set<String> _deletingFolderIds = <String>{};
   bool _isConfirming = false;
   Timer? _confirmTimer;
 
@@ -87,23 +92,26 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   /// 合并同一帧内多次「滚动后重新命中」请求，避免重复计算
   bool _dragHoverRefreshScheduled = false;
 
-  // _flattenTree 结果缓存：folders/notes 引用未变时直接返回缓存，
-  // 避免每次 rebuild（拖拽 hover、选择模式切换等）重算整棵树
+  // 树结构缓存：folders/notes 引用未变时直接复用，
+  // 避免每次 rebuild（拖拽 hover、选择模式切换等）重算整棵树。
+  // 渲染用完整树，拖拽命中测试则用「当前可见行」的展平结果。
   List<Folder>? _lastFolders;
   List<Note>? _lastNotes;
+  List<_TreeNode>? _cachedTreeRoots;
   List<FlattenedItem>? _cachedFlattened;
   Map<String, FlattenedItem>? _cachedFlattenedById;
 
-  List<FlattenedItem> _getFlattenedItems(List<Folder> folders, List<Note> notes) {
-    if (identical(folders, _lastFolders) && identical(notes, _lastNotes) && _cachedFlattened != null) {
-      return _cachedFlattened!;
+  List<_TreeNode> _getTreeRoots(List<Folder> folders, List<Note> notes) {
+    if (identical(folders, _lastFolders) && identical(notes, _lastNotes) && _cachedTreeRoots != null) {
+      return _cachedTreeRoots!;
     }
-    final result = _flattenTree(null, 0, folders, notes);
+    final roots = _buildTreeNodes(parentId: null, depth: 0, folders: folders, notes: notes);
     _lastFolders = folders;
     _lastNotes = notes;
-    _cachedFlattened = result;
-    _cachedFlattenedById = {for (final item in result) item.id: item};
-    return result;
+    _cachedTreeRoots = roots;
+    _cachedFlattened = _flattenVisibleRows(roots);
+    _cachedFlattenedById = {for (final item in _cachedFlattened!) item.id: item};
+    return roots;
   }
 
   @override
@@ -203,71 +211,95 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     // 两个 Consumer 内，笔记/文件夹任何变更不再重建整个页面骨架
     final scaffold = Scaffold(
       appBar: AppBar(
-        leading: _isSelectionMode
-            ? IconButton(icon: const Icon(Icons.close), tooltip: '退出选择', onPressed: _exitSelectionMode)
-            : IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: () {
-                  // 与待办页一致：开抽屉前先收键盘，避免键盘回落引起的二次布局位移
-                  FocusScope.of(context).unfocus();
-                  rootScaffoldKey.currentState?.openDrawer();
-                },
-              ),
-        title: _isSelectionMode
-            ? Text('已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项')
-            : const RecordsSectionSwitcher(active: RecordsSection.notes),
+        leading: AppMotion.switcher(
+          context: context,
+          baseDuration: AppDurations.fast,
+          child: KeyedSubtree(
+            key: ValueKey(_isSelectionMode ? 'select_leading' : 'menu_leading'),
+            child: _isSelectionMode
+                ? IconButton(icon: const Icon(Icons.close), tooltip: '退出选择', onPressed: _exitSelectionMode)
+                : IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: () {
+                      // 与待办页一致：开抽屉前先收键盘，避免键盘回落引起的二次布局位移
+                      FocusScope.of(context).unfocus();
+                      rootScaffoldKey.currentState?.openDrawer();
+                    },
+                  ),
+          ),
+        ),
+        title: AppMotion.switcher(
+          context: context,
+          baseDuration: AppDurations.fast,
+          child: KeyedSubtree(
+            key: ValueKey(_isSelectionMode ? 'select_title' : 'section_title'),
+            child: _isSelectionMode
+                ? Text('已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项')
+                : const RecordsSectionSwitcher(active: RecordsSection.notes),
+          ),
+        ),
         centerTitle: true,
         actions: [
-          if (_isSelectionMode)
-            Consumer(
-              builder: (context, ref, _) {
-                // 日记体系节点不参与批量选择与全选
-                final notes = ref.watch(noteListProvider).value ?? [];
-                final folders = ref.watch(folderListProvider).value ?? [];
-                final selectableNoteIds = notes
-                    .where((n) => !JournalService.isJournalNote(n.id))
-                    .map((n) => n.id)
-                    .toSet();
-                final selectableFolderIds = folders
-                    .where((f) => !JournalService.isJournalFolder(f))
-                    .map((f) => f.id)
-                    .toSet();
-                final isAllSelected =
-                    _selectedNoteIds.length == selectableNoteIds.length &&
-                    _selectedFolderIds.length == selectableFolderIds.length;
-                return TextButton(
-                  onPressed: () {
-                    setState(() {
-                      if (isAllSelected) {
-                        _selectedNoteIds.clear();
-                        _selectedFolderIds.clear();
-                      } else {
-                        _selectedNoteIds = Set<String>.from(selectableNoteIds);
-                        _selectedFolderIds = Set<String>.from(selectableFolderIds);
-                      }
-                    });
-                  },
-                  child: Text(
-                    isAllSelected ? '取消全选' : '全选',
-                    style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold),
-                  ),
-                );
-              },
-            )
-          else ...[
-            IconButton(
-              icon: Icon(Icons.checklist_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant),
-              tooltip: '批量管理',
-              onPressed: _enterSelectionMode,
+          AppMotion.switcher(
+            context: context,
+            baseDuration: AppDurations.fast,
+            child: KeyedSubtree(
+              key: ValueKey(_isSelectionMode ? 'select_actions' : 'normal_actions'),
+              child: _isSelectionMode
+                  ? Consumer(
+                      builder: (context, ref, _) {
+                        // 日记体系节点不参与批量选择与全选
+                        final notes = ref.watch(noteListProvider).value ?? [];
+                        final folders = ref.watch(folderListProvider).value ?? [];
+                        final selectableNoteIds = notes
+                            .where((n) => !JournalService.isJournalNote(n.id))
+                            .map((n) => n.id)
+                            .toSet();
+                        final selectableFolderIds = folders
+                            .where((f) => !JournalService.isJournalFolder(f))
+                            .map((f) => f.id)
+                            .toSet();
+                        final isAllSelected =
+                            _selectedNoteIds.length == selectableNoteIds.length &&
+                            _selectedFolderIds.length == selectableFolderIds.length;
+                        return TextButton(
+                          onPressed: () {
+                            setState(() {
+                              if (isAllSelected) {
+                                _selectedNoteIds.clear();
+                                _selectedFolderIds.clear();
+                              } else {
+                                _selectedNoteIds = Set<String>.from(selectableNoteIds);
+                                _selectedFolderIds = Set<String>.from(selectableFolderIds);
+                              }
+                            });
+                          },
+                          child: Text(
+                            isAllSelected ? '取消全选' : '全选',
+                            style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      },
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.checklist_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          tooltip: '批量管理',
+                          onPressed: _enterSelectionMode,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.search),
+                          tooltip: '搜索',
+                          onPressed: () {
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchView()));
+                          },
+                        ),
+                      ],
+                    ),
             ),
-            IconButton(
-              icon: const Icon(Icons.search),
-              tooltip: '搜索',
-              onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchView()));
-              },
-            ),
-          ],
+          ),
         ],
       ),
       body: Consumer(
@@ -426,56 +458,87 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
   }
 
-  List<FlattenedItem> _flattenTree(String? parentId, int depth, List<Folder> folders, List<Note> notes) {
-    final List<FlattenedItem> result = [];
+  /// 构建完整树：折叠文件夹的子孙也保留在模型中。
+  ///
+  /// 折叠只在渲染层隐藏（见 [_FolderBody]），这样展开动画一开始就能拿到子级，
+  /// 收起动画期间也能继续绘制旧内容，直到高度完全收拢。
+  List<_TreeNode> _buildTreeNodes({
+    required String? parentId,
+    required int depth,
+    required List<Folder> folders,
+    required List<Note> notes,
+  }) {
+    final nodes = <_TreeNode>[];
 
     // 展示顺序统一由纯逻辑 buildNoteTreeLevel 决定，落点计算复用同一顺序
     for (final item in buildNoteTreeLevel(folders: folders, notes: notes, parentId: parentId)) {
       if (item is Note) {
-        result.add(
-          FlattenedItem(
-            id: item.id,
-            isFolder: false,
-            note: item,
-            depth: depth,
-            parentId: parentId,
-            isPinned: item.isPinned,
-            isJournal: JournalService.isJournalNote(item.id),
+        nodes.add(
+          _TreeNode(
+            FlattenedItem(
+              id: item.id,
+              isFolder: false,
+              note: item,
+              depth: depth,
+              parentId: parentId,
+              isPinned: item.isPinned,
+              isJournal: JournalService.isJournalNote(item.id),
+            ),
           ),
         );
       } else if (item is Folder) {
-        result.add(
-          FlattenedItem(
-            id: item.id,
-            isFolder: true,
-            folder: item,
-            depth: depth,
-            parentId: parentId,
-            isPinned: false,
-            isJournal: JournalService.isJournalFolder(item),
+        nodes.add(
+          _TreeNode(
+            FlattenedItem(
+              id: item.id,
+              isFolder: true,
+              folder: item,
+              depth: depth,
+              parentId: parentId,
+              isPinned: false,
+              isJournal: JournalService.isJournalFolder(item),
+            ),
+            children: _buildTreeNodes(parentId: item.id, depth: depth + 1, folders: folders, notes: notes),
           ),
         );
-        // 如果文件夹展开，递归将其子孙节点也加入展平列表
-        if (item.isExpanded) {
-          result.addAll(_flattenTree(item.id, depth + 1, folders, notes));
-        }
       }
     }
 
     // 空文件夹展开时插入"空"占位行，避免看起来像点击无响应
-    if (result.isEmpty && parentId != null) {
-      return [
-        FlattenedItem(
-          id: 'empty_placeholder_$parentId',
-          isFolder: false,
-          depth: depth,
-          parentId: parentId,
-          isPinned: false,
-          isEmptyPlaceholder: true,
+    if (nodes.isEmpty && parentId != null) {
+      nodes.add(
+        _TreeNode(
+          FlattenedItem(
+            id: 'empty_placeholder_$parentId',
+            isFolder: false,
+            depth: depth,
+            parentId: parentId,
+            isPinned: false,
+            isEmptyPlaceholder: true,
+          ),
         ),
-      ];
+      );
     }
 
+    return nodes;
+  }
+
+  /// 展平出当前可见行（折叠文件夹的子孙不参与），供拖拽命中测试按 id 查表。
+  List<FlattenedItem> _flattenVisibleRows(List<_TreeNode> roots) {
+    final result = <FlattenedItem>[];
+
+    void visit(_TreeNode node) {
+      result.add(node.item);
+      final folder = node.item.folder;
+      if (folder == null || !folder.isExpanded) return;
+      for (final child in node.children) {
+        visit(child);
+      }
+    }
+
+    for (final root in roots) {
+      visit(root);
+    }
     return result;
   }
 
@@ -816,140 +879,198 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     });
   }
 
-  Widget _buildTree(BuildContext context, List<Folder> folders, List<Note> notes) {
-    if (folders.isEmpty && notes.isEmpty) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const EmptyStateWidget(icon: Icons.note_outlined, message: '暂无笔记'),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => _showCreateFolderDialog(),
-                icon: const Icon(Icons.create_new_folder_outlined),
-                label: const Text('新建文件夹'),
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(onPressed: () => _createNote(), icon: const Icon(Icons.add), label: const Text('新建笔记')),
-            ],
-          ),
-        ],
+  /// 渲染一个树节点：文件夹把子级包进带展开/收起动画的 [_FolderBody]。
+  ///
+  /// 子级始终来自完整树，折叠时由 [_FolderBody] 决定不挂载；因此收起动画
+  /// 期间还能继续绘制旧内容，直到高度完全收拢。
+  Widget _buildTreeNode(_TreeNode node) {
+    final item = node.item;
+    final tile = _buildFlattenedTile(item);
+
+    if (!item.isFolder) {
+      return KeyedSubtree(
+        key: ValueKey('tree_${item.id}'),
+        child: AppCollapsible(expanded: !_deletingNoteIds.contains(item.id), rise: 0, child: tile),
       );
     }
 
-    final flattenedItems = _getFlattenedItems(folders, notes);
+    return KeyedSubtree(
+      key: ValueKey('tree_${item.id}'),
+      child: AppCollapsible(
+        expanded: !_deletingFolderIds.contains(item.id),
+        rise: 0,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            tile,
+            _FolderBody(
+              expanded: item.folder!.isExpanded,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (final child in node.children) _buildTreeNode(child)],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFlattenedTile(FlattenedItem item) {
+    return _FlattenedTile(
+      key: ValueKey('${item.isFolder ? 'folder' : 'note'}_${item.id}'),
+      item: item,
+      isSelectionMode: _isSelectionMode,
+      isSelected: item.isFolder ? _selectedFolderIds.contains(item.id) : _selectedNoteIds.contains(item.id),
+      hoverPosition: _activeDraggingItem != null && _hoverTargetId == item.id ? _hoverPosition : null,
+      onRegisterRow: _registerRow,
+      onUnregisterRow: _unregisterRow,
+      onToggleSelection: () {
+        setState(() {
+          if (item.isFolder) {
+            if (_selectedFolderIds.contains(item.id)) {
+              _selectedFolderIds.remove(item.id);
+            } else {
+              _selectedFolderIds.add(item.id);
+            }
+          } else {
+            if (_selectedNoteIds.contains(item.id)) {
+              _selectedNoteIds.remove(item.id);
+            } else {
+              _selectedNoteIds.add(item.id);
+            }
+          }
+          if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
+            _isSelectionMode = false;
+          }
+        });
+      },
+      onEditNote: _editNote,
+      onShowNoteMenu: _showNoteMenu,
+      onToggleFolder: _toggleFolder,
+      onShowFolderMenu: _showFolderMenu,
+      onCreateNote: _createNote,
+      onCreateFolder: _showCreateFolderDialog,
+      onDragStarted: _handleDragStarted,
+      onDragPosition: _handleDragPosition,
+      onDragEnded: _handleDragEnded,
+    );
+  }
+
+  Widget _buildTree(BuildContext context, List<Folder> folders, List<Note> notes) {
+    if (folders.isEmpty && notes.isEmpty) {
+      // 空态与树之间交叉淡化，删除/新建最后一条时不再整页硬切
+      return AppMotion.switcher(
+        context: context,
+        baseDuration: AppDurations.normal,
+        child: KeyedSubtree(
+          key: const ValueKey('notes_empty'),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const EmptyStateWidget(icon: Icons.note_outlined, message: '暂无笔记'),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _showCreateFolderDialog(),
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    label: const Text('新建文件夹'),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: () => _createNote(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('新建笔记'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final roots = _getTreeRoots(folders, notes);
     final theme = Theme.of(context);
 
-    return Stack(
-      children: [
-        ListView.builder(
-          key: _listViewportKey,
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 140),
-          itemCount: flattenedItems.length,
-          itemBuilder: (context, index) {
-            final item = flattenedItems[index];
-            return _FlattenedTile(
-              key: ValueKey('${item.isFolder ? 'folder' : 'note'}_${item.id}'),
-              item: item,
-              index: index,
-              isSelectionMode: _isSelectionMode,
-              isSelected: item.isFolder ? _selectedFolderIds.contains(item.id) : _selectedNoteIds.contains(item.id),
-              hoverPosition: _activeDraggingItem != null && _hoverTargetId == item.id ? _hoverPosition : null,
-              onRegisterRow: _registerRow,
-              onUnregisterRow: _unregisterRow,
-              onToggleSelection: () {
-                setState(() {
-                  if (item.isFolder) {
-                    if (_selectedFolderIds.contains(item.id)) {
-                      _selectedFolderIds.remove(item.id);
-                    } else {
-                      _selectedFolderIds.add(item.id);
-                    }
-                  } else {
-                    if (_selectedNoteIds.contains(item.id)) {
-                      _selectedNoteIds.remove(item.id);
-                    } else {
-                      _selectedNoteIds.add(item.id);
-                    }
-                  }
-                  if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) {
-                    _isSelectionMode = false;
-                  }
-                });
-              },
-              onEditNote: _editNote,
-              onShowNoteMenu: _showNoteMenu,
-              onToggleFolder: _toggleFolder,
-              onShowFolderMenu: _showFolderMenu,
-              onCreateNote: _createNote,
-              onCreateFolder: _showCreateFolderDialog,
-              onDragStarted: _handleDragStarted,
-              onDragPosition: _handleDragPosition,
-              onDragEnded: _handleDragEnded,
-            );
-          },
-        ),
+    return AppMotion.switcher(
+      context: context,
+      baseDuration: AppDurations.normal,
+      child: KeyedSubtree(
+        key: const ValueKey('notes_tree'),
+        child: Stack(
+          children: [
+            ListView.builder(
+              key: _listViewportKey,
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 140),
+              itemCount: roots.length,
+              itemBuilder: (context, index) => _buildTreeNode(roots[index]),
+            ),
 
-        // 仅当拖动项是有父级的子项时，悬浮呼出底部「移至根目录」胶囊。
-        // 收窄为居中胶囊，避免整行宽靶区盖住列表最后几行。
-        if (_activeDraggingItem != null && _activeDraggingItem!.parentId != null)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 24,
-            child: Center(
-              child: SizedBox(
-                width: 220,
-                height: 56,
-                child: AnimatedContainer(
-                  key: _rootDropKey,
-                  duration: AppMotion.duration(context, AppDurations.fast),
-                  curve: AppCurves.standard,
-                  decoration: BoxDecoration(
-                    color: _isRootDropHover
-                        ? theme.colorScheme.primaryContainer
-                        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
-                      width: _isRootDropHover ? 2.0 : 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: _isRootDropHover ? 0.2 : 0.12),
-                        blurRadius: _isRootDropHover ? 16 : 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.drive_file_move_outlined,
-                        size: _isRootDropHover ? 24 : 20,
-                        color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _isRootDropHover ? '松手移至根目录' : '移至根目录',
-                        style: TextStyle(
-                          color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                          fontWeight: _isRootDropHover ? FontWeight.bold : FontWeight.w600,
-                          fontSize: 15,
+            // 仅当拖动项是有父级的子项时，悬浮呼出底部「移至根目录」胶囊。
+            // 收窄为居中胶囊，避免整行宽靶区盖住列表最后几行。
+            if (_activeDraggingItem != null && _activeDraggingItem!.parentId != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 24,
+                child: Center(
+                  child: SizedBox(
+                    width: 220,
+                    height: 56,
+                    child: AnimatedContainer(
+                      key: _rootDropKey,
+                      duration: AppMotion.duration(context, AppDurations.fast),
+                      curve: AppCurves.standard,
+                      decoration: BoxDecoration(
+                        color: _isRootDropHover
+                            ? theme.colorScheme.primaryContainer
+                            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
+                          width: _isRootDropHover ? 2.0 : 1.2,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: _isRootDropHover ? 0.2 : 0.12),
+                            blurRadius: _isRootDropHover ? 16 : 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                    ],
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.drive_file_move_outlined,
+                            size: _isRootDropHover ? 24 : 20,
+                            color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isRootDropHover ? '松手移至根目录' : '移至根目录',
+                            style: TextStyle(
+                              color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                              fontWeight: _isRootDropHover ? FontWeight.bold : FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -1119,7 +1240,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           icon: Icons.delete_outline,
           label: '删除笔记',
           isDestructive: true,
-          onTap: () => ref.read(noteListProvider.notifier).deleteNote(note.id),
+          onTap: () async {
+            // 先在原地收起再提交删除，避免行瞬间消失；减弱动效下直接删除
+            final collapse = AppMotion.duration(context, AppDurations.normal);
+            final notifier = ref.read(noteListProvider.notifier);
+            setState(() => _deletingNoteIds.add(note.id));
+            if (collapse > Duration.zero) {
+              await Future.delayed(collapse);
+            }
+            await notifier.deleteNote(note.id);
+            if (mounted) _deletingNoteIds.remove(note.id);
+          },
         ),
       ],
     );
@@ -1174,7 +1305,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           icon: Icons.delete_outline,
           label: '删除文件夹',
           isDestructive: true,
-          onTap: () => ref.read(folderListProvider.notifier).deleteFolder(folder.id),
+          onTap: () async {
+            // 整个文件夹子树先收起再删除，避免整块内容瞬间消失
+            final collapse = AppMotion.duration(context, AppDurations.normal);
+            final notifier = ref.read(folderListProvider.notifier);
+            setState(() => _deletingFolderIds.add(folder.id));
+            if (collapse > Duration.zero) {
+              await Future.delayed(collapse);
+            }
+            await notifier.deleteFolder(folder.id);
+            if (mounted) _deletingFolderIds.remove(folder.id);
+          },
         ),
       ],
     );

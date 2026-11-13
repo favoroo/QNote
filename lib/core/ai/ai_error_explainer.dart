@@ -23,8 +23,20 @@ class AiErrorExplainer {
     final statusCode = _extractStatusCode(error, raw);
 
     if (error is NoModelConfiguredException || raw.contains('尚未配置可用的 AI 模型')) {
-      problem = '还没有可用的 AI 模型';
-      advice = '到「设置 → AI 模型配置」添加模型服务（地址 + 密钥），扫描并启用模型。';
+      problem = '还没有可用的模型';
+      advice = '到「小Q设置 → 模型」添加模型服务（地址 + 密钥），扫描并启用模型。';
+    } else if (raw.contains('qnote_quota_exceeded')) {
+      problem = '内置免费模型今日额度已用完';
+      advice = '明天再来；也可以到「小Q设置 → 模型」添加自己的模型。';
+    } else if (raw.contains('qnote_maintenance')) {
+      problem = '内置免费模型正在维护';
+      advice = '稍后再试；已配置自己的模型时会自动回落。';
+    } else if (raw.contains('qnote_upstream_rate_limited')) {
+      problem = '内置免费模型当前较忙';
+      advice = '稍等几秒再发，或在「小Q设置 → 模型」添加自己的模型。';
+    } else if (raw.contains('qnote_unauthorized')) {
+      problem = '内置免费模型鉴权失败';
+      advice = '更新 App 后重试；仍失败请联系维护者。';
     } else if (raw.contains('Failed host lookup')) {
       final host = RegExp(r"Failed host lookup:\s*'?(.+?)'?(?:\s|\(|$)").firstMatch(raw)?.group(1);
       problem = host == null ? '无法解析服务器地址（域名解析不到 IP）' : '无法解析服务器地址 `$host`（域名解析不到 IP）';
@@ -68,7 +80,7 @@ class AiErrorExplainer {
       // TPM 是「共享额度用完了、要等回填」，混成一句「请求过于频繁」会让人反复重发
       final isBurst = raw.contains('rps') || raw.contains('exhausted');
       problem = isBurst ? '短时间内请求太密集，被服务端的排队保护挡下（HTTP 429 · rps）' : '模型服务额度暂时用满（HTTP 429 · 限流）';
-      advice = isBurst ? '小Q 会自动换下一把 Key 重发，通常几秒内自愈；可等上一条回复出来再发。' : '额度按分钟滚动恢复，多 Key 自动轮询；也可到「AI 模型配置」补密钥。';
+      advice = isBurst ? '小Q 会自动换下一把 Key 重发，通常几秒内自愈；可等上一条回复出来再发。' : '额度按分钟滚动恢复，多 Key 自动轮询；也可到「小Q设置 → 模型」补密钥。';
     } else if (statusCode != null && statusCode >= 500) {
       problem = '服务器内部故障（HTTP $statusCode）';
       advice = '服务端暂时不可用，稍后重试。';

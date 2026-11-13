@@ -256,8 +256,8 @@ class ChatBubble extends ConsumerWidget {
     if (message.role == 'thought') {
       return TweenAnimationBuilder<double>(
         tween: Tween(begin: 0.0, end: 1.0),
-        duration: AppDurations.medium,
-        curve: Curves.easeOut,
+        duration: AppMotion.duration(context, AppDurations.medium),
+        curve: AppCurves.emphasized,
         builder: (context, value, child) {
           return Opacity(
             opacity: value,

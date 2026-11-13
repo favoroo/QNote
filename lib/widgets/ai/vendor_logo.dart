@@ -16,7 +16,6 @@ const Set<String> monochromeVendorIcons = {
   'groq',
   'kilo',
   'kimi',
-  'lmstudio',
   'longcat',
   'mimocode',
   'ollama',

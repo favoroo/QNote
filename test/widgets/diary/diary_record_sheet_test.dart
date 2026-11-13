@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -335,6 +336,11 @@ void main() {
     const target = Rect.fromLTWH(120, 260, 220, 120);
     List<String>? savedIds;
     var landed = false;
+    // 量目标卡片时所在的调度阶段：飞行/落位全程都不能落在 persistentCallbacks
+    // （= build/layout/paint）。在布局阶段量页面上的 RenderBox 会读到本轮尚未
+    // 布局的祖先 Transform，抛「RenderBox was not laid out」，整帧被错误块顶替
+    // —— release 下错误块是浅灰，深色主题里就是发送时的一下白闪。
+    final readPhases = <SchedulerPhase>[];
 
     await tester.pumpWidget(
       ProviderScope(
@@ -354,7 +360,10 @@ void main() {
                     savedIds = ids;
                     return RecordCardMorphTarget(
                       initialRect: target,
-                      readRect: () => target,
+                      readRect: () {
+                        readPhases.add(SchedulerBinding.instance.schedulerPhase);
+                        return target;
+                      },
                       onLanded: () => landed = true,
                     );
                   },
@@ -387,5 +396,10 @@ void main() {
     expect(landed, isTrue);
     expect(find.byType(DiaryRecordSheet), findsNothing);
     expect(find.byKey(const ValueKey('record-sheet-morph')), findsNothing);
+
+    // 飞行与落位都要读实时 Rect（列表/键盘变化时盖板跟着走），但必须在动画
+    // tick 里采样，不能在布局阶段量。
+    expect(readPhases, isNotEmpty);
+    expect(readPhases, isNot(contains(SchedulerPhase.persistentCallbacks)));
   });
 }

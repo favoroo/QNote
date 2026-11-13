@@ -1,7 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show Listenable, listEquals;
 import 'package:flutter/material.dart';
+
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/utils/shimmer_palette.dart';
 
 class RotatingGradientTransform extends GradientTransform {
   final double percent;
@@ -34,6 +39,9 @@ class GradientBorderPaintCache {
   double? _shaderRotation;
 
   double? _paintStrokeWidth;
+
+  /// 已应用的整体亮度，避免每帧重复设置同样的 ColorFilter。
+  double? _intensity;
 
   RRect? _rrect;
   Shader? _shader;
@@ -75,15 +83,14 @@ class GradientBorderPaintCache {
       _glowPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
-        ..strokeWidth = strokeWidth * 2.4
-        // 用「更宽 + 低透明度」替代 MaskFilter.blur：省掉每帧离屏图层与高斯模糊，
-        // 观感上仍是核心描边外一层更宽、更淡的微光。
-        ..colorFilter = ColorFilter.mode(Colors.white.withValues(alpha: 0.35), BlendMode.modulate);
+        ..strokeWidth = strokeWidth * 2.8;
       // 线宽变化会换新 Paint，把已有 shader 立刻接上，避免这一帧描边变透明。
       if (_shader != null) {
         _corePaint!.shader = _shader;
         _glowPaint!.shader = _shader;
       }
+      // 新 Paint 还没有颜色过滤，下一帧由 [applyIntensity] 重新挂上。
+      _intensity = null;
     }
 
     // 旋转角会被烘焙进 SweepGradient 生成的 shader，角度变化时必须重建 shader；
@@ -108,10 +115,31 @@ class GradientBorderPaintCache {
       _glowPaint!.shader = _shader;
     }
   }
+
+  /// 把整体亮度（淡入淡出 × 呼吸）作用到描边上。
+  ///
+  /// 用 `ColorFilter.modulate` 缩放 alpha，而不是重建整组颜色：
+  /// 每帧只需一个很轻的过滤对象，shader 与几何不必因为透明度变化而重建；
+  /// 同时透明度只影响描边，不会连带淡化卡片正文与图片。
+  void applyIntensity(double intensity) {
+    if (_intensity == intensity) {
+      return;
+    }
+    _intensity = intensity;
+    _corePaint!.colorFilter = intensity >= 0.999
+        ? null
+        : ColorFilter.mode(Colors.white.withValues(alpha: intensity), BlendMode.modulate);
+    // 光晕固定是核心亮度的 20%：更宽、更淡的一圈，形成柔和的呼吸感。
+    _glowPaint!.colorFilter = ColorFilter.mode(Colors.white.withValues(alpha: intensity * 0.20), BlendMode.modulate);
+  }
 }
 
 class GradientBorderPainter extends CustomPainter {
   final double animationValue;
+
+  /// 整体亮度（淡入淡出 × 呼吸），通过 Paint 颜色过滤缩放描边 alpha。
+  final double intensity;
+
   final List<Color> gradientColors;
   final List<double>? gradientStops;
   final double strokeWidth;
@@ -122,6 +150,7 @@ class GradientBorderPainter extends CustomPainter {
 
   GradientBorderPainter({
     required this.animationValue,
+    this.intensity = 1,
     required this.gradientColors,
     this.gradientStops,
     required this.strokeWidth,
@@ -131,6 +160,10 @@ class GradientBorderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (intensity <= 0.001) {
+      return;
+    }
+
     cache.prepare(
       size: size,
       colors: gradientColors,
@@ -139,11 +172,12 @@ class GradientBorderPainter extends CustomPainter {
       borderRadius: borderRadius,
       rotation: animationValue,
     );
+    cache.applyIntensity(intensity);
 
-    // 1. 底层微光晕（Glow Layer）：更宽、更低透明度的描边营造呼吸感，避免每帧高斯模糊
+    // 1. 底层柔光晕：更宽、更低透明度的描边营造呼吸感，避免每帧高斯模糊
     canvas.drawRRect(cache.rrect, cache.glowPaint);
 
-    // 2. 顶层核心流光（Sharp Core Streamer）：锐利抗锯齿描边，呈现清晰灵动的流光轨迹
+    // 2. 顶层核心流光：锐利抗锯齿描边，呈现清晰灵动的流光轨迹
     canvas.drawRRect(cache.rrect, cache.corePaint);
   }
 
@@ -151,6 +185,7 @@ class GradientBorderPainter extends CustomPainter {
   bool shouldRepaint(covariant GradientBorderPainter oldDelegate) {
     return oldDelegate.cache != cache ||
         oldDelegate.animationValue != animationValue ||
+        oldDelegate.intensity != intensity ||
         !listEquals(oldDelegate.gradientColors, gradientColors) ||
         !listEquals(oldDelegate.gradientStops, gradientStops) ||
         oldDelegate.strokeWidth != strokeWidth ||
@@ -180,95 +215,129 @@ class AnimatedGradientBorder extends StatefulWidget {
   State<AnimatedGradientBorder> createState() => _AnimatedGradientBorderState();
 }
 
-class _AnimatedGradientBorderState extends State<AnimatedGradientBorder> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _AnimatedGradientBorderState extends State<AnimatedGradientBorder> with TickerProviderStateMixin {
+  /// 流光环绕一周的时长。
+  ///
+  /// 旧版 2s 一圈在卡片尺寸下显得急促，像警报灯；3.6s 更接近「光缓缓流过边缘」。
+  static const Duration _cycle = Duration(milliseconds: 3600);
+
+  late final AnimationController _rotation;
+  late final AnimationController _presence;
+  late final Listenable _ticker;
 
   /// 绘制缓存由 State 持有，保证跨帧（跨 painter 实例）复用。
   final GradientBorderPaintCache _paintCache = GradientBorderPaintCache();
 
+  /// 系统「减弱动态效果」。null 表示尚未从 MediaQuery 读取。
+  bool? _reduceMotion;
+
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000));
+    _rotation = AnimationController(vsync: this, duration: _cycle);
+    _presence = AnimationController(vsync: this, duration: AppDurations.normal);
+    _ticker = Listenable.merge([_rotation, _presence]);
+    _presence.addStatusListener(_onPresenceStatus);
+    // 首帧就处于提取态（例如列表滚动后重建）时直接显示，不补一次淡入。
     if (widget.isAnimating) {
-      _controller.repeat();
+      _presence.value = 1;
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = AppMotion.reduce(context);
+    if (_reduceMotion == reduceMotion) {
+      return;
+    }
+    _reduceMotion = reduceMotion;
+    _syncPlayback();
   }
 
   @override
   void didUpdateWidget(covariant AnimatedGradientBorder oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isAnimating != oldWidget.isAnimating) {
-      if (widget.isAnimating) {
-        _controller.repeat();
-      } else {
-        _controller.stop();
+      _syncPlayback();
+    }
+  }
+
+  /// 按「是否提取中 / 是否减弱动效」统一收口两个控制器的状态。
+  ///
+  /// 停止提取时先淡出（[_presence] 反向播放），淡出结束再停旋转；
+  /// 这样描边不会在提取结束的瞬间硬切消失。
+  void _syncPlayback() {
+    if (!mounted) {
+      return;
+    }
+    if (_reduceMotion == true) {
+      // 减弱动效：不转、不闪，只保留一圈静态柔光，提取中的状态仍能被看到。
+      _rotation.stop();
+      _presence.value = widget.isAnimating ? 1 : 0;
+      return;
+    }
+    if (widget.isAnimating) {
+      _presence.forward();
+      if (!_rotation.isAnimating) {
+        _rotation.repeat();
       }
+      return;
+    }
+    _presence.reverse();
+    if (_presence.isDismissed) {
+      _rotation.stop();
+    }
+  }
+
+  void _onPresenceStatus(AnimationStatus status) {
+    if (status == AnimationStatus.dismissed && !widget.isAnimating) {
+      _rotation.stop();
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _presence.removeStatusListener(_onPresenceStatus);
+    _rotation.dispose();
+    _presence.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.isAnimating) {
+    final staticShimmer = _reduceMotion == true && widget.isAnimating;
+    final visible = staticShimmer || widget.isAnimating || !_presence.isDismissed;
+    if (!visible) {
       return widget.child;
     }
 
     final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final isDark = theme.brightness == Brightness.dark;
+    final palette = widget.customColors != null
+        ? ShimmerPalette(colors: widget.customColors!, stops: widget.customStops ?? shimmerPaletteStops)
+        : buildShimmerPalette(primary: theme.colorScheme.primary, brightness: theme.brightness);
 
-    // 轨道基底透明色：超轻量主题基色，保持圆环轨道的精致完整性
-    final baseColor = primary.withValues(alpha: isDark ? 0.12 : 0.08);
-
-    // 纯粹主题色动态流光色谱：
-    // 以 App 强调色为核心，告别杂乱的霓虹杂色，呈现纯净、极简、富有科技动感的流光质感
-    final sparkWhite = Color.lerp(primary, Colors.white, isDark ? 0.88 : 0.92)!;
-    final sparkHighlight = Color.lerp(primary, Colors.white, 0.45)!;
-    final corePrimary = primary;
-    final tailMid = primary.withValues(alpha: isDark ? 0.65 : 0.55);
-    final tailFade = primary.withValues(alpha: isDark ? 0.20 : 0.14);
-
-    // 双流星对称追逐流光：两道主题色灵动流星环绕旋转，兼顾动感、平衡与简约美感
-    final colors =
-        widget.customColors ??
-        [
-          baseColor,
-          sparkWhite,
-          sparkHighlight,
-          corePrimary,
-          tailMid,
-          tailFade,
-          baseColor,
-          baseColor,
-          sparkWhite,
-          sparkHighlight,
-          corePrimary,
-          tailMid,
-          tailFade,
-          baseColor,
-          baseColor,
-        ];
-
-    final stops =
-        widget.customStops ??
-        const [0.00, 0.04, 0.08, 0.16, 0.28, 0.38, 0.46, 0.50, 0.54, 0.58, 0.66, 0.78, 0.88, 0.96, 1.00];
-
-    // 隔离流光动画的重绘层，避免每帧触发父级重绘
+    // 隔离流光动画的重绘层，避免每帧触发父级重绘。
     return RepaintBoundary(
       child: AnimatedBuilder(
-        animation: _controller,
+        animation: _ticker,
         builder: (context, child) {
+          // 透明度与呼吸走描边 Paint 的颜色过滤：不能给整棵子树套 Opacity，
+          // 否则卡片正文和图片会跟着一起变淡。
+          final intensity = staticShimmer
+              ? 1.0
+              : AppCurves.emphasized.transform(_presence.value) *
+                    // 一次呼吸与旋转同周期：接缝处相位连续，不会突然亮一下。
+                    (0.94 + 0.06 * math.sin(_rotation.value * 2 * math.pi));
+          if (intensity <= 0.001) {
+            return child!;
+          }
           return CustomPaint(
             foregroundPainter: GradientBorderPainter(
-              animationValue: _controller.value,
-              gradientColors: colors,
-              gradientStops: stops,
+              animationValue: staticShimmer ? 0.0 : _rotation.value,
+              intensity: intensity,
+              gradientColors: palette.colors,
+              gradientStops: palette.stops,
               strokeWidth: widget.strokeWidth,
               borderRadius: widget.borderRadius,
               cache: _paintCache,

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 
 enum TimeRangeType { week, month, year }
 
@@ -26,8 +29,8 @@ class TimeRangeSelector extends StatelessWidget {
           return GestureDetector(
             onTap: () => onRangeChanged(range),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
+              duration: AppMotion.duration(context, AppDurations.normal),
+              curve: AppCurves.standard,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               decoration: BoxDecoration(
                 color: isSelected ? colorScheme.primary : Colors.transparent,

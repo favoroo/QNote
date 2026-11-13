@@ -62,18 +62,19 @@ void main() {
   setUp(() => AppVersion.version = '0.0.0-test');
 
   group('SideDrawer 排版', () {
-    testWidgets('8 个入口全部可见，行与行之间以 7 条分隔线区隔', (tester) async {
+    testWidgets('7 个入口全部可见，行与行之间以 6 条分隔线区隔', (tester) async {
       await _pumpDrawer(tester);
 
-      for (final label in <String>['个人信息', '小Q设置', 'AI 模型配置', '快捷记录', '数据与同步', '健康数据', '个性化设置', '关于 QNote']) {
+      for (final label in <String>['个人信息', '小Q设置', '快捷记录', '数据与同步', '健康数据', '个性化设置', '关于 QNote']) {
         expect(find.text(label), findsOneWidget, reason: '缺少入口：$label');
       }
       // 已合并的旧入口不再单独出现
+      expect(find.text('AI 模型配置'), findsNothing);
       expect(find.text('快捷按钮管理'), findsNothing);
       expect(find.text('固定事件管理'), findsNothing);
       expect(find.text('小米运动健康'), findsNothing);
       expect(find.text('屏幕使用时间'), findsNothing);
-      expect(find.byType(Divider), findsNWidgets(7));
+      expect(find.byType(Divider), findsNWidgets(6));
       expect(find.textContaining('Version'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -110,7 +111,7 @@ void main() {
       await _pumpDrawer(tester, brightness: Brightness.dark);
 
       expect(find.text('个性化设置'), findsOneWidget);
-      expect(find.byType(Divider), findsNWidgets(7));
+      expect(find.byType(Divider), findsNWidgets(6));
       expect(tester.takeException(), isNull);
     });
   });
@@ -126,7 +127,7 @@ void main() {
       await tester.tap(find.text('个性化设置'));
       await tester.pumpAndSettle();
       // 已进入二级页：菜单项不再可见
-      expect(find.text('AI 模型配置'), findsNothing);
+      expect(find.text('数据与同步'), findsNothing);
 
       await _closeByScrim(tester);
       expect(scaffoldKey.currentState!.isDrawerOpen, isFalse);
@@ -138,7 +139,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 重开后直接回到个性化设置，而不是一级菜单
-      expect(find.text('AI 模型配置'), findsNothing);
+      expect(find.text('数据与同步'), findsNothing);
       expect(find.widgetWithText(AppBar, '个性化设置'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -156,14 +157,14 @@ void main() {
       // AppBar 返回箭头 → 回到入口清单
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
-      expect(find.text('AI 模型配置'), findsOneWidget);
+      expect(find.text('数据与同步'), findsOneWidget);
 
       await _closeByScrim(tester);
       expect(container.read(drawerNavMemoryProvider).entryId, isNull);
 
       await tester.tap(find.text('open_drawer'));
       await tester.pumpAndSettle();
-      expect(find.text('AI 模型配置'), findsOneWidget);
+      expect(find.text('数据与同步'), findsOneWidget);
     });
 
     testWidgets('超过记忆窗口后重开，回到一级菜单', (tester) async {
@@ -177,7 +178,7 @@ void main() {
 
       await _pumpDrawer(tester, container: container);
 
-      expect(find.text('AI 模型配置'), findsOneWidget);
+      expect(find.text('数据与同步'), findsOneWidget);
       expect(find.widgetWithText(AppBar, '个性化设置'), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -190,7 +191,7 @@ void main() {
 
       await _pumpDrawer(tester, container: container);
 
-      expect(find.text('AI 模型配置'), findsOneWidget);
+      expect(find.text('数据与同步'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

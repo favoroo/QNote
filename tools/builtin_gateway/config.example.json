@@ -1,0 +1,50 @@
+{
+  "listen": "127.0.0.1:3426",
+  "upstream": "http://127.0.0.1:3425",
+  "magpieSettingsPath": "~/.config/magpie/settings.json",
+  "requireSignature": false,
+  "appSecrets": [],
+  "models": {
+    "qnote-free": {
+      "upstream": "group/qnote",
+      "displayName": "小Q 免费模型",
+      "contextWindow": 1048576,
+      "vision": true,
+      "type": "chat",
+      "enabled": true
+    },
+    "qnote-image-free": {
+      "upstream": "group/qnote-image",
+      "displayName": "小Q 免费生图",
+      "type": "image",
+      "enabled": false
+    }
+  },
+  "quotas": {
+    "device": {
+      "perHour": 30,
+      "perDay": 300,
+      "tokensPerDay": 3000000
+    },
+    "ip": {
+      "perHour": 60,
+      "perDay": 600
+    },
+    "global": {
+      "perDay": 0,
+      "tokensPerDay": 0
+    },
+    "imageDevice": {
+      "perDay": 3
+    },
+    "maxTokensPerRequest": 4096,
+    "maxBodyBytes": 1048576
+  },
+  "maintenance": {
+    "enabled": false,
+    "message": ""
+  },
+  "logFile": "usage.jsonl",
+  "stateFile": "usage-state.json",
+  "upstreamTimeoutMs": 180000
+}

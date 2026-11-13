@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/agent/prompts/q_personalities.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 
 /// 小Q个性设置页
 ///
@@ -126,7 +130,15 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
               _buildEffectiveCard(context),
               const SizedBox(height: 12),
               ...QPersonalities.presets.map((p) => _buildPresetCard(context, p)),
-              if (_activeId == QPersonalities.customId) ...[const SizedBox(height: 12), _buildCustomEditor(context)],
+              // 选中「自定义」时编辑区平滑展开，而不是瞬间插入一大块表单
+              AppCollapsible(
+                expanded: _activeId == QPersonalities.customId,
+                rise: 0,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: _activeId == QPersonalities.customId ? _buildCustomEditor(context) : const SizedBox.shrink(),
+                ),
+              ),
               const SizedBox(height: 20),
             ],
           );
@@ -238,8 +250,8 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
           borderRadius: BorderRadius.circular(24),
           onTap: () => _select(preset.id),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
+            duration: AppMotion.duration(context, AppDurations.normal),
+            curve: AppCurves.standard,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: selected

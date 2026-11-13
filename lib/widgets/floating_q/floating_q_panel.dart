@@ -217,7 +217,7 @@ class _PanelRevealState extends State<_PanelReveal> {
     super.initState();
     _animation = CurvedAnimation(
       parent: widget.controller,
-      curve: Interval(widget.begin, math.min(1.0, widget.begin + 0.64), curve: Curves.easeOutCubic),
+      curve: Interval(widget.begin, math.min(1.0, widget.begin + 0.64), curve: AppCurves.emphasized),
     );
     _slide = Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(_animation);
   }
@@ -583,10 +583,11 @@ class _PanelStreamingTail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final statusText = ref.watch(floatingQProvider.select((s) => s.statusText));
+    final Widget child;
     if (statusText != null) {
       final startedAt = ref.watch(floatingQProvider.select((s) => s.streamingStartedAt));
       final liveThought = ref.watch(floatingQProvider.select((s) => s.streamingThought))?.trim() ?? '';
-      return Column(
+      child = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -595,10 +596,18 @@ class _PanelStreamingTail extends ConsumerWidget {
           if (liveThought.isNotEmpty) _PanelEntrance(child: _panelThoughtTail(theme, liveThought)),
         ],
       );
+    } else {
+      final streamingText = ref.watch(floatingQProvider.select((s) => s.streamingText)) ?? '';
+      child = _PanelEntrance(
+        child: _panelAssistantBubble(theme, stripRedundantImageMarkdown(streamingText, generatedImageKeys)),
+      );
     }
-    final streamingText = ref.watch(floatingQProvider.select((s) => s.streamingText)) ?? '';
-    return _PanelEntrance(
-      child: _panelAssistantBubble(theme, stripRedundantImageMarkdown(streamingText, generatedImageKeys)),
+    // 状态行 ↔ 正文气泡交叉淡化，避免流式结束时整棵子树硬替
+    return AnimatedSwitcher(
+      duration: AppMotion.duration(context, AppDurations.fast),
+      switchInCurve: AppCurves.emphasized,
+      switchOutCurve: AppCurves.exit,
+      child: KeyedSubtree(key: ValueKey(statusText != null ? 'status' : 'text'), child: child),
     );
   }
 }
@@ -616,8 +625,8 @@ class _PanelEntrance extends StatelessWidget {
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: AppDurations.fast,
-      curve: Curves.easeOut,
+      duration: AppMotion.duration(context, AppDurations.fast),
+      curve: AppCurves.emphasized,
       builder: (context, t, child) => Opacity(
         opacity: t,
         child: Transform.translate(
@@ -648,11 +657,11 @@ class _PanelUndoBanner extends ConsumerWidget {
     // 高度展开/收合 + 淡入：横幅插入/移除不再硬切挤压消息区；
     // 空态保持等宽零高，宽度稳定后只做高度方向动画
     return AnimatedSize(
-      duration: AppDurations.normal,
-      curve: Curves.easeOut,
+      duration: AppMotion.duration(context, AppDurations.normal),
+      curve: AppCurves.emphasizedSpatial,
       child: AnimatedSwitcher(
-        duration: AppDurations.fast,
-        switchInCurve: Curves.easeOut,
+        duration: AppMotion.duration(context, AppDurations.fast),
+        switchInCurve: AppCurves.emphasized,
         child: showBanner
             ? Container(
                 key: const ValueKey('undo-banner'),

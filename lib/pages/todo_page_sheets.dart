@@ -142,6 +142,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
 
     final theme = Theme.of(context);
     final selected = await showModalBottomSheet<String>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
@@ -206,6 +207,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
     if (widget.folders.length <= 1) return;
     final theme = Theme.of(context);
     final selected = await showModalBottomSheet<String>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.large))),
@@ -545,8 +547,8 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                   child: GestureDetector(
                     onTap: _handleComplete,
                     child: AnimatedContainer(
-                      duration: AppDurations.normal,
-                      curve: Curves.easeInOut,
+                      duration: AppMotion.duration(context, AppDurations.normal),
+                      curve: AppCurves.standard,
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(

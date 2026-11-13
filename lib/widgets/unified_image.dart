@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 
 class UnifiedImage extends StatefulWidget {
   final String? imagePath;
@@ -154,7 +155,7 @@ class _UnifiedImageState extends State<UnifiedImage> {
     }
     return AnimatedOpacity(
       opacity: frame == null ? 0.0 : 1.0,
-      duration: AppDurations.fast,
+      duration: AppMotion.duration(context, AppDurations.fast),
       curve: AppCurves.emphasized,
       child: child,
     );

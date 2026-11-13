@@ -39,9 +39,9 @@ void main() {
 
   group('分组过滤', () {
     test('只返回该分组的厂商', () {
-      final locals = filterVendors(aiProviders, category: VendorCategory.local);
+      final locals = filterVendors(aiProviders, category: VendorCategory.account);
       expect(locals, isNotEmpty);
-      expect(locals.every((v) => v.category == VendorCategory.local), isTrue);
+      expect(locals.every((v) => v.category == VendorCategory.account), isTrue);
     });
 
     test('分组与关键词可叠加', () {
@@ -53,8 +53,16 @@ void main() {
 
   group('分组归类', () {
     test('分组顺序固定为枚举顺序，空分组不出现', () {
-      final grouped = groupVendors(filterVendors(aiProviders, category: VendorCategory.local));
-      expect(grouped.keys.toList(), [VendorCategory.local]);
+      final grouped = groupVendors(filterVendors(aiProviders, category: VendorCategory.account));
+      expect(grouped.keys.toList(), [VendorCategory.account]);
+    });
+
+    test('自定义排在最前，其余分组按枚举顺序跟随', () {
+      // 自定义是兜底入口，必须第一眼就能看到；顺序变了用户就得滑到底找它
+      expect(VendorCategory.values.first, VendorCategory.custom);
+      final grouped = groupVendors(aiProviders);
+      expect(grouped.keys.first, VendorCategory.custom);
+      expect(grouped.keys.toList(), VendorCategory.values);
     });
 
     test('全部厂商都能归入某个分组，数量不丢', () {

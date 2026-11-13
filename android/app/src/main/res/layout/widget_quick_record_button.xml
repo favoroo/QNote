@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录 · 1×1 形态：整格就是一颗主色圆角按钮，中间一支白色笔。
+  组件本身是入口而不是输入框，1 格宽下放不下文字，留图标最干净。
+  根布局画背景，launcher 才不会补默认灰板；整格都是点击热区。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_quick_record_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_qr_button"
+    android:contentDescription="@string/widget_quick_record_action">
+
+    <ImageView
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_gravity="center"
+        android:importantForAccessibility="no"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_pen" />
+</FrameLayout>

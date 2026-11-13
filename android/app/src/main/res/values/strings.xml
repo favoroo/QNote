@@ -8,7 +8,8 @@
     <string name="widget_todo_label">今日待办</string>
     <string name="widget_todo_description">查看并勾选今日待办</string>
     <string name="widget_quick_record_label">快捷记录</string>
-    <string name="widget_quick_record_description">不打开 App 也能随手记一条</string>
+    <string name="widget_quick_record_description">不打开 App 也能随手记一条，支持多种尺寸自由调整</string>
+    <string name="widget_quick_record_action">快速记录，点击打开输入框</string>
     <string name="widget_ai_label">问小Q</string>
     <string name="widget_ai_description">一颗圆钮直达小Q，支持 1×1 到 2×2 自由调整</string>
     <string name="widget_ai_open">打开问小Q</string>

@@ -69,4 +69,30 @@ void main() {
     await tester.tapAt(const Offset(8, 8));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('长按卡片菜单展示批量管理入口并可回调', (tester) async {
+    var batchTapped = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            children: [DiaryItem(record: _record(), onBatchManage: () => batchTapped = true)],
+          ),
+        ),
+      ),
+    );
+
+    final cardRect = tester.getRect(find.byType(AnimatedGradientBorder));
+    final gesture = await tester.startGesture(cardRect.center);
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('批量管理'), findsOneWidget);
+    await tester.tap(find.text('批量管理'));
+    await tester.pumpAndSettle();
+    expect(batchTapped, isTrue);
+  });
 }

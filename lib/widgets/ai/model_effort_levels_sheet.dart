@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/models/reasoning_effort.dart';
 
 /// 档位配置结果
@@ -25,6 +26,7 @@ Future<ModelEffortLevelsSelection?> showModelEffortLevelsSheet(
   List<ReasoningEffort>? customLevels,
 }) {
   return showModalBottomSheet<ModelEffortLevelsSelection>(
+    sheetAnimationStyle: AppTheme.sheetAnimationStyle,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

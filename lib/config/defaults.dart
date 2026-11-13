@@ -206,7 +206,8 @@ final defaultShortcutConfigs = <ShortcutConfig>[
   ),
 ];
 
-// 已移除默认 AI 配置，使用免费模型
+// 内置免费模型由虚拟厂商提供（见 core/ai/builtin_provider.dart），
+// 默认角色绑定保持为空：只有用户没有任何可用模型时才自然回落到它。
 
 const defaultAiRoles = AiRoles(assistant: null, timelineOptimization: null);
 

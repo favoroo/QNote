@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录组件的次级图标钮（相册 / 相机）。
+  RemoteViews 里 selectableItemBackgroundBorderless 不产生按压帧，给一颗淡淡的圆底
+  把热区形状交代出来；透明度只能写进色值，不能靠 View.alpha（会连图标一起透明）。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/widget_qr_icon_bg" />
+</shape>

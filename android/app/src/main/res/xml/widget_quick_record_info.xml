@@ -1,15 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录组件：默认 4×1，可双向调整到 1×1 ～ 4×4。
+  minWidth/minHeight 决定默认落在 4×1（250dp × 40dp，按官方「70×格数−30」口径）；
+  minResizeWidth/minResizeHeight 放开到 40dp，用户才能把组件缩成 1×1 或拉成 1×2 / 2×4。
+  实际布局不在这里固定：QuickRecordWidgetProvider 在 onUpdate / onAppWidgetOptionsChanged
+  里读取组件当前 dp 尺寸，再切换横条 / 竖卡 / 大卡等布局。
+-->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
     android:minHeight="40dp"
-    android:minResizeWidth="180dp"
+    android:minResizeWidth="40dp"
     android:minResizeHeight="40dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_quick_record"
     android:previewLayout="@layout/widget_quick_record"
     android:label="@string/widget_quick_record_label"
     android:description="@string/widget_quick_record_description"
-    android:resizeMode="horizontal"
+    android:resizeMode="horizontal|vertical"
     android:targetCellWidth="4"
     android:targetCellHeight="1"
     android:widgetCategory="home_screen">

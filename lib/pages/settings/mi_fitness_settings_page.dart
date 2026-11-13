@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/health/mi_fitness_auth_service.dart';
@@ -15,6 +16,7 @@ import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
 import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/statistics/date_navigation_header.dart';
 
@@ -204,6 +206,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final colorScheme = theme.colorScheme;
 
     final days = await showModalBottomSheet<int>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       backgroundColor: colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -398,7 +401,15 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             children: [
               // 0. 上次同步失败提示：登录态失效时否则用户只看到「数据不更新」，没有任何解释
-              if (_lastFailure != null && isAuthed) ...[_buildSyncFailureBanner(context), const SizedBox(height: 12)],
+              // 失败提示用高度过渡出现/消失，避免横幅插入时下方内容整体跳位
+              AppCollapsible(
+                expanded: _lastFailure != null && isAuthed,
+                rise: 0,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _lastFailure != null ? _buildSyncFailureBanner(context) : const SizedBox.shrink(),
+                ),
+              ),
 
               // 1. 日期切换导航栏
               _buildDateNavBar(context),
@@ -1493,6 +1504,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   /// 弹窗编辑每日目标步数，提供快捷预设与自定义输入
   Future<void> _showStepTargetEditor() async {
     final result = await showModalBottomSheet<int>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),

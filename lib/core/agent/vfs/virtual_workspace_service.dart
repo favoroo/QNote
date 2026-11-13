@@ -908,7 +908,7 @@ class VirtualWorkspaceService {
         'description':
             'roles.*.model 是「厂商id::模型名」，也可以是路由组（「组id::__route_group__」，'
             '见 routeGroups）；写 null 表示清空绑定（默认厂商的首个已启用模型生效）；'
-            'providers 为只读快照（密钥已掩码，增删与启用模型请引导用户去「AI 模型配置」操作）；'
+            'providers 为只读快照（密钥已掩码，增删与启用模型请引导用户去「小Q设置 → 模型」操作）；'
             'routeGroups 为只读快照（成员顺序/策略/权重请在设置页编辑）；'
             'temperatures 可直接修改，下轮对话生效',
       };

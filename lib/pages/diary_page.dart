@@ -7,7 +7,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
@@ -24,12 +26,15 @@ import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/batch_review_navigation.dart';
 import 'package:qnote_flutter/core/utils/cheer_burst.dart';
+import 'package:qnote_flutter/core/utils/concurrent_batch.dart';
 import 'package:qnote_flutter/core/utils/diary_progress.dart';
 import 'package:qnote_flutter/core/utils/diary_timeline_layout.dart';
 import 'package:qnote_flutter/core/utils/timeline_time_drag.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
 import 'package:qnote_flutter/providers/journal_provider.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
@@ -43,7 +48,6 @@ import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
-import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 
 part 'diary_page_nodes.dart';
@@ -80,8 +84,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
   bool _isProgrammaticScrolling = true;
-  String? _extractingRecordId;
-  CancelToken? _cancelToken;
+
+  /// 正在提取的记录（批量并发时可能同时有多条）。
+  ///
+  /// 从单个 id 改成 Set 是并发的前提：3 路并行时三张卡片要各自转圈，
+  /// 用单个 id 只会留下最后一条的状态，其余卡片看起来「没反应」。
+  final Set<String> _extractingRecordIds = {};
+
+  /// 记录 id → 该条提取的取消令牌（停止时逐条 cancel）
+  final Map<String, CancelToken> _cancelTokens = {};
   // Multi-record undo mapping
   final Map<String, DiaryRecord> _undoRecords = {};
   final Map<String, AnimationController> _undoControllers = {};
@@ -97,6 +108,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   /// 每条记录卡片本体的 Key：发送后「弹窗变卡片」要量新卡片的落点。
   final Map<String, GlobalKey> _recordCardKeys = {};
+
+  /// 日期分隔条长按菜单的锚点：按日期复用，ListView 回收重建后仍能定位。
+  final Map<String, GlobalKey> _dateDividerKeys = {};
+
+  /// 顶栏日期标题的长按菜单锚点（标题不随 ListView 回收）。
+  final GlobalKey _topBarDateKey = GlobalKey();
 
   /// 面板打开期间按钮暂时隐藏（它已经变成面板本身）。
   bool _recordFabHidden = false;
@@ -132,14 +149,51 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   // Batch extraction state
   bool _isBatchExtracting = false;
   int _batchExtractTotal = 0;
-  int _batchExtractCompleted = 0;
-  bool _batchExtractCancelled = false;
 
-  /// 批量提取单条结果落帧后的视觉停顿，与卡片高度/按钮收束动画同拍。
-  static const Duration _batchResultDwell = Duration(milliseconds: 200);
+  /// 已处理条数（含跳过与失败），只驱动 FAB 进度环
+  int _batchExtractCompleted = 0;
+
+  /// 真正提取成功的条数，收尾文案用它 —— 与 [count] 区分开，
+  /// 否则跳过的记录会让「提取完成 N 条」虚高
+  int _batchExtractSucceeded = 0;
+
+  /// 本批提取失败 / 无结果的条数，收尾时汇总提示
+  int _batchExtractFailed = 0;
+  bool _batchExtractCancelled = false;
 
   bool _showBatchConfirmButton = false;
   final Set<String> _batchExtractedRecordIds = {};
+
+  /// 记录 id → 本批内的时间线序号。
+  ///
+  /// 并发完成后到达顺序与时间线顺序无关，上/下箭头要按用户在列表里看到的顺序
+  /// 跳转，必须记下每条的原始序号重新排序，而不是直接用完成顺序。
+  final Map<String, int> _batchExtractOrder = {};
+
+  /// [_batchReviewOrderedIds] 的缓存（完成/撤回/清空时失效）
+  List<String>? _batchReviewOrderedIdsCache;
+
+  /// 已优化记录按时间线顺序排列的 id 列表（箭头导航与收尾锚点都用它）。
+  ///
+  /// 结果缓存起来：底部栏每帧重建都会取它，几十条时每帧重排是白费。
+  List<String> get _batchReviewOrderedIds {
+    final cached = _batchReviewOrderedIdsCache;
+    if (cached != null) return cached;
+    final ids = _batchExtractedRecordIds.toList();
+    ids.sort((a, b) => (_batchExtractOrder[a] ?? 0).compareTo(_batchExtractOrder[b] ?? 0));
+    _batchReviewOrderedIdsCache = ids;
+    return ids;
+  }
+
+  /// 失效已优化记录的排序缓存（集合或序号发生变化时调用）
+  void _invalidateBatchReviewOrder() => _batchReviewOrderedIdsCache = null;
+
+  /// 日记写库串行锁。
+  ///
+  /// 并发提取时多个 worker 会同时提交 updateDiary：SQLite 并发写容易撞
+  /// database is locked，且列表状态是「读全表 → 替换一项 → 写回」，
+  /// 并发提交会互相覆盖丢更新。
+  final SerialExecutor _diaryWriteLock = SerialExecutor();
 
   /// 底部确认栏上/下箭头当前锚定的记录下标（按提取顺序）。
   int _batchReviewIndex = -1;
@@ -219,6 +273,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     setState(() {
       _dateExpandedOverrides[key] = willExpand;
     });
+    _scheduleTimelineRemeasure();
     HapticFeedback.lightImpact();
   }
 
@@ -228,7 +283,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       setState(() {
         _dateExpandedOverrides[key] = true;
       });
+      _scheduleTimelineRemeasure();
     }
+  }
+
+  /// 展开/收起动画结束后补一次重建。
+  ///
+  /// [TimelineItemWrapper] 只在重建时上报行高，而折叠动画期间每帧高度都在变，
+  /// 不补这一帧，拖动时间线定位用的高度表会停留在动画开始时的旧值。
+  void _scheduleTimelineRemeasure() {
+    final delay = AppMotion.duration(context, AppDurations.normal);
+    if (delay == Duration.zero) return;
+    Future.delayed(delay, () {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
   @override
@@ -353,22 +422,28 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         });
       } else {
         // Target is close or we already jumped, animate to estimated target.
-        _scrollController.animateTo(targetOffset, duration: AppDurations.medium, curve: Curves.easeOutCubic).then((_) {
-          if (mounted) {
-            _scrollToTarget(
-              targetIndex: targetIndex,
-              targetKey: targetKey,
-              smooth: smooth,
-              alignment: alignment,
-              attempts: attempts + 1,
-              recordsByDate: recordsByDate,
-              targetTime: targetTime,
-              onSettled: onSettled,
-            );
-          } else {
-            onSettled?.call();
-          }
-        });
+        _scrollController
+            .animateTo(
+              targetOffset,
+              duration: AppMotion.duration(context, AppDurations.medium),
+              curve: AppCurves.emphasized,
+            )
+            .then((_) {
+              if (mounted) {
+                _scrollToTarget(
+                  targetIndex: targetIndex,
+                  targetKey: targetKey,
+                  smooth: smooth,
+                  alignment: alignment,
+                  attempts: attempts + 1,
+                  recordsByDate: recordsByDate,
+                  targetTime: targetTime,
+                  onSettled: onSettled,
+                );
+              } else {
+                onSettled?.call();
+              }
+            });
       }
     } else {
       _scrollController.jumpTo(targetOffset);
@@ -409,8 +484,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       Scrollable.ensureVisible(
         targetContext,
         alignment: alignment,
-        duration: smooth ? const Duration(milliseconds: 350) : Duration.zero,
-        curve: Curves.easeOutCubic,
+        duration: smooth ? AppMotion.duration(context, AppDurations.medium) : Duration.zero,
+        curve: AppCurves.emphasized,
       ).then((_) {
         _finishProgrammaticScroll();
         onSettled?.call();
@@ -423,8 +498,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       Scrollable.ensureVisible(
         targetContext,
         alignment: alignment,
-        duration: smooth ? const Duration(milliseconds: 350) : Duration.zero,
-        curve: Curves.easeOutCubic,
+        duration: smooth ? AppMotion.duration(context, AppDurations.medium) : Duration.zero,
+        curve: AppCurves.emphasized,
       ).then((_) {
         _finishProgrammaticScroll();
         onSettled?.call();
@@ -451,9 +526,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     if (smooth) {
       final distance = (scrollOffset - preciseTarget).abs();
-      final duration = distance < 50.0 ? const Duration(milliseconds: 150) : const Duration(milliseconds: 350);
+      final duration = distance < 50.0
+          ? AppMotion.duration(context, AppDurations.fast)
+          : AppMotion.duration(context, AppDurations.medium);
 
-      _scrollController.animateTo(preciseTarget, duration: duration, curve: Curves.easeOutCubic).then((_) {
+      _scrollController.animateTo(preciseTarget, duration: duration, curve: AppCurves.emphasized).then((_) {
         if (mounted) {
           _finishProgrammaticScroll();
           onSettled?.call();
@@ -478,7 +555,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     if (smooth) {
       _scrollController
-          .animateTo(targetOffset, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic)
+          .animateTo(
+            targetOffset,
+            duration: AppMotion.duration(context, AppDurations.medium),
+            curve: AppCurves.emphasized,
+          )
           .then((_) {
             if (mounted) {
               _finishProgrammaticScroll();
@@ -765,6 +846,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     try {
       Toast.dismiss();
     } catch (_) {}
+    // 页面销毁时在途的提取请求必须一并取消，否则它们会继续占着 Key 与配额，
+    // 并在回调里对已卸载的 State 调 setState
+    _batchExtractCancelled = true;
+    for (final token in _cancelTokens.values) {
+      token.cancel();
+    }
+    _cancelTokens.clear();
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
     _removeCardDragOverlay();
@@ -1011,91 +1099,66 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     setState(() {});
   }
 
-  void _showColorMarkDialog() {
-    final selectedDate = ref.read(selectedDateProvider);
-    final colorMarks = ref.read(diaryColorMarkProvider).valueOrNull ?? [];
-    final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
-    final currentMark = colorMarks.where((m) {
-      final markDateStr = DateFormat('yyyy-MM-dd').format(m.date);
-      return markDateStr == dateStr;
-    }).firstOrNull;
+  /// 日期标色可选色板。
+  static const List<({String name, Color color})> _dateColorOptions = [
+    (name: '红色', color: Color(0xFFFF3B30)),
+    (name: '绿色', color: Color(0xFF34C759)),
+    (name: '蓝色', color: Color(0xFF007AFF)),
+    (name: '橙色', color: Color(0xFFFF9500)),
+    (name: '紫色', color: Color(0xFFAF52DE)),
+  ];
 
-    final colors = [
-      {'name': '红色', 'color': const Color(0xFFFF3B30)},
-      {'name': '绿色', 'color': const Color(0xFF34C759)},
-      {'name': '蓝色', 'color': const Color(0xFF007AFF)},
-      {'name': '橙色', 'color': const Color(0xFFFF9500)},
-      {'name': '紫色', 'color': const Color(0xFFAF52DE)},
-      {'name': '清除', 'color': null},
-    ];
+  /// 长按日期分隔条或顶栏日期标题：直接展开标色菜单，并保留批量管理入口。
+  void _showDateActionMenu(DateTime date, {GlobalKey? anchorKey}) {
+    final colorMarks = ref.read(diaryColorMarkProvider).valueOrNull ?? const <DateColorMark>[];
+    final currentMark = colorMarks.where((m) => _isSameDay(m.date, date)).firstOrNull;
+    final currentColor = currentMark != null ? _hexToColor(context, currentMark.color) : null;
 
-    showDialog(
+    HapticFeedback.lightImpact();
+    ActionMenu.show(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('日期颜色'),
-        content: SizedBox(
-          width: 240,
-          child: GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            childAspectRatio: 0.8,
-            children: colors.map((item) {
-              final colorValue = item['color'] as Color?;
-              return GestureDetector(
-                onTap: () {
-                  final notifier = ref.read(diaryColorMarkProvider.notifier);
-                  if (colorValue == null) {
-                    if (currentMark != null) {
-                      notifier.removeMarkByDate(selectedDate);
-                    }
-                  } else {
-                    notifier.setMark(
-                      DateColorMark(
-                        id: currentMark?.id ?? '',
-                        date: selectedDate,
-                        color: '#${colorValue.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-                      ),
-                    );
-                  }
-                  Navigator.pop(context);
-                },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: colorValue,
-                        shape: BoxShape.circle,
-                        border: colorValue == null
-                            ? Border.all(
-                                color: Theme.of(context).colorScheme.outline,
-                                width: 2,
-                                strokeAlign: BorderSide.strokeAlignInside,
-                              )
-                            : null,
-                      ),
-                      child: colorValue == null
-                          ? Icon(Icons.close, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant)
-                          : null,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item['name'] as String,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+      key: anchorKey ?? _dateDividerKeyFor(date),
+      items: [
+        for (final option in _dateColorOptions)
+          ActionMenuItem(
+            iconWidget: Icon(
+              currentColor?.toARGB32() == option.color.toARGB32() ? Icons.check_circle_rounded : Icons.circle,
+              size: 20,
+              color: option.color,
+            ),
+            label: option.name,
+            onTap: () => _applyDateColorMark(date, option.color),
           ),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消'))],
+        if (currentMark != null)
+          ActionMenuItem(
+            icon: Icons.format_color_reset_outlined,
+            label: '清除颜色',
+            onTap: () => _applyDateColorMark(date, null),
+          ),
+        ActionMenuItem(icon: Icons.list_alt_rounded, label: '批量管理', onTap: _navigateToBatchManage),
+      ],
+    );
+  }
+
+  /// 写入或清除某一天的颜色标记。
+  void _applyDateColorMark(DateTime date, Color? color) {
+    final colorMarks = ref.read(diaryColorMarkProvider).valueOrNull ?? const <DateColorMark>[];
+    final currentMark = colorMarks.where((m) => _isSameDay(m.date, date)).firstOrNull;
+    final notifier = ref.read(diaryColorMarkProvider.notifier);
+
+    if (color == null) {
+      if (currentMark != null) {
+        notifier.removeMarkByDate(date);
+      }
+      return;
+    }
+
+    notifier.setMark(
+      DateColorMark(
+        // 新建时生成唯一 id：沿用空串会让多个未标色日期互相覆盖。
+        id: currentMark?.id ?? const Uuid().v4(),
+        date: date,
+        color: '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
       ),
     );
   }
@@ -1315,30 +1378,32 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   }
 
   Future<void> _handleAiExtract(DiaryRecord record) async {
-    if (_extractingRecordId != null) {
-      if (_extractingRecordId == record.id) {
-        _cancelToken?.cancel();
-        _cancelToken = null;
+    if (_isBatchExtracting) return;
+    if (_extractingRecordIds.isNotEmpty) {
+      if (_extractingRecordIds.contains(record.id)) {
+        _cancelTokens.remove(record.id)?.cancel();
+        if (mounted) setState(() => _extractingRecordIds.remove(record.id));
       }
       return;
     }
     final contentText = record.content.trim();
     if (contentText.isEmpty && record.photos.isEmpty) return;
 
-    // 未配置模型：批量抽取时静默跳过（入口已统一提示），单条提取时弹引导
+    // 未配置模型：入口已统一提示，这里只做兜底
     if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
-      if (mounted && !_isBatchExtracting) {
+      if (mounted) {
         await showNoModelConfiguredDialog(context, scene: 'AI 提取');
       }
       return;
     }
     if (!mounted) return;
 
+    final token = CancelToken();
+    _cancelTokens[record.id] = token;
     setState(() {
-      _extractingRecordId = record.id;
+      _extractingRecordIds.add(record.id);
     });
 
-    _cancelToken = CancelToken();
     AiExtractResult? result;
     try {
       result = await extractExistingRecord(
@@ -1349,113 +1414,111 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         recordTime: record.time,
         startTime: record.startTime,
         endTime: record.endTime,
-        cancelToken: _cancelToken,
+        cancelToken: token,
       );
     } on VisionUnsupportedException catch (e) {
       if (mounted) {
-        setState(() => _extractingRecordId = null);
-        if (!_isBatchExtracting) {
-          await showVisionUnsupportedDialog(context, modelName: e.modelName, scene: 'AI 提取');
-        }
+        setState(() => _extractingRecordIds.remove(record.id));
+        await showVisionUnsupportedDialog(context, modelName: e.modelName, scene: 'AI 提取');
       }
       return;
     }
 
     if (result != null && mounted) {
-      final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
-      final foundShortcut = findShortcutById(result.shortcutId, shortcuts);
-
-      List<String> newTags = List.from(record.tags);
-      String newDisplayTag = record.displayTag;
-      DateTime? newStartTime = record.startTime;
-      DateTime? newEndTime = record.endTime;
-      DateTime newTime = record.time;
-      String newContent = record.content;
-      if (result.notes.isNotEmpty && record.photos.isNotEmpty) {
-        final trimmedNotes = result.notes.trim();
-        if (newContent.isEmpty) {
-          newContent = trimmedNotes;
-        } else if (!newContent.contains(trimmedNotes)) {
-          newContent = '$newContent\n$trimmedNotes';
-        }
-      }
-      Map<String, dynamic>? newBodyState = record.bodyState != null
-          ? Map.from(record.bodyState!)
-          : null; // ignore: prefer_final_locals
-      final List<TagEntry> newTagEntries = result.tagEntries.isNotEmpty ? result.tagEntries : record.tagEntries;
-
-      if (result.tagEntries.isNotEmpty) {
-        newTags = result.tagEntries.map((e) => e.name).toList();
-        newDisplayTag = result.tagEntries.first.name;
-        newBodyState = Map<String, dynamic>.from(result.tagEntries.first.fields);
-      } else if (foundShortcut != null) {
-        if (!newTags.contains(foundShortcut.name)) {
-          newTags = [foundShortcut.name, ...newTags.where((t) => t != newDisplayTag)];
-        }
-        newDisplayTag = foundShortcut.name;
-      }
-
-      if (result.time.isNotEmpty) {
-        final baseDate = DateTime(record.time.year, record.time.month, record.time.day);
-        if (result.time['start'] != null) {
-          final parts = (result.time['start'] as String).split(':');
-          if (parts.length >= 2) {
-            final hour = int.tryParse(parts[0]) ?? record.time.hour;
-            final minute = int.tryParse(parts[1]) ?? record.time.minute;
-            final startOffset = result.time['startOffset'] as int? ?? 0;
-            final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
-            newTime = dt;
-            newStartTime = dt;
-          }
-        }
-        if (result.time['end'] != null) {
-          final parts = (result.time['end'] as String).split(':');
-          if (parts.length >= 2) {
-            final hour = int.tryParse(parts[0]) ?? 0;
-            final minute = int.tryParse(parts[1]) ?? 0;
-            final endOffset = result.time['endOffset'] as int? ?? 0;
-            newEndTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
-          }
-        } else {
-          newEndTime = null;
-        }
-      }
-
-      final updated = record.copyWith(
-        time: newTime,
-        startTime: newStartTime,
-        endTime: newEndTime,
-        tags: newTags,
-        displayTag: newDisplayTag,
-        content: newContent,
-        bodyState: newBodyState,
-        tagEntries: newTagEntries,
-        updatedAt: DateTime.now(),
-      );
-
+      final updated = _buildExtractedRecord(record, result);
       // Store pre-extract record and create undo controller
       _undoRecords[record.id] = record;
       _bumpUndoRecordsVersion();
-      if (_isBatchExtracting) {
-        _batchExtractedRecordIds.add(record.id);
-      } else {
-        _createUndoController(record.id);
-      }
+      _createUndoController(record.id);
 
-      await ref.read(diaryListProvider.notifier).updateDiary(updated, updateWidgets: !_isBatchExtracting);
-      if (mounted && !_isBatchExtracting) {
+      await ref.read(diaryListProvider.notifier).updateDiary(updated);
+      if (mounted) {
         Toast.success(context, '优化完成');
-      }
-
-      if (!_isBatchExtracting) {
         _undoControllers[record.id]?.forward(from: 0);
       }
     }
 
-    _cancelToken = null;
-    if (mounted && !_isBatchExtracting) {
-      setState(() => _extractingRecordId = null);
+    _cancelTokens.remove(record.id);
+    if (mounted) {
+      setState(() => _extractingRecordIds.remove(record.id));
     }
+  }
+
+  /// 把 AI 提取结果套用到记录上，得到待落库的新记录。
+  ///
+  /// 单条与批量共用同一套字段合并规则：标签优先取 AI 返回的 tagEntries，
+  /// 其次回退到命中的快捷标签；时间偏移以记录自身日期为基准换算。
+  DiaryRecord _buildExtractedRecord(DiaryRecord record, AiExtractResult result) {
+    final shortcuts = ref.read(shortcutListProvider).valueOrNull ?? [];
+    final foundShortcut = findShortcutById(result.shortcutId, shortcuts);
+
+    List<String> newTags = List.from(record.tags);
+    String newDisplayTag = record.displayTag;
+    DateTime? newStartTime = record.startTime;
+    DateTime? newEndTime = record.endTime;
+    DateTime newTime = record.time;
+    String newContent = record.content;
+    if (result.notes.isNotEmpty && record.photos.isNotEmpty) {
+      final trimmedNotes = result.notes.trim();
+      if (newContent.isEmpty) {
+        newContent = trimmedNotes;
+      } else if (!newContent.contains(trimmedNotes)) {
+        newContent = '$newContent\n$trimmedNotes';
+      }
+    }
+    Map<String, dynamic>? newBodyState = record.bodyState != null
+        ? Map.from(record.bodyState!)
+        : null; // ignore: prefer_final_locals
+    final List<TagEntry> newTagEntries = result.tagEntries.isNotEmpty ? result.tagEntries : record.tagEntries;
+
+    if (result.tagEntries.isNotEmpty) {
+      newTags = result.tagEntries.map((e) => e.name).toList();
+      newDisplayTag = result.tagEntries.first.name;
+      newBodyState = Map<String, dynamic>.from(result.tagEntries.first.fields);
+    } else if (foundShortcut != null) {
+      if (!newTags.contains(foundShortcut.name)) {
+        newTags = [foundShortcut.name, ...newTags.where((t) => t != newDisplayTag)];
+      }
+      newDisplayTag = foundShortcut.name;
+    }
+
+    if (result.time.isNotEmpty) {
+      final baseDate = DateTime(record.time.year, record.time.month, record.time.day);
+      if (result.time['start'] != null) {
+        final parts = (result.time['start'] as String).split(':');
+        if (parts.length >= 2) {
+          final hour = int.tryParse(parts[0]) ?? record.time.hour;
+          final minute = int.tryParse(parts[1]) ?? record.time.minute;
+          final startOffset = result.time['startOffset'] as int? ?? 0;
+          final dt = baseDate.add(Duration(days: startOffset, hours: hour, minutes: minute));
+          newTime = dt;
+          newStartTime = dt;
+        }
+      }
+      if (result.time['end'] != null) {
+        final parts = (result.time['end'] as String).split(':');
+        if (parts.length >= 2) {
+          final hour = int.tryParse(parts[0]) ?? 0;
+          final minute = int.tryParse(parts[1]) ?? 0;
+          final endOffset = result.time['endOffset'] as int? ?? 0;
+          newEndTime = baseDate.add(Duration(days: endOffset, hours: hour, minutes: minute));
+        }
+      } else {
+        newEndTime = null;
+      }
+    }
+
+    return record.copyWith(
+      time: newTime,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      tags: newTags,
+      displayTag: newDisplayTag,
+      content: newContent,
+      bodyState: newBodyState,
+      tagEntries: newTagEntries,
+      updatedAt: DateTime.now(),
+    );
   }
 
   void _undoExtract(DiaryRecord record) async {
@@ -1472,13 +1535,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   /// Clear undo state for a specific record
   void _clearUndoForRecord(String recordId) {
-    final removedIndex = _batchExtractedRecordIds.toList().indexOf(recordId);
+    // 箭头下标按「时间线顺序」计，删除前先取同一顺序下的位置
+    final removedIndex = _batchReviewOrderedIds.indexOf(recordId);
     final controller = _undoControllers.remove(recordId);
     controller?.stop();
     controller?.dispose();
     _undoRecords.remove(recordId);
     _bumpUndoRecordsVersion();
     _batchExtractedRecordIds.remove(recordId);
+    _batchExtractOrder.remove(recordId);
+    _invalidateBatchReviewOrder();
     if (removedIndex >= 0) {
       _batchReviewIndex = resolveBatchReviewIndexAfterRemoval(
         currentIndex: _batchReviewIndex,
@@ -1532,12 +1598,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// Handle smart extract button tap with triple-click detection
   void _handleSmartExtractTap() {
     if (_isBatchExtracting) {
-      // Stop ongoing batch extraction
+      // 停止：先置取消标记（worker 不再领新任务），再把在途请求逐条取消。
+      // 并发下最多有 3 条请求同时在飞，只取消一个 token 会让另外两条继续跑完。
       setState(() {
         _batchExtractCancelled = true;
       });
-      _cancelToken?.cancel();
-      _cancelToken = null;
+      for (final token in _cancelTokens.values) {
+        token.cancel();
+      }
+      _cancelTokens.clear();
       return;
     }
 
@@ -1627,21 +1696,41 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       return;
     }
 
-    // 按时间线实际展示顺序排序（跨天记录以归属日期 + 展示时间为准），
-    // 避免提取顺序与视觉顺序不一致，导致批量过程来回滚动
+    // 按时间线实际展示顺序排序（跨天记录以归属日期 + 展示时间为准）
     untaggedRecords.sort((a, b) {
       final dateCompare = a.getEffectiveDate().compareTo(b.getEffectiveDate());
       if (dateCompare != 0) return dateCompare;
       return a.getDisplayTime().compareTo(b.getDisplayTime());
     });
 
+    // 箭头导航要按时间线顺序走（用户在列表里看到的上下关系），
+    // 与「先跑哪条」无关，所以在重排领取顺序之前先记下这份序号
+    final timelineOrder = <String, int>{for (var i = 0; i < untaggedRecords.length; i++) untaggedRecords[i].id: i};
+
+    // 视口内的记录提到最前：并发按序领取任务，先跑的 3 条就是用户眼前这几条，
+    // 点完立刻能看到身边卡片依次亮起，而不是屏幕外的记录先跑完、原地半天没反应。
+    // 稳定遍历保留组内的时间线顺序。
+    final inViewport = <DiaryRecord>[];
+    final offscreen = <DiaryRecord>[];
+    for (final r in untaggedRecords) {
+      (_isRecordInViewport(r) ? inViewport : offscreen).add(r);
+    }
+    untaggedRecords
+      ..clear()
+      ..addAll(inViewport)
+      ..addAll(offscreen);
+
     setState(() {
       _isBatchExtracting = true;
       _batchExtractTotal = untaggedRecords.length;
       _batchExtractCompleted = 0;
+      _batchExtractSucceeded = 0;
+      _batchExtractFailed = 0;
       _batchExtractCancelled = false;
       _showBatchConfirmButton = false;
       _batchExtractedRecordIds.clear();
+      _batchExtractOrder.clear();
+      _invalidateBatchReviewOrder();
       _batchReviewIndex = -1;
       _batchReviewHighlightId = null;
     });
@@ -1651,69 +1740,171 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       Toast.info(context, '开始提取 ${untaggedRecords.length} 条${allDates ? '（全部日期）' : ''}');
     }
 
-    for (int i = 0; i < untaggedRecords.length; i++) {
-      if (_batchExtractCancelled || !mounted) break;
+    // 并发后不再逐条滚动定位：3 个 worker 各自滚动会互相打断，而且「提取全部」
+    // 时把用户拽到最老的一条也很突兀。进度统一交给 FAB 的进度环汇报，
+    // 用户留在原地就能看到身边卡片依次亮起。
+    // 每个并发槽一个独立 AiService 实例：AiService 的 config / baseUrl / 全局
+    // header 都是实例字段，共用单例会让并发请求互相覆写（endpoint 与凭证串台）。
+    // 密钥池 ApiKeyPool 仍是进程级单例，逐请求 round-robin 取 Key 的语义不变。
+    final services = List<AiService>.generate(kBatchExtractConcurrency, (_) => AiService());
 
-      final record = untaggedRecords[i];
-
-      // Re-read the record from provider in case it was modified
-      final currentRecords = ref.read(diaryListProvider).valueOrNull;
-      DiaryRecord currentRecord = record;
-      if (currentRecords != null) {
-        try {
-          currentRecord = currentRecords.firstWhere((r) => r.id == record.id);
-        } catch (_) {}
-      }
-
-      // Skip if already tagged (might have been manually tagged during batch)
-      if (currentRecord.displayTag.isNotEmpty && currentRecord.displayTag != '记录') {
-        // 只更新计数，不触发整页重建；完成数只在收尾 Toast 里使用
-        _batchExtractCompleted = i + 1;
-        continue;
-      }
-
-      // 已在视口内就跳过滚动；折叠日期由 _scrollToRecordCard 负责展开
-      if (!_isRecordInViewport(currentRecord)) {
-        await _scrollToRecordCard(currentRecord);
-        if (!mounted || _batchExtractCancelled) break;
-      }
-
-      // Extract
-      await _handleAiExtract(currentRecord);
-
-      if (mounted) {
-        setState(() {
-          _extractingRecordId = null;
-          _batchExtractCompleted = i + 1;
-        });
-      }
-
-      // 结果先落一帧；下一条已在视口内时留出很短的视觉停顿，
-      // 需要滚动时让下一轮立刻接上平滑滚动，用位移本身承接节奏。
-      if (i < untaggedRecords.length - 1 && !_batchExtractCancelled) {
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted || _batchExtractCancelled) break;
-        if (_isRecordInViewport(untaggedRecords[i + 1])) {
-          await Future.delayed(_batchResultDwell);
+    await runWithConcurrency<DiaryRecord>(
+      items: untaggedRecords,
+      concurrency: kBatchExtractConcurrency,
+      shouldStop: () => _batchExtractCancelled || !mounted,
+      onError: (error, stackTrace, index) {
+        LoggerService.instance.logAI(
+          '批量提取任务异常（第 ${index + 1} 条）: $error',
+          level: LogLevel.error,
+          details: stackTrace.toString(),
+        );
+        // 异常路径也要推进进度环，否则它会永远差这一条停在那里
+        if (mounted) {
+          setState(() {
+            _batchExtractFailed++;
+            _batchExtractCompleted++;
+          });
         }
-      }
-    }
+      },
+      task: (record, index, worker) async {
+        // 错开各槽的首发时刻：3 条请求同毫秒打出去，单 Key 厂商容易撞并发限流
+        if (index < kBatchExtractConcurrency && worker > 0) {
+          await Future.delayed(Duration(milliseconds: 150 * worker));
+          if (_batchExtractCancelled || !mounted) return;
+        }
+
+        // 记录可能在排队期间被用户手动打标/删除，取最新快照再判断
+        final allRecords = ref.read(diaryListProvider).valueOrNull;
+        DiaryRecord? latest;
+        if (allRecords != null) {
+          for (final r in allRecords) {
+            if (r.id == record.id) {
+              latest = r;
+              break;
+            }
+          }
+          // 列表可读但找不到这条 = 批量期间已被删除：必须跳过。
+          // 若回退成旧快照继续提取，最后的 repo.update 会把已软删的行写活。
+          if (latest == null) {
+            if (mounted) setState(() => _batchExtractCompleted++);
+            return;
+          }
+        }
+        final currentRecord = latest ?? record;
+        if (currentRecord.displayTag.isNotEmpty && currentRecord.displayTag != '记录') {
+          // 跳过也要推进进度环，否则「已处理条数」会永远差这一条
+          if (mounted) setState(() => _batchExtractCompleted++);
+          return;
+        }
+
+        _batchExtractOrder[record.id] = timelineOrder[record.id] ?? index;
+        _invalidateBatchReviewOrder();
+        if (mounted) {
+          setState(() => _extractingRecordIds.add(record.id));
+        }
+
+        final token = CancelToken();
+        _cancelTokens[record.id] = token;
+
+        AiExtractResult? result;
+        try {
+          result = await extractExistingRecord(
+            ref: ref,
+            context: context,
+            content: currentRecord.content.trim(),
+            photos: currentRecord.photos,
+            recordTime: currentRecord.time,
+            startTime: currentRecord.startTime,
+            endTime: currentRecord.endTime,
+            cancelToken: token,
+            service: services[worker],
+            // 并发下逐条弹 Toast 会互相覆盖，失败统一在收尾汇总
+            silent: true,
+          );
+        } on VisionUnsupportedException catch (e) {
+          LoggerService.instance.logAI('批量提取跳过：模型「${e.modelName}」不支持图片输入', level: LogLevel.warning);
+          result = null;
+        } finally {
+          _cancelTokens.remove(record.id);
+          if (mounted) {
+            setState(() => _extractingRecordIds.remove(record.id));
+          }
+        }
+
+        if (!mounted) return;
+        if (result == null) {
+          setState(() {
+            // 用户主动停止导致的取消不算失败，不污染收尾提示
+            if (!_batchExtractCancelled) _batchExtractFailed++;
+            _batchExtractCompleted++;
+          });
+          return;
+        }
+
+        final updated = _buildExtractedRecord(currentRecord, result);
+
+        // 写库串行化：SQLite 并发写会撞 database is locked，且列表状态是
+        // 「读全表 → 替换一项 → 写回」，并发提交会互相覆盖丢更新
+        try {
+          await _diaryWriteLock.run(
+            () => ref.read(diaryListProvider.notifier).updateDiary(updated, updateWidgets: false),
+          );
+        } catch (e, stackTrace) {
+          // 写库失败：undo 快照与「已优化」标记都还没写，界面不会谎报成功
+          LoggerService.instance.logAI('批量提取结果落库失败: $e', level: LogLevel.error, details: stackTrace.toString());
+          if (mounted) {
+            setState(() {
+              _batchExtractFailed++;
+              _batchExtractCompleted++;
+            });
+          }
+          return;
+        }
+        if (!mounted) return;
+
+        _undoRecords[record.id] = currentRecord;
+        _bumpUndoRecordsVersion();
+        _batchExtractedRecordIds.add(record.id);
+        _invalidateBatchReviewOrder();
+
+        setState(() {
+          _batchExtractCompleted++;
+          _batchExtractSucceeded++;
+          // 每提取完一条就让底部栏先浮出来：用户能立刻用箭头回看已优化的记录，
+          // 不必等整批跑完。锚点保持 -1（按时间线末尾解析），并发下完成顺序与
+          // 时间线顺序无关，钉死某个下标会在后续记录插入时指向错位。
+          if (_batchExtractedRecordIds.isNotEmpty) {
+            _showBatchConfirmButton = true;
+          }
+        });
+      },
+    );
 
     if (mounted) {
       final cancelled = _batchExtractCancelled;
+      final failed = _batchExtractFailed;
+      final succeeded = _batchExtractSucceeded;
+      final handled = _batchExtractCompleted;
       setState(() {
         _isBatchExtracting = false;
         _batchExtractCancelled = false;
         if (_batchExtractedRecordIds.isNotEmpty) {
           _showBatchConfirmButton = true;
-          // 批量结束后视口停在最后一条，箭头默认从最后一条开始回看
-          _batchReviewIndex = _batchExtractedRecordIds.length - 1;
+          // 批量过程中若用户已用箭头手动定位过，收尾时不要把他拽回末尾
+          if (_batchReviewIndex < 0) {
+            _batchReviewIndex = _batchReviewOrderedIds.length - 1;
+          }
         }
       });
       if (cancelled) {
-        Toast.info(context, '已停止提取（$_batchExtractCompleted/$_batchExtractTotal）');
+        Toast.info(context, '已停止提取（$handled/$_batchExtractTotal）');
+      } else if (failed > 0) {
+        Toast.warning(context, '提取完成 $succeeded 条，$failed 条未成功');
+      } else if (succeeded == 0) {
+        // 全部是被手动打标后跳过的：说「提取完成 N 条」会让人以为白干一场
+        Toast.info(context, '没有需要提取的记录');
       } else {
-        Toast.success(context, '提取完成（$_batchExtractTotal 条）');
+        Toast.success(context, '提取完成（$succeeded 条）');
       }
     }
 
@@ -1739,11 +1930,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         final note = ref.watch(journalByDateProvider(selectedDate)).valueOrNull;
         final hasJournal = note != null && note.content.trim().isNotEmpty;
 
-        return GestureDetector(
+        return PressableScale(
           onTap: _handleJournalTap,
           child: AnimatedContainer(
-            duration: AppDurations.medium,
-            curve: Curves.easeOutCubic,
+            duration: AppMotion.duration(context, AppDurations.medium),
+            curve: AppCurves.emphasized,
             width: 44,
             height: 44,
             decoration: BoxDecoration(
@@ -1985,21 +2176,28 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   /// Build the smart extract floating action button
   ///
-  /// 工作中态与小Q发送按钮保持一致：极淡描边底 + 细缺口圆环 + 圆心停止方块，
-  /// 尺寸固定 44，点击即中止当前批量提取
+  /// 工作中态与小Q发送按钮保持一致：极淡描边底 + 细圆环 + 圆心停止方块，
+  /// 尺寸固定 44，点击即中止当前批量提取。
+  ///
+  /// 并发提取后圆环改为**确定进度**：串行时代每提一条都会滚动一次，用户能从
+  /// 列表位移感知进度；并发后不再滚动，进度只能靠这里汇报，否则点击「全部提取」
+  /// 后界面几乎静止，看起来像没反应。
   Widget _buildSmartExtractFAB(ThemeData theme) {
-    if (_showBatchConfirmButton) return const SizedBox.shrink();
+    // 提取中保留停止按钮：底部栏首条优化后就会浮出，但此时整批仍在跑，
+    // 用户需要这个按钮能随时中止。
+    if (_showBatchConfirmButton && !_isBatchExtracting) return const SizedBox.shrink();
 
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
+    final progress = _batchExtractTotal > 0 ? (_batchExtractCompleted / _batchExtractTotal).clamp(0.0, 1.0) : 0.0;
 
-    return GestureDetector(
+    return PressableScale(
       key: _smartExtractFabKey,
       onTap: _handleSmartExtractTap,
       onLongPress: _handleSmartExtractLongPress,
       child: AnimatedContainer(
-        duration: AppDurations.medium,
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.duration(context, AppDurations.medium),
+        curve: AppCurves.emphasized,
         width: 44,
         height: 44,
         decoration: BoxDecoration(
@@ -2016,19 +2214,42 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
             ),
           ],
         ),
-        child: _isBatchExtracting
-            ? Stack(
-                alignment: Alignment.center,
-                children: [
-                  LoadingRing(size: 32, strokeWidth: 1.3, color: primary),
-                  Container(
-                    width: 9.5,
-                    height: 9.5,
-                    decoration: BoxDecoration(color: primary, borderRadius: BorderRadius.circular(2.0)),
-                  ),
-                ],
-              )
-            : Icon(Icons.auto_fix_high, size: 20, color: theme.colorScheme.onPrimary),
+        child: AnimatedSwitcher(
+          duration: AppMotion.duration(context, AppDurations.fast),
+          switchInCurve: AppCurves.emphasized,
+          switchOutCurve: AppCurves.exit,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(scale: Tween<double>(begin: 0.86, end: 1).animate(animation), child: child),
+          ),
+          child: _isBatchExtracting
+              ? Stack(
+                  key: const ValueKey('batch_progress'),
+                  alignment: Alignment.center,
+                  children: [
+                    // 进度弧用 TweenAnimationBuilder 平滑推进：并发下多条几乎同时
+                    // 完成，直接跳值会让弧线一顿一顿地蹦
+                    TweenAnimationBuilder<double>(
+                      tween: Tween<double>(begin: 0, end: progress),
+                      duration: AppMotion.duration(context, AppDurations.fast),
+                      curve: AppCurves.emphasized,
+                      builder: (context, value, _) =>
+                          LoadingRing(size: 32, strokeWidth: 1.3, color: primary, progress: value),
+                    ),
+                    Container(
+                      width: 9.5,
+                      height: 9.5,
+                      decoration: BoxDecoration(color: primary, borderRadius: BorderRadius.circular(2.0)),
+                    ),
+                  ],
+                )
+              : Icon(
+                  Icons.auto_fix_high,
+                  key: const ValueKey('batch_idle'),
+                  size: 20,
+                  color: theme.colorScheme.onPrimary,
+                ),
+        ),
       ),
     );
   }
@@ -2051,6 +2272,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       }
       _bumpUndoRecordsVersion();
       _batchExtractedRecordIds.clear();
+      _batchExtractOrder.clear();
+      _invalidateBatchReviewOrder();
       _showBatchConfirmButton = false;
       _batchReviewIndex = -1;
       _batchReviewHighlightId = null;
@@ -2060,7 +2283,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   /// 跳到上一条 / 下一条已优化记录，并短暂高亮目标卡片。
   Future<void> _jumpToBatchReview(int targetIndex) async {
-    final ids = _batchExtractedRecordIds.toList();
+    // 并发提取的完成顺序与时间线顺序不一致，跳转必须按时间线顺序
+    final ids = _batchReviewOrderedIds;
     if (targetIndex < 0 || targetIndex >= ids.length) return;
 
     final recordId = ids[targetIndex];
@@ -2104,6 +2328,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     });
   }
 
+  /// 单枚圆形箭头按钮。
+  ///
+  /// 上/下箭头从原来的连体胶囊拆成两个独立圆钮：各自带浮起的圆形底与细描边，
+  /// 中间留出间距，既避免误触相邻箭头，也把可点区域放大到易按的尺寸。
   Widget _buildBatchReviewArrow({
     required ThemeData theme,
     required IconData icon,
@@ -2111,17 +2339,22 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     required bool enabled,
     required VoidCallback onTap,
   }) {
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     return IconButton(
       onPressed: enabled ? onTap : null,
       tooltip: tooltip,
-      icon: Icon(icon, size: 20),
+      icon: Icon(icon, size: 22),
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
       visualDensity: VisualDensity.compact,
       style: IconButton.styleFrom(
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: theme.colorScheme.onSurfaceVariant,
-        disabledForegroundColor: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.28),
+        backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.85),
+        foregroundColor: scheme.onSurfaceVariant,
+        disabledBackgroundColor: scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.28 : 0.38),
+        disabledForegroundColor: scheme.onSurfaceVariant.withValues(alpha: 0.3),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.5), width: 1),
         shape: const CircleBorder(),
       ),
     );
@@ -2156,37 +2389,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                   ),
                   // 只有一条时无处可跳，直接收起箭头组，避免两个禁用按钮占位
                   if (total > 1) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildBatchReviewArrow(
-                            theme: theme,
-                            icon: Icons.keyboard_arrow_up_rounded,
-                            tooltip: '上一条已优化记录',
-                            enabled: position.canGoPrevious,
-                            onTap: () => _jumpToBatchReview(position.index - 1),
-                          ),
-                          Container(
-                            width: 1,
-                            height: 14,
-                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                          ),
-                          _buildBatchReviewArrow(
-                            theme: theme,
-                            icon: Icons.keyboard_arrow_down_rounded,
-                            tooltip: '下一条已优化记录',
-                            enabled: position.canGoNext,
-                            onTap: () => _jumpToBatchReview(position.index + 1),
-                          ),
-                        ],
-                      ),
+                    const SizedBox(width: 10),
+                    _buildBatchReviewArrow(
+                      theme: theme,
+                      icon: Icons.keyboard_arrow_up_rounded,
+                      tooltip: '上一条已优化记录',
+                      enabled: position.canGoPrevious,
+                      onTap: () => _jumpToBatchReview(position.index - 1),
+                    ),
+                    const SizedBox(width: 10),
+                    _buildBatchReviewArrow(
+                      theme: theme,
+                      icon: Icons.keyboard_arrow_down_rounded,
+                      tooltip: '下一条已优化记录',
+                      enabled: position.canGoNext,
+                      onTap: () => _jumpToBatchReview(position.index + 1),
                     ),
                   ],
                 ],
@@ -2326,10 +2543,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                           constraints: const BoxConstraints(),
                         ),
                         const SizedBox(width: 2),
-                        AppIconBadge(icon: Icons.palette_outlined, size: 36, iconSize: 18, onTap: _showColorMarkDialog),
                         Expanded(
                           child: GestureDetector(
                             onTap: _showDatePicker,
+                            onLongPress: () => _showDateActionMenu(selectedDate, anchorKey: _topBarDateKey),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 8.0),
                               child: Column(
@@ -2337,6 +2554,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   FittedBox(
+                                    key: _topBarDateKey,
                                     fit: BoxFit.scaleDown,
                                     child: Text(
                                       _formatDateTitle(selectedDate),
@@ -2353,7 +2571,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                     height: 3,
                                     decoration: BoxDecoration(
                                       color: currentColorMark != null
-                                          ? _hexToColor(currentColorMark.color)
+                                          ? _hexToColor(context, currentColorMark.color)
                                           : Colors.transparent,
                                       borderRadius: BorderRadius.circular(1.5),
                                     ),
@@ -2362,12 +2580,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                               ),
                             ),
                           ),
-                        ),
-                        AppIconBadge(
-                          icon: Icons.list_alt_rounded,
-                          size: 36,
-                          iconSize: 18,
-                          onTap: _navigateToBatchManage,
                         ),
                         const SizedBox(width: 2),
                         IconButton(
@@ -2441,7 +2653,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                         child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
                                       ),
                                       InkWell(
+                                        key: _dateDividerKeyFor(date),
                                         onTap: () => _toggleDateExpanded(date),
+                                        onLongPress: () => _showDateActionMenu(date),
                                         borderRadius: BorderRadius.circular(20),
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -2457,6 +2671,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                                   fontWeight: FontWeight.bold,
                                                 ),
                                               ),
+                                              _DateColorDot(date: date),
                                               if (!isExpanded && dayRecords.isNotEmpty) ...[
                                                 const SizedBox(width: 6),
                                                 Container(
@@ -2733,9 +2948,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                                   onEdit: _handleEdit,
                                                   onDelete: _handleDelete,
                                                   onQuoteToQ: _quoteRecordToQ,
+                                                  onBatchManage: _navigateToBatchManage,
                                                   onAiExtract: () => _handleAiExtract(record),
                                                   onAiExtractLongPress: () => _handleAiExtractModelSelect(record),
-                                                  isExtracting: _extractingRecordId == record.id,
+                                                  isExtracting: _extractingRecordIds.contains(record.id),
                                                   onUndo: () => _undoExtract(record),
                                                   isUndoable: _undoRecords.containsKey(record.id),
                                                   undoAnimation: _undoControllers[record.id],
@@ -2756,7 +2972,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                 onMount: (index, ctx) => _itemContexts[index] = ctx,
                                 onUnmount: (index) => _itemContexts.remove(index),
                                 onHeightChange: (index, height) => _itemHeights[index] = height,
-                                child: childWidget,
+                                child: subIndex == 0
+                                    ? childWidget
+                                    : AppCollapsible(
+                                        expanded: _isDateExpanded(date),
+                                        // 单行只做高度与透明度过渡，不再叠加位移：
+                                        // 48 行同时上移会互相挤压，观感是整块抖动
+                                        rise: 0,
+                                        child: childWidget,
+                                      ),
                               );
                             },
                           ),
@@ -2833,17 +3057,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 原来底部压着常驻输入栏，12 这个写死值够用；输入栏撤掉后按钮直接贴屏幕底，
   /// 必须让 home indicator 的安全区，否则在全面屏上会被系统手势条压住。
   double get _fabBottom => MediaQuery.paddingOf(context).bottom + 12;
-
-  Color _hexToColor(String hex) {
-    final hexStr = hex.replaceFirst('#', '');
-    if (hexStr.length == 6) {
-      return Color(int.parse('FF$hexStr', radix: 16));
-    }
-    if (hexStr.length == 8) {
-      return Color(int.parse(hexStr, radix: 16));
-    }
-    return Theme.of(context).colorScheme.outlineVariant;
-  }
 
   int _pointToItemIndex(Offset globalPosition) {
     for (final entry in _itemContexts.entries) {
@@ -2976,6 +3189,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 为每条记录复用同一个把手 Key；记录被 ListView 回收后再次构建仍能命中。
   GlobalKey _handleKeyFor(String recordId) {
     return _recordHandleKeys.putIfAbsent(recordId, () => GlobalKey());
+  }
+
+  /// 日期分隔条的 Key；同一天跨 ListView 回收/重建仍是同一个。
+  GlobalKey _dateDividerKeyFor(DateTime date) {
+    return _dateDividerKeys.putIfAbsent(_dateKey(date), () => GlobalKey());
   }
 
   /// 卡片本体的 Key；同一条记录跨 ListView 回收/重建仍是同一个。

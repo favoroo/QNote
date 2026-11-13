@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/shell_branch_container.dart';
 
@@ -109,7 +110,8 @@ class RecordsSectionSwitcher extends StatelessWidget {
     return Semantics(
       button: true,
       selected: section == active,
-      child: GestureDetector(
+      child: PressableScale(
+        pressedScale: 0.96,
         behavior: HitTestBehavior.opaque,
         onTap: () => _switchTo(context, section, location),
         child: SizedBox(

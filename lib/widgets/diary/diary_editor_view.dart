@@ -8,8 +8,11 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/diary_editor_logic.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
@@ -303,7 +306,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: AnimatedSwitcher(
-        duration: AppDurations.fast,
+        duration: AppMotion.duration(context, AppDurations.fast),
         child: Text(
           label,
           key: ValueKey<String>(label),
@@ -561,6 +564,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
   Future<void> _editTagTime(TagEntry entry) async {
     final result = await showModalBottomSheet<Map<String, dynamic>>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1364,8 +1368,8 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
               return ChoiceChip(
                 label: AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
+                  duration: AppMotion.duration(context, AppDurations.normal),
+                  curve: AppCurves.standard,
                   child: isSelected ? Text(config.name) : const SizedBox.shrink(),
                 ),
                 labelPadding: isSelected ? null : EdgeInsets.zero,
@@ -1585,7 +1589,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               child: GestureDetector(
                 onTap: () => _updateFormValue(tagId, '_category', category.id),
                 child: AnimatedContainer(
-                  duration: AppDurations.normal,
+                  duration: AppMotion.duration(context, AppDurations.normal),
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
                     color: isSelected ? theme.colorScheme.surface : null,
@@ -1671,7 +1675,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               return GestureDetector(
                 onTap: () => _updateFormValue(tagId, field.id, isSelected ? null : opt),
                 child: AnimatedContainer(
-                  duration: AppDurations.normal,
+                  duration: AppMotion.duration(context, AppDurations.normal),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
@@ -1763,7 +1767,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                   _updateFormValue(tagId, field.id, newList.isEmpty ? null : newList);
                 },
                 child: AnimatedContainer(
-                  duration: AppDurations.normal,
+                  duration: AppMotion.duration(context, AppDurations.normal),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isSelected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
@@ -1981,7 +1985,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         });
       },
       child: AnimatedContainer(
-        duration: AppDurations.normal,
+        duration: AppMotion.duration(context, AppDurations.normal),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected

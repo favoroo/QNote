@@ -280,6 +280,15 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
   RecordCardMorphTarget? _cardTarget;
   bool _landing = false;
 
+  /// 目标卡片的最新 Rect，只在动画 tick 里采样，`build` 只读这份缓存。
+  ///
+  /// 不能直接在 `build` 里量：这里的 build 跑在 [LayoutBuilder] 的**布局阶段**，
+  /// 此时本轮布局还没走完，`localToGlobal` 一旦路过尚未布局的祖先
+  /// `Transform`（`get _effectiveTransform` 需要 `size`）就会抛
+  /// 「RenderBox was not laid out」。异常让这一帧被 [ErrorWidget] 顶替，
+  /// 而错误块在 release 下是浅灰（#C0C0C0）——深色主题里就是肉眼可见的白闪。
+  Rect? _cardRectNow;
+
   /// 内容裁切后 Key 可能暂时量不到（收回后段已经不再画内容），留一份上次的。
   Rect? _lastSheetRect;
 
@@ -307,10 +316,16 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
     _cardController = AnimationController(vsync: this, duration: _kCardFlightDuration);
     _cardProgress = CurvedAnimation(parent: _cardController, curve: _kCardFlightCurve);
     _cardController.addStatusListener(_handleCardStatus);
+    // 目标卡片 Rect 每帧在动画回调里采样：此时上一帧布局已完整落定，
+    // 量页面上的 RenderBox 是安全的；build 里只读缓存（见 [_cardRectNow]）。
+    _cardController.addListener(_sampleCardRect);
+    widget.animation.addListener(_sampleCardRect);
   }
 
   @override
   void dispose() {
+    widget.animation.removeListener(_sampleCardRect);
+    _cardController.removeListener(_sampleCardRect);
     _cardController.removeStatusListener(_handleCardStatus);
     _cardController.dispose();
     _rectProgress.dispose();
@@ -325,6 +340,8 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
     if (!mounted || _cardTarget != null) return false;
     final from = _readSheetRect() ?? _lastSheetRect;
     if (from == null) return false;
+    // 起飞前先量一次（调用方不在布局阶段，量取安全），首帧飞行就有落点可用。
+    _cardRectNow = target.readRect() ?? target.initialRect;
     setState(() {
       _cardFrom = from;
       _cardTarget = target;
@@ -333,10 +350,24 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
     return true;
   }
 
+  /// 采样目标卡片的实时 Rect：列表/键盘继续变化时，盖板要跟着卡片走。
+  ///
+  /// 只由动画监听触发（动画 tick 早于 build/layout），绝不从 `build` 里调用。
+  void _sampleCardRect() {
+    final target = _cardTarget;
+    if (target == null) return;
+    final rect = target.readRect();
+    if (rect != null) {
+      _cardRectNow = rect;
+    }
+  }
+
   void _handleCardStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
     final target = _cardTarget;
     if (target == null || _landing) return;
+    // 落位前再采样一次：onLanded 会触发页面重建，本轮布局随即作废。
+    _cardRectNow = target.readRect() ?? _cardRectNow ?? target.initialRect;
     // 先让页面把真实卡片揭开（盖板还压在上面，看不到跳变），再淡出盖板。
     target.onLanded();
     if (!mounted) return;
@@ -458,7 +489,8 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
   /// 发送后：面板先淡成空白盖板，再飞到目标卡片的位置。
   Widget _buildCardFlight(Size size) {
     final target = _cardTarget!;
-    final to = target.readRect() ?? target.initialRect;
+    // 只读动画回调里采样的缓存：布局阶段量 RenderBox 会命中未布局的祖先 Transform。
+    final to = _cardRectNow ?? target.initialRect;
     final from = _cardFrom!;
     final t = _cardProgress.value;
     final rect = Rect.lerp(from, to, t)!;
@@ -487,7 +519,7 @@ class _RecordDialogTransitionState extends State<_RecordDialogTransition> with S
   /// 落位：盖板已经压在真实卡片上，和遮罩一起淡出，把卡片内容让出来。
   Widget _buildLanding() {
     final target = _cardTarget!;
-    final rect = target.readRect() ?? target.initialRect;
+    final rect = _cardRectNow ?? target.initialRect;
     final fade = Curves.easeOutCubic.transform(widget.animation.value);
     return Stack(
       fit: StackFit.expand,

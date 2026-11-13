@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
@@ -44,6 +45,12 @@ class VisionUnsupportedException implements Exception {
   String toString() => '当前模型「$modelName」不支持图片输入';
 }
 
+/// 对一条已存在的记录跑一次 AI 结构化提取
+///
+/// [service] 供批量并发传入独立实例：`AiService` 的配置与 baseUrl 是实例字段，
+/// 多个请求共用单例会互相覆写，必须一个并发槽一个实例。
+/// [silent] 为 true 时不弹任何 Toast（批量场景由调用方统一汇总），错误仍会通过
+/// [onFailure] 回传，便于统计失败条数。
 Future<AiExtractResult?> extractExistingRecord({
   required WidgetRef ref,
   required BuildContext context,
@@ -54,15 +61,22 @@ Future<AiExtractResult?> extractExistingRecord({
   DateTime? endTime,
   void Function(bool)? onLoadingChanged,
   CancelToken? cancelToken,
+  AiService? service,
+  bool silent = false,
+  void Function(String message)? onFailure,
 }) async {
   onLoadingChanged?.call(true);
   try {
     // 未配置模型：静默返回，由用户触发的入口负责弹「去添加模型」引导
     if (!await AiRoleService.instance.hasUsableConfigForRole('timelineOptimization')) {
       LoggerService.instance.logAI('时间线提取跳过：尚未配置可用的 AI 模型', level: LogLevel.warning);
+      onFailure?.call('尚未配置可用的 AI 模型');
       return null;
     }
-    final aiService = ref.read(aiServiceProvider);
+    // 批量并发时必须用调用方传进来的**独立实例**：AiService 的 config / baseUrl /
+    // 全局 header 都是实例字段，多个并发请求共用单例会互相覆写（endpoint 与凭证
+    // 串台，表现为随机 404 或鉴权失败）。
+    final AiService aiService = service ?? ref.read(aiServiceProvider);
     final roleConfig = await AiRoleService.instance.getEffectiveConfigForRole('timelineOptimization');
     final roleSettings = await AiRoleService.instance.getSettingsForRole('timelineOptimization');
     final aiTempsAsync = ref.read(aiTemperaturesProvider);
@@ -208,12 +222,15 @@ Future<AiExtractResult?> extractExistingRecord({
       );
     }
     if (context.mounted) {
-      Toast.warning(context, '未提取到信息');
+      if (!silent) {
+        Toast.warning(context, '未提取到信息');
+      }
+      onFailure?.call('未提取到信息');
     }
     return null;
   } on DioException catch (e) {
     if (CancelToken.isCancel(e)) {
-      if (context.mounted) {
+      if (context.mounted && !silent) {
         Toast.info(context, '已停止提取');
       }
       return null;
@@ -237,8 +254,12 @@ Future<AiExtractResult?> extractExistingRecord({
     } else if (e.response?.statusCode == 429) {
       errorMessage = 'AI服务调用频次超限，请重试';
     }
+    LoggerService.instance.logAI('记录智能优化失败: $errorMessage', level: LogLevel.warning, details: e.toString());
     if (context.mounted) {
-      Toast.error(context, errorMessage);
+      if (!silent) {
+        Toast.error(context, errorMessage);
+      }
+      onFailure?.call(errorMessage);
     }
     return null;
   } catch (e, stackTrace) {
@@ -249,7 +270,10 @@ Future<AiExtractResult?> extractExistingRecord({
     }
     LoggerService.instance.logAI('记录智能优化失败: $e', level: LogLevel.error, details: stackTrace.toString());
     if (context.mounted) {
-      Toast.error(context, errorMessage);
+      if (!silent) {
+        Toast.error(context, errorMessage);
+      }
+      onFailure?.call(errorMessage);
     }
     return null;
   } finally {

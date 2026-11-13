@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/image_model_detection.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/account_quota.dart';
@@ -308,6 +309,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
   Future<void> _openLoginSheet({String? accountId}) async {
     final service = _accountService;
     final account = await showModalBottomSheet<AiAccount>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -509,7 +511,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     }
     final keys = _keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList();
     final spec = _vendorSpec;
-    // 免密钥厂商（本机服务、免费网关）扫描时无需凭证，按无鉴权发请求；
+    // 免密钥厂商（免费网关）扫描时无需凭证，按无鉴权发请求；
     // 否则「允许留空密钥却又不让扫描」会让条目停在 0 个模型上无法使用
     final keyless = spec?.keyOptional ?? false;
     final authType = keyless && keys.isEmpty ? 'none' : (spec?.authType ?? 'bearer');

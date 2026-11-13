@@ -103,8 +103,8 @@ class _FloatingQBubbleState extends State<_FloatingQBubble> {
   @override
   Widget build(BuildContext context) {
     return AnimatedPositioned(
-      duration: _dragging ? Duration.zero : _kBubbleSnapDuration,
-      curve: Curves.easeOutCubic,
+      duration: _dragging ? Duration.zero : AppMotion.duration(context, _kBubbleSnapDuration),
+      curve: AppCurves.emphasizedSpatial,
       left: widget.position.dx,
       top: widget.position.dy,
       child: GestureDetector(
@@ -134,8 +134,8 @@ class _FloatingQBubbleState extends State<_FloatingQBubble> {
         },
         child: AnimatedScale(
           scale: _dragging ? 1.08 : 1.0,
-          duration: AppDurations.fast,
-          curve: Curves.easeOutCubic,
+          duration: AppMotion.duration(context, AppDurations.fast),
+          curve: AppCurves.emphasized,
           child: _FloatingQBubbleVisual(working: widget.working, unread: widget.unread),
         ),
       ),

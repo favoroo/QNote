@@ -7,7 +7,6 @@ import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/personalization_page.dart';
-import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/quick_record_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/health_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/data_sync_page.dart';
@@ -347,6 +346,8 @@ const Map<String, String> _legacyEntryIds = {
   'fixed-events': 'quick-record',
   'mi-fitness': 'health',
   'screen-usage': 'health',
+  // 原「AI 模型配置」独立入口已并入小Q设置的「模型」分段
+  'ai-config': 'q-settings',
 };
 
 /// 按 id 查入口；找不到（版本升级删过条目）时返回 null，由调用方退回菜单
@@ -367,7 +368,6 @@ const List<_MenuEntry> _menuEntries = [
     label: '小Q设置',
     page: QSettingsPage(),
   ),
-  _MenuEntry(id: 'ai-config', icon: Icons.tune_rounded, label: 'AI 模型配置', page: AiConfigPage()),
   _MenuEntry(id: 'quick-record', icon: Icons.hexagon_outlined, label: '快捷记录', page: QuickRecordSettingsPage()),
   _MenuEntry(id: 'data', icon: Icons.sync_rounded, label: '数据与同步', page: DataSyncPage()),
   _MenuEntry(id: 'health', icon: Icons.favorite_border_rounded, label: '健康数据', page: HealthSettingsPage()),

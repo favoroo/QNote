@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 
@@ -250,7 +251,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
         _showOverlayTooltip(day, score, theme);
       },
       child: AnimatedContainer(
-        duration: AppDurations.fast,
+        duration: AppMotion.duration(context, AppDurations.fast),
         curve: AppCurves.standard,
         width: _cellSize,
         height: _cellSize,
@@ -316,7 +317,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
             child: IgnorePointer(
               child: TweenAnimationBuilder<double>(
                 tween: Tween<double>(begin: 0.0, end: 1.0),
-                duration: AppDurations.fast,
+                duration: AppMotion.duration(context, AppDurations.fast),
                 curve: AppCurves.emphasized,
                 builder: (context, value, child) {
                   return Transform.scale(

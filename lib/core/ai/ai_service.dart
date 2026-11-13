@@ -9,6 +9,8 @@ import 'package:qnote_flutter/core/ai/ai_route_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
 import 'package:qnote_flutter/core/ai/anthropic_protocol.dart';
+import 'package:qnote_flutter/core/ai/builtin_provider.dart';
+import 'package:qnote_flutter/core/ai/builtin_request_signer.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -66,17 +68,38 @@ class ToolCallProgress {
 }
 
 class AiService {
-  final Dio _dio = Dio(
-    BaseOptions(
-      // 连接超时收紧到 12s：端点为 Cloudflare Quick Tunnel / Tailscale Funnel，
-      // 正常建连在秒级；30s 会让连接类故障在 5 次重试中累积出 ~97 秒的等待
-      // （见 2026-09-20 「对话发送失败」事故复盘）。接收超时保持 2 分钟，
-      // 大模型流式长响应需要足够窗口。
-      connectTimeout: _connectTimeoutForChat,
-      receiveTimeout: const Duration(minutes: 2),
-      sendTimeout: const Duration(seconds: 30),
-    ),
-  );
+  late final Dio _dio = _buildDio();
+
+  /// 构造发信用的 Dio，并挂上「内置免费服务」的逐请求签名头。
+  ///
+  /// 放在拦截器里而不是 [updateConfig]：签名只对内置厂商生效，且必须按每次
+  /// 请求的真实路径计算，不能写进全局 header 影响其它厂商。
+  Dio _buildDio() {
+    final dio = Dio(
+      BaseOptions(
+        // 连接超时收紧到 12s：端点为 Cloudflare Quick Tunnel / Tailscale Funnel，
+        // 正常建连在秒级；30s 会让连接类故障在 5 次重试中累积出 ~97 秒的等待
+        // （见 2026-09-20 「对话发送失败」事故复盘）。接收超时保持 2 分钟，
+        // 大模型流式长响应需要足够窗口。
+        connectTimeout: _connectTimeoutForChat,
+        receiveTimeout: const Duration(minutes: 2),
+        sendTimeout: const Duration(seconds: 30),
+      ),
+    );
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final config = _config;
+          if (config != null && BuiltinProvider.isBuiltinId(config.providerId)) {
+            options.headers.addAll(await BuiltinRequestSigner.headersForPath(options.uri.path));
+          }
+          handler.next(options);
+        },
+      ),
+    );
+    return dio;
+  }
+
   AiConfig? _config;
   double _temperature = 0.7;
   int _maxTokens = 2048;
@@ -130,7 +153,7 @@ class AiService {
       cleanedBaseUrl = anthropicBaseUrl(cleanedBaseUrl.isEmpty ? anthropicDefaultBaseUrl : cleanedBaseUrl);
     }
 
-    // 免密钥服务（本机 Ollama/LM Studio、免费网关）没有凭证也能发信
+    // 免密钥服务（免费网关）没有凭证也能发信
     final keyless = vendorAllowsKeyless(config.vendorId);
     if ((!config.usesAccountAuth && config.apiKey.isEmpty && !keyless) || cleanedBaseUrl.isEmpty) {
       throw ArgumentError('AI配置不完整：缺少 apiKey 或 baseUrl');
@@ -536,7 +559,16 @@ class AiService {
   /// 决定：路由组切换成员时可能跨到另一种接口类型，因此另一家的 header 用 null
   /// 显式移除（Dio 约定的删除语义），避免把旧厂商的凭证一起发出去。
   Map<String, dynamic>? _authOverride(String? key, AiConfig config) {
-    if (key == null) return null;
+    if (key == null) {
+      // 无凭证的内置免费服务（以及其它免密钥网关）：必须显式清掉可能残留的
+      // 鉴权头，否则路由组切换成员时会沿用上一个厂商的全局 Authorization，
+      // 把用户自己的 Key 发到内置网关上去。
+      if (BuiltinProvider.isBuiltinId(config.providerId) ||
+          (vendorAllowsKeyless(config.vendorId) && config.apiKey.trim().isEmpty)) {
+        return {'Authorization': null, 'x-goog-api-key': null, 'x-api-key': null};
+      }
+      return null;
+    }
     if (config.provider == 'gemini') {
       return {'x-goog-api-key': key, 'Authorization': null, 'x-api-key': null};
     }

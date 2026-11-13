@@ -158,6 +158,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     final tempSelectedTags = List<String>.from(_selectedTags);
 
     showModalBottomSheet<void>(
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

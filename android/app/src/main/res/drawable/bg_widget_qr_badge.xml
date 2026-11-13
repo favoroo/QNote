@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录组件的品牌徽标底：蓝 → 蓝紫的斜向渐变，与发送钮共用同一套主色。
+  用圆角矩形而不是正圆：组件本身是圆角卡片，方形徽标在小尺寸下辨识度更高。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="315"
+        android:endColor="@color/widget_qr_accent_end"
+        android:startColor="@color/widget_accent"
+        android:type="linear" />
+    <corners android:radius="11dp" />
+</shape>

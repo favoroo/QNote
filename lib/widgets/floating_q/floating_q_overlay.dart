@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/chat_image_dedupe.dart';
@@ -147,13 +148,13 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     );
     _scrimProgress = CurvedAnimation(
       parent: _morphController,
-      curve: const Interval(0, 0.45, curve: Curves.easeOut),
-      reverseCurve: const Interval(0.25, 1, curve: Curves.easeIn),
+      curve: const Interval(0, 0.45, curve: AppCurves.emphasized),
+      reverseCurve: const Interval(0.25, 1, curve: AppCurves.exit),
     );
     _ghostProgress = CurvedAnimation(
       parent: _morphController,
-      curve: const Interval(0, 0.25, curve: Curves.easeOut),
-      reverseCurve: const Interval(0.55, 0.9, curve: Curves.easeOut),
+      curve: const Interval(0, 0.25, curve: AppCurves.emphasized),
+      reverseCurve: const Interval(0.55, 0.9, curve: AppCurves.emphasized),
     );
     _exitController = AnimationController(vsync: this, duration: _kDialogExitDuration)
       ..addStatusListener(_handleExitStatus);
@@ -529,8 +530,8 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
       key: const ValueKey('floating-q-scrim'),
       child: TweenAnimationBuilder<double>(
         tween: Tween<double>(end: hidden ? 0 : 1),
-        duration: AppDurations.normal,
-        curve: Curves.easeOut,
+        duration: AppMotion.duration(context, AppDurations.normal),
+        curve: AppCurves.emphasized,
         builder: (context, visible, _) {
           return GestureDetector(
             behavior: HitTestBehavior.opaque,

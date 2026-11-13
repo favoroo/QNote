@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import 'package:qnote_flutter/core/ai/builtin_provider.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
 import 'package:qnote_flutter/core/storage/sync_log_repository.dart';
 import 'package:qnote_flutter/models/ai_provider.dart';
@@ -8,6 +9,9 @@ import 'package:qnote_flutter/models/ai_provider.dart';
 ///
 /// 所有写操作都写 `sync_log`，WebDAV 增量同步按整行 `toMap()` 传递，
 /// 因此密钥池与已启用模型列表会自动跟随同步，无需额外管道。
+///
+/// 内置免费模型是**虚拟条目**（见 [BuiltinProvider]）：读侧在末尾追加，
+/// 写侧一律拦截，因此它不会进 `sync_log`、备份或增量同步。
 class AiProviderRepository {
   static final AiProviderRepository instance = AiProviderRepository._();
   AiProviderRepository._();
@@ -20,10 +24,12 @@ class AiProviderRepository {
   Future<List<AiProvider>> getAll() async {
     final db = await _dbHelper.database;
     final maps = await db.query(tableName, orderBy: 'created_at ASC');
-    return maps.map((m) => AiProvider.fromMap(m)).toList();
+    final providers = maps.map((m) => AiProvider.fromMap(m)).toList();
+    return mergeBuiltinProvider(providers, BuiltinProvider.current());
   }
 
   Future<AiProvider?> getById(String id) async {
+    if (BuiltinProvider.isBuiltinId(id)) return BuiltinProvider.current();
     final db = await _dbHelper.database;
     final maps = await db.query(tableName, where: 'id = ?', whereArgs: [id], limit: 1);
     if (maps.isEmpty) return null;
@@ -34,11 +40,14 @@ class AiProviderRepository {
     final db = await _dbHelper.database;
     final maps = await db.query(tableName, where: 'is_default = 1', limit: 1);
     if (maps.isEmpty) return null;
-    return AiProvider.fromMap(maps.first);
+    final provider = AiProvider.fromMap(maps.first);
+    return BuiltinProvider.isBuiltin(provider) ? null : provider;
   }
 
   /// 写入或更新一条厂商条目（按 id 判定），返回落库后的对象
   Future<AiProvider> upsert(AiProvider provider) async {
+    // 内置条目只读，直接原样返回，绝不落库
+    if (BuiltinProvider.isBuiltin(provider)) return provider;
     final db = await _dbHelper.database;
     final existing = await getById(provider.id);
     final saved = provider.copyWith(updatedAt: DateTime.now());
@@ -57,6 +66,7 @@ class AiProviderRepository {
   }
 
   Future<void> delete(String id) async {
+    if (BuiltinProvider.isBuiltinId(id)) return;
     final db = await _dbHelper.database;
     await db.delete(tableName, where: 'id = ?', whereArgs: [id]);
     await _syncLog.logChange(tableName: tableName, recordId: id, operation: 'delete');
@@ -73,14 +83,18 @@ class AiProviderRepository {
 
   /// 迁移/导入写库（不写 sync_log，避免把本机迁移动作当成用户变更广播出去）
   Future<void> insertSilently(AiProvider provider) async {
+    if (BuiltinProvider.isBuiltin(provider)) return;
     final db = await _dbHelper.database;
     await db.insert(tableName, provider.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// 把默认标记收敛到唯一一条：设置 [id] 为默认，其余清除
   Future<void> setDefault(String id) async {
+    if (BuiltinProvider.isBuiltinId(id)) return;
     final all = await getAll();
     for (final provider in all) {
+      // 虚拟内置条目不能写库，也不能被设成默认厂商
+      if (BuiltinProvider.isBuiltin(provider)) continue;
       final shouldBeDefault = provider.id == id;
       if (provider.isDefault == shouldBeDefault) continue;
       await upsert(provider.copyWith(isDefault: shouldBeDefault));

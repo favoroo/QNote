@@ -13,7 +13,6 @@ import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
-import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_provider_edit_page.dart';
 import 'package:qnote_flutter/pages/settings/ai_route_group_edit_page.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
@@ -151,11 +150,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _fadeTransitionPage(const QPersonalityPage()),
       ),
       GoRoute(
+        // 模型配置已并入小Q设置的「模型」分段；旧路径保留并直接定位到该分段，
+        // 让所有「去配置模型」的引导链接都落到同一处，不再维护第二套独立配置页
         path: '/settings/ai-config',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) {
           final args = state.extra is AiConfigPageArgs ? state.extra as AiConfigPageArgs : const AiConfigPageArgs();
-          return _fadeTransitionPage(AiConfigPage(autoOpenAdd: args.autoOpenAdd));
+          return _fadeTransitionPage(QSettingsPage(initialTab: 0, autoOpenAddModelService: args.autoOpenAdd));
         },
       ),
       GoRoute(

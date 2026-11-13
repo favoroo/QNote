@@ -75,13 +75,9 @@ void main() {
       }
     });
 
-    test('免密钥厂商只能出现在本地部署或聚合中转里', () {
+    test('免密钥厂商只能出现在聚合中转里', () {
       for (final spec in aiProviders.where((s) => s.keyOptional)) {
-        expect(
-          const [VendorCategory.local, VendorCategory.relay],
-          contains(spec.category),
-          reason: '${spec.id} 声明了可空密钥，但它既不是本机服务也不是免密钥网关',
-        );
+        expect(spec.category, VendorCategory.relay, reason: '${spec.id} 声明了可空密钥，但它不是免密钥网关');
       }
     });
   });

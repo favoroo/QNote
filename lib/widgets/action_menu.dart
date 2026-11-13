@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 
 class ActionMenuItem {
   final IconData? icon;
@@ -138,6 +139,7 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay> with SingleTicke
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
   bool _isDismissing = false;
+  bool _motionApplied = false;
 
   @override
   void initState() {
@@ -152,6 +154,17 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay> with SingleTicke
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionApplied) return;
+    _motionApplied = true;
+    // 减弱动效下菜单直接出现，不播缩放淡入
+    if (AppMotion.reduce(context)) {
+      _controller.value = 1.0;
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -161,6 +174,10 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay> with SingleTicke
   void dismissWithAnimation() {
     if (_isDismissing || !mounted) return;
     _isDismissing = true;
+    if (AppMotion.reduce(context)) {
+      widget.onRemoveEntry();
+      return;
+    }
     _controller.reverse().then((_) {
       if (mounted) {
         widget.onRemoveEntry();

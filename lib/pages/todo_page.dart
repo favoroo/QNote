@@ -18,6 +18,8 @@ import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/records_section_switcher.dart';
@@ -163,6 +165,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   // 批量选择与批量删除状态
   bool _isSelectionMode = false;
   final Set<String> _selectedTodoIds = {};
+
+  /// 正在播放收起退场的待办 id：动画结束后才真正提交删除
+  final Set<String> _deletingTodoIds = <String>{};
   bool _isConfirming = false;
   Timer? _confirmTimer;
 
@@ -384,53 +389,77 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           centerTitle: true,
           backgroundColor: colorScheme.surface,
           elevation: 0,
-          leading: _isSelectionMode
-              ? IconButton(icon: const Icon(Icons.close), tooltip: '退出选择', onPressed: _exitSelectionMode)
-              : IconButton(
-                  icon: const Icon(Icons.menu),
-                  onPressed: () {
-                    FocusScope.of(context).unfocus();
-                    rootScaffoldKey.currentState?.openDrawer();
-                  },
-                ),
-          title: _isSelectionMode
+          leading: AppMotion.switcher(
+            context: context,
+            baseDuration: AppDurations.fast,
+            child: KeyedSubtree(
+              key: ValueKey(_isSelectionMode ? 'select_leading' : 'menu_leading'),
+              child: _isSelectionMode
+                  ? IconButton(icon: const Icon(Icons.close), tooltip: '退出选择', onPressed: _exitSelectionMode)
+                  : IconButton(
+                      icon: const Icon(Icons.menu),
+                      onPressed: () {
+                        FocusScope.of(context).unfocus();
+                        rootScaffoldKey.currentState?.openDrawer();
+                      },
+                    ),
+            ),
+          ),
+          title: AppMotion.switcher(
+            context: context,
+            baseDuration: AppDurations.fast,
+            child: KeyedSubtree(
+              key: ValueKey(_isSelectionMode ? 'select_title' : 'section_title'),
               // 与笔记页统一文案：避免「已选 / 已选择」宽度不同导致居中标题两端来回移动
-              ? Text('已选 ${_selectedTodoIds.length} 项')
-              : const RecordsSectionSwitcher(active: RecordsSection.todo),
+              child: _isSelectionMode
+                  ? Text('已选 ${_selectedTodoIds.length} 项')
+                  : const RecordsSectionSwitcher(active: RecordsSection.todo),
+            ),
+          ),
           actions: [
-            if (_isSelectionMode)
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    if (isCurrentFolderAllSelected) {
-                      _selectedTodoIds.removeAll(currentFolderTodoIds);
-                    } else {
-                      _selectedTodoIds.addAll(currentFolderTodoIds);
-                    }
-                    _isConfirming = false;
-                  });
-                  _confirmTimer?.cancel();
-                },
-                child: Text(
-                  isCurrentFolderAllSelected ? '取消全选' : '全选',
-                  style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
-                ),
-              )
-            else ...[
-              IconButton(
-                icon: Icon(Icons.checklist_outlined, color: colorScheme.onSurfaceVariant),
-                tooltip: '批量管理',
-                onPressed: () => _enterSelectionMode(),
+            AppMotion.switcher(
+              context: context,
+              baseDuration: AppDurations.fast,
+              child: KeyedSubtree(
+                key: ValueKey(_isSelectionMode ? 'select_actions' : 'normal_actions'),
+                child: _isSelectionMode
+                    ? TextButton(
+                        onPressed: () {
+                          setState(() {
+                            if (isCurrentFolderAllSelected) {
+                              _selectedTodoIds.removeAll(currentFolderTodoIds);
+                            } else {
+                              _selectedTodoIds.addAll(currentFolderTodoIds);
+                            }
+                            _isConfirming = false;
+                          });
+                          _confirmTimer?.cancel();
+                        },
+                        child: Text(
+                          isCurrentFolderAllSelected ? '取消全选' : '全选',
+                          style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
+                        ),
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.checklist_outlined, color: colorScheme.onSurfaceVariant),
+                            tooltip: '批量管理',
+                            onPressed: () => _enterSelectionMode(),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.category_outlined, color: colorScheme.onSurfaceVariant),
+                            tooltip: '分类管理',
+                            onPressed: () {
+                              FocusScope.of(context).unfocus();
+                              _showFolderManagementBottomSheet(context);
+                            },
+                          ),
+                        ],
+                      ),
               ),
-              IconButton(
-                icon: Icon(Icons.category_outlined, color: colorScheme.onSurfaceVariant),
-                tooltip: '分类管理',
-                onPressed: () {
-                  FocusScope.of(context).unfocus();
-                  _showFolderManagementBottomSheet(context);
-                },
-              ),
-            ],
+            ),
           ],
         ),
         bottomNavigationBar: AnimatedSize(
@@ -583,104 +612,121 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return todosAsync.when(
-      data: (_) {
-        if (activeTodos.isEmpty && completedTodos.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.assignment_turned_in_outlined,
-                  size: 56,
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '暂无待办',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        final scrollController = _getScrollController(folderId);
-
-        return Listener(
-          onPointerDown: _handleListPointerDown,
-          onPointerMove: _handleListPointerMove,
-          child: ReorderableListView.builder(
-            scrollController: scrollController,
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
-            // 关掉框架默认手柄：桌面/Web 分支会额外画一个 Icons.drag_handle 叠在
-            // 行尾（与本页自绘手柄重复），移动端分支则把整行包进
-            // ReorderableDelayedDragStartListener，会与长按弹菜单的识别器在
-            // 500ms 处正面冲突。排序改由 _TodoItem 自行接管（见该组件）。
-            buildDefaultDragHandles: false,
-            itemCount: activeTodos.length,
-            onReorderStart: (index) {
-              _reorderStartIndex = index;
-              // 拾起反馈：拖拽浮层由 ReorderableListView 负责，这里补触感
-              HapticFeedback.mediumImpact();
-            },
-            onReorderEnd: (index) {
-              final startIndex = _reorderStartIndex;
-              final moved = _pointerMoved;
-              final anchor = _pointerDownPosition;
-              _reorderStartIndex = null;
-              _pointerMoved = false;
-              _pointerDownPosition = null;
-              // 长按拾起后原地松手 → 按「长按手势」弹操作菜单（原有长按菜单不变）。
-              // 桌面/Web 仍由行尾手柄负责拖拽、卡片自身长按负责菜单，不走这条路径。
-              if (useDragHandleFor(Theme.of(context).platform)) return;
-              if (startIndex == null) return;
-              final isLongPress = isLongPressRelease(pointerMoved: moved, landedElsewhere: index != startIndex);
-              if (!isLongPress) return;
-              if (startIndex < 0 || startIndex >= activeTodos.length) return;
-              _showActionMenu(context, activeTodos[startIndex], anchor: anchor);
-            },
-            onReorderItem: (oldIndex, newIndex) {
-              if (oldIndex < 0 || oldIndex >= activeTodos.length) return;
-              if (newIndex < 0 || newIndex > activeTodos.length) return;
-              final list = List<Todo>.from(activeTodos);
-              final item = list.removeAt(oldIndex);
-              list.insert(newIndex, item);
-              final allTodosList = todosAsync.valueOrNull ?? [];
-              final otherTodos = allTodosList.where((t) => t.isCompleted || t.folderId != folderId).toList();
-              ref.read(todoListProvider.notifier).reorderTodos([...list, ...otherTodos]);
-            },
-            itemBuilder: (context, index) {
-              final todo = activeTodos[index];
-              return RepaintBoundary(
-                key: ValueKey(todo.id),
-                child: _TodoItem(
-                  key: ValueKey('todo_item_${todo.id}'),
-                  todo: todo,
-                  index: index,
-                  isDraggable: !_isSelectionMode,
-                  isSelectionMode: _isSelectionMode,
-                  isSelected: _selectedTodoIds.contains(todo.id),
-                  onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
-                  onToggleComplete: () {
-                    ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
-                  },
-                  onLongPress: (globalKey) {
-                    _showActionMenu(context, todo, key: globalKey);
-                  },
-                  onDelete: () => _confirmDelete(todo),
-                  onSelectToggle: () => _toggleSelectTodo(todo.id),
+    final stateKey = todosAsync.isLoading
+        ? 'loading'
+        : todosAsync.hasError
+        ? 'error'
+        : (activeTodos.isEmpty && completedTodos.isEmpty ? 'empty' : 'list');
+    // 加载 / 空态 / 列表之间交叉淡化，删除最后一条时不再整页硬切
+    return AppMotion.switcher(
+      context: context,
+      baseDuration: AppDurations.normal,
+      child: KeyedSubtree(
+        key: ValueKey(stateKey),
+        child: todosAsync.when(
+          data: (_) {
+            if (activeTodos.isEmpty && completedTodos.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.assignment_turned_in_outlined,
+                      size: 56,
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '暂无待办',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
                 ),
               );
-            },
-            footer: completedTodos.isEmpty ? null : _buildCompletedSection(context, completedTodos, folderId),
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => AppErrorState(error: e, action: '加载待办失败', onRetry: () => ref.invalidate(todoListProvider)),
+            }
+
+            final scrollController = _getScrollController(folderId);
+
+            return Listener(
+              onPointerDown: _handleListPointerDown,
+              onPointerMove: _handleListPointerMove,
+              child: ReorderableListView.builder(
+                scrollController: scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+                // 关掉框架默认手柄：桌面/Web 分支会额外画一个 Icons.drag_handle 叠在
+                // 行尾（与本页自绘手柄重复），移动端分支则把整行包进
+                // ReorderableDelayedDragStartListener，会与长按弹菜单的识别器在
+                // 500ms 处正面冲突。排序改由 _TodoItem 自行接管（见该组件）。
+                buildDefaultDragHandles: false,
+                itemCount: activeTodos.length,
+                onReorderStart: (index) {
+                  _reorderStartIndex = index;
+                  // 拾起反馈：拖拽浮层由 ReorderableListView 负责，这里补触感
+                  HapticFeedback.mediumImpact();
+                },
+                onReorderEnd: (index) {
+                  final startIndex = _reorderStartIndex;
+                  final moved = _pointerMoved;
+                  final anchor = _pointerDownPosition;
+                  _reorderStartIndex = null;
+                  _pointerMoved = false;
+                  _pointerDownPosition = null;
+                  // 长按拾起后原地松手 → 按「长按手势」弹操作菜单（原有长按菜单不变）。
+                  // 桌面/Web 仍由行尾手柄负责拖拽、卡片自身长按负责菜单，不走这条路径。
+                  if (useDragHandleFor(Theme.of(context).platform)) return;
+                  if (startIndex == null) return;
+                  final isLongPress = isLongPressRelease(pointerMoved: moved, landedElsewhere: index != startIndex);
+                  if (!isLongPress) return;
+                  if (startIndex < 0 || startIndex >= activeTodos.length) return;
+                  _showActionMenu(context, activeTodos[startIndex], anchor: anchor);
+                },
+                onReorderItem: (oldIndex, newIndex) {
+                  if (oldIndex < 0 || oldIndex >= activeTodos.length) return;
+                  if (newIndex < 0 || newIndex > activeTodos.length) return;
+                  final list = List<Todo>.from(activeTodos);
+                  final item = list.removeAt(oldIndex);
+                  list.insert(newIndex, item);
+                  final allTodosList = todosAsync.valueOrNull ?? [];
+                  final otherTodos = allTodosList.where((t) => t.isCompleted || t.folderId != folderId).toList();
+                  ref.read(todoListProvider.notifier).reorderTodos([...list, ...otherTodos]);
+                },
+                itemBuilder: (context, index) {
+                  final todo = activeTodos[index];
+                  return RepaintBoundary(
+                    key: ValueKey(todo.id),
+                    child: AppCollapsible(
+                      expanded: !_deletingTodoIds.contains(todo.id),
+                      rise: 0,
+                      child: _TodoItem(
+                        key: ValueKey('todo_item_${todo.id}'),
+                        todo: todo,
+                        index: index,
+                        isDraggable: !_isSelectionMode,
+                        isSelectionMode: _isSelectionMode,
+                        isSelected: _selectedTodoIds.contains(todo.id),
+                        onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
+                        onToggleComplete: () {
+                          ref.read(todoListProvider.notifier).toggleComplete(todo.id, true);
+                        },
+                        onLongPress: (globalKey) {
+                          _showActionMenu(context, todo, key: globalKey);
+                        },
+                        onDelete: () => _confirmDelete(todo),
+                        onSelectToggle: () => _toggleSelectTodo(todo.id),
+                      ),
+                    ),
+                  );
+                },
+                footer: completedTodos.isEmpty ? null : _buildCompletedSection(context, completedTodos, folderId),
+              ),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => AppErrorState(error: e, action: '加载待办失败', onRetry: () => ref.invalidate(todoListProvider)),
+        ),
+      ),
     );
   }
 
@@ -748,23 +794,27 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     children: [
                       const SizedBox(height: 4),
                       ...completedTodos.map(
-                        (todo) => _TodoItem(
-                          key: ValueKey('todo_completed_${todo.id}'),
-                          todo: todo,
-                          index: -1,
-                          isDraggable: false,
-                          animateIn: false,
-                          isSelectionMode: _isSelectionMode,
-                          isSelected: _selectedTodoIds.contains(todo.id),
-                          onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
-                          onToggleComplete: () {
-                            ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
-                          },
-                          onLongPress: (globalKey) {
-                            _showActionMenu(context, todo, key: globalKey);
-                          },
-                          onDelete: () => _confirmDelete(todo),
-                          onSelectToggle: () => _toggleSelectTodo(todo.id),
+                        (todo) => AppCollapsible(
+                          expanded: !_deletingTodoIds.contains(todo.id),
+                          rise: 0,
+                          child: _TodoItem(
+                            key: ValueKey('todo_completed_${todo.id}'),
+                            todo: todo,
+                            index: -1,
+                            isDraggable: false,
+                            animateIn: false,
+                            isSelectionMode: _isSelectionMode,
+                            isSelected: _selectedTodoIds.contains(todo.id),
+                            onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
+                            onToggleComplete: () {
+                              ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
+                            },
+                            onLongPress: (globalKey) {
+                              _showActionMenu(context, todo, key: globalKey);
+                            },
+                            onDelete: () => _confirmDelete(todo),
+                            onSelectToggle: () => _toggleSelectTodo(todo.id),
+                          ),
                         ),
                       ),
                     ],
@@ -1223,6 +1273,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   }
 
   Future<void> _confirmDelete(Todo todo) async {
+    // 在 await 之前取好依赖：收起动画时长用于「先收起再删除」的时序
+    final collapse = AppMotion.duration(context, AppDurations.normal);
+    final notifier = ref.read(todoListProvider.notifier);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1236,7 +1289,13 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
     if (confirmed == true) {
       HapticFeedback.heavyImpact();
-      ref.read(todoListProvider.notifier).deleteTodo(todo.id);
+      // 先在原地收起再提交删除，避免行瞬间蒸发；减弱动效下直接删除
+      setState(() => _deletingTodoIds.add(todo.id));
+      if (collapse > Duration.zero) {
+        await Future.delayed(collapse);
+      }
+      notifier.deleteTodo(todo.id);
+      if (mounted) _deletingTodoIds.remove(todo.id);
     }
   }
 }

@@ -6,8 +6,8 @@ import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 
 /// 未配置模型时的统一引导弹窗
 ///
-/// 内置免费模型下线后，App 不再自带任何可调用的模型：任何需要模型的功能在没有
-/// 可用厂商条目时都应该走这里，明确告知「去添加模型」而不是抛一段技术错误。
+/// 内置服务不可用（未拉到配置 / 维护中）且用户没有自配模型时走这里：
+/// 明确告知「去添加模型」而不是抛一段技术错误。
 ///
 /// [scene] 用于文案定位（如「小Q 对话」「AI 评分」），可以留空。
 Future<void> showNoModelConfiguredDialog(BuildContext context, {String scene = ''}) async {
@@ -22,9 +22,11 @@ Future<void> showNoModelConfiguredDialog(BuildContext context, {String scene = '
       final theme = Theme.of(ctx);
       return AlertDialog(
         icon: Icon(Icons.extension_off_rounded, color: theme.colorScheme.primary),
-        title: const Text('还没有可用的 AI 模型'),
+        title: const Text('还没有可用的模型'),
         content: Text(
-          scene.isEmpty ? '添加模型服务：填入 API 地址与密钥，扫描并启用模型即可使用。' : '$scene需要添加模型服务。\n到「AI 模型配置」填入 API 地址与密钥即可。',
+          scene.isEmpty
+              ? '内置服务暂时不可用。添加自己的模型服务：填入 API 地址与密钥，扫描并启用模型即可使用。'
+              : '$scene需要添加模型服务。\n到「小Q设置 → 模型」填入 API 地址与密钥，或稍后重试内置服务。',
           style: theme.textTheme.bodyMedium,
         ),
         actions: [
@@ -68,7 +70,7 @@ Future<void> showVisionUnsupportedDialog(
         title: const Text('当前模型不支持识图'),
         content: Text(
           '$scene需要识图，但「时间线提取」绑定的「$modelName」不支持图片输入。\n'
-          '到「AI 模型配置 → 模型分配」换成支持识图的模型'
+          '到「小Q设置 → 模型 → 模型分配」换成支持识图的模型'
           '（名字常含 vision / -vl / omni）；不需要图片就关闭「提取图片内容」后重试。',
           style: theme.textTheme.bodyMedium,
         ),

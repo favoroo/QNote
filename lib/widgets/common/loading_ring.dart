@@ -11,12 +11,19 @@ class LoadingRing extends StatefulWidget {
   final double strokeWidth;
   final Duration duration;
 
+  /// 确定进度（0~1）。非 null 时改画整圈进度弧，不再自转。
+  ///
+  /// 批量提取这类「总量已知、逐条推进」的场景里，自转圆环只能表达「在忙」，
+  /// 用户看不出还剩多少；进度弧配合 `N/M` 文案才能判断要不要等下去。
+  final double? progress;
+
   const LoadingRing({
     super.key,
     this.size = 24.0,
     this.color,
     this.strokeWidth = 1.4,
     this.duration = const Duration(milliseconds: 1000),
+    this.progress,
   });
 
   @override
@@ -30,7 +37,11 @@ class _LoadingRingState extends State<LoadingRing> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: widget.duration)..repeat();
+    _controller = AnimationController(vsync: this, duration: widget.duration);
+    // 确定进度的调用方不需要自转，等 didChangeDependencies 读动画开关会多跑一帧
+    if (widget.progress == null) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -39,10 +50,20 @@ class _LoadingRingState extends State<LoadingRing> with SingleTickerProviderStat
     final reduce = MediaQuery.disableAnimationsOf(context);
     if (reduce == _reduceMotion) return;
     _reduceMotion = reduce;
-    if (reduce) {
+    _syncPlayback();
+  }
+
+  /// 按「减弱动效 / 是否有确定进度」统一收口自转状态。
+  ///
+  /// 确定进度时不需要自转：进度弧本身就在变化，再叠一层旋转会让「还差多少」
+  /// 这个信息变得不可读。
+  void _syncPlayback() {
+    if (_reduceMotion || widget.progress != null) {
       _controller.stop();
       _controller.value = 0.0;
-    } else {
+      return;
+    }
+    if (!_controller.isAnimating) {
       _controller.repeat();
     }
   }
@@ -52,9 +73,9 @@ class _LoadingRingState extends State<LoadingRing> with SingleTickerProviderStat
     super.didUpdateWidget(oldWidget);
     if (oldWidget.duration != widget.duration) {
       _controller.duration = widget.duration;
-      if (!_reduceMotion) {
-        _controller.repeat();
-      }
+    }
+    if (oldWidget.progress != null || widget.progress != null || oldWidget.duration != widget.duration) {
+      _syncPlayback();
     }
   }
 
@@ -67,9 +88,25 @@ class _LoadingRingState extends State<LoadingRing> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     final effectiveColor = widget.color ?? Theme.of(context).colorScheme.primary;
+    final progress = widget.progress;
+
+    // 确定进度：画一整圈极淡底轨 + 一段进度弧，不再旋转
+    if (progress != null) {
+      return RepaintBoundary(
+        child: CustomPaint(
+          size: Size(widget.size, widget.size),
+          painter: _LoadingRingProgressPainter(
+            color: effectiveColor,
+            strokeWidth: widget.strokeWidth * (widget.size / 24.0),
+            progress: progress.clamp(0.0, 1.0),
+          ),
+        ),
+      );
+    }
 
     return RepaintBoundary(
       child: RotationTransition(
+        key: const ValueKey('loading_ring_spin'),
         turns: _controller,
         child: CustomPaint(
           size: Size(widget.size, widget.size),
@@ -123,5 +160,41 @@ class _LoadingRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _LoadingRingPainter oldDelegate) {
     return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
+  }
+}
+
+/// 确定进度圆环：底轨 + 进度弧。
+///
+/// 用 `drawArc` 而不是沿 SVG path 截取：进度弧从 -90°（正上方）顺时针增长，
+/// 起点与自转态的缺口位置一致，两种形态切换时视觉不跳。
+class _LoadingRingProgressPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double progress;
+
+  _LoadingRingProgressPainter({required this.color, required this.strokeWidth, required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scale = size.width / 24.0;
+    final rect = Rect.fromCircle(
+      center: Offset(size.width / 2, size.height / 2),
+      radius: (size.width - strokeWidth * scale) / 2,
+    );
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = math.max(strokeWidth, 0.5) * scale;
+
+    // 底轨压到 22%：要让用户看出「这是一整圈」，又不能和进度弧抢注意力
+    canvas.drawArc(rect, 0, math.pi * 2, false, base..color = color.withValues(alpha: 0.22));
+    if (progress > 0) {
+      canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * progress, false, base..color = color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LoadingRingProgressPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth || oldDelegate.progress != progress;
   }
 }

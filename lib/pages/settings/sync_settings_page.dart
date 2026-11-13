@@ -7,12 +7,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 
 /// 云同步设置视图
 ///
@@ -441,10 +445,11 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
               child: Row(
                 children: [
-                  Icon(
-                    _showAdvancedPath ? Icons.arrow_drop_down_rounded : Icons.arrow_right_rounded,
-                    size: 20,
-                    color: theme.hintColor,
+                  AnimatedRotation(
+                    turns: _showAdvancedPath ? 0.25 : 0,
+                    duration: AppMotion.duration(context, AppDurations.fast),
+                    curve: AppCurves.emphasized,
+                    child: Icon(Icons.arrow_right_rounded, size: 20, color: theme.hintColor),
                   ),
                   Text(
                     '备份目录：'
@@ -464,10 +469,15 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
               ),
             ),
           ),
-          if (_showAdvancedPath) ...[
-            const SizedBox(height: 8),
-            _buildInputField(label: '远程根目录名称', hint: '默认 QNote', controller: _remotePathController),
-          ],
+          // 展开/收起走高度过渡，避免输入框突然插入把下方内容整体顶开
+          AppCollapsible(
+            expanded: _showAdvancedPath,
+            rise: 0,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _buildInputField(label: '远程根目录名称', hint: '默认 QNote', controller: _remotePathController),
+            ),
+          ),
         ],
       ),
     );
@@ -507,40 +517,48 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           ),
 
           // 若开启自动同步，允许微调间隔时间
-          if (_webdavEnabled) ...[
-            const Divider(height: 1, indent: 56, endIndent: 16),
-            _buildSettingRow(
-              icon: Icons.schedule_rounded,
-              iconColor: colorScheme.primary,
-              title: '同步频率',
-              trailing: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: _syncIntervalOptions.any((e) => e.value == _syncInterval) ? _syncInterval : 15,
-                  borderRadius: BorderRadius.circular(12),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontSize: AppTypography.body,
-                    color: colorScheme.onSurface,
+          // 开关切换时用高度过渡插入/移除这一行，避免卡片瞬间跳高
+          AppCollapsible(
+            expanded: _webdavEnabled,
+            rise: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                _buildSettingRow(
+                  icon: Icons.schedule_rounded,
+                  iconColor: colorScheme.primary,
+                  title: '同步频率',
+                  trailing: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: _syncIntervalOptions.any((e) => e.value == _syncInterval) ? _syncInterval : 15,
+                      borderRadius: BorderRadius.circular(12),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: AppTypography.body,
+                        color: colorScheme.onSurface,
+                      ),
+                      isDense: true,
+                      items: _syncIntervalOptions
+                          .map(
+                            (e) => DropdownMenuItem(
+                              value: e.value,
+                              child: Text(e.key, style: const TextStyle(fontSize: AppTypography.body)),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _syncInterval = val);
+                          _notifyDirtyChange();
+                        }
+                      },
+                    ),
                   ),
-                  isDense: true,
-                  items: _syncIntervalOptions
-                      .map(
-                        (e) => DropdownMenuItem(
-                          value: e.value,
-                          child: Text(e.key, style: const TextStyle(fontSize: AppTypography.body)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() => _syncInterval = val);
-                      _notifyDirtyChange();
-                    }
-                  },
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
 
           const Divider(height: 1, indent: 56, endIndent: 16),
 

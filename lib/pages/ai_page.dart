@@ -44,6 +44,7 @@ import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thinking_process_view.dart';
@@ -366,8 +367,8 @@ class _AiPageState extends ConsumerState<AiPage> {
         } else {
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
-            duration: AppDurations.medium,
-            curve: Curves.easeOut,
+            duration: AppMotion.duration(context, AppDurations.medium),
+            curve: AppCurves.emphasized,
           );
         }
       }
@@ -1422,18 +1423,37 @@ class _AiPageState extends ConsumerState<AiPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 0. 输入增强浮层：斜杠命令 / @ 引用（位于附件挂载条之上）
-              if (_slashQuery != null) ...[
-                SlashCommandPanel(skills: _slashCandidates, query: _slashQuery!, onSelected: _applySlashSelection),
-                const SizedBox(height: 6),
-              ],
-              if (_atQuery != null) ...[AtReferencePanel(onSelected: _applyAtSelection), const SizedBox(height: 6)],
+              // 0~1. 输入区附加内容：斜杠命令 / @ 引用 / 引用卡 / 附件条。
+              // 统一包一层高度过渡：出现时把输入框平滑顶起，消失时也不留空洞。
+              AnimatedSize(
+                duration: AppMotion.duration(context, AppDurations.normal),
+                curve: AppCurves.emphasizedSpatial,
+                alignment: Alignment.bottomCenter,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 0. 输入增强浮层：斜杠命令 / @ 引用（位于附件挂载条之上）
+                    if (_slashQuery != null) ...[
+                      SlashCommandPanel(
+                        skills: _slashCandidates,
+                        query: _slashQuery!,
+                        onSelected: _applySlashSelection,
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    if (_atQuery != null) ...[
+                      AtReferencePanel(onSelected: _applyAtSelection),
+                      const SizedBox(height: 6),
+                    ],
 
-              // 0.5 框选对话引用卡片（框选「给小Q」或点击悬浮球挂起）
-              if (_quotedChatText != null) ...[_buildQuotePreviewCard(theme), const SizedBox(height: 6)],
+                    // 0.5 框选对话引用卡片（框选「给小Q」或点击悬浮球挂起）
+                    if (_quotedChatText != null) ...[_buildQuotePreviewCard(theme), const SizedBox(height: 6)],
 
-              // 1. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
-              if (hasAttachments) ...[_buildAttachmentBar(theme), const SizedBox(height: 6)],
+                    // 1. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
+                    if (hasAttachments) ...[_buildAttachmentBar(theme), const SizedBox(height: 6)],
+                  ],
+                ),
+              ),
 
               // 1.5 输入栏上方功能行：左侧常用提示词，右侧模型胶囊（含思考强度档位）
               Padding(
@@ -1512,10 +1532,11 @@ class _AiPageState extends ConsumerState<AiPage> {
 
                       // 小Q工作过程中：发送按钮变为中断/停止按钮，
                       // 外层环绕极简细线 LoadingRing 缺口圆环旋转动画，中央为精致圆角停止方块
+                      final Widget button;
                       if (busy) {
                         final isDark = theme.brightness == Brightness.dark;
                         final primary = theme.colorScheme.primary;
-                        return Tooltip(
+                        button = Tooltip(
                           message: '中止小Q当前操作',
                           child: Material(
                             color: Colors.transparent,
@@ -1554,34 +1575,39 @@ class _AiPageState extends ConsumerState<AiPage> {
                             ),
                           ),
                         );
-                      }
-
-                      // 小Q空闲时：标准发送按钮（长按切换模型）
-                      return GestureDetector(
-                        onTap: canSend ? _sendMessage : null,
-                        onLongPress: () {
-                          HapticFeedback.mediumImpact();
-                          _openModelSelector();
-                        },
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: canSend
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.send_rounded,
-                              size: 22,
+                      } else {
+                        // 小Q空闲时：标准发送按钮（长按切换模型）
+                        button = PressableScale(
+                          onTap: canSend ? _sendMessage : null,
+                          onLongPress: () {
+                            HapticFeedback.mediumImpact();
+                            _openModelSelector();
+                          },
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
                               color: canSend
-                                  ? theme.colorScheme.onPrimary
-                                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.send_rounded,
+                                size: 22,
+                                color: canSend
+                                    ? theme.colorScheme.onPrimary
+                                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                              ),
                             ),
                           ),
-                        ),
+                        );
+                      }
+                      // 发送/停止两套按钮交叉淡化 + 轻微缩放，避免整钮硬闪
+                      return AppMotion.switcher(
+                        context: context,
+                        child: KeyedSubtree(key: ValueKey(busy ? 'send_stop' : 'send_idle'), child: button),
                       );
                     },
                   ),
