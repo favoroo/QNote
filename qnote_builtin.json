@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-13T03:18:16Z",
+  "minAppVersion": "0.1.94",
+  "enabled": true,
+  "chat": {
+    "enabled": true,
+    "baseUrl": "https://trackback-personals-foto-highlights.trycloudflare.com/v1",
+    "model": "qnote-free",
+    "displayName": "小Q 免费模型",
+    "contextWindow": 1048576,
+    "vision": true
+  },
+  "image": {
+    "enabled": false,
+    "model": "qnote-image-free",
+    "displayName": "小Q 免费生图"
+  },
+  "maintenance": {
+    "enabled": false,
+    "message": ""
+  },
+  "sig": "a117891f110404113c6febd2e87fc460387db96231547f84870abacc1c111ed0"
+}
