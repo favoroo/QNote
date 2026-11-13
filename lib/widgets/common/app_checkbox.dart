@@ -4,12 +4,16 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 
-/// 全应用统一的勾选指示器：圆角矩形外框 + 对勾。
+/// 全应用统一的勾选指示器：圆形外框 + 对勾。
 ///
 /// Material 自带的 `Icons.check_box(_outline_blank)` 是直角方框，和项目里的
 /// 圆角卡片、胶囊标签放在一起会显得没对齐；`Checkbox` 又自带水波纹和 48px
 /// 命中区，塞进「整行可点」的列表里容易和父级手势抢事件。这里只负责视觉，
 /// 点击交给外层整行或 [onTap] 处理。
+///
+/// 外框取正圆而非圆角矩形：列表里它和圆形头像、圆形图标容器、胶囊标签同处
+/// 一列，圆形能顺着这些既有形状的轮廓走；小尺寸（16px）下圆角矩形看起来会
+/// 像被磨掉角的小方块，正圆在 16px 仍有清晰的形状识别度。
 class AppCheckbox extends StatelessWidget {
   const AppCheckbox({
     super.key,
@@ -27,7 +31,7 @@ class AppCheckbox extends StatelessWidget {
   /// 独立点击回调；为 null 时仅作视觉指示器，由父级整行点击切换。
   final VoidCallback? onTap;
 
-  /// 外框边长。圆角按边长等比取 30%，20px 时正好是 6px 圆角。
+  /// 外框直径。描边宽度与对勾大小都按它等比推导，改尺寸时无需再调其他参数。
   final double size;
 
   /// 选中态填充色，默认取主题 primary。
@@ -52,14 +56,23 @@ class AppCheckbox extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: value ? active : Colors.transparent,
-        borderRadius: BorderRadius.circular(size * 0.3),
-        border: Border.all(color: value ? active : inactive, width: 1.8),
+        shape: BoxShape.circle,
+        border: Border.all(
+          // 选中态描边吞掉一半内距，颜色与填充同色即可；未选中态描边保持可读。
+          color: value ? active : inactive,
+          width: size >= 18 ? 1.8 : 1.5,
+        ),
       ),
       child: AnimatedScale(
         scale: value ? 1 : 0,
         duration: AppMotion.duration(context, AppDurations.fast),
         curve: AppCurves.spring,
-        child: Icon(Icons.check_rounded, size: size * 0.68, color: checkColor ?? colorScheme.onPrimary),
+        child: Icon(
+          Icons.check_rounded,
+          // 正圆内径比圆角矩形小，对勾再放大一点才饱满。
+          size: size * 0.7,
+          color: checkColor ?? colorScheme.onPrimary,
+        ),
       ),
     );
 

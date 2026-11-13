@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
+import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
@@ -22,6 +23,7 @@ import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
+import 'package:qnote_flutter/providers/health_timeline_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/batch_review_navigation.dart';
@@ -29,6 +31,7 @@ import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 import 'package:qnote_flutter/core/utils/concurrent_batch.dart';
 import 'package:qnote_flutter/core/utils/diary_progress.dart';
 import 'package:qnote_flutter/core/utils/diary_timeline_layout.dart';
+import 'package:qnote_flutter/core/utils/health_timeline.dart';
 import 'package:qnote_flutter/core/utils/timeline_time_drag.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
@@ -38,6 +41,7 @@ import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/search_view.dart';
 import 'package:qnote_flutter/widgets/diary/diary_item.dart';
+import 'package:qnote_flutter/widgets/diary/health_daily_placeholder_card.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_record_fab.dart';
@@ -63,6 +67,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   static const int _itemsPerDay = kDiaryTimelineItemsPerDay;
   static const double _nodeHeight = kDiaryTimelineNodeHeight;
 
+  /// 时间线之外的固定高度：56 顶栏 + 1 分割线 + 66 底栏。
+  /// 仅用于首帧滚动偏移估算，随后会用真实 RenderBox 做像素级校准。
+  static const double _timelineChromeHeight = 56 + 1 + 66;
+
   late DateTime _today;
   late DateTime _windowStartDate;
   final int _windowDays = 120;
@@ -83,6 +91,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   Offset? _lastDragPosition;
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
+
+  /// 首屏定位是否已完成。完成前时间线保持不可见，避免用户看到列表从顶部跳动。
+  bool _initialTimelineSettled = false;
   bool _isProgrammaticScrolling = true;
 
   /// 正在提取的记录（批量并发时可能同时有多条）。
@@ -90,6 +101,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 从单个 id 改成 Set 是并发的前提：3 路并行时三张卡片要各自转圈，
   /// 用单个 id 只会留下最后一条的状态，其余卡片看起来「没反应」。
   final Set<String> _extractingRecordIds = {};
+
+  /// 正在原地更新的今日运动健康日结卡记录 id（同一时间只允许更新一张）。
+  String? _updatingHealthSummaryId;
 
   /// 记录 id → 该条提取的取消令牌（停止时逐条 cancel）
   final Map<String, CancelToken> _cancelTokens = {};
@@ -347,6 +361,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     VoidCallback? onSettled,
   }) {
     if (!_scrollController.hasClients) {
+      _finishProgrammaticScroll();
       onSettled?.call();
       return;
     }
@@ -475,6 +490,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     VoidCallback? onSettled,
   }) {
     if (!targetContext.mounted) {
+      _finishProgrammaticScroll();
       onSettled?.call();
       return;
     }
@@ -579,8 +595,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _isProgrammaticScrolling = false;
   }
 
-  void _scrollToCurrentTime({bool smooth = true, Map<String, List<DiaryRecord>>? recordsByDate}) {
-    if (!_scrollController.hasClients) return;
+  void _scrollToCurrentTime({
+    bool smooth = true,
+    Map<String, List<DiaryRecord>>? recordsByDate,
+    VoidCallback? onSettled,
+  }) {
+    if (!_scrollController.hasClients) {
+      // 页面还没完成布局时不能留下「程序滚动中」标记，否则窗口平移会被永久禁用。
+      _finishProgrammaticScroll();
+      onSettled?.call();
+      return;
+    }
 
     final now = DateTime.now();
     final dayOffset = _dateToDayOffset(now);
@@ -589,7 +614,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       _ensureDateInWindow(now);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _scrollToCurrentTime(smooth: smooth, recordsByDate: recordsByDate);
+          _scrollToCurrentTime(smooth: smooth, recordsByDate: recordsByDate, onSettled: onSettled);
+        } else {
+          onSettled?.call();
         }
       });
       return;
@@ -608,7 +635,30 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       alignment: 0.5,
       recordsByDate: recordsByDate,
       targetTime: now,
+      onSettled: onSettled,
     );
+  }
+
+  /// 首帧直接把时间线定位到当前时刻，避免先渲染列表顶部再跳转造成的闪动。
+  ///
+  /// [ScrollController.initialScrollOffset] 只能在构造时指定，因此这里在列表首次
+  /// 挂载前替换控制器；此时旧控制器还没有任何滚动位置，替换不会丢失滚动状态。
+  void _prepareInitialTimelineScroll(Map<String, List<DiaryRecord>> recordsByDate, double viewportHeight) {
+    final now = DateTime.now();
+    final estimatedOffset = _estimateOffsetForTimeWithRecords(now, recordsByDate);
+    final initialOffset = (estimatedOffset - viewportHeight * 0.5).clamp(0.0, double.infinity);
+
+    if (_scrollController.hasClients) {
+      // 兜底：列表已挂载时不再替换控制器，直接定位到估算位置。
+      _scrollController.jumpTo(initialOffset.clamp(0.0, _scrollController.position.maxScrollExtent));
+      return;
+    }
+
+    final previous = _scrollController;
+    previous.removeListener(_onScroll);
+    previous.dispose();
+    _scrollController = ScrollController(initialScrollOffset: initialOffset, keepScrollOffset: false);
+    _scrollController.addListener(_onScroll);
   }
 
   void _scrollToTime(DateTime targetTime, {bool smooth = true, Map<String, List<DiaryRecord>>? recordsByDate}) {
@@ -1357,6 +1407,48 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _clearUndoForRecord(record.id);
     Toast.dismiss();
     context.push('/diary/editor', extra: record);
+  }
+
+  /// 取运动健康日结卡所属日期；非日结卡返回 null。
+  ///
+  /// 用 `bodyState['date']` 而不是记录时间：日结卡固定在当天 23:00，
+  /// 跨时区/拖拽调时后记录时间可能与数据日期不一致。
+  DateTime? _healthSummaryDate(DiaryRecord record) {
+    final bs = record.bodyState;
+    if (bs == null || bs['source'] != 'mi_fitness' || bs['type'] != 'daily_summary') {
+      return null;
+    }
+    return DateTime.tryParse(bs['date'] as String? ?? '');
+  }
+
+  /// 原地更新今天的运动健康日结卡。
+  ///
+  /// 卡片一旦生成，用户想刷新当天步数/睡眠时不必再跳设置页：直接按日同步，
+  /// 服务层会更新同一条日结记录并经事件总线触发表格刷新。
+  Future<void> _handleUpdateHealthSummary(String recordId, DateTime date) async {
+    if (_updatingHealthSummaryId != null) return;
+    setState(() => _updatingHealthSummaryId = recordId);
+
+    HealthSyncResult result;
+    try {
+      result = await ref.read(healthSyncServiceProvider).syncDate(date);
+    } catch (e) {
+      result = HealthSyncResult(success: false, errorMessage: '同步异常：$e');
+    }
+    if (!mounted) return;
+    setState(() => _updatingHealthSummaryId = null);
+
+    if (!result.success) {
+      Toast.error(context, result.errorMessage ?? '更新失败');
+      return;
+    }
+    // 成功路径由 HealthSyncService 直接更新记录并触发 WorkspaceEventBus，
+    // diaryListProvider 会自动重查；这里不再额外全表刷新，避免重复读库。
+    if (result.newTimelineCards == 0) {
+      Toast.info(context, '今日暂无新的健康数据');
+    } else {
+      Toast.success(context, '已更新今日健康数据');
+    }
   }
 
   /// 「给小Q」：把该条流水记录引用给悬浮小Q（修改这条事件、针对它提问均可），
@@ -2493,6 +2585,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     final theme = Theme.of(context);
     final diaryListAsync = ref.watch(diaryListProvider);
+    // 只有已绑定小米运动健康的用户才补日结空位卡，避免给不使用该功能的用户制造噪音
+    final healthBound = ref.watch(healthBindingStatusProvider).valueOrNull ?? false;
     final selectEvent = ref.watch(diaryInputTimeProvider);
     final currentInputTime = ref.watch(currentInputTimeProvider);
     final timelineRecordAnchor = _resolveTimelineRecordAnchor(selectEvent);
@@ -2501,13 +2595,23 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       _hasPerformedInitialScroll = true;
       final allRecords = diaryListAsync.value ?? const [];
       final recordsByDate = _buildRecordsByDate(allRecords);
+      final media = MediaQuery.of(context);
+      final viewportHeight = (media.size.height - media.padding.top - media.padding.bottom - _timelineChromeHeight)
+          .clamp(1.0, double.infinity);
+      _prepareInitialTimelineScroll(recordsByDate, viewportHeight);
 
+      // 首帧先按估算位置布局，等 RenderBox 可用后再做一次像素级校准；
+      // 校准完成前用加载态盖住时间线，用户第一眼看到的就是当前时刻。
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 50), () {
-          if (!mounted || !_scrollController.hasClients) return;
-          // 复用 _scrollToCurrentTime 双阶段定位（预跳跃 + RenderBox物理像素校准），保证与双击底部栏完全一致且绝对居中
-          _scrollToCurrentTime(smooth: false, recordsByDate: recordsByDate);
-        });
+        if (!mounted) return;
+        _scrollToCurrentTime(
+          smooth: false,
+          recordsByDate: recordsByDate,
+          onSettled: () {
+            if (!mounted) return;
+            setState(() => _initialTimelineSettled = true);
+          },
+        );
       });
     }
 
@@ -2873,6 +2977,22 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                   now.minute,
                                 );
 
+                                // 23:00 是日结槽位：当天没有真实日结卡时补一张可同步的空位卡。
+                                // 只在这一行计算，避免每个半小时节点都扫一遍当天记录。
+                                final showHealthPlaceholder =
+                                    nodeIndex == 47 &&
+                                    shouldShowHealthDailyPlaceholder(
+                                      date: date,
+                                      today: _today,
+                                      healthBound: healthBound,
+                                      hasDailySummary: dayRecords.any((r) {
+                                        final bs = r.bodyState;
+                                        return bs != null &&
+                                            bs['source'] == 'mi_fitness' &&
+                                            bs['type'] == 'daily_summary';
+                                      }),
+                                    );
+
                                 childWidget = Column(
                                   key: (isNowInThisInterval && _isToday(date)) ? _currentTimeNodeKey : null,
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2919,8 +3039,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                         onTap: () => _handleNodeTap(date, now),
                                         onDoubleTap: () => _handleNodeDoubleTap(date, now),
                                       ),
-                                    ...recordsInInterval.map(
-                                      (record) => RepaintBoundary(
+                                    if (showHealthPlaceholder)
+                                      HealthDailyPlaceholderCard(date: date, isToday: _isToday(date)),
+                                    ...recordsInInterval.map((record) {
+                                      final healthDate = _healthSummaryDate(record);
+                                      final canUpdateHealth =
+                                          healthBound && healthDate != null && isSameCalendarDay(healthDate, _today);
+                                      return RepaintBoundary(
                                         child: Opacity(
                                           // 发送后飞行期间先藏起来，等盖板落位再揭开；
                                           // 只改透明度，卡片仍占位，目标 Rect 可以照量。
@@ -2956,13 +3081,17 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                                   isUndoable: _undoRecords.containsKey(record.id),
                                                   undoAnimation: _undoControllers[record.id],
                                                   isReviewHighlighted: _batchReviewHighlightId == record.id,
+                                                  onHealthSync: canUpdateHealth
+                                                      ? () => _handleUpdateHealthSummary(record.id, healthDate)
+                                                      : null,
+                                                  isHealthSyncing: _updatingHealthSummaryId == record.id,
                                                 ),
                                               ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                    }),
                                   ],
                                 );
                               }
@@ -2997,6 +3126,15 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                     onRetry: () => ref.invalidate(diaryListProvider),
                   ),
                 ),
+                // 首屏定位完成前，用加载态盖住时间线的预布局与校准，避免看到列表跳动。
+                // 放在 FAB 之前：只遮时间线，悬浮钮保持稳定，不会跟着闪一下。
+                if (diaryListAsync is AsyncData && !_initialTimelineSettled)
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: theme.scaffoldBackgroundColor,
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
                 // 每日日记 FAB（智能提取按钮左侧）
                 Positioned(right: 72, bottom: _fabBottom, child: _buildJournalFAB(theme)),
                 // Smart Extract FAB

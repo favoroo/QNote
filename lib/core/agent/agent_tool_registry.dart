@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/agent/tools/workspace/edit_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/list_dir_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/move_file_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/read_file_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/workspace/read_files_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/skill_market_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/skill_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/view_image_tool.dart';
@@ -48,6 +49,7 @@ class AgentToolRegistry {
       // 虚拟工作区 (VFS) 通用基础工具
       ListDirTool(),
       ReadFileTool(),
+      ReadFilesTool(),
       WriteFileTool(),
       WriteFilesTool(),
       EditFileTool(),

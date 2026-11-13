@@ -71,6 +71,37 @@ void main() {
       expect(palette.onSurface.computeLuminance(), lessThan(0.05));
       expect(palette.surfaceContainerHighest, isNot(Colors.white));
     });
+
+    test('浅色表面保住画布色相，不再被白冲成米色', () {
+      // 历史问题：直接叠 55% 白会把饱和的黄绿 #B3CB41 冲成米黄 #DDE8AA，
+      // 用户会觉得「卡片和我选的颜色不是一回事」。
+      const canvases = <Color>[
+        Color(0xFFB3CB41), // 黄绿
+        Color(0xFFBCD7EE), // 雾蓝
+        Color(0xFFDCCBF2), // 香芋紫
+        Color(0xFFE0C6AE), // 奶茶
+        Color(0xFFC5E803), // 荧光黄绿
+      ];
+
+      for (final canvas in canvases) {
+        final palette = AppSurfacePalette.derived(canvas);
+        expect(palette.brightness, Brightness.light);
+
+        final canvasHsl = HSLColor.fromColor(canvas);
+        final surfaceHsl = HSLColor.fromColor(palette.surface);
+        // 色相基本不动（容差 2°），只允许明度抬升
+        final hueGap = (surfaceHsl.hue - canvasHsl.hue).abs();
+        expect(
+          hueGap < 2 || hueGap > 358,
+          isTrue,
+          reason: '${_hex(canvas)} 的表面色相从 ${canvasHsl.hue} 漂到了 ${surfaceHsl.hue}',
+        );
+        expect(surfaceHsl.lightness, greaterThan(canvasHsl.lightness));
+        // 抬亮后仍能和画布区分（靠明度差 + 卡片描边），但不至于变成另一种颜色
+        expect(AppContrast.contrastRatio(palette.surface, palette.canvas), greaterThan(1.08));
+        expect(AppContrast.contrastRatio(palette.surface, palette.canvas), lessThan(1.5));
+      }
+    });
   });
 
   group('AppBackgroundSetting', () {

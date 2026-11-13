@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  快捷记录 · 1×1 形态：整格就是一颗主色圆角按钮，中间一支白色笔。
-  组件本身是入口而不是输入框，1 格宽下放不下文字，留图标最干净。
-  根布局画背景，launcher 才不会补默认灰板；整格都是点击热区。
--->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  快捷记录 · 1×1：整格就是一颗主色圆，中间一支白色笔。
+  没有文字、没有次级按钮——1 格放不下第二个元素，放一个干净的入口最耐看。
+--><FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_quick_record_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget_qr_button"
+    android:background="@drawable/bg_widget_qr_pill"
     android:contentDescription="@string/widget_quick_record_action">
 
     <ImageView

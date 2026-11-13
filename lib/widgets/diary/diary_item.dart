@@ -38,6 +38,15 @@ class DiaryItem extends StatefulWidget {
   /// 刚通过批量确认栏箭头跳转到该记录：短暂描边高亮，方便定位。
   final bool isReviewHighlighted;
 
+  /// 运动健康日结卡片右上角的「更新当天数据」入口。
+  ///
+  /// 仅今天的日结卡由页面传入：卡片一旦生成，用户想刷新当天步数/睡眠时不必
+  /// 再跳设置页；为空时不显示入口，历史日期也保持只读。
+  final VoidCallback? onHealthSync;
+
+  /// 日结卡是否正在更新当天数据。
+  final bool isHealthSyncing;
+
   /// 时间线左侧圆形节点图标的 Key。
   ///
   /// 页面层不直接监听卡片内部手势，而是用这个 Key 拿到图标命中区域，
@@ -70,6 +79,8 @@ class DiaryItem extends StatefulWidget {
     this.isUndoable = false,
     this.undoAnimation,
     this.isReviewHighlighted = false,
+    this.onHealthSync,
+    this.isHealthSyncing = false,
     this.timeDragHandleKey,
     this.isTimeDragging = false,
     this.cardKey,
@@ -99,6 +110,8 @@ class _DiaryItemState extends State<DiaryItem> {
   bool get isUndoable => widget.isUndoable;
   Animation<double>? get undoAnimation => widget.undoAnimation;
   bool get isReviewHighlighted => widget.isReviewHighlighted;
+  VoidCallback? get onHealthSync => widget.onHealthSync;
+  bool get isHealthSyncing => widget.isHealthSyncing;
 
   /// 当日屏幕使用时间（仅在日结卡片无持久化屏幕时长时异步获取并补全展示）
   TodayScreenUsage? _liveScreenUsage;
@@ -738,11 +751,14 @@ class _DiaryItemState extends State<DiaryItem> {
                                             ),
                                           ],
                                         ),
-                                        // 提取中 → 可撤回的状态切换用淡入缩放，避免图标生硬闪替
+                                        // 提取中 / 可撤回 / 待提取三种状态的图标形状不同：若用默认的等时
+                                        // 交叉淡入，新旧图标会在同一处叠成重影，观感就是「倒计时结束后闪一下」。
+                                        // 错开两个 Interval（旧的先淡出、新的后淡入）让它们基本不重叠地交接：
+                                        // 旧图标收缩淡出后，新图标才淡入，视觉上只有一次干净的状态切换。
                                         child: AnimatedSwitcher(
                                           duration: AppMotion.duration(context, AppDurations.fast),
-                                          switchInCurve: AppCurves.emphasized,
-                                          switchOutCurve: AppCurves.exit,
+                                          switchInCurve: const Interval(0.5, 1.0, curve: AppCurves.emphasized),
+                                          switchOutCurve: const Interval(0.45, 1.0, curve: AppCurves.exit),
                                           transitionBuilder: (child, animation) {
                                             return FadeTransition(
                                               opacity: animation,
@@ -874,6 +890,39 @@ class _DiaryItemState extends State<DiaryItem> {
             child: Text(
               categoryTag,
               style: theme.textTheme.labelSmall?.copyWith(color: categoryInk, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+        // 今日日结卡支持原地刷新：步数/睡眠会随时间持续累积，用户不必再跳设置页
+        if (_isHealthDailySummary && onHealthSync != null) ...[
+          const SizedBox(width: 6),
+          Semantics(
+            button: true,
+            label: isHealthSyncing ? '正在更新今日健康数据' : '更新今日健康数据',
+            child: GestureDetector(
+              onTap: isHealthSyncing ? null : onHealthSync,
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: Center(
+                  child: isHealthSyncing
+                      ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.8, color: pillInk),
+                        )
+                      : Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: primaryTagColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(Icons.sync_rounded, size: 15, color: pillInk),
+                        ),
+                ),
+              ),
             ),
           ),
         ],

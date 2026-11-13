@@ -173,6 +173,19 @@ void main() {
     expect(find.byIcon(Icons.camera_alt_outlined), findsOneWidget);
   });
 
+  testWidgets('附件行相机钮与 AI 提取钮同轴对齐', (tester) async {
+    await _pumpSheet(tester);
+
+    // 附件行右侧留 16、操作列宽 46：38 的相机钮与 38 的提取钮应共用同一竖直轴线，
+    // 46 的发送键居中后圆心也在这条线上。
+    final cameraCenter = tester.getCenter(find.byIcon(Icons.camera_alt_outlined));
+    final extractCenter = tester.getCenter(find.byKey(const ValueKey('record-ai-extract')));
+    final sendCenter = tester.getCenter(find.byKey(const ValueKey('record-send')));
+
+    expect(cameraCenter.dx, moreOrLessEquals(extractCenter.dx, epsilon: 0.01));
+    expect(cameraCenter.dx, moreOrLessEquals(sendCenter.dx, epsilon: 0.01));
+  });
+
   testWidgets('标签自带字段时就地展开，不需要额外点击', (tester) async {
     await _pumpSheet(
       tester,

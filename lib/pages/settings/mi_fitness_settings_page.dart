@@ -15,6 +15,7 @@ import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
+import 'package:qnote_flutter/providers/health_timeline_provider.dart';
 import 'package:qnote_flutter/pages/health/health_metric_detail_page.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
@@ -180,6 +181,8 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       }
       if (!mounted) return;
       if (res.success) {
+        // 时间线空位卡依赖本地「是否已同步」判断，批量同步后要让它们重新查库
+        ref.read(healthSyncVersionProvider.notifier).state++;
         final label = daysBack >= 30 ? '最近$daysBack天' : '最新健康数据';
         Toast.success(context, '已同步$label（${res.syncedDays}天）');
         await _loadState();
@@ -290,6 +293,8 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
 
       if (!mounted) return;
       if (res.success) {
+        // 单日同步同样会改变时间线当天的空位卡/日结卡状态
+        ref.read(healthSyncVersionProvider.notifier).state++;
         Toast.success(context, '已同步 ${_formatDateLabel(_selectedDate)}');
         await _loadDateData(_selectedDate);
         final lastSync = await syncService.getLastSyncTime();
@@ -334,17 +339,19 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     if (confirmed == true) {
       final authService = ref.read(miFitnessAuthServiceProvider);
       await authService.clearCredentials();
+      // 解绑后时间线应立即收起所有运动健康空位卡
+      ref.invalidate(healthBindingStatusProvider);
       if (mounted) Toast.success(context, '已解除绑定');
       await _loadState();
     }
   }
 
   void _showQrLoginDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const _MiQrLoginDialog(),
-    ).then((_) => _loadState());
+    showDialog(context: context, barrierDismissible: false, builder: (ctx) => const _MiQrLoginDialog()).then((_) {
+      // 扫码成功/取消都可能改变绑定态，回到时间线前后都要重新校验
+      ref.invalidate(healthBindingStatusProvider);
+      _loadState();
+    });
   }
 
   void _changeDate(int offsetDays) {

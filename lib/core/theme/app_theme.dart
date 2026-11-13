@@ -280,7 +280,8 @@ class AppTheme {
           return Colors.transparent;
         }),
         checkColor: WidgetStateProperty.all(onPrimary),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        // 与 AppCheckbox 保持同一形状语言：圆形勾选框。
+        shape: const CircleBorder(),
       ),
       radioTheme: RadioThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {

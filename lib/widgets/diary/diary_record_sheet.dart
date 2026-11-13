@@ -3313,10 +3313,14 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
   /// 时间胶囊与附件钮同为 38 高，并成一行给加高的输入区腾出纵向空间；
   /// 时间组用 Expanded + 横向滚动兜底，跨天补记（带 MM-dd 前缀）时
   /// 只会滚动时间本身，不会把相册 / 相机挤出卡片。
+  ///
+  /// 右侧留 16 而不是 12：下方操作列宽 46、AI 提取钮和发送钮居中，
+  /// 38 的提取钮左右边界正好在 16 处；附件行同样留 16 才能让相机钮
+  /// 与提取钮这两个 38 圆钮同轴，不会偏出 4px。
   Widget _buildTimeAndMediaRow(ThemeData theme, DateTime selectedDate) {
     final canAddPhoto = _activeDraft.selectedPhotos.length < 3;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Row(
         children: [
           Expanded(child: _buildTimeRangeEditor(theme, selectedDate)),

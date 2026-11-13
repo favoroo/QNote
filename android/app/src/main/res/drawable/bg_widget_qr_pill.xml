@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录组件的主色块（胶囊）：radius 取 999dp，系统会按实际高度裁到「短边的一半」，
+  所以 1 行高的横条是真正的胶囊、1×1 是正圆、1 格宽的竖卡是竖向胶囊，一套资源走完。
+  纯色填充、无描边无渐变，避免在桌面壁纸上显得脏。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/widget_qr_accent" />
+    <corners android:radius="999dp" />
+</shape>

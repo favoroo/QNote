@@ -3,7 +3,7 @@
 /// 仅用于 UI 展示（执行中状态、反馈卡标题等），不改动发给模型的工具定义
 /// 与会话持久化里的原始工具名，历史消息在渲染时读此映射做转换。
 abstract final class AgentToolLabels {
-  /// 各工具的执行中文案（进行时措辞），覆盖 16 个注册工具。
+  /// 各工具的执行中文案（进行时措辞），覆盖 17 个注册工具。
   static const Map<String, String> _progressLabels = {
     'generate_image': '正在生成图片',
     'describe_image': '正在识别图片',
@@ -11,6 +11,7 @@ abstract final class AgentToolLabels {
     'fetch_url': '正在读取网页',
     'skill_market': '正在查询技能市场',
     'read_file': '正在读取文件',
+    'read_files': '正在批量读取',
     'write_file': '正在写入文件',
     'write_files': '正在批量写入',
     'edit_file': '正在编辑文件',
@@ -31,6 +32,7 @@ abstract final class AgentToolLabels {
     'fetch_url': '读取网页',
     'skill_market': '技能市场',
     'read_file': '读取文件',
+    'read_files': '批量读取',
     'write_file': '写入文件',
     'write_files': '批量写入',
     'edit_file': '编辑文件',
@@ -78,6 +80,7 @@ abstract final class AgentToolLabels {
       'list_dir' ||
       'view_image' ||
       'describe_image' => const ['path'],
+      'read_files' => const ['start_date', 'end_date'],
       'move_file' => const ['from', 'to'],
       'grep' => const ['pattern', 'query', 'keyword'],
       'web_search' => const ['query'],
@@ -149,6 +152,18 @@ abstract final class AgentToolLabels {
       case 'list_dir':
       case 'view_image':
         return _stringOf(data, const ['path']);
+      case 'read_files':
+        // 进度阶段只有 start/end，结果阶段只有 dateRange 或统计字段
+        final start = _stringOf(data, const ['start_date']);
+        final end = _stringOf(data, const ['end_date']);
+        if (start != null) return end == null ? start : '$start~$end';
+        final range = _stringOf(data, const ['dateRange']);
+        if (range != null) return range;
+        final read = data['read'];
+        final total = data['total'];
+        if (read is int && total is int) return '$read/$total 个文件';
+        final files = data['files'];
+        return files is List ? '${files.length} 个文件' : null;
       case 'describe_image':
         // 识图工具常收到 data: 内联图片，直接截断会显示成「data:image/…」的噪声
         final path = data['path'];

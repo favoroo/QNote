@@ -18,12 +18,9 @@
     <color name="widget_ai_circle">#0A84FF</color>
     <color name="widget_ai_robot">#FFFFFFFF</color>
     <!-- 快捷记录组件深色 token，与 values/colors.xml 同名项成对维护 -->
-    <color name="widget_qr_surface_top">#1C1C1E</color>
-    <color name="widget_qr_surface_bottom">#141416</color>
-    <color name="widget_qr_input_bg">#242427</color>
-    <color name="widget_qr_accent_end">#7C7AFF</color>
-    <color name="widget_qr_icon_bg">#1FFFFFFF</color>
-    <color name="widget_qr_watermark">#1F0A84FF</color>
+    <color name="widget_qr_accent">#3D7BFF</color>
+    <color name="widget_qr_on_accent">#FFFFFFFF</color>
+    <color name="widget_qr_scrim">#2EFFFFFF</color>
     <color name="dialog_bg">#1C1C1E</color>
     <color name="dialog_text">#F2F2F7</color>
     <color name="dialog_input_bg">#2C2C2E</color>

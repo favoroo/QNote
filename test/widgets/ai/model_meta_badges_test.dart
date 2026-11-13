@@ -5,7 +5,7 @@ import 'package:qnote_flutter/widgets/ai/model_meta_badges.dart';
 
 /// 模型元数据徽标的顺序与「不编数据」口径
 void main() {
-  test('限免模型：免费 + 原价 + 上下文', () {
+  test('限免模型：免费 + 原价 + 识图，不展示上下文窗口', () {
     final model = AiProviderModel.of(
       'sn-sensenova-6-8-flash',
       rate: 0,
@@ -14,19 +14,19 @@ void main() {
       supportsVision: true,
     );
 
-    expect(modelMetaBadges(model), ['免费', '原 0.5×', '256K', '识图']);
+    expect(modelMetaBadges(model), ['免费', '原 0.5×', '识图']);
   });
 
-  test('付费模型：只给倍率与上下文，不出现「原价」', () {
+  test('付费模型：只给倍率，不出现「原价」与上下文窗口', () {
     final model = AiProviderModel.of('sn-glm-5-3-flash', rate: 0.2, contextWindow: 1000000);
 
-    expect(modelMetaBadges(model), ['0.2×', '1M']);
+    expect(modelMetaBadges(model), ['0.2×']);
   });
 
-  test('生图模型：徽标排在上下文之后、识图之前', () {
+  test('生图模型：徽标排在识图之前', () {
     final model = AiProviderModel.of('qwen-image-3.0-pro', contextWindow: 128000, supportsImageGeneration: true);
 
-    expect(modelMetaBadges(model), ['128K', '生图']);
+    expect(modelMetaBadges(model), ['生图']);
   });
 
   test('厂商没给元数据时一个徽标都不出（不默认成 1× 或免费）', () {

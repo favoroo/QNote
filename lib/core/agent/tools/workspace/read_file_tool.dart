@@ -16,6 +16,7 @@ class ReadFileTool extends AgentTool {
       '读取虚拟工作区中某个文件的完整内容（返回带行号的正文与 Frontmatter 元数据）。'
       '用在这些场合：改写前核对原文（edit_file 的 old_text 要照它取）、查看某条待办/笔记/日记详情、'
       '读统计端点（/stats/summary.json、/stats/daily_scores.json）做分析、读配置确认当前设置。'
+      '多个文件或一段日期区间请改用 read_files 批量读取，不要逐天/逐篇循环调用本工具。'
       '长文可用 offset/limit 分段读；各目录的路径与格式规范见 /AGENTS.md。';
 
   @override

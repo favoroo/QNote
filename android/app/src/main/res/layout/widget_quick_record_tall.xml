@@ -1,147 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  快捷记录 · 窄竖卡（1×2 ～ 2×4）：徽标 + 标题居中，空间够时再往下长出输入区与操作钮。
-  provider 会按实际 dp 把输入区 / 操作钮切换为可见；没有 weight 子项时根布局的
-  gravity=center 会把徽标和标题整体垂直居中，所以 1×2、2×2 不会顶在左上角留一大片空白。
-  1 格宽时操作钮改为纵向排列（actions_col），2 格宽用横排（actions_row），避免横向溢出。
+  快捷记录 · 1 格宽竖卡（1×2 ～ 1×4）：一条竖向胶囊，内容是竖向居中的一列圆钮。
+  1 格只有约 60dp 宽，横排放不下第二颗按钮，所以次级按钮改为竖排；
+  高度不够（1×2）时由 provider 收起次级按钮，只留白色主操作圆。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_quick_record_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget_quick_record_outer"
+    android:background="@drawable/bg_widget_qr_pill"
     android:contentDescription="@string/widget_quick_record_action"
     android:gravity="center"
-    android:orientation="vertical"
-    android:padding="8dp">
+    android:orientation="vertical">
 
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:gravity="center_horizontal"
-        android:orientation="vertical">
+    <ImageButton
+        android:id="@+id/qr_tall_primary"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_widget_qr_solid_circle"
+        android:contentDescription="@string/widget_quick_record_action"
+        android:padding="11dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_pen_accent" />
 
-        <ImageView
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="@drawable/bg_widget_qr_badge"
-            android:importantForAccessibility="no"
-            android:padding="8dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_widget_pen" />
+    <ImageButton
+        android:id="@+id/qr_tall_photo"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_widget_qr_scrim"
+        android:contentDescription="选择相册图片"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_gallery_white"
+        android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/qr_tall_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="快速记录"
-            android:textColor="@color/widget_text_primary"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/qr_tall_subtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="点按开始记录"
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="11sp"
-            android:visibility="gone" />
-    </LinearLayout>
-
-    <FrameLayout
-        android:id="@+id/qr_tall_input"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
+    <ImageButton
+        android:id="@+id/qr_tall_camera"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
         android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:background="@drawable/bg_widget_quick_record_input"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/qr_tall_watermark"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="bottom|end"
-            android:layout_margin="6dp"
-            android:importantForAccessibility="no"
-            android:src="@drawable/ic_widget_pen_watermark"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/qr_tall_placeholder"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:gravity="top|start"
-            android:maxLines="2"
-            android:padding="10dp"
-            android:text="写点什么…"
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="12sp" />
-    </FrameLayout>
-
-    <LinearLayout
-        android:id="@+id/qr_tall_actions_row"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <ImageButton
-            android:id="@+id/qr_tall_photo_row"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/bg_widget_qr_icon_btn"
-            android:contentDescription="选择相册图片"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_gallery" />
-
-        <ImageButton
-            android:id="@+id/qr_tall_camera_row"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/bg_widget_qr_icon_btn"
-            android:contentDescription="启动相机拍照"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_camera" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/qr_tall_actions_col"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:visibility="gone">
-
-        <ImageButton
-            android:id="@+id/qr_tall_photo_col"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:background="@drawable/bg_widget_qr_icon_btn"
-            android:contentDescription="选择相册图片"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_gallery" />
-
-        <ImageButton
-            android:id="@+id/qr_tall_camera_col"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/bg_widget_qr_icon_btn"
-            android:contentDescription="启动相机拍照"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_camera" />
-    </LinearLayout>
+        android:background="@drawable/bg_widget_qr_scrim"
+        android:contentDescription="启动相机拍照"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_camera_white"
+        android:visibility="gone" />
 </LinearLayout>

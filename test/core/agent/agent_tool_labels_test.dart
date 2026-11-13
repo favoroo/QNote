@@ -38,6 +38,16 @@ void main() {
       expect(detail['pattern'], '体重');
     });
 
+    test('read_files：提取日期区间用于进度副标题', () {
+      final detail = AgentToolLabels.detailFromPartialArguments(
+        'read_files',
+        '{"paths": ["/timeline"], "start_date": "2026-09-07", "end_date": "2026-09-13"}',
+      );
+      expect(detail['start_date'], '2026-09-07');
+      expect(detail['end_date'], '2026-09-13');
+      expect(AgentToolLabels.progressLabel('read_files', detail), '正在批量读取 · 2026-09-07~2026-09-13');
+    });
+
     test('path 尚未流出时返回空 map', () {
       final detail = AgentToolLabels.detailFromPartialArguments('write_file', '{"content": "直接先写了内容');
       expect(detail, isEmpty);
@@ -89,6 +99,14 @@ void main() {
         '技能市场 · 2 个结果',
       );
       expect(AgentToolLabels.resultLabel('skill_market', {'action': 'install', 'name': 'pdf'}), '技能市场 · pdf');
+    });
+
+    test('read_files：结果阶段优先显示日期区间，其次显示读取进度', () {
+      expect(
+        AgentToolLabels.resultLabel('read_files', {'dateRange': '2026-09-07~2026-09-13', 'read': 6, 'total': 7}),
+        '批量读取 · 2026-09-07~2026-09-13',
+      );
+      expect(AgentToolLabels.resultLabel('read_files', {'read': 6, 'total': 7}), '批量读取 · 6/7 个文件');
     });
 
     test('快照为空时回退纯工具文案', () {

@@ -147,6 +147,16 @@ double? _parseDouble(dynamic val) {
   return double.tryParse(val.toString());
 }
 
+/// 记录是否带某个标签。
+///
+/// 不能只看 [DiaryRecord.displayTag]：一条记录可以同时挂多个标签（时间线卡片
+/// 会逐段渲染），主标签只决定配色。只按主标签筛选会让「活动 + 记账」这类记录
+/// 在记账/饮食统计里整条消失。
+bool _hasTag(DiaryRecord record, String name, {String? tagId}) {
+  if (record.displayTag == name || record.tags.contains(name)) return true;
+  return record.tagEntries.any((e) => e.name == name || (tagId != null && e.id == tagId));
+}
+
 const _dietItemAliases = <String, String>{
   '自制': '自制',
   '自己做的': '自制',
@@ -302,7 +312,7 @@ SleepStatistics calculateSleepStats(List<DiaryRecord> records, DateTime startDat
 
 FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
-  final financeRecords = records.where((r) => r.displayTag == '记账').toList();
+  final financeRecords = records.where((r) => _hasTag(r, '记账', tagId: 'consumption')).toList();
 
   final expenseByType = <String, double>{};
   final incomeByType = <String, double>{};
@@ -312,83 +322,102 @@ FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime star
 
   for (final r in financeRecords) {
     final date = _formatDate(r.time);
-    double? amount;
-    bool? isExpense;
-    bool? isIncome;
-    String? expenseType;
-    String? incomeType;
+    double recordIncome = 0;
+    double recordExpense = 0;
 
-    for (final entry in r.tagEntries) {
-      if (entry.name == '记账' || entry.id == 'consumption') {
-        final fields = entry.fields;
-        final rawAmount = _getValFromMap(fields, ['amount', '金额']);
-        if (rawAmount != null) amount = _parseDouble(rawAmount);
-        final category = _getValFromMap(fields, ['_category', 'category']);
-        if (category != null) {
-          final catStr = category.toString().toLowerCase();
-          if (catStr == 'expense' || catStr == '支出') isExpense = true;
-          if (catStr == 'income' || catStr == '收入') isIncome = true;
+    // 一条记录可能包含多个记账条目（AI 从一个片段里拆出多笔收支），逐条累计。
+    // tagEntries 缺失的历史数据再回退到 bodyState（仅主标签为记账时可信）。
+    final entryFields = r.tagEntries
+        .where((e) => e.name == '记账' || e.id == 'consumption')
+        .map((e) => e.fields)
+        .toList();
+    if (entryFields.isEmpty ||
+        (entryFields.length == 1 && entryFields.single.isEmpty && r.displayTag == '记账' && r.bodyState != null)) {
+      entryFields
+        ..clear()
+        ..add(r.displayTag == '记账' && r.bodyState != null ? Map<String, dynamic>.from(r.bodyState!) : const {});
+    }
+
+    for (final fields in entryFields) {
+      double amount;
+      bool? isExpense;
+      bool? isIncome;
+      String? expenseType;
+      String? incomeType;
+
+      final rawAmount = _getValFromMap(fields, ['amount', '金额']);
+      if (rawAmount != null) {
+        amount = _parseDouble(rawAmount) ?? 0;
+      } else {
+        final match = RegExp(r'金额.*?[：:]\s*(\d+(?:\.\d+)?)').firstMatch(r.content);
+        amount = match != null ? double.parse(match.group(1)!) : 0;
+      }
+
+      final category = _getValFromMap(fields, ['_category', 'category']);
+      if (category != null) {
+        final catStr = category.toString().toLowerCase();
+        if (catStr == 'expense' || catStr == '支出') isExpense = true;
+        if (catStr == 'income' || catStr == '收入') isIncome = true;
+      }
+      // _category 缺失时（历史数据在提取规范化阶段被丢弃），按类型字段回退推断，
+      // 与时间线卡片 diary_item.dart 的判定逻辑保持一致
+      if (isExpense == null && isIncome == null) {
+        final hasExpenseType = _getValFromMap(fields, ['type', '支出类型']) != null;
+        final hasIncomeType = _getValFromMap(fields, ['incomeType', '收入类型']) != null;
+        if (hasExpenseType) {
+          isExpense = true;
+        } else if (hasIncomeType) {
+          isIncome = true;
         }
-        // _category 缺失时（历史数据在提取规范化阶段被丢弃），按类型字段回退推断，
-        // 与时间线卡片 diary_item.dart 的判定逻辑保持一致
-        if (isExpense == null && isIncome == null) {
-          final hasExpenseType = _getValFromMap(fields, ['type', '支出类型']) != null;
-          final hasIncomeType = _getValFromMap(fields, ['incomeType', '收入类型']) != null;
-          if (hasExpenseType) {
-            isExpense = true;
-          } else if (hasIncomeType) {
-            isIncome = true;
-          }
+      }
+      if (isExpense == null && isIncome == null) {
+        if (entryFields.length == 1) {
+          isExpense = r.content.contains('支出') || r.content.contains('支出类型');
+          isIncome = r.content.contains('收入') || r.content.contains('收入类型');
+        } else {
+          // 多条目时正文包含整条记录的所有明细，无法定位到具体条目；
+          // 缺方向字段就按记账面板的默认分类（支出）归类，避免同一笔被双向重复累计
+          isExpense = true;
         }
-        final rawType = _getValFromMap(fields, ['type', '支出类型']);
-        if (rawType != null) expenseType = rawType.toString();
-        final rawIncomeType = _getValFromMap(fields, ['incomeType', '收入类型']);
-        if (rawIncomeType != null) incomeType = rawIncomeType.toString();
-        break;
       }
-    }
 
-    if (amount == null) {
-      final match = RegExp(r'金额.*?[：:]\s*(\d+(?:\.\d+)?)').firstMatch(r.content);
-      amount = match != null ? double.parse(match.group(1)!) : 0;
-    }
+      final rawType = _getValFromMap(fields, ['type', '支出类型']);
+      if (rawType != null) expenseType = rawType.toString();
+      final rawIncomeType = _getValFromMap(fields, ['incomeType', '收入类型']);
+      if (rawIncomeType != null) incomeType = rawIncomeType.toString();
 
-    if (isExpense == null && isIncome == null) {
-      isExpense = r.content.contains('支出') || r.content.contains('支出类型');
-      isIncome = r.content.contains('收入') || r.content.contains('收入类型');
-    }
-
-    if (isExpense == true) {
-      totalExpense += amount;
-      if (expenseType == null) {
-        final typeMatch = RegExp(r'支出类型[：:]\s*([^ \n，,]+)').firstMatch(r.content);
-        expenseType = typeMatch?.group(1)?.trim() ?? '其他';
+      if (isExpense == true) {
+        totalExpense += amount;
+        recordExpense += amount;
+        if (expenseType == null && entryFields.length == 1) {
+          final typeMatch = RegExp(r'支出类型[：:]\s*([^ \n，,]+)').firstMatch(r.content);
+          expenseType = typeMatch?.group(1)?.trim();
+        }
+        expenseType ??= '其他';
+        expenseByType[expenseType] = (expenseByType[expenseType] ?? 0) + amount;
       }
-      expenseByType[expenseType] = (expenseByType[expenseType] ?? 0) + amount;
-    }
 
-    if (isIncome == true) {
-      totalIncome += amount;
-      if (incomeType == null) {
-        final typeMatch = RegExp(r'收入类型[：:]\s*([^ \n，,]+)').firstMatch(r.content);
-        incomeType = typeMatch?.group(1)?.trim() ?? '其他';
+      if (isIncome == true) {
+        totalIncome += amount;
+        recordIncome += amount;
+        if (incomeType == null && entryFields.length == 1) {
+          final typeMatch = RegExp(r'收入类型[：:]\s*([^ \n，,]+)').firstMatch(r.content);
+          incomeType = typeMatch?.group(1)?.trim();
+        }
+        incomeType ??= '其他';
+        incomeByType[incomeType] = (incomeByType[incomeType] ?? 0) + amount;
       }
-      incomeByType[incomeType] = (incomeByType[incomeType] ?? 0) + amount;
     }
 
     final existing = dailyDataMap[date];
     if (existing != null) {
       dailyDataMap[date] = FinanceDailyData(
         date: date,
-        income: existing.income + (isIncome == true ? amount : 0),
-        expense: existing.expense + (isExpense == true ? amount : 0),
+        income: existing.income + recordIncome,
+        expense: existing.expense + recordExpense,
       );
     } else {
-      dailyDataMap[date] = FinanceDailyData(
-        date: date,
-        income: isIncome == true ? amount : 0,
-        expense: isExpense == true ? amount : 0,
-      );
+      dailyDataMap[date] = FinanceDailyData(date: date, income: recordIncome, expense: recordExpense);
     }
   }
 
@@ -407,7 +436,7 @@ FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime star
 
 DietStatistics calculateDietStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
-  final dietRecords = records.where((r) => r.displayTag == '饮食').toList();
+  final dietRecords = records.where((r) => _hasTag(r, '饮食', tagId: 'diet')).toList();
 
   final typeDistribution = <String, int>{};
   final healthDistribution = <String, int>{'健康': 0, '一般': 0, '不健康': 0, '过于放纵': 0};

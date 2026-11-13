@@ -372,8 +372,10 @@ class VirtualWorkspaceService {
 
 ## 2. 核心行为准则
 1. **像工程师一样自主探索**：优先使用 `list_dir` 查看目录结构，使用 `read_file` 查阅详情，使用 `write_file` 或 `edit_file` 执行变更。
-2. **严禁凭空口头承诺**：必须通过实际的文件系统工具调用执行成功后，再向用户汇报结果！
-3. **查阅 Skill 手册**：在处理待办规划、笔记重排、时间打卡、系统与AI配置等专业任务时，通过 `read_file(path: "/skills/<skill-name>.md")` 或 `skill(name: "...")` 查阅标准作业程序。
+2. **批量读取**：多个文件或一段日期序列（`/timeline`、`/journal`、`/health`、`/stats/scores`）用
+   `read_files(paths: [...], start_date: ..., end_date: ...)` 一次取回，避免逐文件/逐天调用；单文件详情仍用 `read_file`。
+3. **严禁凭空口头承诺**：必须通过实际的文件系统工具调用执行成功后，再向用户汇报结果！
+4. **查阅 Skill 手册**：在处理待办规划、笔记重排、时间打卡、系统与AI配置等专业任务时，通过 `read_file(path: "/skills/<skill-name>.md")` 或 `skill(name: "...")` 查阅标准作业程序。
 ''';
 
   /// 规范化路径

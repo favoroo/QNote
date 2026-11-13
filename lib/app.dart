@@ -31,6 +31,7 @@ import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
+import 'package:qnote_flutter/providers/health_timeline_provider.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/widgets/floating_q/floating_q_overlay.dart';
@@ -159,7 +160,13 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
             if (shouldSync) {
               // fire-and-forget，不阻塞启动。窗口取 4 天：午睡可能发生在当天最后一次同步之后，
               // 窗口过窄会让那天永久停在缺午睡的错值上（落库按 date 主键整行 replace）
-              healthSyncService.syncDays(daysBack: 4);
+              healthSyncService.syncDays(daysBack: 4).then((result) {
+                // 后台同步没有等待者，成功后主动刷新时间线空位卡的「是否已同步」判断；
+                // 无数据的日子不会生成日结卡，只能靠版本号让空位卡从「未同步」切过去。
+                if (mounted && result.success) {
+                  ref.read(healthSyncVersionProvider.notifier).state++;
+                }
+              });
             }
           }
         }

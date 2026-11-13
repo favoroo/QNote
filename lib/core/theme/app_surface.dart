@@ -115,6 +115,21 @@ Color ensureAccentGap(Color background, Color accent, {double minRatio = 1.3}) {
   return AppContrast.onColor(accent);
 }
 
+/// 把画布色朝白「提亮成卡片表面色」，同时保住原色相。
+///
+/// 早先的实现直接叠 55% 白，饱和的中亮度底色会被冲成灰米色（实测黄绿 `#B3CB41`
+/// 变成 `#DDE8AA`，看起来像换了个颜色）。这里改在 HSL 空间只抬明度：按剩余空间
+/// 比例抬升，越亮的底抬得越少，并轻微降一点饱和避免高亮后刺眼，色相保持不变。
+Color _liftSurface(Color canvas) {
+  final h = HSLColor.fromColor(canvas);
+  // 剩余空间比例抬升：中间亮度底抬得多、已经很亮的底几乎不动，避免过曝成白。
+  // 0.30 是「卡片能看出层次」与「不跑色」的折中：黄绿 #B3CB41 抬到 #C7D77E，
+  // 仍明显是同色系；再大就开始发白，再小则卡片和画布几乎分不开。
+  final lift = 0.30 * (1 - h.lightness);
+  final lightness = (h.lightness + lift).clamp(0.0, 0.97);
+  return h.withLightness(lightness).withSaturation((h.saturation * 0.92).clamp(0.0, 1.0)).toColor();
+}
+
 /// 表面调色板：把背景色推导成 App 需要的全部中性表面与文字角色。
 ///
 /// 不依赖 [BuildContext]，可纯函数测试。浅色/深色沿用既有精确色表，
@@ -184,7 +199,7 @@ class AppSurfacePalette {
     final isDark = ink == AppContrast.lightInk;
     final canvasLuminance = canvas.computeLuminance();
 
-    // 表面：浅底大量朝白抬升（接近白底时直接白），深底只轻微抬升；
+    // 表面：浅底朝白抬升（接近白底时直接白），深底只轻微抬升；
     // 抬升若把正文对比度压到 AA 以下，深色底改用轻微压暗，靠表面色差区分卡片
     Color surface;
     if (isDark) {
@@ -193,7 +208,7 @@ class AppSurfacePalette {
           ? lifted
           : Color.alphaBlend(Colors.black.withValues(alpha: 0.06), canvas);
     } else {
-      surface = canvasLuminance >= 0.85 ? Colors.white : Color.alphaBlend(Colors.white.withValues(alpha: 0.55), canvas);
+      surface = canvasLuminance >= 0.85 ? Colors.white : _liftSurface(canvas);
     }
 
     // 容器沿墨色方向微移，形成层级；最大偏移必须保证墨色在最高容器上仍可读，

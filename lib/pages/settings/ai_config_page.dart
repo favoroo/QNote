@@ -373,7 +373,7 @@ class AiConfigPageState extends ConsumerState<AiConfigPage> {
       children: [
         // 添加入口贴在区块标题右侧：顶栏那个「+」离列表内容太远，看不出加的是什么；
         // 放到「模型服务」标题旁，语义与位置才对得上
-        _sectionTitle(theme, '模型服务', '内置免费模型 · 点击卡片管理', trailing: _addProviderButton(theme)),
+        _sectionTitle(theme, '模型服务', null, trailing: _addProviderButton(theme)),
         const BuiltinServiceCard(),
         ...userProviders.map((provider) => _providerCard(theme, provider)),
       ],
@@ -812,7 +812,7 @@ class AiConfigPageState extends ConsumerState<AiConfigPage> {
     );
   }
 
-  Widget _sectionTitle(ThemeData theme, String title, String subtitle, {Widget? trailing}) {
+  Widget _sectionTitle(ThemeData theme, String title, String? subtitle, {Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
       child: Row(
@@ -823,8 +823,11 @@ class AiConfigPageState extends ConsumerState<AiConfigPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                // 副标题可选：传 null 时只显示标题，避免留下空行
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                ],
               ],
             ),
           ),

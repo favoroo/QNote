@@ -30,7 +30,8 @@ class GrepTool extends AgentTool {
       '在整个 App 内检索关键词或正则（笔记、待办、时间线流水、日记、长期记忆、系统配置、历史会话），'
       '返回**可直接用于 read_file / edit_file / delete_file 的虚拟路径**与命中摘要。'
       '这是「找内容」的默认入口：只要不确定条目在哪个分类、完整标题是什么，就先用它定位，'
-      '不要靠 list_dir 层层翻目录试探。需要完整正文时，再用返回的路径调 read_file。';
+      '不要靠 list_dir 层层翻目录试探。需要多篇完整正文时，把返回的多个 path 交给 read_files '
+      '一次批量读取；只需单篇时再用 read_file。';
 
   @override
   Map<String, dynamic> get parametersSchema => {

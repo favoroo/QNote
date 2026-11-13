@@ -73,6 +73,59 @@ void main() {
     });
   });
 
+  group('日期序列目录展开', () {
+    test('isWorkspaceDateSeriesRoot 识别四类目录并兼容结尾斜杠', () {
+      expect(isWorkspaceDateSeriesRoot('/timeline'), isTrue);
+      expect(isWorkspaceDateSeriesRoot('/timeline/'), isTrue);
+      expect(isWorkspaceDateSeriesRoot('/journal/'), isTrue);
+      expect(isWorkspaceDateSeriesRoot('/health'), isTrue);
+      expect(isWorkspaceDateSeriesRoot('/stats/scores'), isTrue);
+      expect(isWorkspaceDateSeriesRoot('/todos'), isFalse);
+      expect(isWorkspaceDateSeriesRoot('/stats/scores/2026-09-01.json'), isFalse);
+    });
+
+    test('expandWorkspaceDateSeriesPaths 按目录生成正确后缀且含首尾', () {
+      expect(expandWorkspaceDateSeriesPaths('/timeline', DateTime(2026, 9, 7), DateTime(2026, 9, 9)), [
+        '/timeline/2026-09-07.md',
+        '/timeline/2026-09-08.md',
+        '/timeline/2026-09-09.md',
+      ]);
+      expect(expandWorkspaceDateSeriesPaths('/journal/', DateTime(2026, 9, 7), DateTime(2026, 9, 7)), [
+        '/journal/2026-09-07.md',
+      ]);
+      expect(expandWorkspaceDateSeriesPaths('/health', DateTime(2026, 9, 7), DateTime(2026, 9, 8)), [
+        '/health/2026-09-07.json',
+        '/health/2026-09-08.json',
+      ]);
+      expect(expandWorkspaceDateSeriesPaths('/stats/scores', DateTime(2026, 9, 7), DateTime(2026, 9, 8)), [
+        '/stats/scores/2026-09-07.json',
+        '/stats/scores/2026-09-08.json',
+      ]);
+    });
+
+    test('跨月展开与非法区间', () {
+      final paths = expandWorkspaceDateSeriesPaths('/timeline', DateTime(2026, 1, 30), DateTime(2026, 2, 2));
+      expect(paths, [
+        '/timeline/2026-01-30.md',
+        '/timeline/2026-01-31.md',
+        '/timeline/2026-02-01.md',
+        '/timeline/2026-02-02.md',
+      ]);
+      expect(expandWorkspaceDateSeriesPaths('/timeline', DateTime(2026, 2, 2), DateTime(2026, 1, 30)), isEmpty);
+      expect(expandWorkspaceDateSeriesPaths('/todos', DateTime(2026, 1, 1), DateTime(2026, 1, 2)), isEmpty);
+    });
+
+    test('tryParseWorkspaceDate 严格校验格式与真实日历日', () {
+      expect(tryParseWorkspaceDate('2026-09-11'), DateTime(2026, 9, 11));
+      expect(tryParseWorkspaceDate(' 2026-09-11 '), DateTime(2026, 9, 11));
+      expect(tryParseWorkspaceDate('2026-2-3'), isNull);
+      expect(tryParseWorkspaceDate('2026-09-11T10:00:00'), isNull);
+      // DateTime 会把 2 月 30 日顺延到 3 月，必须拦截
+      expect(tryParseWorkspaceDate('2026-02-30'), isNull);
+      expect(tryParseWorkspaceDate('not-a-date'), isNull);
+    });
+  });
+
   group('stripWorkspaceLineNumbers', () {
     test('剥离行首数字加制表符', () {
       expect(stripWorkspaceLineNumbers('1\t第一行\n2\t第二行'), '第一行\n第二行');

@@ -109,7 +109,7 @@ pinned: false           # 是否置顶
 
 ## 3. 核心操作规范
 - **新建笔记**：使用 `write_file(path: "/notes/笔记本/标题.md", content: ...)`。若笔记本不存在将自动创建。
-- **检索笔记**：使用 `grep(query: "关键词", scope: "notes")` 进行跨笔记检索（`scope` 可选 `all` / `notes` / `todos` / `timeline` / `journal` / `memory` / `settings` / `chats`，附 `max_results` 控制返回条数；注意 grep 没有 path 参数）。返回的 `path` 可直接用于 `read_file` / `edit_file`，不用再猜路径。
+- **检索笔记**：使用 `grep(query: "关键词", scope: "notes")` 进行跨笔记检索（`scope` 可选 `all` / `notes` / `todos` / `timeline` / `journal` / `memory` / `settings` / `chats`，附 `max_results` 控制返回条数；注意 grep 没有 path 参数）。返回的 `path` 可直接用于 `read_file` / `edit_file`，多篇正文用 `read_files(paths: [...])` 一次读取，不用再猜路径。
 - **局部修改**：使用 `edit_file(path: ..., old_text: ..., new_text: ...)` 进行高精度修改。
 - **追加内容**：使用 `write_file(path: ..., content: "...", mode: "append")` 在正文末尾续写；`mode` 缺省为 `overwrite`（整篇覆写）。
 - **移动/换笔记本/改名**：使用 `move_file(from: "/notes/临时/方案.md", to: "/notes/技术/方案.md")` 一步完成；写到 `/notes/<标题>.md`（不带笔记本段）表示移出到根目录。
@@ -177,6 +177,7 @@ description: 时间线流水记录技能：每日流水记事、时间戳打卡�
 > **严禁使用 YAML Frontmatter 描述时间事件**。时间事件只有「二级时间标题 + 字段行」这一种合法格式。
 
 ## 2. 核心操作规范
+- **批量查看一段日期（推荐）**：`read_files(paths: ["/timeline"], start_date: "YYYY-MM-DD", end_date: "YYYY-MM-DD")` 一次返回区间内全部事件与 id 注释，无需逐天 `read_file`；无数据的日期会自动跳过。
 - **追加流水（首选）**：直接用 `write_file(path: "/timeline/YYYY-MM-DD.md", content: "## [HH:MM] 标题\n- 分类: ...", mode: "append")` 追加新时间块，一步到位、无需先读文件；新块无需 id 注释。仅当需要改已有事件内容时才先 `read_file`。
 - **不追加时避免整篇重写**：整篇 `write_file` 覆写若漏掉某个块的 `<!-- id: xxx -->`，该事件会被判定为新事件而重复创建——追加与局部编辑正是为了绕开这个坑。
 - **id 注释必须原样保留（最高优先级）**：重写或整理当天文件时，已有块的 `<!-- id: xxx -->` 必须一字不差地带回。若 id 丢失，对应记录会被判定为新事件而重复创建，造成时间线出现重复条目！
@@ -245,7 +246,7 @@ description: 每日深度日记技能：长篇日记、反思复盘、情绪体�
 ## 2. 写作前素材准备（联动时间线与健康数据）
 - 用户说「帮我写今天的日记」时，先 `read_file(path: "/timeline/YYYY-MM-DD.md")` 获取当天流水事实素材。
 - 若用户接入了运动健康设备，还可主动读取 `read_file(path: "/health/YYYY-MM-DD.json")` 获取客观运动步数、睡眠时长、深睡/浅睡比例与静息心率，将身心体感与客观生理数据结合展开深度复盘。
-- 周记/月记则读取对应多天的流水与 `/health/recent.json`，**严禁凭空虚构当天事件**。
+- 周记/月记用 `read_files(paths: ["/timeline", "/health"], start_date: "YYYY-MM-DD", end_date: "YYYY-MM-DD")` 一次取回区间素材，无数据的日期会自动跳过，**严禁凭空虚构当天事件**。
 - 分工：时间线是**客观流水**（何时做了什么），健康数据是**客观生理指标**，日记是**主观深度复盘**（感受、原因、领悟）——日记应引用事实、升华洞察，而不是重复流水。
 
 ## 3. 内容结构（按需选择）
@@ -518,6 +519,7 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
     "recordCount": 5
   }
   ```
+- **批量读取多天评分**：`read_files(paths: ["/stats/scores"], start_date: "YYYY-MM-DD", end_date: "YYYY-MM-DD")`，无评分日会自动跳过，避免逐天 `read_file`。
 
 ## 2. 评分维度（dimensionScores 键名）
 - `sleep` 睡眠：时长 7-9 小时满分，质量良好加分，熬夜扣分；参考小米睡眠时长/深浅REM/得分
@@ -528,8 +530,8 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 - 评分规则：基础分 60 加减分；总分与各维度分范围均为 0~100；症状本身（头痛、感冒等非人为可控因素）不扣分，但忽视健康、不及时处理会扣分。
 
 ## 3. 评分与修改指南
-- **给当天评分**：先读取 `/timeline/YYYY-MM-DD.md` 提取全天打卡与流水，再读取 `/health/YYYY-MM-DD.json` 小米运动健康客观数据与 `/stats/screen_time.json` 屏幕使用时间作为评分依据；综合评出总分与各维度分（含 sleep/diet/activity/health/screen 五维），调用 `write_file(path: "/stats/scores/YYYY-MM-DD.json", content: ...)` 写入。写入后应用内的环形分值与图表会自动热刷新。
-- **微调分数或评语**：用户要求修改某项分数或重新生成评语时，使用 `edit_file` 精准替换对应键值，或用 `write_file` 覆写更新。
+- **给当天评分**：用 `read_files(paths: ["/timeline", "/health", "/stats/screen_time.json"], start_date: "YYYY-MM-DD", end_date: "YYYY-MM-DD")` 一次取回全天打卡流水、小米运动健康客观数据与屏幕使用时间作为评分依据；综合评出总分与各维度分（含 sleep/diet/activity/health/screen 五维），调用 `write_file(path: "/stats/scores/YYYY-MM-DD.json", content: ...)` 写入。写入后应用内的环形分值与图表会自动热刷新。
+- **微调分数或评语**：用户只改某项分数时，直接用 `edit_file` / `write_file` 只写目标键，无需重新读取流水；要求重新生成评语时，用 `edit_file` 精准替换对应键值，或用 `write_file` 覆写更新。
 - **重置评分**：调用 `delete_file(path: "/stats/scores/YYYY-MM-DD.json")` 删除该天评分记录。
 - **批量调整历史分值**：跨日期区间的统一改分（「上周整体降 5 分」「那几天屏幕分都改成 40」）写 `/stats/adjust.json`，一次调用完成整段区间：
   ```json

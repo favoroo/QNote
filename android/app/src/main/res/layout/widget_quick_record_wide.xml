@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录 · 宽而矮的方块（3×2、4×2 这类）：一整条主色胶囊，内容是一排圆钮。
+  和大方块的区别：高度不够上下堆叠，所以改成横向按钮排——白色主操作圆 + 相册/相机。
+  宽度够时在中间补一句「记一下」，3 列宽放不下就只留三颗圆钮。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_quick_record_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_qr_pill"
+    android:contentDescription="@string/widget_quick_record_action"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp">
+
+    <ImageButton
+        android:id="@+id/qr_wide_primary"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="@drawable/bg_widget_qr_solid_circle"
+        android:contentDescription="@string/widget_quick_record_action"
+        android:padding="12dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_pen_accent" />
+
+    <TextView
+        android:id="@+id/qr_wide_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="记一下"
+        android:textColor="@color/widget_qr_on_accent"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <ImageButton
+        android:id="@+id/qr_wide_photo"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/bg_widget_qr_scrim"
+        android:contentDescription="选择相册图片"
+        android:padding="9dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_gallery_white" />
+
+    <ImageButton
+        android:id="@+id/qr_wide_camera"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_widget_qr_scrim"
+        android:contentDescription="启动相机拍照"
+        android:padding="9dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_camera_white" />
+</LinearLayout>

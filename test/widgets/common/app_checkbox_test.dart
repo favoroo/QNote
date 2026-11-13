@@ -10,12 +10,13 @@ void main() {
     );
   }
 
-  testWidgets('勾选框始终是圆角矩形，选中时显示对勾', (tester) async {
+  testWidgets('勾选框是正圆，选中时显示对勾', (tester) async {
     await tester.pumpWidget(wrap(const AppCheckbox(value: true)));
 
     final container = tester.widget<AnimatedContainer>(find.byType(AnimatedContainer));
     final decoration = container.decoration! as BoxDecoration;
-    expect(decoration.borderRadius, BorderRadius.circular(6));
+    expect(decoration.shape, BoxShape.circle);
+    expect(decoration.borderRadius, isNull);
     expect(find.byIcon(Icons.check_rounded), findsOneWidget);
   });
 

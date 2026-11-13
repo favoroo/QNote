@@ -38,6 +38,58 @@ String journalWorkspacePath(DateTime date) {
   return '/journal/${date.year}-$m-$d.md';
 }
 
+/// 按天归档的日期序列目录根：read_files 可配合日期区间自动展开为逐日文件
+const List<String> kWorkspaceDateSeriesRoots = ['/timeline', '/journal', '/health', '/stats/scores'];
+
+/// 去掉路径结尾斜杠，便于识别目录根（保留根路径 `/`）
+String normalizeWorkspaceDirPath(String path) {
+  final normalized = normalizeWorkspacePath(path);
+  if (normalized == '/') return normalized;
+  return normalized.replaceAll(RegExp(r'/+$'), '');
+}
+
+/// 是否为支持日期区间展开的按天归档目录根（兼容结尾斜杠）
+bool isWorkspaceDateSeriesRoot(String path) => kWorkspaceDateSeriesRoots.contains(normalizeWorkspaceDirPath(path));
+
+/// 严格解析 `YYYY-MM-DD`：拒绝带时间、非补零月份/日期或非法日历日，失败返回 null
+DateTime? tryParseWorkspaceDate(String raw) {
+  final text = raw.trim();
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text)) return null;
+  final parsed = DateTime.tryParse(text);
+  if (parsed == null) return null;
+  final normalized = DateTime(parsed.year, parsed.month, parsed.day);
+  // DateTime 会把 2026-02-30 顺延到 3 月，用格式化结果回比拦截越界日期
+  return formatWorkspaceDate(normalized) == text ? normalized : null;
+}
+
+/// 生成日期序列目录在指定区间内的逐日虚拟路径（含首尾，按日期升序）
+///
+/// 未知目录返回空列表；区间长度与展开数量由调用方负责限制。
+List<String> expandWorkspaceDateSeriesPaths(String root, DateTime start, DateTime end) {
+  final normalized = normalizeWorkspaceDirPath(root);
+  final startDay = DateTime(start.year, start.month, start.day);
+  final endDay = DateTime(end.year, end.month, end.day);
+  if (endDay.isBefore(startDay)) return const [];
+
+  final paths = <String>[];
+  // 逐日构造而非累加 Duration，避免夏令时切换导致日期漂移/重复
+  for (var offset = 0; ; offset++) {
+    final day = DateTime(startDay.year, startDay.month, startDay.day + offset);
+    if (day.isAfter(endDay)) break;
+    final date = formatWorkspaceDate(day);
+    final path = switch (normalized) {
+      '/timeline' => '/timeline/$date.md',
+      '/journal' => '/journal/$date.md',
+      '/health' => '/health/$date.json',
+      '/stats/scores' => '/stats/scores/$date.json',
+      _ => null,
+    };
+    if (path == null) return const [];
+    paths.add(path);
+  }
+  return paths;
+}
+
 /// 解析评分端点里的日期参数，非法时抛出带字段名的异常
 DateTime parseWorkspaceStatsDate(dynamic raw, String label) {
   final text = (raw ?? '').toString().trim();
