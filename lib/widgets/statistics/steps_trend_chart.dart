@@ -4,6 +4,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/health_step_trend.dart';
 
@@ -177,6 +180,8 @@ class StepsTrendChart extends StatelessWidget {
                       ),
                       borderData: FlBorderData(show: false),
                     ),
+                    duration: AppMotion.duration(context, AppDurations.medium),
+                    curve: AppCurves.emphasized,
                   ),
                 );
               },

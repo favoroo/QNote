@@ -256,9 +256,10 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
           // 直接落到完成终态，避免过渡层被中途摘掉造成跳变。
           _entranceFinished = true;
           _animController.value = 1.0;
-        } else if (_animController.value >= 1.0) {
-          // 控制器已在终态时 forward 不会产生动画，保持静态分支即可。
+        } else if (_animController.value >= 1.0 || AppMotion.reduce(context)) {
+          // 控制器已在终态或减弱动效开启时直接落定终态，避免播放恢复动画。
           _entranceFinished = true;
+          _animController.value = 1.0;
         } else {
           // 恢复为未完成时沿用原有 forward 重播语义，需要重新挂回过渡层。
           _entranceFinished = false;
@@ -497,7 +498,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
-            // 多选复选框 vs 小米风格圆形复选框
+            // 多选复选框 vs 圆形完成复选框：复用统一 AppCheckbox，避免折叠展开后重播勾选弹跳
             if (isSelectionMode)
               GestureDetector(
                 key: const ValueKey('todo_select_detector'),
@@ -506,22 +507,14 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                   widget.onSelectToggle?.call();
                 },
                 behavior: HitTestBehavior.opaque,
-                child: AnimatedContainer(
-                  key: const ValueKey('todo_select_checkbox'),
-                  duration: AppMotion.duration(context, AppDurations.fast),
-                  curve: AppCurves.standard,
-                  width: 22,
-                  height: 22,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(11),
-                    color: isSelected ? colorScheme.primary : Colors.transparent,
-                    border: Border.all(
-                      color: isSelected ? colorScheme.primary : colorScheme.outline.withValues(alpha: 0.6),
-                      width: 2.0,
-                    ),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: AppCheckbox(
+                    key: const ValueKey('todo_select_checkbox'),
+                    value: isSelected,
+                    size: 22,
+                    inactiveColor: colorScheme.outline.withValues(alpha: 0.6),
                   ),
-                  child: isSelected ? Icon(Icons.check, size: 15, color: colorScheme.onPrimary) : null,
                 ),
               )
             else
@@ -529,34 +522,14 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                 key: const ValueKey('todo_done_detector'),
                 onTap: _handleToggleComplete,
                 behavior: HitTestBehavior.opaque,
-                child: AnimatedContainer(
-                  key: const ValueKey('todo_done_checkbox'),
-                  duration: AppMotion.duration(context, AppDurations.medium),
-                  curve: AppCurves.standard,
-                  width: 20,
-                  height: 20,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    // 完成态做成实心主题色勾选框（与主题 checkbox 一致），
-                    // 淡底 + 同色勾在荧光黄绿下几乎看不见
-                    border: Border.all(
-                      color: isDone ? colorScheme.primary : colorScheme.outline.withValues(alpha: 0.5),
-                      width: 1.8,
-                    ),
-                    color: isDone ? colorScheme.primary : Colors.transparent,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: AppCheckbox(
+                    key: const ValueKey('todo_done_checkbox'),
+                    value: isDone,
+                    size: 20,
+                    inactiveColor: colorScheme.outline.withValues(alpha: 0.5),
                   ),
-                  child: isDone
-                      ? TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: AppMotion.duration(context, AppDurations.medium),
-                          curve: AppCurves.spring,
-                          builder: (context, value, child) {
-                            return Transform.scale(scale: value, child: child);
-                          },
-                          child: Icon(Icons.check, size: 14, color: colorScheme.onPrimary),
-                        )
-                      : null,
                 ),
               ),
             // 待办标题与辅助状态（选择模式下点击整张卡片切换选中，正常模式下点击唤出编辑弹窗，长按唤出操作菜单）

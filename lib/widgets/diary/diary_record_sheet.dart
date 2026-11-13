@@ -335,7 +335,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
   /// 内容错峰入场的起点；减弱动效直接落终态。
   void _startEntryReveal() {
     if (!mounted) return;
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (AppMotion.reduce(context)) {
       _entryController.value = 1;
     } else {
       _entryController.forward();
@@ -1623,7 +1623,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
   Future<void> _waitForCompressing() async {
     if (_compressingTasks.isEmpty || _waitingForCompression) return;
     _waitingForCompression = true;
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const Center(
@@ -3409,13 +3409,13 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
             // 实心底（撤销=error，其余=主题色），前景跟随 onError / onPrimary
             decoration: BoxDecoration(color: _canUndo ? scheme.error : scheme.primary, shape: BoxShape.circle),
             child: AnimatedSwitcher(
-              // 倒计时 / 提取中 / 空闲三态交叉淡化 + 缩放，避免图标生硬闪替
+              // 倒计时 / 提取中 / 空闲三态错峰交接：旧图标先收缩淡出，新图标再淡入，避免异形图标叠影
               duration: AppMotion.duration(context, AppDurations.fast),
-              switchInCurve: AppCurves.emphasized,
-              switchOutCurve: AppCurves.exit,
+              switchInCurve: const Interval(0.5, 1.0, curve: AppCurves.emphasized),
+              switchOutCurve: const Interval(0.45, 1.0, curve: AppCurves.exit),
               transitionBuilder: (child, animation) => FadeTransition(
                 opacity: animation,
-                child: ScaleTransition(scale: Tween<double>(begin: 0.8, end: 1).animate(animation), child: child),
+                child: ScaleTransition(scale: Tween<double>(begin: 0.82, end: 1).animate(animation), child: child),
               ),
               child: _canUndo
                   ? AnimatedBuilder(
@@ -3534,7 +3534,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
   }
 
   void _showFullImage(String path) {
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: Colors.transparent,
@@ -3702,11 +3702,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
           disabledForegroundColor: scheme.onSurfaceVariant.withValues(alpha: 0.45),
         ),
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          switchInCurve: Curves.easeOutBack,
-          transitionBuilder: (child, animation) => ScaleTransition(
-            scale: animation,
-            child: FadeTransition(opacity: animation, child: child),
+          duration: AppMotion.duration(context, AppDurations.fast),
+          switchInCurve: AppCurves.emphasized,
+          switchOutCurve: AppCurves.exit,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(scale: Tween<double>(begin: 0.85, end: 1.0).animate(animation), child: child),
           ),
           child: _savedOk
               ? const Icon(Icons.check_rounded, key: ValueKey('saved'), size: 22)

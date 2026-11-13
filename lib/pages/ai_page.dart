@@ -42,6 +42,7 @@ import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
@@ -361,16 +362,14 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   void _scrollToBottom({bool immediate = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        if (immediate) {
-          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-        } else {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: AppMotion.duration(context, AppDurations.medium),
-            curve: AppCurves.emphasized,
-          );
-        }
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+      final target = _scrollController.position.maxScrollExtent;
+      if (immediate) {
+        _scrollController.jumpTo(target);
+      } else {
+        AppMotion.animateScrollTo(_scrollController, target, context: context);
       }
     });
   }
@@ -585,7 +584,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 只有真的要撤销数据修改时才拦一次确认，纯文字问答直接放行
     final changeCount = countTurnUndoChanges(messages, fromUserIndex: index);
     if (changeCount > 0) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await AppMotion.showDialog<bool>(
         context: context,
         builder: (dialogCtx) => AlertDialog(
           title: const Text('撤回提问？'),
@@ -736,7 +735,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 该轮（含其后轮次）记录过数据修改时需二次确认：重试前的回退会撤销这些修改
     final changeCount = countTurnUndoChanges(messages, fromUserIndex: userIndex);
     if (changeCount > 0) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await AppMotion.showDialog<bool>(
         context: context,
         builder: (dialogCtx) => AlertDialog(
           title: const Text('重试本轮对话？'),
@@ -882,7 +881,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无日记，可在时间线左下角撰写')));
       return;
     }
-    final result = await showDialog<List<String>>(
+    final result = await AppMotion.showDialog<List<String>>(
       context: context,
       builder: (ctx) => _MultiJournalSelectorDialog(journals: journals, initialSelected: _attachedJournalIds),
     );
@@ -902,7 +901,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     if (!mounted) return;
     // 排除日记笔记，保持普通笔记专属
     final validNotes = notes.where((n) => !n.isDeleted && !JournalService.isJournalNote(n.id)).toList();
-    final result = await showDialog<List<String>>(
+    final result = await AppMotion.showDialog<List<String>>(
       context: context,
       builder: (ctx) => _MultiNoteSelectorDialog(notes: validNotes, initialSelected: _attachedNoteIds),
     );
@@ -921,7 +920,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     final todos = await TodoRepository().getAll();
     if (!mounted) return;
     final validTodos = todos.where((t) => !t.isDeleted).toList();
-    final result = await showDialog<List<String>>(
+    final result = await AppMotion.showDialog<List<String>>(
       context: context,
       builder: (ctx) => _MultiTodoSelectorDialog(todos: validTodos, initialSelected: _attachedTodoIds),
     );

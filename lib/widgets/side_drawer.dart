@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/config/app_version.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
@@ -247,18 +248,15 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
   }
 
   Route<void> _menuRoute() {
-    return MaterialPageRoute<void>(
+    return AppMotion.fadeRoute<void>(
+      // 保留 route 层 Builder 以确保菜单内部拿到嵌套 Navigator 的子 context，而非抽屉外层 context。
+      Builder(builder: _buildMenu),
       settings: const RouteSettings(name: _menuRouteName),
-      builder: (context) => _buildMenu(context),
     );
   }
 
   Route<void> _entryRoute(_MenuEntry entry) {
-    return MaterialPageRoute<void>(
-      settings: RouteSettings(name: '$_entryRoutePrefix${entry.id}'),
-      // 带 route 的入口走根路由全屏打开，不会进入这里
-      builder: (context) => entry.page!,
-    );
+    return AppMotion.fadeRoute<void>(entry.page!, settings: RouteSettings(name: '$_entryRoutePrefix${entry.id}'));
   }
 }
 

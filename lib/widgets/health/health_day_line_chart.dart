@@ -1,6 +1,10 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
+
 /// 单日健康采样折线图（x 轴固定 0~24 点）
 ///
 /// 心率 / 血氧 / 压力详情页共用：小米云端这三类返回的都是 `{t: 秒级时间戳, v: 数值}`
@@ -137,6 +141,8 @@ class HealthDayLineChart extends StatelessWidget {
             ),
           ],
         ),
+        duration: AppMotion.duration(context, AppDurations.medium),
+        curve: AppCurves.emphasized,
       ),
     );
   }

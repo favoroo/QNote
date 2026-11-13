@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 
@@ -70,6 +71,21 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = AppMotion.reduce(context);
+    _controller.duration = reduceMotion ? Duration.zero : _entryDuration;
+    _controller.reverseDuration = reduceMotion ? Duration.zero : _exitDuration;
+    if (reduceMotion) {
+      if (_leaving) {
+        _controller.value = 0;
+      } else if (_controller.isAnimating) {
+        _controller.value = 1;
+      }
+    }
+  }
+
+  @override
   void didUpdateWidget(RecordCheerToast oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.event.id != oldWidget.event.id) {
@@ -105,10 +121,42 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final event = widget.event;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final reduceMotion = AppMotion.reduce(context);
+    // 静态文字区作为 AnimatedBuilder child 复用，避免入场/退场期间逐帧重复排版文本
+    final labelContent = Flexible(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            event.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.brightness == Brightness.dark ? scheme.onSurface : scheme.onInverseSurface,
+            ),
+          ),
+          if (event.sub != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              event.sub!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: (theme.brightness == Brightness.dark ? scheme.onSurface : scheme.onInverseSurface).withValues(
+                  alpha: 0.75,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
 
     return AnimatedBuilder(
       animation: _controller,
+      child: labelContent,
       builder: (context, child) {
         // 入场走弹性曲线（末端会轻微过冲再落定），退场只按普通加速淡出。
         final curved = _leaving || reduceMotion ? _controller.value : AppCurves.spring.transform(_controller.value);
@@ -123,7 +171,7 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
               child: _Breathe(
                 intensity: event.isCheer ? glow : 0,
                 color: scheme.primary,
-                child: _capsule(theme, scheme, event, _iconProgress(), reduceMotion),
+                child: _capsule(theme, scheme, event, _iconProgress(), reduceMotion, labelChild: child!),
               ),
             ),
           ),
@@ -138,13 +186,19 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
     return AppCurves.spring.transform(t.clamp(0.0, 1.0));
   }
 
-  Widget _capsule(ThemeData theme, ColorScheme scheme, CheerEvent event, double iconT, bool reduceMotion) {
+  Widget _capsule(
+    ThemeData theme,
+    ColorScheme scheme,
+    CheerEvent event,
+    double iconT,
+    bool reduceMotion, {
+    required Widget labelChild,
+  }) {
     final isDark = theme.brightness == Brightness.dark;
     // 深色主题的 inverseSurface 语义是「反色」，实际是近白色（#E2E2E9）。
     // 直接铺在胶囊上会在暗色页面里变成一块亮斑，所以深色下改用抬升一层的
     // 容器色：保留浮起的层级，但表面与文字都留在深色体系内。
     final background = isDark ? scheme.surfaceContainerHighest : scheme.inverseSurface;
-    final foreground = isDark ? scheme.onSurface : scheme.onInverseSurface;
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(20),
       // 深色下底色与页面底只差一档，补一圈浅色细描边把胶囊边界交代清楚。
@@ -166,29 +220,7 @@ class _RecordCheerToastState extends State<RecordCheerToast> with SingleTickerPr
             children: [
               _CheerIcon(event: event, progress: iconT, color: isDark ? scheme.primary : scheme.inversePrimary),
               const SizedBox(width: 8),
-              Flexible(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600, color: foreground),
-                    ),
-                    if (event.sub != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        event.sub!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(color: foreground.withValues(alpha: 0.75)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              labelChild,
             ],
           ),
         ),

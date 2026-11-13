@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_snapshot_service.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
@@ -695,6 +698,8 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
         borderData: FlBorderData(show: false),
         barGroups: barGroups,
       ),
+      duration: AppMotion.duration(context, AppDurations.medium),
+      curve: AppCurves.emphasized,
     );
   }
 

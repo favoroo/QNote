@@ -52,7 +52,7 @@ class _TimelineRecordButtonSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final reduceMotion = AppMotion.reduce(context);
     return AnimatedSwitcher(
       duration: reduceMotion ? Duration.zero : AppDurations.normal,
       switchInCurve: AppCurves.emphasized,
@@ -107,10 +107,10 @@ class _EmptyTimeNode extends StatelessWidget {
 
     final labelColor = isSelected ? theme.colorScheme.primary : distinctColor;
 
-    return GestureDetector(
+    return PressableScale(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
-      behavior: HitTestBehavior.opaque,
+      pressedScale: 0.985,
       child: Container(
         height: 44.0,
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
@@ -230,10 +230,10 @@ class _SelectedTimeNode extends StatelessWidget {
     final distinctColor = theme.colorScheme.secondary;
     final labelColor = isCurrentTime ? distinctColor : theme.colorScheme.primary;
 
-    return GestureDetector(
+    return PressableScale(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
-      behavior: HitTestBehavior.opaque,
+      pressedScale: 0.985,
       child: Container(
         height: 44.0,
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
@@ -308,10 +308,10 @@ class _CurrentTimeNode extends StatelessWidget {
     final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
 
-    return GestureDetector(
+    return PressableScale(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
-      behavior: HitTestBehavior.opaque,
+      pressedScale: 0.985,
       child: Container(
         height: 44.0,
         margin: const EdgeInsets.only(left: 0.0, right: 4.0, top: 2.0, bottom: 2.0),
@@ -456,15 +456,26 @@ class _CollapsingItemWrapper extends StatefulWidget {
 
 class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _sizeAnimation;
-  late final Animation<double> _fadeAnimation;
+  late final CurvedAnimation _sizeAnimation;
+  late final CurvedAnimation _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: AppDurations.normal, value: 1.0);
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppDurations.normal,
+      value: widget.isCollapsing ? 0.0 : 1.0,
+    )..addStatusListener(_handleStatus);
     _sizeAnimation = CurvedAnimation(parent: _controller, curve: AppCurves.standard);
     _fadeAnimation = CurvedAnimation(parent: _controller, curve: AppCurves.exit);
+  }
+
+  void _handleStatus(AnimationStatus status) {
+    // 展开落定后立即拆掉 SizeTransition + FadeTransition 包装层，减轻长列表稳态开销
+    if (status == AnimationStatus.completed && mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -496,12 +507,18 @@ class _CollapsingItemWrapperState extends State<_CollapsingItemWrapper> with Sin
 
   @override
   void dispose() {
+    _controller.removeStatusListener(_handleStatus);
+    _sizeAnimation.dispose();
+    _fadeAnimation.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.isCollapsing && !_controller.isAnimating && _controller.value >= 1.0) {
+      return widget.child;
+    }
     return SizeTransition(
       sizeFactor: _sizeAnimation,
       alignment: Alignment.topCenter,
@@ -542,10 +559,12 @@ const Duration _kInsertRevealDelay = Duration(milliseconds: 440);
 
 class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _grow;
-  late final Animation<double> _fade;
-  late final Animation<double> _glow;
+  late final CurvedAnimation _grow;
+  late final CurvedAnimation _fade;
+  late final CurvedAnimation _glow;
+  late final Animation<Offset> _slide;
   Timer? _startTimer;
+  bool _settled = true;
 
   @override
   void initState() {
@@ -553,13 +572,15 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with Singl
     // 用平台无障碍开关而不是 MediaQuery：initState 里依赖 InheritedWidget 是违规的。
     final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     final shouldPlay = widget.isInserting && !reduceMotion;
+    _settled = !shouldPlay;
 
     _controller = AnimationController(
       vsync: this,
       duration: _kInsertDuration,
       value: shouldPlay && widget.animateSize ? 0 : 1,
-    );
+    )..addStatusListener(_handleStatus);
     _grow = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(_grow);
     _fade = CurvedAnimation(
       parent: _controller,
       curve: const Interval(0, 0.6, curve: Curves.easeOut),
@@ -574,6 +595,15 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with Singl
       _startTimer = Timer(_kInsertRevealDelay, () {
         if (mounted) _controller.forward();
       });
+    } else if (shouldPlay) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  void _handleStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && !_settled && mounted) {
+      // 落定后卸除 SizeTransition / FadeTransition / 辉光装饰层，长列表常驻项零开销
+      setState(() => _settled = true);
     }
   }
 
@@ -583,8 +613,8 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with Singl
     // 「弹窗变卡片」落位时卡片已经在位，只补一次辉光：从 0 跑到 1，
     // 但不经过 SizeTransition，高度不会被重新拉一遍。
     if (!oldWidget.isInserting && widget.isInserting && !widget.animateSize) {
-      final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
-      if (!reduceMotion) {
+      if (!AppMotion.reduce(context)) {
+        setState(() => _settled = false);
         _controller.forward(from: 0);
       }
     }
@@ -593,12 +623,19 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with Singl
   @override
   void dispose() {
     _startTimer?.cancel();
+    _controller.removeStatusListener(_handleStatus);
+    _grow.dispose();
+    _fade.dispose();
+    _glow.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_settled && !_controller.isAnimating) {
+      return widget.child;
+    }
     final primary = Theme.of(context).colorScheme.primary;
     final content = AnimatedBuilder(
       animation: _glow,
@@ -635,10 +672,7 @@ class _InsertingItemWrapperState extends State<_InsertingItemWrapper> with Singl
       alignment: Alignment.topCenter,
       child: FadeTransition(
         opacity: _fade,
-        child: SlideTransition(
-          position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(_grow),
-          child: content,
-        ),
+        child: SlideTransition(position: _slide, child: content),
       ),
     );
   }

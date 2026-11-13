@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_motion.dart';
+
 /// 形变无限符号加载动画（MorphingInfinity）
 ///
 /// 模拟圆 -> 无限符号 -> 反向圆 -> 无限符号 -> 圆的平滑流动形变循环。
@@ -35,7 +37,7 @@ class _MorphingInfinityState extends State<MorphingInfinity> with SingleTickerPr
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final reduce = MediaQuery.disableAnimationsOf(context);
+    final reduce = AppMotion.reduce(context);
     if (reduce == _reduceMotion) return;
     _reduceMotion = reduce;
     if (reduce) {

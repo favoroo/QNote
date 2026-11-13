@@ -437,28 +437,22 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         });
       } else {
         // Target is close or we already jumped, animate to estimated target.
-        _scrollController
-            .animateTo(
-              targetOffset,
-              duration: AppMotion.duration(context, AppDurations.medium),
-              curve: AppCurves.emphasized,
-            )
-            .then((_) {
-              if (mounted) {
-                _scrollToTarget(
-                  targetIndex: targetIndex,
-                  targetKey: targetKey,
-                  smooth: smooth,
-                  alignment: alignment,
-                  attempts: attempts + 1,
-                  recordsByDate: recordsByDate,
-                  targetTime: targetTime,
-                  onSettled: onSettled,
-                );
-              } else {
-                onSettled?.call();
-              }
-            });
+        AppMotion.animateScrollTo(_scrollController, targetOffset, context: context).then((_) {
+          if (mounted) {
+            _scrollToTarget(
+              targetIndex: targetIndex,
+              targetKey: targetKey,
+              smooth: smooth,
+              alignment: alignment,
+              attempts: attempts + 1,
+              recordsByDate: recordsByDate,
+              targetTime: targetTime,
+              onSettled: onSettled,
+            );
+          } else {
+            onSettled?.call();
+          }
+        });
       }
     } else {
       _scrollController.jumpTo(targetOffset);
@@ -542,11 +536,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     if (smooth) {
       final distance = (scrollOffset - preciseTarget).abs();
-      final duration = distance < 50.0
-          ? AppMotion.duration(context, AppDurations.fast)
-          : AppMotion.duration(context, AppDurations.medium);
+      final baseDuration = distance < 50.0 ? AppDurations.fast : AppDurations.medium;
 
-      _scrollController.animateTo(preciseTarget, duration: duration, curve: AppCurves.emphasized).then((_) {
+      AppMotion.animateScrollTo(_scrollController, preciseTarget, context: context, baseDuration: baseDuration).then((
+        _,
+      ) {
         if (mounted) {
           _finishProgrammaticScroll();
           onSettled?.call();
@@ -570,20 +564,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     );
 
     if (smooth) {
-      _scrollController
-          .animateTo(
-            targetOffset,
-            duration: AppMotion.duration(context, AppDurations.medium),
-            curve: AppCurves.emphasized,
-          )
-          .then((_) {
-            if (mounted) {
-              _finishProgrammaticScroll();
-              onSettled?.call();
-            } else {
-              onSettled?.call();
-            }
-          });
+      AppMotion.animateScrollTo(_scrollController, targetOffset, context: context).then((_) {
+        if (mounted) {
+          _finishProgrammaticScroll();
+          onSettled?.call();
+        } else {
+          onSettled?.call();
+        }
+      });
     } else {
       _scrollController.jumpTo(targetOffset);
       _finishProgrammaticScroll();
@@ -1216,7 +1204,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   void _showDatePicker() async {
     final selectedDate = ref.read(selectedDateProvider);
     final colorMarks = ref.read(diaryColorMarkProvider).valueOrNull ?? [];
-    final result = await showDialog<DateTime>(
+    final result = await AppMotion.showDialog<DateTime>(
       context: context,
       builder: (context) => CustomDatePickerDialog(
         initialDate: selectedDate,
@@ -1231,7 +1219,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   }
 
   void _navigateToSearch() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchView()));
+    Navigator.of(context).push(AppMotion.fadeRoute(const SearchView()));
   }
 
   void _navigateToBatchManage() {
@@ -2261,7 +2249,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   Future<void> _handleJournalTap() async {
     final selectedDate = ref.read(selectedDateProvider);
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalEditorView(date: selectedDate)));
+    await Navigator.of(context).push(AppMotion.fadeRoute(JournalEditorView(date: selectedDate)));
     // 编辑器内部保存时会失效缓存，这里兜底返回后刷新按钮状态
     ref.invalidate(journalByDateProvider(selectedDate));
   }
@@ -3179,11 +3167,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
             ),
           ),
           // 批量结果确认栏：用高度动画进出，避免抽完最后一条时视口突然缩一截
-          AnimatedSize(
-            duration: AppMotion.duration(context, AppDurations.normal),
-            curve: AppCurves.emphasizedSpatial,
-            alignment: Alignment.topCenter,
-            child: _showBatchConfirmButton ? _buildBatchConfirmPanel(theme) : const SizedBox(width: double.infinity),
+          AppCollapsible(
+            expanded: _showBatchConfirmButton,
+            rise: 0,
+            child: _showBatchConfirmButton ? _buildBatchConfirmPanel(theme) : const SizedBox.shrink(),
           ),
         ],
       ),

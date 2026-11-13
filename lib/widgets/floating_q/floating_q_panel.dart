@@ -211,6 +211,7 @@ class _PanelReveal extends StatefulWidget {
 class _PanelRevealState extends State<_PanelReveal> {
   late final CurvedAnimation _animation;
   late final Animation<Offset> _slide;
+  bool _settled = false;
 
   @override
   void initState() {
@@ -220,16 +221,29 @@ class _PanelRevealState extends State<_PanelReveal> {
       curve: Interval(widget.begin, math.min(1.0, widget.begin + 0.64), curve: AppCurves.emphasized),
     );
     _slide = Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(_animation);
+    _settled = widget.controller.value >= 1.0 && !widget.controller.isAnimating;
+    widget.controller.addStatusListener(_handleStatus);
+  }
+
+  void _handleStatus(AnimationStatus status) {
+    final nextSettled = status == AnimationStatus.completed;
+    if (nextSettled != _settled && mounted) {
+      setState(() => _settled = nextSettled);
+    }
   }
 
   @override
   void dispose() {
+    widget.controller.removeStatusListener(_handleStatus);
     _animation.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_settled || AppMotion.reduce(context)) {
+      return widget.child;
+    }
     return FadeTransition(
       opacity: _animation,
       child: SlideTransition(position: _slide, child: widget.child),
@@ -612,21 +626,35 @@ class _PanelStreamingTail extends ConsumerWidget {
   }
 }
 
-/// 新内容入场微动画：淡入 + 轻微上移归位。
+/// 新内容入场微动画：淡入 + 轻微上移归位，并在完成后主动摘除过渡包装。
 ///
-/// tween 终值恒定，仅在首次挂载时播放一次；高频重建复用同一 Element，
-/// 不会重复触发动画。
-class _PanelEntrance extends StatelessWidget {
+/// 仅在首次挂载时播放一次；完成后退化为直接返回 [child]，避免高频流式消息区保留多余 Opacity 层。
+class _PanelEntrance extends StatefulWidget {
   const _PanelEntrance({required this.child});
 
   final Widget child;
 
   @override
+  State<_PanelEntrance> createState() => _PanelEntranceState();
+}
+
+class _PanelEntranceState extends State<_PanelEntrance> {
+  bool _done = false;
+
+  @override
   Widget build(BuildContext context) {
+    if (_done || AppMotion.reduce(context)) {
+      return widget.child;
+    }
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.0, end: 1.0),
       duration: AppMotion.duration(context, AppDurations.fast),
       curve: AppCurves.emphasized,
+      onEnd: () {
+        if (mounted && !_done) {
+          setState(() => _done = true);
+        }
+      },
       builder: (context, t, child) => Opacity(
         opacity: t,
         child: Transform.translate(
@@ -635,7 +663,7 @@ class _PanelEntrance extends StatelessWidget {
           child: child,
         ),
       ),
-      child: child,
+      child: widget.child,
     );
   }
 }
@@ -654,45 +682,40 @@ class _PanelUndoBanner extends ConsumerWidget {
     final (showBanner, undoCount, isUndoing) = ref.watch(
       floatingQProvider.select((s) => (s.phase == FloatingQPhase.countdown, s.pendingUndoCount, s.isUndoing)),
     );
-    // 高度展开/收合 + 淡入：横幅插入/移除不再硬切挤压消息区；
-    // 空态保持等宽零高，宽度稳定后只做高度方向动画
-    return AnimatedSize(
-      duration: AppMotion.duration(context, AppDurations.normal),
-      curve: AppCurves.emphasizedSpatial,
-      child: AnimatedSwitcher(
-        duration: AppMotion.duration(context, AppDurations.fast),
-        switchInCurve: AppCurves.emphasized,
-        child: showBanner
-            ? Container(
-                key: const ValueKey('undo-banner'),
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(AppRadius.medium),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(Icons.history_rounded, size: 16, color: theme.colorScheme.tertiary),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '可撤回 $undoCount 处修改',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onTertiaryContainer),
-                      ),
+    // 统一用 AppCollapsible 幕布式收放：收起时保留横幅内容先淡出后收拢，不再空框收缩
+    return AppCollapsible(
+      expanded: showBanner,
+      rise: 0,
+      child: showBanner
+          ? Container(
+              key: const ValueKey('undo-banner'),
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(AppRadius.medium),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 16, color: theme.colorScheme.tertiary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '可撤回 $undoCount 处修改',
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onTertiaryContainer),
                     ),
-                    TextButton(
-                      onPressed: isUndoing ? null : onUndo,
-                      child: isUndoing
-                          ? LoadingRing(size: 14, strokeWidth: 1.8, color: theme.colorScheme.primary)
-                          : const Text('撤回'),
-                    ),
-                  ],
-                ),
-              )
-            : const SizedBox(width: double.infinity, key: ValueKey('undo-empty')),
-      ),
+                  ),
+                  TextButton(
+                    onPressed: isUndoing ? null : onUndo,
+                    child: isUndoing
+                        ? LoadingRing(size: 14, strokeWidth: 1.8, color: theme.colorScheme.primary)
+                        : const Text('撤回'),
+                  ),
+                ],
+              ),
+            )
+          : const SizedBox.shrink(),
     );
   }
 }

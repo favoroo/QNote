@@ -26,6 +26,7 @@ import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
@@ -436,22 +437,20 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
   }) {
     if (_closing) {
       final fade = Curves.easeInCubic.transform(_exitController.value);
+      final remaining = (1 - fade).clamp(0.0, 1.0);
       return [
-        // × 关闭的整屏缩放淡出保持原样（仅 220ms）；模态遮挡时整层 Offstage，
-        // 避免与关闭自身的透明度合成再叠加一层离屏层。
+        // 遮罩直接按纯色 alpha 淡出，仅内容窗做缩放 + 淡出，避免把全屏遮罩也拖进离屏 saveLayer
+        _buildScrim(remaining, allowDismiss: false, hidden: hidden),
         Positioned.fill(
           child: Offstage(
             offstage: hidden,
             child: Opacity(
-              opacity: (1 - fade).clamp(0.0, 1.0),
+              opacity: remaining,
               child: Transform.scale(
-                scale: 0.96 + 0.04 * (1 - fade),
+                scale: 0.96 + 0.04 * remaining,
                 child: Stack(
                   fit: StackFit.expand,
-                  children: [
-                    _buildScrim(1, allowDismiss: false),
-                    _buildContentWindow(Offset.zero & size, 0, size, page, clip: false, interactive: false),
-                  ],
+                  children: [_buildContentWindow(Offset.zero & size, 0, size, page, clip: false, interactive: false)],
                 ),
               ),
             ),

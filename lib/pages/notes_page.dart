@@ -293,7 +293,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                           icon: const Icon(Icons.search),
                           tooltip: '搜索',
                           onPressed: () {
-                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchView()));
+                            Navigator.of(context).push(AppMotion.fadeRoute(const SearchView()));
                           },
                         ),
                       ],
@@ -349,63 +349,56 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 ],
               ),
       ),
-      bottomNavigationBar: AnimatedSize(
-        duration: AppMotion.duration(context, AppDurations.normal),
-        curve: AppCurves.emphasized,
-        alignment: Alignment.bottomCenter,
-        clipBehavior: Clip.none,
-        child: _isSelectionMode
-            ? Container(
-                key: const ValueKey('notes_batch_bar'),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.1)),
+      bottomNavigationBar: AppCollapsible(
+        // 统一幕布式收放，保留退出态条内容，避免收起瞬间变空白矩形空缩
+        expanded: _isSelectionMode,
+        rise: 0,
+        child: Container(
+          key: const ValueKey('notes_batch_bar'),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.1))),
+            boxShadow: [
+              BoxShadow(
+                color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
+                offset: const Offset(0, -4),
+                blurRadius: 20,
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
-                      offset: const Offset(0, -4),
-                      blurRadius: 20,
+                  FilledButton(
+                    onPressed: (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) ? null : _handleBatchDelete,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _isConfirming
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onError,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                     ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          '已选 ${_selectedNoteIds.length + _selectedFolderIds.length} 项',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        FilledButton(
-                          onPressed: (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty)
-                              ? null
-                              : _handleBatchDelete,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _isConfirming
-                                ? Theme.of(context).colorScheme.error
-                                : Theme.of(context).colorScheme.error,
-                            foregroundColor: Theme.of(context).colorScheme.onError,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.delete_outline, size: 16),
-                              const SizedBox(width: 6),
-                              Text(_isConfirming ? '再点确认' : '删除', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
+                        const Icon(Icons.delete_outline, size: 16),
+                        const SizedBox(width: 6),
+                        Text(_isConfirming ? '再点确认' : '删除', style: const TextStyle(fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
-                ),
-              )
-            : const SizedBox(width: double.infinity, height: 0),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
 
@@ -420,7 +413,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
   void _showCreateFolderDialog([String? parentId]) {
     final controller = TextEditingController();
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(parentId == null ? '新建文件夹' : '新建子文件夹'),
@@ -454,13 +447,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   void _createNote([String? folderId]) async {
     final note = await ref.read(noteListProvider.notifier).addNote(title: '新笔记', folderId: folderId);
     if (mounted) {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
+      Navigator.of(context).push(AppMotion.fadeRoute(NoteEditorView(note: note)));
     }
   }
 
   /// 构建完整树：折叠文件夹的子孙也保留在模型中。
   ///
-  /// 折叠只在渲染层隐藏（见 [_FolderBody]），这样展开动画一开始就能拿到子级，
+  /// 折叠只在渲染层隐藏（见 [AppCollapsible]），这样展开动画一开始就能拿到子级，
   /// 收起动画期间也能继续绘制旧内容，直到高度完全收拢。
   List<_TreeNode> _buildTreeNodes({
     required String? parentId,
@@ -879,10 +872,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     });
   }
 
-  /// 渲染一个树节点：文件夹把子级包进带展开/收起动画的 [_FolderBody]。
+  /// 渲染一个树节点：文件夹把子级包进带展开/收起动画的 [AppCollapsible]。
   ///
-  /// 子级始终来自完整树，折叠时由 [_FolderBody] 决定不挂载；因此收起动画
-  /// 期间还能继续绘制旧内容，直到高度完全收拢。
+  /// 子级始终来自完整树，折叠时由 [AppCollapsible] 决定卸载并在收起期间保留快照绘制。
   Widget _buildTreeNode(_TreeNode node) {
     final item = node.item;
     final tile = _buildFlattenedTile(item);
@@ -904,7 +896,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             tile,
-            _FolderBody(
+            AppCollapsible(
               expanded: item.folder!.isExpanded,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1014,60 +1006,75 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             ),
 
             // 仅当拖动项是有父级的子项时，悬浮呼出底部「移至根目录」胶囊。
-            // 收窄为居中胶囊，避免整行宽靶区盖住列表最后几行。
-            if (_activeDraggingItem != null && _activeDraggingItem!.parentId != null)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 24,
+            // 收窄为居中胶囊并补上入退场过渡，避免整行宽靶区遮挡列表且松手瞬间闪灭。
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 24,
+              child: IgnorePointer(
+                ignoring: _activeDraggingItem == null || _activeDraggingItem!.parentId == null,
                 child: Center(
-                  child: SizedBox(
-                    width: 220,
-                    height: 56,
-                    child: AnimatedContainer(
-                      key: _rootDropKey,
-                      duration: AppMotion.duration(context, AppDurations.fast),
-                      curve: AppCurves.standard,
-                      decoration: BoxDecoration(
-                        color: _isRootDropHover
-                            ? theme.colorScheme.primaryContainer
-                            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
-                          width: _isRootDropHover ? 2.0 : 1.2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: _isRootDropHover ? 0.2 : 0.12),
-                            blurRadius: _isRootDropHover ? 16 : 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.drive_file_move_outlined,
-                            size: _isRootDropHover ? 24 : 20,
-                            color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isRootDropHover ? '松手移至根目录' : '移至根目录',
-                            style: TextStyle(
-                              color: _isRootDropHover ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                              fontWeight: _isRootDropHover ? FontWeight.bold : FontWeight.w600,
-                              fontSize: 15,
+                  child: AppMotion.switcher(
+                    context: context,
+                    alignment: Alignment.bottomCenter,
+                    child: (_activeDraggingItem != null && _activeDraggingItem!.parentId != null)
+                        ? SizedBox(
+                            key: const ValueKey('root_drop_pill'),
+                            width: 220,
+                            height: 56,
+                            child: AnimatedContainer(
+                              key: _rootDropKey,
+                              duration: AppMotion.duration(context, AppDurations.fast),
+                              curve: AppCurves.standard,
+                              decoration: BoxDecoration(
+                                color: _isRootDropHover
+                                    ? theme.colorScheme.primaryContainer
+                                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
+                                borderRadius: BorderRadius.circular(28),
+                                border: Border.all(
+                                  color: _isRootDropHover
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.outlineVariant,
+                                  width: _isRootDropHover ? 2.0 : 1.2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: _isRootDropHover ? 0.2 : 0.12),
+                                    blurRadius: _isRootDropHover ? 16 : 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.drive_file_move_outlined,
+                                    size: _isRootDropHover ? 24 : 20,
+                                    color: _isRootDropHover
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _isRootDropHover ? '松手移至根目录' : '移至根目录',
+                                    style: TextStyle(
+                                      color: _isRootDropHover
+                                          ? theme.colorScheme.primary
+                                          : theme.colorScheme.onSurfaceVariant,
+                                      fontWeight: _isRootDropHover ? FontWeight.bold : FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                          )
+                        : const SizedBox.shrink(key: ValueKey('root_drop_empty')),
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -1079,11 +1086,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (JournalService.isJournalNote(note.id)) {
       final date = DateTime.tryParse(note.title);
       if (date != null) {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalEditorView(date: date)));
+        Navigator.of(context).push(AppMotion.fadeRoute(JournalEditorView(date: date)));
         return;
       }
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NoteEditorView(note: note)));
+    Navigator.of(context).push(AppMotion.fadeRoute(NoteEditorView(note: note)));
   }
 
   void _toggleFolder(Folder folder) {
@@ -1123,7 +1130,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
     final theme = Theme.of(context);
 
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),
@@ -1323,7 +1330,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
   void _renameFolder(Folder folder) {
     final controller = TextEditingController(text: folder.name);
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('重命名文件夹'),

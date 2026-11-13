@@ -100,7 +100,8 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
       message: ChatMessage(role: 'assistant', content: content, timestamp: DateTime.now()),
       statusText: statusText,
       statusStartedAt: statusStartedAt,
-      isFirstInGroup: widget.isFirstInGroup && !showThoughtRow,
+      // 组抬头统一由外层列稳定渲染（与历史气泡同一 bottom: 6 间距），思考行弹出时头像不会上下跳一格
+      isFirstInGroup: false,
       isLastInGroup: widget.isLastInGroup,
       generatedImageKeys: widget.generatedImageKeys,
       onSendToQ: widget.onSendToQ,
@@ -110,36 +111,40 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (showThoughtRow) ...[
-            if (widget.isFirstInGroup)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2, left: 4, right: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const QAvatar(size: 24, withBackground: true),
-                    const SizedBox(width: 6),
-                    Text(
-                      '小Q',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          if (widget.isFirstInGroup)
             Padding(
-              key: const ValueKey('streaming_thought_row'),
-              padding: const EdgeInsets.only(left: 4, right: 4, bottom: 2),
-              child: ThinkingProcessView(
-                thought: liveThought,
-                isStreaming: true,
-                startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
+              padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const QAvatar(size: 24, withBackground: true),
+                  const SizedBox(width: 6),
+                  Text(
+                    '小Q',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          AppCollapsible(
+            expanded: showThoughtRow,
+            rise: 4,
+            child: showThoughtRow
+                ? Padding(
+                    key: const ValueKey('streaming_thought_row'),
+                    padding: const EdgeInsets.only(left: 4, right: 4, bottom: 2),
+                    child: ThinkingProcessView(
+                      thought: liveThought,
+                      isStreaming: true,
+                      startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
           bubble,
         ],
       ),
@@ -252,18 +257,14 @@ class ChatBubble extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final entranceKey =
+        '${message.role}|${message.timestamp?.microsecondsSinceEpoch ?? 0}|${message.toolCallId ?? ''}|${message.content.hashCode}';
+
     // 思考段：扁平时间线行，不套气泡壳（对齐 ZCode 的「思考 · 3 秒」步骤行）
     if (message.role == 'thought') {
-      return TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: AppMotion.duration(context, AppDurations.medium),
-        curve: AppCurves.emphasized,
-        builder: (context, value, child) {
-          return Opacity(
-            opacity: value,
-            child: Transform.translate(offset: Offset(0, (1 - value) * 12), child: child),
-          );
-        },
+      return _OneShotBubbleEntrance(
+        entranceKey: entranceKey,
+        beginOffsetY: 12,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -298,16 +299,9 @@ class ChatBubble extends ConsumerWidget {
       );
     }
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: AppMotion.duration(context, AppDurations.medium),
-      curve: AppCurves.emphasized,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(offset: Offset(0, (1 - value) * 20), child: child),
-        );
-      },
+    return _OneShotBubbleEntrance(
+      entranceKey: entranceKey,
+      beginOffsetY: 20,
       child: Column(
         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
@@ -1055,7 +1049,7 @@ class ChatBubble extends ConsumerWidget {
   /// 技能手册查看弹窗：避免大段 Markdown 技能说明直接在主对话流刷屏
   static void _showSkillHandbookDialog(BuildContext context, String skillName, String content) {
     final theme = Theme.of(context);
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1101,7 +1095,7 @@ class ChatBubble extends ConsumerWidget {
   /// 文件内容预览弹窗：点击「预览」按钮按需查看，避免正文长篇大论挤占对话空间
   static void _showFilePreviewDialog(BuildContext context, String filePath, String content) {
     final theme = Theme.of(context);
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1350,6 +1344,79 @@ class _LiveThoughtView extends ConsumerWidget {
         isStreaming: true,
         startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
       ),
+    );
+  }
+}
+
+/// 消息首次挂载时播一次轻上移淡入，完成后立刻摘除 Opacity 与 Transform 包装。
+///
+/// 通过有限集合记住已入场的消息键，避免长列表上下滚动回收 Element 或切回会话时重复闪动。
+class _OneShotBubbleEntrance extends StatefulWidget {
+  const _OneShotBubbleEntrance({required this.entranceKey, required this.beginOffsetY, required this.child});
+
+  final String entranceKey;
+  final double beginOffsetY;
+  final Widget child;
+
+  @override
+  State<_OneShotBubbleEntrance> createState() => _OneShotBubbleEntranceState();
+}
+
+class _OneShotBubbleEntranceState extends State<_OneShotBubbleEntrance> with SingleTickerProviderStateMixin {
+  static final Set<String> _playedKeys = <String>{};
+
+  AnimationController? _controller;
+  CurvedAnimation? _curved;
+  bool _done = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final disableAnimations = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    if (_playedKeys.length > 600) {
+      _playedKeys.clear();
+    }
+    if (disableAnimations || !_playedKeys.add(widget.entranceKey)) {
+      _done = true;
+      return;
+    }
+    _done = false;
+    _controller = AnimationController(vsync: this, duration: AppDurations.medium)..addStatusListener(_onStatus);
+    _curved = CurvedAnimation(parent: _controller!, curve: AppCurves.emphasized);
+    _controller!.forward();
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && !_done && mounted) {
+      // 入场结束即拆层，稳态气泡不残留 Opacity 合成开销
+      setState(() => _done = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeStatusListener(_onStatus);
+    _curved?.dispose();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done || AppMotion.reduce(context) || _curved == null) {
+      return widget.child;
+    }
+    final anim = _curved!;
+    return AnimatedBuilder(
+      animation: anim,
+      child: widget.child,
+      builder: (context, child) {
+        final v = anim.value;
+        return Opacity(
+          opacity: v.clamp(0.0, 1.0),
+          child: Transform.translate(offset: Offset(0, (1 - v) * widget.beginOffsetY), child: child),
+        );
+      },
     );
   }
 }

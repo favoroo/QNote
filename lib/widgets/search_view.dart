@@ -31,16 +31,38 @@ class _SearchViewState extends ConsumerState<SearchView> {
   String _query = '';
   Timer? _debounce;
 
+  Animation<double>? _routeAnim;
+  void Function(AnimationStatus)? _routeAnimListener;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
+      if (!mounted) return;
+      final anim = ModalRoute.of(context)?.animation;
+      // 等页面入场转场落定后再弹键盘，避免软键盘顶升与页面过渡动画叠加掉帧
+      if (anim == null || anim.isCompleted || AppMotion.reduce(context)) {
+        _focusNode.requestFocus();
+        return;
+      }
+      _routeAnim = anim;
+      _routeAnimListener = (status) {
+        if (status == AnimationStatus.completed) {
+          anim.removeStatusListener(_routeAnimListener!);
+          _routeAnimListener = null;
+          _routeAnim = null;
+          if (mounted) _focusNode.requestFocus();
+        }
+      };
+      anim.addStatusListener(_routeAnimListener!);
     });
   }
 
   @override
   void dispose() {
+    if (_routeAnim != null && _routeAnimListener != null) {
+      _routeAnim!.removeStatusListener(_routeAnimListener!);
+    }
     _searchController.dispose();
     _focusNode.dispose();
     _debounce?.cancel();
@@ -106,19 +128,30 @@ class _SearchViewState extends ConsumerState<SearchView> {
           ),
         ),
         actions: [
-          if (_searchController.text.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.clear),
-              onPressed: () {
-                _searchController.clear();
-                setState(() {
-                  _diaryResults = [];
-                  _noteResults = [];
-                  _query = '';
-                  _isSearching = false;
-                });
-              },
-            ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _searchController,
+            builder: (context, value, _) {
+              return AppMotion.switcher(
+                context: context,
+                child: value.text.isNotEmpty
+                    ? IconButton(
+                        key: const ValueKey('search_clear_btn'),
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _debounce?.cancel();
+                          setState(() {
+                            _diaryResults = [];
+                            _noteResults = [];
+                            _query = '';
+                            _isSearching = false;
+                          });
+                        },
+                      )
+                    : const SizedBox.shrink(key: ValueKey('search_clear_empty')),
+              );
+            },
+          ),
         ],
       ),
       body: AnimatedSwitcher(

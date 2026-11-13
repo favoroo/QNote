@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
 
 /// 统计卡片外框：统一 16 圆角、0.5 细边框、零阴影与 16 内边距。
@@ -195,6 +198,8 @@ class StatPieChart extends StatelessWidget {
               sectionsSpace: 2,
               centerSpaceRadius: 28,
             ),
+            duration: AppMotion.duration(context, AppDurations.medium),
+            curve: AppCurves.emphasized,
           ),
         ),
         const SizedBox(height: 12),

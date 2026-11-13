@@ -37,7 +37,7 @@ class FlattenedItem {
 }
 
 /// 渲染用树节点：item 自带深度信息，children 保留完整子级（含折叠隐藏的部分），
-/// 展开/收起动画由 [_FolderBody] 负责显隐。
+/// 展开/收起动画由 [AppCollapsible] 负责显隐。
 class _TreeNode {
   _TreeNode(this.item, {this.children = const []});
 
@@ -532,113 +532,6 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 文件夹子级的展开/收起容器。
-///
-/// 视觉上做「幕布式展开」：高度由 [SizeTransition] 裁剪驱动，内容同步淡入并从
-/// 文件夹行下方轻微落位；收起时反向播放并加速收拢。子级在折叠动画结束后才从
-/// widget 树移除，因此不会出现「内容先瞬消、留白再慢慢收起」的断层。
-class _FolderBody extends StatefulWidget {
-  const _FolderBody({required this.expanded, required this.child});
-
-  final bool expanded;
-
-  /// 折叠时仍保留完整子级，供收起动画继续绘制
-  final Widget child;
-
-  @override
-  State<_FolderBody> createState() => _FolderBodyState();
-}
-
-class _FolderBodyState extends State<_FolderBody> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _sizeFactor;
-  late final Animation<double> _opacity;
-  late final Animation<double> _rise;
-
-  /// 折叠动画期间子级仍需挂载，动画结束后才卸载
-  bool _visible = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _visible = widget.expanded;
-    _controller = AnimationController(
-      vsync: this,
-      // 展开略慢让层级变化被看清，收起更快，避免拖住下一步操作
-      duration: AppDurations.normal,
-      reverseDuration: AppDurations.fast,
-      value: widget.expanded ? 1 : 0,
-    );
-    _sizeFactor = CurvedAnimation(
-      parent: _controller,
-      curve: AppCurves.emphasizedSpatial,
-      reverseCurve: AppCurves.exit,
-    );
-    // 内容比高度略早完成淡入；收起时先淡出再收拢，不会留下一条悬空的内容
-    _opacity = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.1, 0.72, curve: Curves.easeOut),
-      reverseCurve: const Interval(0.32, 1, curve: Curves.easeIn),
-    );
-    _rise = CurvedAnimation(parent: _controller, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit);
-  }
-
-  @override
-  void didUpdateWidget(covariant _FolderBody oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.expanded == oldWidget.expanded) return;
-
-    // 系统「减弱动态效果」开启时直接落到终态
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _controller.stop();
-      _controller.value = widget.expanded ? 1 : 0;
-      _visible = widget.expanded;
-      return;
-    }
-
-    if (widget.expanded) {
-      // 收起中途再次点开：子级可能已卸载，先重新挂载再从当前进度继续展开
-      _visible = true;
-      _controller.forward();
-    } else {
-      _controller.reverse().whenComplete(() {
-        // 反向被新的展开打断时 value 不会归零，此时不能卸载子级
-        if (!mounted || widget.expanded || _controller.value > 0) return;
-        setState(() => _visible = false);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_visible) {
-      return const SizedBox.shrink();
-    }
-
-    return SizeTransition(
-      sizeFactor: _sizeFactor,
-      alignment: Alignment.topCenter,
-      child: FadeTransition(
-        opacity: _opacity,
-        child: AnimatedBuilder(
-          animation: _rise,
-          builder: (context, child) {
-            // 固定 6px 位移而不是按高度百分比：深层大子树也不会被放大成夸张滑动
-            return Transform.translate(offset: Offset(0, -6 * (1 - _rise.value)), child: child);
-          },
-          child: widget.child,
-        ),
-      ),
     );
   }
 }

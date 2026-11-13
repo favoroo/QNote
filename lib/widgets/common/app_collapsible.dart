@@ -55,9 +55,9 @@ class AppCollapsible extends StatefulWidget {
 
 class _AppCollapsibleState extends State<AppCollapsible> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _sizeFactor;
-  late final Animation<double> _opacity;
-  late final Animation<double> _riseAnimation;
+  late final CurvedAnimation _sizeFactor;
+  late final CurvedAnimation _opacity;
+  late final CurvedAnimation _riseAnimation;
 
   /// 动画期间子级仍需挂载，收起结束后才卸载。
   bool _visible = false;
@@ -113,7 +113,13 @@ class _AppCollapsibleState extends State<AppCollapsible> with SingleTickerProvid
       // 展开中途被打断：父级这一帧已提供真实内容，直接接管并继续展开
       _retainedChild = null;
       _visible = true;
-      _controller.forward();
+      _controller.forward().whenComplete(() {
+        // 展开落定后立即触发重建，卸掉 3 层过渡包装，不在稳态列表项上常驻开销
+        if (!mounted || !widget.expanded || _controller.isAnimating || _controller.value < 1.0) {
+          return;
+        }
+        setState(() {});
+      });
     } else {
       _retainedChild = oldWidget.child;
       _controller.reverse().whenComplete(() {
@@ -129,6 +135,9 @@ class _AppCollapsibleState extends State<AppCollapsible> with SingleTickerProvid
 
   @override
   void dispose() {
+    _sizeFactor.dispose();
+    _opacity.dispose();
+    _riseAnimation.dispose();
     _controller.dispose();
     super.dispose();
   }

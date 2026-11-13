@@ -977,7 +977,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final urlController = TextEditingController();
     final titleController = TextEditingController();
 
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (context) {
         final theme = Theme.of(context);
@@ -1031,7 +1031,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final urlController = TextEditingController(text: seg.url);
     final titleController = TextEditingController(text: seg.title ?? '');
 
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (context) {
         final theme = Theme.of(context);
@@ -1154,9 +1154,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     final fallbackIndex = initialIndex >= 0 ? initialIndex : 0;
 
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            FullScreenImageGallery(images: images.isNotEmpty ? images : [path], initialIndex: fallbackIndex),
+      AppMotion.galleryRoute(
+        FullScreenImageGallery(images: images.isNotEmpty ? images : [path], initialIndex: fallbackIndex),
       ),
     );
   }
@@ -1338,7 +1337,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             // HTML/SVG 笔记：渲染预览与源码编辑切换
             if (_fileType == NoteFileType.html || _fileType == NoteFileType.svg)
               IconButton(
-                icon: Icon(_isPreviewActive ? Icons.code : Icons.visibility_outlined),
+                icon: AppMotion.switcher(
+                  context: context,
+                  child: Icon(
+                    _isPreviewActive ? Icons.code : Icons.visibility_outlined,
+                    key: ValueKey(_isPreviewActive),
+                  ),
+                ),
                 onPressed: () => setState(() => _previewMode = !_previewMode),
                 tooltip: _isPreviewActive ? '查看源码' : '渲染预览',
               ),

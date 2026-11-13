@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
@@ -924,11 +925,9 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   }
 
   void _openGallery(DiaryRecord record, int index) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _FullScreenImageGallery(photos: record.photos, initialIndex: index),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(AppMotion.galleryRoute(FullScreenImageGallery(images: record.photos, initialIndex: index)));
   }
 
   @override
@@ -1418,73 +1417,6 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   }
 }
 
-class _FullScreenImageGallery extends StatefulWidget {
-  final List<String> photos;
-  final int initialIndex;
-
-  const _FullScreenImageGallery({required this.photos, required this.initialIndex});
-
-  @override
-  State<_FullScreenImageGallery> createState() => _FullScreenImageGalleryState();
-}
-
-class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
-  late PageController _pageController;
-  late int _currentIndex;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          '${_currentIndex + 1} / ${widget.photos.length}',
-          style: const TextStyle(color: Colors.white, fontSize: AppTypography.title),
-        ),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: widget.photos.length,
-        onPageChanged: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        itemBuilder: (context, index) {
-          return Center(
-            child: InteractiveViewer(
-              minScale: 1.0,
-              maxScale: 4.0,
-              child: UnifiedImage(imagePath: widget.photos[index], fit: BoxFit.contain),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 class _RecordDetailSheet extends ConsumerStatefulWidget {
   final List<DiaryRecord> records;
   final int initialIndex;
@@ -1841,11 +1773,9 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
                 final photo = entry.value;
                 return GestureDetector(
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => _FullScreenImageGallery(photos: record.photos, initialIndex: idx),
-                      ),
-                    );
+                    Navigator.of(
+                      context,
+                    ).push(AppMotion.galleryRoute(FullScreenImageGallery(images: record.photos, initialIndex: idx)));
                   },
                   child: Container(
                     decoration: BoxDecoration(

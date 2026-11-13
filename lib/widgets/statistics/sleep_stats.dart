@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:fl_chart/fl_chart.dart';
 
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
@@ -135,6 +138,8 @@ class _SleepDurationChart extends StatelessWidget {
           ),
         ],
       ),
+      duration: AppMotion.duration(context, AppDurations.medium),
+      curve: AppCurves.emphasized,
     );
   }
 }

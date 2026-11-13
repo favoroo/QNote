@@ -579,28 +579,19 @@ class _CollapsibleToolBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final child = expanded && hasBody
-        ? Column(
-            key: const ValueKey('tool_body'),
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [const Divider(height: 1), bodyBuilder(context)],
-          )
-        : const SizedBox(key: ValueKey('tool_body_empty'), width: double.infinity);
-
-    return AnimatedSize(
-      duration: AppMotion.duration(context, AppDurations.normal),
-      curve: AppCurves.emphasized,
-      alignment: Alignment.topCenter,
-      child: AnimatedSwitcher(
-        duration: AppMotion.duration(context, AppDurations.fast),
-        switchInCurve: AppCurves.emphasized,
-        switchOutCurve: AppCurves.exit,
-        layoutBuilder: (currentChild, previousChildren) {
-          return Stack(alignment: Alignment.topCenter, children: [...previousChildren, ?currentChild]);
-        },
-        child: child,
-      ),
+    final active = expanded && hasBody;
+    // 复用统一 AppCollapsible：收起时保留内容同步淡出并收拢高度，避免先前先等 150ms 再缩空白的两段脱节
+    return AppCollapsible(
+      expanded: active,
+      rise: 0,
+      child: active
+          ? Column(
+              key: const ValueKey('tool_body'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [const Divider(height: 1), bodyBuilder(context)],
+            )
+          : const SizedBox.shrink(),
     );
   }
 }

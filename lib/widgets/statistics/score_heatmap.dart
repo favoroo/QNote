@@ -31,6 +31,8 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
 
   // OverlayEntry 用于全屏 tooltip + ModalBarrier 实现点击任意位置消失
   OverlayEntry? _overlayEntry;
+  GlobalKey<_HeatmapTooltipOverlayState>? _tooltipKey;
+  VoidCallback? _forceRemoveOverlay;
   int? _selectedRow;
   int? _selectedCol;
 
@@ -41,20 +43,43 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
     return primary.withValues(alpha: 0.15);
   }
 
-  void _dismissTooltip() {
-    _overlayEntry?.remove();
+  void _dismissTooltip({bool immediate = false}) {
+    final entry = _overlayEntry;
+    final state = _tooltipKey?.currentState;
     _overlayEntry = null;
-    if (_selectedRow != null || _selectedCol != null) {
+    _tooltipKey = null;
+
+    if (mounted && (_selectedRow != null || _selectedCol != null)) {
       setState(() {
         _selectedRow = null;
         _selectedCol = null;
       });
     }
+
+    if (entry != null) {
+      if (immediate || state == null) {
+        entry.remove();
+        _forceRemoveOverlay = null;
+      } else {
+        void finish() {
+          entry.remove();
+          if (_forceRemoveOverlay == finish) {
+            _forceRemoveOverlay = null;
+          }
+        }
+
+        _forceRemoveOverlay = finish;
+        state.dismiss().then((_) => _forceRemoveOverlay == finish ? finish() : null);
+      }
+    } else if (immediate) {
+      _forceRemoveOverlay?.call();
+      _forceRemoveOverlay = null;
+    }
   }
 
   @override
   void dispose() {
-    _dismissTooltip();
+    _dismissTooltip(immediate: true);
     super.dispose();
   }
 
@@ -243,7 +268,7 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
 
     return GestureDetector(
       onTap: () {
-        _dismissTooltip();
+        _dismissTooltip(immediate: true);
         setState(() {
           _selectedRow = row;
           _selectedCol = col;
@@ -299,65 +324,19 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
       tooltipTop = screenHeight - tooltipHeight - 8;
     }
 
+    final overlayKey = GlobalKey<_HeatmapTooltipOverlayState>();
+    _tooltipKey = overlayKey;
+
     _overlayEntry = OverlayEntry(
-      builder: (overlayContext) => Stack(
-        children: [
-          // ModalBarrier：点击任意位置关闭 tooltip
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _dismissTooltip,
-              child: Container(color: Colors.transparent),
-            ),
-          ),
-          // Tooltip
-          Positioned(
-            left: tooltipLeft,
-            top: tooltipTop,
-            child: IgnorePointer(
-              child: TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0.0, end: 1.0),
-                duration: AppMotion.duration(context, AppDurations.fast),
-                curve: AppCurves.emphasized,
-                builder: (context, value, child) {
-                  return Transform.scale(
-                    scale: 0.85 + 0.15 * value,
-                    alignment: Alignment.center,
-                    child: Opacity(opacity: value, child: child),
-                  );
-                },
-                child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(6),
-                  color: theme.colorScheme.surfaceContainerHigh,
-                  child: Container(
-                    width: tooltipWidth,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          dateStr,
-                          style: TextStyle(
-                            fontSize: AppTypography.label,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          scoreStr,
-                          style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+      builder: (overlayContext) => _HeatmapTooltipOverlay(
+        key: overlayKey,
+        left: tooltipLeft,
+        top: tooltipTop,
+        width: tooltipWidth,
+        dateStr: dateStr,
+        scoreStr: scoreStr,
+        theme: theme,
+        onDismiss: () => _dismissTooltip(),
       ),
     );
 
@@ -406,6 +385,129 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
         Text(
           '多',
           style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
+/// 热力图悬浮提示层：补齐反向缩放淡出退场，避免点击空白处时气泡硬消失。
+class _HeatmapTooltipOverlay extends StatefulWidget {
+  const _HeatmapTooltipOverlay({
+    super.key,
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.dateStr,
+    required this.scoreStr,
+    required this.theme,
+    required this.onDismiss,
+  });
+
+  final double left;
+  final double top;
+  final double width;
+  final String dateStr;
+  final String scoreStr;
+  final ThemeData theme;
+  final VoidCallback onDismiss;
+
+  @override
+  State<_HeatmapTooltipOverlay> createState() => _HeatmapTooltipOverlayState();
+}
+
+class _HeatmapTooltipOverlayState extends State<_HeatmapTooltipOverlay> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final CurvedAnimation _curved;
+  bool _dismissing = false;
+  bool _motionInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: AppDurations.fast);
+    _curved = CurvedAnimation(parent: _controller, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionInitialized) return;
+    _motionInitialized = true;
+    if (AppMotion.reduce(context)) {
+      _controller.value = 1.0;
+    } else {
+      _controller.forward();
+    }
+  }
+
+  Future<void> dismiss() async {
+    if (_dismissing || !mounted) return;
+    _dismissing = true;
+    if (AppMotion.reduce(context)) {
+      return;
+    }
+    await _controller.reverse();
+  }
+
+  @override
+  void dispose() {
+    _curved.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: widget.onDismiss,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        Positioned(
+          left: widget.left,
+          top: widget.top,
+          child: IgnorePointer(
+            child: FadeTransition(
+              opacity: _curved,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.85, end: 1.0).animate(_curved),
+                child: Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(6),
+                  color: theme.colorScheme.surfaceContainerHigh,
+                  child: Container(
+                    width: widget.width,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          widget.dateStr,
+                          style: TextStyle(
+                            fontSize: AppTypography.label,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.scoreStr,
+                          style: TextStyle(fontSize: AppTypography.caption, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );

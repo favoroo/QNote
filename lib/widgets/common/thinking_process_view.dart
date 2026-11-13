@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 
 /// 取思考文本中最新的一行（最后一个非空行）
@@ -100,86 +101,91 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
     final latest = latestThoughtLine(widget.thought);
     final durationText = widget.isStreaming ? '' : thinkingDurationLabel(widget.durationSeconds);
 
-    return AnimatedSize(
-      duration: AppMotion.duration(context, AppDurations.medium),
-      curve: AppCurves.emphasized,
-      alignment: Alignment.topLeft,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 标题行：点击展开/收起；折叠时右侧展示最新一行思考
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _toggle,
-              borderRadius: BorderRadius.circular(8),
-              child: Semantics(
-                button: true,
-                label: _expanded ? '收起思考' : '展开思考',
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-                  child: Row(
-                    children: [
-                      _ThinkingGlyph(isStreaming: widget.isStreaming, color: colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 7),
-                      Text(
-                        widget.label,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (widget.isStreaming)
-                        _StreamingThoughtClock(startedAt: widget.startedAt)
-                      else if (durationText.isNotEmpty)
-                        Text(' · $durationText', style: TextStyle(fontSize: 12, color: colorScheme.outline)),
-                      const SizedBox(width: 8),
-                      Expanded(
+    // 外层直接用普通 Column，主体交给 AppCollapsible 与标题箭头同频（normal 档），
+    // 收起时能保留完整思考区播放退场而不会只剩一块白底在缩高度。
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 标题行：点击展开/收起；折叠时右侧展示最新一行思考
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _toggle,
+            borderRadius: BorderRadius.circular(8),
+            child: Semantics(
+              button: true,
+              label: _expanded ? '收起思考' : '展开思考',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+                child: Row(
+                  children: [
+                    _ThinkingGlyph(isStreaming: widget.isStreaming, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 7),
+                    Text(
+                      widget.label,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                    ),
+                    if (widget.isStreaming)
+                      _StreamingThoughtClock(startedAt: widget.startedAt)
+                    else if (durationText.isNotEmpty)
+                      Text(' · $durationText', style: TextStyle(fontSize: 12, color: colorScheme.outline)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: AppMotion.switcher(
+                        context: context,
+                        scale: false,
                         child: _expanded
-                            ? const SizedBox.shrink()
-                            : _LatestThoughtLine(
-                                text: latest,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                            ? const SizedBox.shrink(key: ValueKey('thought_latest_empty'))
+                            : KeyedSubtree(
+                                key: const ValueKey('thought_latest_line'),
+                                child: _LatestThoughtLine(
+                                  text: latest,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                                  ),
                                 ),
                               ),
                       ),
-                      AnimatedRotation(
-                        turns: _expanded ? 0.5 : 0,
-                        duration: AppMotion.duration(context, AppDurations.normal),
-                        curve: AppCurves.emphasized,
-                        child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: colorScheme.outline),
-                      ),
-                    ],
-                  ),
+                    ),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.5 : 0,
+                      duration: AppMotion.duration(context, AppDurations.normal),
+                      curve: AppCurves.emphasized,
+                      child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: colorScheme.outline),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-          // 展开态：完整思考过程，限高滚动并自动贴底
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.only(left: 26, top: 2, bottom: 8),
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.35)),
-                ),
-                child: ThoughtTailScrollView(
-                  text: widget.thought,
-                  maxHeight: 320,
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                  textStyle: TextStyle(fontSize: 12, height: 1.6, color: colorScheme.onSurfaceVariant),
-                ),
-              ),
-            ),
-        ],
-      ),
+        ),
+        // 展开态：完整思考过程，限高滚动并自动贴底
+        AppCollapsible(
+          expanded: _expanded,
+          rise: 0,
+          child: _expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(left: 26, top: 2, bottom: 8),
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.35)),
+                    ),
+                    child: ThoughtTailScrollView(
+                      text: widget.thought,
+                      maxHeight: 320,
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                      textStyle: TextStyle(fontSize: 12, height: 1.6, color: colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }

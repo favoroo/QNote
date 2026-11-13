@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/pages/diary_page.dart';
 import 'package:qnote_flutter/pages/notes_page.dart';
 import 'package:qnote_flutter/pages/todo_page.dart';
@@ -292,17 +292,7 @@ CustomTransitionPage _fadeTransitionPage(Widget child) {
     transitionDuration: AppDurations.page,
     reverseTransitionDuration: AppDurations.normal,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      // 系统开启减弱动效时直接呈现终态，不做任何位移/淡入。
-      if (MediaQuery.disableAnimationsOf(context)) return child;
-
-      final curved = CurvedAnimation(parent: animation, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit);
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero).animate(curved),
-          child: child,
-        ),
-      );
+      return AppMotion.buildFadeSlideTransition(context: context, animation: animation, child: child);
     },
   );
 }

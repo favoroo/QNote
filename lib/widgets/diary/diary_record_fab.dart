@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/timeline_selection_label.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 
@@ -155,14 +156,14 @@ class _DiaryRecordFabState extends ConsumerState<DiaryRecordFab> with SingleTick
     // 从无到有的那一次转换才回弹：改时间、改区间都不该反复弹。
     ref.listen<TimelineTimeSelectEvent?>(diaryInputTimeProvider, (previous, next) {
       if (previous == null && next != null) {
-        if (!MediaQuery.disableAnimationsOf(context)) {
+        if (!AppMotion.reduce(context)) {
           _bounceController.forward(from: 0);
         }
         HapticFeedback.selectionClick();
       }
     });
 
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final reduceMotion = AppMotion.reduce(context);
     final label = selection == null
         ? null
         : buildTimelineSelectionLabel(
@@ -364,7 +365,7 @@ class _DiaryInlineRecordButtonState extends State<DiaryInlineRecordButton> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final reduceMotion = AppMotion.reduce(context);
     final style = DiaryRecordFabStyle.resolve(theme, hasSelection: true, compact: true);
     // 鼠标悬停略放大、按下略缩小；触摸端没有 hover，只剩按压反馈。
     final scale = _pressed ? 0.9 : (_hovered ? 1.06 : 1.0);
@@ -530,7 +531,7 @@ class _ClearSelectionButtonState extends State<_ClearSelectionButton> {
             // 物理反馈，避免点下去像没反应。
             child: AnimatedScale(
               scale: _pressed ? 0.82 : 1,
-              duration: const Duration(milliseconds: 90),
+              duration: AppMotion.duration(context, AppDurations.press),
               curve: Curves.easeOutCubic,
               child: Container(
                 width: 18,
@@ -559,7 +560,7 @@ class _SelectionLabel extends StatelessWidget {
     final maxTextWidth = math.min(150.0, MediaQuery.sizeOf(context).width * 0.40);
 
     return AnimatedSwitcher(
-      duration: _DiaryRecordFabState._labelSwapDuration,
+      duration: AppMotion.duration(context, _DiaryRecordFabState._labelSwapDuration),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeIn,
       // 和外面那层一样：旧文字绝对定位、不撑宽度。区间缩短成单点时间时，

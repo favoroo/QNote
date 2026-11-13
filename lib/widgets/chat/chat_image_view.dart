@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:qnote_flutter/core/storage/image_saver.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/chat_image_dedupe.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
@@ -96,9 +97,7 @@ class _ChatImageViewState extends State<ChatImageView> {
 
   void _openGallery() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FullScreenImageGallery(images: _gallery, initialIndex: _galleryIndex, onSave: _save),
-      ),
+      AppMotion.galleryRoute(FullScreenImageGallery(images: _gallery, initialIndex: _galleryIndex, onSave: _save)),
     );
   }
 

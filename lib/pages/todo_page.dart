@@ -18,6 +18,7 @@ import 'package:qnote_flutter/providers/todo_folder_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
+import 'package:qnote_flutter/widgets/common/app_checkbox.dart';
 import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
@@ -462,60 +463,54 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             ),
           ],
         ),
-        bottomNavigationBar: AnimatedSize(
-          // 多选工具条的出现/收起是大范围布局变化，走 normal 档并遵循减弱动效偏好
-          duration: AppMotion.duration(context, AppDurations.normal),
-          curve: AppCurves.standard,
-          alignment: Alignment.bottomCenter,
-          child: _isSelectionMode
-              ? Container(
-                  key: const ValueKey('todo_batch_bar'),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surface,
-                    border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.15))),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colorScheme.shadow.withValues(alpha: 0.05),
-                        offset: const Offset(0, -4),
-                        blurRadius: 20,
+        bottomNavigationBar: AppCollapsible(
+          // 统一幕布式收放，保留退出态条内容，避免收起瞬间变空白矩形空缩
+          expanded: _isSelectionMode,
+          rise: 0,
+          child: Container(
+            key: const ValueKey('todo_batch_bar'),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.15))),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.shadow.withValues(alpha: 0.05),
+                  offset: const Offset(0, -4),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '已选 ${_selectedTodoIds.length} 项',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    FilledButton(
+                      onPressed: _selectedTodoIds.isEmpty ? null : _handleBatchDelete,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colorScheme.error,
+                        foregroundColor: colorScheme.onError,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                       ),
-                    ],
-                  ),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            '已选 ${_selectedTodoIds.length} 项',
-                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          FilledButton(
-                            onPressed: _selectedTodoIds.isEmpty ? null : _handleBatchDelete,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: colorScheme.error,
-                              foregroundColor: colorScheme.onError,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.delete_outline, size: 16),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _isConfirming ? '再点确认' : '删除',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                          ),
+                          const Icon(Icons.delete_outline, size: 16),
+                          const SizedBox(width: 6),
+                          Text(_isConfirming ? '再点确认' : '删除', style: const TextStyle(fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
-                  ),
-                )
-              : const SizedBox(width: double.infinity, height: 0),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
         body: GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -556,17 +551,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                         _isSwitchingFolder = true;
                         final switchSeq = ++_folderSwitchSeq;
                         ref.read(selectedTodoFolderIdProvider.notifier).state = folderId;
-                        _pageController
-                            .animateToPage(
-                              targetIndex,
-                              duration: AppMotion.duration(context, AppDurations.medium),
-                              curve: AppCurves.emphasized,
-                            )
-                            .whenComplete(() {
-                              if (switchSeq == _folderSwitchSeq) {
-                                _isSwitchingFolder = false;
-                              }
-                            });
+                        AppMotion.animateToPage(_pageController, targetIndex, context: context).whenComplete(() {
+                          if (switchSeq == _folderSwitchSeq) {
+                            _isSwitchingFolder = false;
+                          }
+                        });
                       } else {
                         ref.read(selectedTodoFolderIdProvider.notifier).state = folderId;
                       }
@@ -1192,7 +1181,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   /// 新建分类对话框
   Future<void> _showAddFolderDialog(BuildContext context) async {
     final controller = TextEditingController();
-    final confirmed = await showDialog<String>(
+    final confirmed = await AppMotion.showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('新建分类'),
@@ -1215,7 +1204,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   /// 编辑分类名称对话框
   Future<void> _showEditFolderDialog(BuildContext context, Folder folder) async {
     final controller = TextEditingController(text: folder.name);
-    final confirmed = await showDialog<String>(
+    final confirmed = await AppMotion.showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('重命名分类'),
@@ -1237,7 +1226,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
   /// 删除分类确认弹窗
   Future<void> _confirmDeleteFolder(BuildContext context, Folder folder) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除分类'),
@@ -1276,7 +1265,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     // 在 await 之前取好依赖：收起动画时长用于「先收起再删除」的时序
     final collapse = AppMotion.duration(context, AppDurations.normal);
     final notifier = ref.read(todoListProvider.notifier);
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除待办'),

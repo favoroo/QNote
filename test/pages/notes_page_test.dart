@@ -267,17 +267,21 @@ void main() {
     // 折叠状态下子级不挂载、不占高度
     expect(find.text('子级笔记'), findsNothing);
     expect(bodyTransition, findsNothing);
+    final collapsedHeight = tester.getSize(folderNode).height;
 
-    // 展开：动画途中子级已挂载，但高度还没长到终态
+    // 展开：动画途中子级已挂载且 SizeTransition 激活，节点高度介于折叠态与完全展开态之间
     await tester.tap(find.text('动画文件夹'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
     expect(find.text('子级笔记'), findsOneWidget);
-    final midHeight = tester.getSize(bodyTransition).height;
+    expect(bodyTransition, findsOneWidget);
+    final midHeight = tester.getSize(folderNode).height;
 
     await tester.pumpAndSettle();
-    final expandedHeight = tester.getSize(bodyTransition).height;
-    expect(midHeight, greaterThan(0));
+    // 展开完成后应卸掉过渡包装层，避免稳态列表常驻 ClipRect/SizeTransition
+    expect(bodyTransition, findsNothing);
+    final expandedHeight = tester.getSize(folderNode).height;
+    expect(midHeight, greaterThan(collapsedHeight));
     expect(midHeight, lessThan(expandedHeight));
 
     // 收起：反向动画期间子级仍留在树上，避免「内容瞬消、留白再慢慢收」
@@ -285,6 +289,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 40));
     expect(find.text('子级笔记'), findsOneWidget);
+    expect(bodyTransition, findsOneWidget);
 
     await tester.pumpAndSettle();
     expect(find.text('子级笔记'), findsNothing);

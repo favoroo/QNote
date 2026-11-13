@@ -803,17 +803,13 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   void _previewPhoto(int index) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FullScreenImageGallery(images: _photos, initialIndex: index),
-      ),
-    );
+    Navigator.of(context).push(AppMotion.galleryRoute(FullScreenImageGallery(images: _photos, initialIndex: index)));
   }
 
   Future<void> _waitForCompressing() async {
     if (_compressingTasks.isEmpty || _waitingForCompression) return;
     _waitingForCompression = true;
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const Center(
@@ -999,7 +995,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),

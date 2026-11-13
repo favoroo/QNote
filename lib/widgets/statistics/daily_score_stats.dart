@@ -816,6 +816,8 @@ class _ScoreHistoryChart extends StatelessWidget {
             ),
           ],
         ),
+        duration: AppMotion.duration(context, AppDurations.medium),
+        curve: AppCurves.emphasized,
       ),
     );
   }

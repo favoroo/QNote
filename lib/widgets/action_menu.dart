@@ -67,6 +67,11 @@ class ActionMenu {
     }
     if (left < 16) left = 16;
 
+    // 缩放锚点指向触发源相对菜单盒的象限（左右按锚点中心映射，上下随翻转方向贴底或贴顶）
+    final anchorCenterX = anchorTopLeft.dx + anchorSize.width / 2;
+    final alignX = (((anchorCenterX - left) / menuWidth) * 2 - 1).clamp(-1.0, 1.0);
+    final scaleAlignment = Alignment(alignX, showAbove ? 1.0 : -1.0);
+
     final overlayKey = GlobalKey<_ActionMenuOverlayState>();
     _currentOverlayKey = overlayKey;
 
@@ -76,6 +81,7 @@ class ActionMenu {
         top: top,
         left: left,
         menuWidth: menuWidth,
+        scaleAlignment: scaleAlignment,
         items: items,
         onDismiss: () => dismiss(immediate: false),
         onRemoveEntry: () {
@@ -116,6 +122,7 @@ class _ActionMenuOverlay extends StatefulWidget {
   final double top;
   final double left;
   final double menuWidth;
+  final Alignment scaleAlignment;
   final List<ActionMenuItem> items;
   final VoidCallback onDismiss;
   final VoidCallback onRemoveEntry;
@@ -125,6 +132,7 @@ class _ActionMenuOverlay extends StatefulWidget {
     required this.top,
     required this.left,
     required this.menuWidth,
+    required this.scaleAlignment,
     required this.items,
     required this.onDismiss,
     required this.onRemoveEntry,
@@ -205,7 +213,7 @@ class _ActionMenuOverlayState extends State<_ActionMenuOverlay> with SingleTicke
             opacity: _fadeAnimation,
             child: ScaleTransition(
               scale: _scaleAnimation,
-              alignment: Alignment.topRight,
+              alignment: widget.scaleAlignment,
               child: Material(
                 elevation: 12,
                 shadowColor: Colors.black.withValues(alpha: 0.2),

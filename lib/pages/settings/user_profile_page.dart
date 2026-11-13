@@ -12,6 +12,9 @@ import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/core/theme/app_curves.dart';
+import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
@@ -1540,6 +1543,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     ),
                   ),
                 ),
+                duration: AppMotion.duration(context, AppDurations.medium),
+                curve: AppCurves.emphasized,
               ),
             ),
           ),

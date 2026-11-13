@@ -91,13 +91,14 @@ class _AnimatedEllipsisState extends State<AnimatedEllipsis> with SingleTickerPr
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
-            return Opacity(
-              opacity: _dotOpacity(t, i),
-              child: Container(
-                width: widget.dotSize,
-                height: widget.dotSize,
-                margin: EdgeInsets.symmetric(horizontal: widget.dotSpacing),
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            return Container(
+              width: widget.dotSize,
+              height: widget.dotSize,
+              margin: EdgeInsets.symmetric(horizontal: widget.dotSpacing),
+              // 直接乘色值 alpha，避免每帧挂载 3 个独立的 Opacity 离屏合成层
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: _dotOpacity(t, i)),
+                shape: BoxShape.circle,
               ),
             );
           }),

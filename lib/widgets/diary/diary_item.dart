@@ -702,8 +702,8 @@ class _DiaryItemState extends State<DiaryItem> {
                                                   behavior: HitTestBehavior.opaque,
                                                   onTap: () {
                                                     Navigator.of(context).push(
-                                                      MaterialPageRoute(
-                                                        builder: (_) => FullScreenImageGallery(
+                                                      AppMotion.galleryRoute(
+                                                        FullScreenImageGallery(
                                                           images: record.photos,
                                                           initialIndex: index,
                                                         ),
