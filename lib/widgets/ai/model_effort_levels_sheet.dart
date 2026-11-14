@@ -217,18 +217,8 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '勾选对话界面能选的档位；当前使用哪一档，在对话的模型面板里设置。',
-            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '所有档位都能勾选，协议不能单独表达的档位会按下方「实际发送」折叠。',
-            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
-          ),
-          const SizedBox(height: 2),
-          Text(
             '$_autoCapability.paramStyleLabel；$autoLine',
-            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
+            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
           if (_autoCapability.isGeneric) ...[
             const SizedBox(height: 4),
@@ -237,11 +227,6 @@ class _ModelEffortLevelsSheetState extends State<ModelEffortLevelsSheet> {
               style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
             ),
           ],
-          const SizedBox(height: 4),
-          Text(
-            '取消当前正在使用的档位会先回到「自动」，不会继续发失效参数。',
-            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.outline),
-          ),
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 class BirthdayPickerDialog extends StatefulWidget {
   final DateTime initialDate;
@@ -41,7 +42,6 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     String title = '选择年份';
     if (_step == 1) title = '选择月份';
@@ -58,7 +58,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
           children: [
             Text(
               title,
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary),
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.accentInk),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -134,14 +134,14 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
               ? theme.colorScheme.primaryContainer
               : theme.colorScheme.surfaceContainerHighest.withValues(alpha: enabled ? 0.3 : 0.1),
           borderRadius: BorderRadius.circular(8),
-          border: isSelected ? Border.all(color: theme.colorScheme.primary) : null,
+          border: isSelected ? Border.all(color: theme.accentInk) : null,
         ),
         child: Text(
           label,
           style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             color: isSelected
-                ? theme.colorScheme.primary
+                ? theme.accentInk
                 : theme.colorScheme.onSurfaceVariant.withValues(alpha: enabled ? 1.0 : 0.3),
           ),
         ),
@@ -176,7 +176,7 @@ class _BirthdayPickerDialogState extends State<BirthdayPickerDialog> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? theme.colorScheme.primary : null,
+                color: isSelected ? theme.accentInk : null,
               ),
             ),
             selected: isSelected,

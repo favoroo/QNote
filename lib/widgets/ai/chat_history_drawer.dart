@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/chat_image_refs.dart';
 import 'package:qnote_flutter/core/utils/chat_time_group.dart';
@@ -418,7 +419,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.medium),
-          borderSide: BorderSide(color: scheme.primary.withValues(alpha: 0.5), width: 1.5),
+          borderSide: BorderSide(color: theme.accentInk.withValues(alpha: 0.5), width: 1.5),
         ),
       ),
     );
@@ -586,7 +587,7 @@ class _ChatGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
                         label,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: highlight ? scheme.primary : scheme.onSurfaceVariant,
+                          color: highlight ? theme.accentInk : scheme.onSurfaceVariant,
                         ),
                       ),
                       if (!expanded && count > 0) ...[
@@ -617,7 +618,7 @@ class _ChatGroupHeaderDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
             IconButton(
-              icon: Icon(Icons.grid_view, size: 18, color: isBatchMode ? scheme.primary : scheme.onSurfaceVariant),
+              icon: Icon(Icons.grid_view, size: 18, color: isBatchMode ? theme.accentInk : scheme.onSurfaceVariant),
               tooltip: isBatchMode ? '退出批量选择' : '批量选择',
               visualDensity: VisualDensity.compact,
               onPressed: onToggleBatch,

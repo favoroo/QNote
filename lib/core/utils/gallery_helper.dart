@@ -1,48 +1,37 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:wechat_assets_picker/wechat_assets_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
+
+/// 统一封装系统相册选图与头像裁剪入口。
 class GalleryHelper {
   static final ImagePicker _imagePicker = ImagePicker();
 
-  /// Picks a single image and returns an XFile.
-  /// On Web, falls back to ImagePicker.
-  /// On Mobile, uses AssetPicker to directly show local gallery.
-  static Future<XFile?> pickSingleImage(BuildContext context) async {
-    if (kIsWeb) {
-      return await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        maxHeight: 1200,
-        imageQuality: 80,
-      );
-    } else {
-      try {
-        final List<AssetEntity>? result = await AssetPicker.pickAssets(
-          context,
-          pickerConfig: const AssetPickerConfig(maxAssets: 1, requestType: RequestType.image),
-        );
-        if (result == null || result.isEmpty) return null;
-        final File? file = await result.first.file;
-        if (file == null) return null;
-        return XFile(file.path);
-      } catch (e) {
-        debugPrint('GalleryHelper error picking single image: $e');
-        // Fallback to image picker if wechat_assets_picker fails
-        return await _imagePicker.pickImage(
-          source: ImageSource.gallery,
-          maxWidth: 1200,
-          maxHeight: 1200,
-          imageQuality: 80,
-        );
-      }
+  /// 在 Android 端启用系统 Photo Picker（PickVisualMedia），
+  /// 直接唤起系统级照片选择器，避免部分机型默认跳转到文件管理器。
+  static ImagePickerAndroid? _enableAndroidPhotoPicker() {
+    final implementation = ImagePickerPlatform.instance;
+    if (implementation is ImagePickerAndroid) {
+      implementation.useAndroidPhotoPicker = true;
+      return implementation;
     }
+    return null;
   }
 
-  /// Crops an image file.
+  /// 调用系统相册单选一张图片；用户取消或异常时返回 `null`。
+  static Future<XFile?> pickSingleImage(BuildContext context) async {
+    return _runWithPhotoPickerFallback<XFile?>(
+      label: '单图选择',
+      fallbackValue: null,
+      action: () =>
+          _imagePicker.pickImage(source: ImageSource.gallery, maxWidth: 1200, maxHeight: 1200, imageQuality: 80),
+    );
+  }
+
+  /// 裁剪图片文件（目前用于头像正方形裁剪）。
   static Future<CroppedFile?> cropImage(BuildContext context, String sourcePath) async {
     final theme = Theme.of(context);
     return await ImageCropper().cropImage(
@@ -68,32 +57,63 @@ class GalleryHelper {
     );
   }
 
-  /// Picks multiple images and returns a list of XFile.
-  /// On Web, falls back to ImagePicker.
-  /// On Mobile, uses AssetPicker to directly show local gallery.
+  /// 调用系统相册多选图片，最多返回 [maxAssets] 张；用户取消或异常时返回空列表。
   static Future<List<XFile>> pickMultiImages(BuildContext context, {int maxAssets = 3}) async {
-    if (kIsWeb) {
-      return await _imagePicker.pickMultiImage();
-    } else {
-      try {
-        final List<AssetEntity>? result = await AssetPicker.pickAssets(
-          context,
-          pickerConfig: AssetPickerConfig(maxAssets: maxAssets, requestType: RequestType.image),
-        );
-        if (result == null || result.isEmpty) return [];
-        final List<XFile> xFiles = [];
-        for (final asset in result) {
-          final File? file = await asset.file;
-          if (file != null) {
-            xFiles.add(XFile(file.path));
-          }
-        }
-        return xFiles;
-      } catch (e) {
-        debugPrint('GalleryHelper error picking multi images: $e');
-        // Fallback to image picker if wechat_assets_picker fails
-        return await _imagePicker.pickMultiImage();
+    if (maxAssets <= 0) {
+      return [];
+    }
+    // image_picker 的 pickMultiImage 要求 limit >= 2；仅剩 1 张配额时改走单选接口。
+    if (maxAssets == 1) {
+      final image = await _runWithPhotoPickerFallback<XFile?>(
+        label: '单图选择',
+        fallbackValue: null,
+        action: () => _imagePicker.pickImage(source: ImageSource.gallery),
+      );
+      return image != null ? [image] : [];
+    }
+
+    final picked = await _runWithPhotoPickerFallback<List<XFile>>(
+      label: '多图选择',
+      fallbackValue: const [],
+      action: () => _imagePicker.pickMultiImage(limit: maxAssets),
+    );
+    // 兜底截断：部分不支持 limit 的旧系统或 Web 端可能返回超出上限的图片数量。
+    if (picked.length > maxAssets) {
+      return picked.take(maxAssets).toList();
+    }
+    return picked;
+  }
+
+  static Future<T> _runWithPhotoPickerFallback<T>({
+    required String label,
+    required T fallbackValue,
+    required Future<T> Function() action,
+  }) async {
+    final androidImpl = _enableAndroidPhotoPicker();
+    try {
+      return await action();
+    } on PlatformException catch (e) {
+      debugPrint('GalleryHelper $label 失败 (${e.code}): ${e.message}');
+      // 连点导致的并发占位或明确无权限不再重试，避免重复弹窗。
+      if (e.code == 'already_active' || e.code == 'photo_access_denied') {
+        return fallbackValue;
       }
+      // 部分精简或旧版 Android 系统不支持 Photo Picker 时，临时回退传统选图 Intent 重试一次。
+      if (androidImpl != null && androidImpl.useAndroidPhotoPicker) {
+        try {
+          androidImpl.useAndroidPhotoPicker = false;
+          return await action();
+        } catch (fallbackError) {
+          debugPrint('GalleryHelper $label 回退失败: $fallbackError');
+          return fallbackValue;
+        } finally {
+          androidImpl.useAndroidPhotoPicker = true;
+        }
+      }
+      return fallbackValue;
+    } catch (e) {
+      debugPrint('GalleryHelper $label 异常: $e');
+      return fallbackValue;
     }
   }
 }

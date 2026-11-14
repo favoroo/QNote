@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 
 /// 弹出小Q人机交互确认弹窗
@@ -129,7 +130,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
                   p: TextStyle(fontSize: 14, height: 1.5, color: colorScheme.onSurface),
                   strong: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: isDestructive ? colorScheme.error : colorScheme.primary,
+                    color: isDestructive ? colorScheme.error : theme.accentInk,
                   ),
                 ),
               ),
@@ -188,11 +189,11 @@ class _AskUserDialogState extends State<AskUserDialog> {
                       Icon(
                         _showCustomInput ? Icons.arrow_drop_down : Icons.arrow_right,
                         size: 20,
-                        color: colorScheme.primary,
+                        color: theme.accentInk,
                       ),
                       Text(
                         _showCustomInput ? '收起输入' : '自定义回复',
-                        style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w500),
+                        style: TextStyle(fontSize: 12, color: theme.accentInk, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -219,7 +220,7 @@ class _AskUserDialogState extends State<AskUserDialog> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: primaryColor, width: 1.5),
+                      borderSide: BorderSide(color: isDestructive ? colorScheme.error : theme.accentInk, width: 1.5),
                     ),
                   ),
                   style: const TextStyle(fontSize: 13),

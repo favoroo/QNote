@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/utils/token_usage_format.dart';
 import 'package:qnote_flutter/models/ai_token_usage.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
@@ -55,7 +56,7 @@ class TokenUsageCard extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Icon(Icons.data_usage_rounded, size: 16, color: colorScheme.primary),
+            Icon(Icons.data_usage_rounded, size: 16, color: theme.accentInk),
             const SizedBox(width: 6),
             Text('Token 消耗', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
             const Spacer(),

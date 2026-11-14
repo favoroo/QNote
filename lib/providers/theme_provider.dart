@@ -144,7 +144,7 @@ final presetAccentColors = [
   const Color(0xFFC5E803), // 荧光黄绿
   const Color(0xFFE91E8C), // 玫瑰粉红
   const Color(0xFF00E676), // 春天亮绿
-  const Color(0xFFFF3B30), // 活力红 (iOS 系统红)
+  const Color(0xFFF80004), // 赤焰红（与「赤焰黑」推荐搭配同一红）
   const Color(0xFFFF9500), // 活力橙 (iOS 系统橙)
   const Color(0xFF00BCD4), // 湖水青 (Material Cyan 500)
   const Color(0xFF7C4DFF), // 典雅紫 (Deep Purple A200)

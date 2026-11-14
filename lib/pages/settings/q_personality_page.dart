@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/agent/prompts/q_personalities.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -171,7 +172,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
         border: Border.all(
           color: _degraded
               ? theme.colorScheme.tertiary.withValues(alpha: 0.65)
-              : theme.colorScheme.primary.withValues(alpha: 0.5),
+              : theme.accentInk.withValues(alpha: 0.5),
           width: 1.2,
         ),
       ),
@@ -180,16 +181,13 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
         children: [
           Row(
             children: [
-              Icon(Icons.auto_awesome_rounded, size: 18, color: theme.colorScheme.primary),
+              Icon(Icons.auto_awesome_rounded, size: 18, color: theme.accentInk),
               const SizedBox(width: 8),
               Text('当前生效个性', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const Spacer(),
               Text(
                 effective.name,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: theme.textTheme.titleSmall?.copyWith(color: theme.accentInk, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -207,7 +205,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '描述为空，仍按「${effective.name}」说话；填写后点「保存并启用」。',
+                      '描述为空，仍按「${effective.name}」说话。',
                       style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onTertiaryContainer),
                     ),
                   ),
@@ -262,7 +260,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: selected
-                    ? theme.colorScheme.primary.withValues(alpha: 0.85)
+                    ? theme.accentInk.withValues(alpha: 0.85)
                     : theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
                 width: selected ? 1.5 : 1,
               ),
@@ -292,7 +290,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                 Icon(
                   selected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
                   size: 22,
-                  color: selected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.9),
+                  color: selected ? theme.accentInk : theme.colorScheme.outlineVariant.withValues(alpha: 0.9),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -306,7 +304,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                               preset.name,
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: selected ? FontWeight.bold : FontWeight.w600,
-                                color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                color: selected ? theme.accentInk : theme.colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -323,7 +321,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                                 style: TextStyle(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w600,
-                                  color: theme.colorScheme.primary,
+                                  color: theme.accentInk,
                                   height: 1.2,
                                 ),
                               ),

@@ -1,19 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  快捷记录 · 1×1：整格就是一颗主色圆，中间一支白色笔。
-  没有文字、没有次级按钮——1 格放不下第二个元素，放一个干净的入口最耐看。
---><FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  快捷记录 · 1×1：居中 60dp 极简黑正圆，中间一支柔白笔。
+  固定正方尺寸避免在非正方形桌面格子里被拉成椭圆，体量略大于系统应用图标。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_quick_record_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget_qr_pill"
+    android:background="@android:color/transparent"
     android:contentDescription="@string/widget_quick_record_action">
 
-    <ImageView
-        android:layout_width="26dp"
-        android:layout_height="26dp"
+    <FrameLayout
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_gravity="center"
-        android:importantForAccessibility="no"
-        android:scaleType="centerInside"
-        android:src="@drawable/ic_widget_pen" />
+        android:background="@drawable/bg_widget_qr_circle">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_pen" />
+    </FrameLayout>
 </FrameLayout>

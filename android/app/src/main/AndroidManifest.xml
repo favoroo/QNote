@@ -167,5 +167,16 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
+        <!-- 屏幕使用时间统计需要枚举有桌面入口的应用（排除 SystemUI/输入法等无 launcher
+             入口的系统组件，其前台时长多来自锁屏/键盘弹出而非用户使用），以及识别桌面
+             Launcher（排除停留在桌面上的时长）。Android 11+ 不声明则查询返回空 -->
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.HOME"/>
+        </intent>
     </queries>
 </manifest>

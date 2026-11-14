@@ -106,18 +106,39 @@ void main() {
   }
 
   group('NoteEditorView 保存链路', () {
-    testWidgets('刚打开即「已保存」，空标题笔记返回也不会被判脏', (tester) async {
+    testWidgets('刚打开不显示常驻保存提示，空标题笔记返回也不会被判脏', (tester) async {
       await openEditor(
         tester,
         note: _buildNote(title: '', content: '内容'),
       );
 
-      expect(find.text('已保存'), findsOneWidget);
+      // 「已保存」只在保存成功后短暂出现，打开时不应常驻占位
+      expect(find.text('已保存'), findsNothing);
 
       await pressBack(tester);
       // 标题基线口径不一致会让空标题笔记一进来就白写一次库
       expect(notifier.updates, isEmpty);
       expect(find.text('open'), findsOneWidget);
+
+      await drainTimers(tester);
+    });
+
+    testWidgets('自动保存成功后短暂显示「已保存」再淡出', (tester) async {
+      await openEditor(tester, note: _buildNote());
+
+      await editTitle(tester, '自动保存的标题');
+      expect(find.text('未保存'), findsOneWidget);
+
+      // 2s 自动保存定时器触发，写库成功后亮出「已保存」
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(notifier.updates, hasLength(1));
+      expect(find.text('已保存'), findsOneWidget);
+
+      // 1.6s 后提示自动淡出，不留常驻行（再等淡出动画结束）
+      await tester.pump(const Duration(milliseconds: 1700));
+      await tester.pumpAndSettle();
+      expect(find.text('已保存'), findsNothing);
 
       await drainTimers(tester);
     });

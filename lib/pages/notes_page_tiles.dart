@@ -118,6 +118,15 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
     super.dispose();
   }
 
+  /// 行标题文本：日记日期行去掉年份前缀（父级月份文件夹已含年份，避免重复），
+  /// 普通节点与文件夹原样展示
+  String get _rowTitle {
+    final item = widget.item;
+    if (item.isFolder) return item.folder!.name;
+    if (item.isJournal) return JournalService.displayTitle(item.note!.title);
+    return item.note!.title;
+  }
+
   /// 节点图标：日记体系用书本/日历图标并统一日记黄底座，普通节点维持原样式
   IconData _leadingIconData(bool isFolder, bool isJournal) {
     if (isJournal) {
@@ -241,7 +250,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                _rowTitle,
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -388,7 +397,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: hoverPosition == ReorderDropPosition.inside
-              ? Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.55))
+              ? Border.all(color: theme.accentInk.withValues(alpha: 0.55))
               : null,
         ),
         child: Row(
@@ -440,12 +449,12 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
                       _buildLeadingIconBox(theme, isFolder, isJournal),
                       const SizedBox(width: 12),
                       if (!isFolder && widget.item.isPinned) ...[
-                        Icon(Icons.push_pin, size: 14, color: theme.colorScheme.primary),
+                        Icon(Icons.push_pin, size: 14, color: theme.accentInk),
                         const SizedBox(width: 4),
                       ],
                       Expanded(
                         child: Text(
-                          isFolder ? widget.item.folder!.name : widget.item.note!.title,
+                          _rowTitle,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: isFolder ? FontWeight.bold : FontWeight.w500,
                             letterSpacing: 0.2,
@@ -510,7 +519,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
               curve: AppCurves.standard,
               child: Container(
                 height: 3,
-                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(1.5)),
+                decoration: BoxDecoration(color: theme.accentInk, borderRadius: BorderRadius.circular(1.5)),
               ),
             ),
           ),
@@ -526,7 +535,7 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
               curve: AppCurves.standard,
               child: Container(
                 height: 3,
-                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(1.5)),
+                decoration: BoxDecoration(color: theme.accentInk, borderRadius: BorderRadius.circular(1.5)),
               ),
             ),
           ),

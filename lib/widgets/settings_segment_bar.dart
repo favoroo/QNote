@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -36,14 +37,17 @@ class SettingsSegmentBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    // 同色系背景（主题色背景）下轨道与 surface 几乎同色，原来的白胶囊会直接「消失」；
+    // 这时加深轨道并给胶囊补一圈细描边，选中态靠边界表达。
+    final sameHue = theme.accentNeedsOutline;
+    final trackColor = sameHue
+        ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.9)
+        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       padding: const EdgeInsets.all(_padding),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: BoxDecoration(color: trackColor, borderRadius: BorderRadius.circular(14)),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final tabWidth = constraints.maxWidth / items.length;
@@ -64,6 +68,7 @@ class SettingsSegmentBar extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: colorScheme.surface,
                       borderRadius: BorderRadius.circular(10),
+                      border: sameHue ? Border.all(color: colorScheme.outline.withValues(alpha: 0.45), width: 1) : null,
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.08),
@@ -94,9 +99,8 @@ class SettingsSegmentBar extends StatelessWidget {
                             style: theme.textTheme.bodyMedium!.copyWith(
                               fontSize: 13,
                               fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                              color: selected
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              // 选中态用可读强调色：同色系背景下 primary 与胶囊几乎同色
+                              color: selected ? theme.accentInk : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -108,7 +112,7 @@ class SettingsSegmentBar extends StatelessWidget {
                                   tween: ColorTween(
                                     begin: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                     end: selected
-                                        ? colorScheme.primary
+                                        ? theme.accentInk
                                         : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                                   ),
                                   builder: (context, iconColor, child) {

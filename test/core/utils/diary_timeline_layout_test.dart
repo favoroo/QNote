@@ -495,4 +495,183 @@ void main() {
       );
     });
   });
+
+  group('buildDiaryTimelineSegments', () {
+    final start = DateTime(2026, 11, 10);
+
+    test('天数非正数返回空列表', () {
+      expect(buildDiaryTimelineSegments(windowStartDate: start, daysCount: 0, hasBody: (_) => true), isEmpty);
+      expect(buildDiaryTimelineSegments(windowStartDate: start, daysCount: -3, hasBody: (_) => false), isEmpty);
+    });
+
+    test('全部折叠时合并为单个仅含分隔栏的分段', () {
+      final segments = buildDiaryTimelineSegments(windowStartDate: start, daysCount: 10, hasBody: (_) => false);
+
+      expect(segments, hasLength(1));
+      expect(segments.first.startDayOffset, 0);
+      expect(segments.first.endDayOffset, 9);
+      expect(segments.first.dividerCount, 10);
+      expect(segments.first.hasExpandedBody, isFalse);
+    });
+
+    test('仅中间一天展开时切分为前段展开与后段纯折叠', () {
+      final target = DateTime(2026, 11, 14); // offset 4
+      final segments = buildDiaryTimelineSegments(
+        windowStartDate: start,
+        daysCount: 10,
+        hasBody: (d) => isSameCalendarDay(d, target),
+      );
+
+      expect(segments, hasLength(2));
+      expect(segments[0].startDayOffset, 0);
+      expect(segments[0].endDayOffset, 4);
+      expect(segments[0].dividerCount, 5);
+      expect(segments[0].hasExpandedBody, isTrue);
+
+      expect(segments[1].startDayOffset, 5);
+      expect(segments[1].endDayOffset, 9);
+      expect(segments[1].dividerCount, 5);
+      expect(segments[1].hasExpandedBody, isFalse);
+    });
+
+    test('多天与相邻天展开时无遗漏无重叠覆盖整个窗口', () {
+      // offset 2, 3, 9 展开
+      final expandedOffsets = {2, 3, 9};
+      final segments = buildDiaryTimelineSegments(
+        windowStartDate: start,
+        daysCount: 10,
+        hasBody: (d) => expandedOffsets.contains(diaryDayOffset(d, start)),
+      );
+
+      expect(segments, hasLength(3));
+      expect(segments.map((s) => (s.startDayOffset, s.endDayOffset, s.hasExpandedBody)).toList(), [
+        (0, 2, true),
+        (3, 3, true),
+        (4, 9, true),
+      ]);
+
+      final covered = <int>[];
+      for (final seg in segments) {
+        for (var i = seg.startDayOffset; i <= seg.endDayOffset; i++) {
+          covered.add(i);
+        }
+      }
+      expect(covered, List.generate(10, (i) => i));
+    });
+  });
+
+  group('resolveDiaryTimelineSlot', () {
+    final slot1400 = DateTime(2026, 11, 14, 14, 0);
+    final slot1430 = DateTime(2026, 11, 14, 14, 30);
+
+    test('未选中且当前时刻非整半点时，仅展示未选中的当前时间专用节点', () {
+      final slot = resolveDiaryTimelineSlot(
+        slotStart: slot1400,
+        nodeIndex: 28,
+        now: DateTime(2026, 11, 14, 14, 15),
+        isToday: true,
+      );
+
+      expect(slot.isStandardNodeSelected, isFalse);
+      expect(slot.isStandardNodeCurrentTime, isFalse);
+      expect(slot.dedicatedSelectedStart, isNull);
+      expect(slot.dedicatedSelectedCurrentTime, isNull);
+      expect(slot.dedicatedSelectedEnd, isNull);
+      expect(slot.dedicatedCurrentTime, DateTime(2026, 11, 14, 14, 15));
+    });
+
+    test('点击当前时间（非整半点）后只选中该时刻，不再额外渲染未选中当前时间节点', () {
+      final now = DateTime(2026, 11, 14, 14, 15);
+      final slot = resolveDiaryTimelineSlot(
+        slotStart: slot1400,
+        nodeIndex: 28,
+        now: now,
+        isToday: true,
+        selectionStart: now,
+      );
+
+      expect(slot.isStandardNodeSelected, isFalse);
+      expect(slot.dedicatedSelectedStart, now);
+      expect(slot.dedicatedSelectedCurrentTime, isNull);
+      expect(slot.dedicatedSelectedEnd, isNull);
+      expect(slot.dedicatedCurrentTime, isNull);
+    });
+
+    test('选中了早前的非整半点后当前时间推进到新分钟，旧选中与新当前时间各自独立展示', () {
+      final slot = resolveDiaryTimelineSlot(
+        slotStart: slot1400,
+        nodeIndex: 28,
+        now: DateTime(2026, 11, 14, 14, 18),
+        isToday: true,
+        selectionStart: DateTime(2026, 11, 14, 14, 10),
+      );
+
+      expect(slot.dedicatedSelectedStart, DateTime(2026, 11, 14, 14, 10));
+      expect(slot.dedicatedCurrentTime, DateTime(2026, 11, 14, 14, 18));
+      expect(slot.dedicatedSelectedCurrentTime, isNull);
+    });
+
+    test('跨当前时间的多选区间内，当前时间渲染为已选中专用节点', () {
+      final slot = resolveDiaryTimelineSlot(
+        slotStart: slot1400,
+        nodeIndex: 28,
+        now: DateTime(2026, 11, 14, 14, 15),
+        isToday: true,
+        selectionStart: DateTime(2026, 11, 14, 14, 0),
+        selectionEnd: DateTime(2026, 11, 14, 15, 0),
+      );
+
+      expect(slot.isStandardNodeSelected, isTrue);
+      expect(slot.dedicatedSelectedStart, isNull);
+      expect(slot.dedicatedSelectedCurrentTime, DateTime(2026, 11, 14, 14, 15));
+      expect(slot.dedicatedSelectedEnd, isNull);
+      expect(slot.dedicatedCurrentTime, isNull);
+    });
+
+    test('区间终点落在非整半点（如先点当前时间再向上扩到 14:00）时也正确渲染并去重', () {
+      final now = DateTime(2026, 11, 14, 14, 15);
+      final slot = resolveDiaryTimelineSlot(
+        slotStart: slot1400,
+        nodeIndex: 28,
+        now: now,
+        isToday: true,
+        selectionStart: DateTime(2026, 11, 14, 14, 0),
+        selectionEnd: now,
+      );
+
+      expect(slot.isStandardNodeSelected, isTrue);
+      expect(slot.dedicatedSelectedStart, isNull);
+      expect(slot.dedicatedSelectedCurrentTime, isNull);
+      expect(slot.dedicatedSelectedEnd, now);
+      expect(slot.dedicatedCurrentTime, isNull);
+    });
+
+    test('整点或半点时内联在标准节点展示当前时间，不生成专用行', () {
+      final slot = resolveDiaryTimelineSlot(
+        slotStart: slot1430,
+        nodeIndex: 29,
+        now: DateTime(2026, 11, 14, 14, 30),
+        isToday: true,
+        selectionStart: DateTime(2026, 11, 14, 14, 30),
+      );
+
+      expect(slot.isStandardNodeSelected, isTrue);
+      expect(slot.isStandardNodeCurrentTime, isTrue);
+      expect(slot.dedicatedSelectedStart, isNull);
+      expect(slot.dedicatedSelectedCurrentTime, isNull);
+      expect(slot.dedicatedCurrentTime, isNull);
+    });
+
+    test('非当天节点即使时刻一致也不展示当前时间', () {
+      final slot = resolveDiaryTimelineSlot(
+        slotStart: DateTime(2026, 11, 13, 14, 0),
+        nodeIndex: 28,
+        now: DateTime(2026, 11, 14, 14, 15),
+        isToday: false,
+      );
+
+      expect(slot.isStandardNodeCurrentTime, isFalse);
+      expect(slot.dedicatedCurrentTime, isNull);
+    });
+  });
 }

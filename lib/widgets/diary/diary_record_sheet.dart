@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
@@ -8,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -1241,7 +1243,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         imageBase64: base64,
         mimeType: shouldSendImage ? ImageRepository.getMimeType(draft.selectedPhotos.first) : null,
         schema: schemaStr,
-        contextStr: contextMap.toString(),
+        contextStr: jsonEncode(contextMap),
         cancelToken: _cancelToken,
       );
 
@@ -2565,10 +2567,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                   ),
                   child: Text(
                     tagName,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
-                    ),
+                    style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.accentInk),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2661,7 +2660,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                      color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -2982,7 +2981,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         ),
         child: Row(
           children: [
-            Icon(Icons.access_time, size: 14, color: theme.colorScheme.primary),
+            Icon(Icons.access_time, size: 14, color: theme.accentInk),
             const SizedBox(width: 8),
             Text(
               currentValue ?? '选择${field.label}',
@@ -3038,7 +3037,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
           label,
           style: theme.textTheme.labelSmall?.copyWith(
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ),
@@ -3189,6 +3188,8 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         return Icons.favorite_outline;
       case '记账':
         return Icons.wallet_rounded;
+      case '随想':
+        return Icons.psychology_alt_outlined;
       default:
         return Icons.apps;
     }

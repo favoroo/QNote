@@ -17,20 +17,11 @@
         android:clickable="true"
         android:focusable="true">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="快速记录日记"
-            android:textColor="@color/dialog_text"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="12dp" />
-
         <!-- Unified Input Area: Container with bg_dialog_input (Fixed height ensures dialog size stays stable when photos are attached) -->
         <LinearLayout
             android:id="@+id/layout_input_container"
             android:layout_width="match_parent"
-            android:layout_height="136dp"
+            android:layout_height="168dp"
             android:background="@drawable/bg_dialog_input"
             android:orientation="vertical"
             android:padding="10dp">

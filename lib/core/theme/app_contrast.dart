@@ -56,6 +56,29 @@ abstract class AppContrast {
     return onColor(background);
   }
 
+  /// 让 [color] 同时对一组 [backgrounds] 都达到 [minRatio] 对比度。
+  ///
+  /// 用途是「主题色当字色/图标/细线」这类会落到多个表面上的前景：同一支强调色可能
+  /// 同时画在画布与卡片上，只对其中一个校准，另一个就可能不达标。这里逐级朝黑/朝白
+  /// 试探，取第一个「全部背景都达标」的颜色；已全部达标时原样返回。
+  static Color inkFor(Color color, List<Color> backgrounds, {double minRatio = minimumTextRatio}) {
+    if (backgrounds.every((background) => contrastRatio(color, background) >= minRatio)) {
+      return color;
+    }
+    const step = 0.02;
+    for (var t = step; t <= 1.0; t += step) {
+      for (final target in const [darkInk, lightInk]) {
+        final candidate = Color.lerp(color, target, t)!;
+        if (backgrounds.every((background) => contrastRatio(candidate, background) >= minRatio)) {
+          return candidate;
+        }
+      }
+    }
+    // 兜底：对最不利的那块背景取黑/白中更可读的一侧
+    final worst = backgrounds.reduce((a, b) => contrastRatio(color, a) <= contrastRatio(color, b) ? a : b);
+    return onColor(worst);
+  }
+
   /// 内容色贴在自身 [tintAlpha] 透明度的淡底上时的可读前景。
   ///
   /// 标签色/健康数据色这类内容色常以「同色淡底 + 同色文字/图标」出现，而琥珀、

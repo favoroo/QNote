@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -252,6 +253,19 @@ class _BottomNavContent extends ConsumerWidget {
     );
   }
 
+  /// 底栏表面带明显彩度且与主题色对比度过低时（如同色主题背景），
+  /// 裸画 primary 选中图标会比未选中的 onSurfaceVariant 更淡；此时改用同色系柔和胶囊 + 深/浅正文色。
+  static bool _usesSameHueIndicator(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    return AppContrast.contrastRatio(scheme.primary, scheme.surface) < 2.2 &&
+        HSLColor.fromColor(scheme.surface).saturation > 0.15;
+  }
+
+  static Color _sameHuePillColor(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    return Color.alphaBlend(scheme.onSurface.withValues(alpha: 0.10), scheme.surface);
+  }
+
   Widget _buildNavItem(
     BuildContext context,
     WidgetRef ref,
@@ -262,6 +276,26 @@ class _BottomNavContent extends ConsumerWidget {
     required Alignment longPressAlignment,
     VoidCallback? onDoubleTap,
   }) {
+    final sameHueIndicator = _usesSameHueIndicator(theme);
+    final pillColor = _sameHuePillColor(theme);
+    final iconColor = sameHueIndicator
+        ? (isSelected ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.65))
+        : (isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant);
+
+    // 选中态 outlined ↔ filled 交叉淡化，避免图标「瞬间换脸」；
+    // 颜色随新图标一起过渡，旧图标退场时仍保持原色。
+    // key 带上 path：笔记↔待办切换时即使都处于选中态，图标也能交叉淡化。
+    final iconWidget = AppMotion.switcher(
+      context: context,
+      baseDuration: AppDurations.fast,
+      child: Icon(
+        isSelected ? item.activeIcon : item.icon,
+        key: ValueKey('${item.path}_$isSelected'),
+        size: 24,
+        color: iconColor,
+      ),
+    );
+
     return PressableScale(
       behavior: HitTestBehavior.translucent,
       onTap: onTap,
@@ -272,21 +306,20 @@ class _BottomNavContent extends ConsumerWidget {
       },
       onDoubleTap: onDoubleTap,
       child: Center(
-        // 选中态 outlined ↔ filled 交叉淡化，避免图标「瞬间换脸」；
-        // 颜色随新图标一起过渡，旧图标退场时仍保持原色。
-        // key 带上 path：笔记↔待办切换时即使都处于选中态，图标也能交叉淡化。
-        child: AppMotion.switcher(
-          context: context,
-          baseDuration: AppDurations.fast,
-          child: Icon(
-            isSelected ? item.activeIcon : item.icon,
-            key: ValueKey('${item.path}_$isSelected'),
-            size: 24,
-            // 选中态直接用主题色 primary，与全 App 其他选中态保持同一颜色；
-            // 极亮主题色的可读性由主题层统一决策，组件层不再二次压色改观感
-            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
+        child: sameHueIndicator
+            ? AnimatedContainer(
+                duration: AppMotion.duration(context, AppDurations.fast),
+                curve: Curves.easeOutCubic,
+                width: 52,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: isSelected ? pillColor : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: iconWidget,
+              )
+            : iconWidget,
       ),
     );
   }
@@ -476,43 +509,77 @@ class _QNavButtonState extends ConsumerState<_QNavButton> with SingleTickerProvi
       child: Center(
         // 工作态无限符号 / 面板关闭叉 / 小Q头像三种形态差异较大，
         // 直接替换会「跳脸」，用交叉淡化 + 轻微缩放保持连续感。
-        child: AppMotion.switcher(
-          context: context,
-          baseDuration: AppDurations.fast,
-          child: KeyedSubtree(
-            key: ValueKey(
-              isWorking
-                  ? 'q_working'
-                  : panelOpen
-                  ? 'q_close'
-                  : 'q_idle_$isActive',
-            ),
-            child: _buildIcon(theme, isWorking, isActive, panelOpen),
-          ),
-        ),
+        child: _BottomNavContent._usesSameHueIndicator(theme)
+            ? AnimatedContainer(
+                duration: AppMotion.duration(context, AppDurations.fast),
+                curve: Curves.easeOutCubic,
+                width: 52,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: (isActive || isWorking || panelOpen)
+                      ? _BottomNavContent._sameHuePillColor(theme)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: AppMotion.switcher(
+                  context: context,
+                  baseDuration: AppDurations.fast,
+                  child: KeyedSubtree(
+                    key: ValueKey(
+                      isWorking
+                          ? 'q_working'
+                          : panelOpen
+                          ? 'q_close'
+                          : 'q_idle_$isActive',
+                    ),
+                    child: _buildIcon(theme, isWorking, isActive, panelOpen),
+                  ),
+                ),
+              )
+            : AppMotion.switcher(
+                context: context,
+                baseDuration: AppDurations.fast,
+                child: KeyedSubtree(
+                  key: ValueKey(
+                    isWorking
+                        ? 'q_working'
+                        : panelOpen
+                        ? 'q_close'
+                        : 'q_idle_$isActive',
+                  ),
+                  child: _buildIcon(theme, isWorking, isActive, panelOpen),
+                ),
+              ),
       ),
     );
   }
 
   Widget _buildIcon(ThemeData theme, bool isWorking, bool isActive, bool panelOpen) {
-    // 选中/工作态都直接用主题色 primary，与导航项及其他页面的选中态保持一致
-    final primary = theme.colorScheme.primary;
-    final inactiveColor = theme.colorScheme.onSurfaceVariant;
+    final sameHueIndicator = _BottomNavContent._usesSameHueIndicator(theme);
+    final isHighlighted = isActive || isWorking || panelOpen;
+    // 同色主题背景下，选中/工作态切到高对比正文色 + 柔和胶囊，未选中稍微退后
+    final activeColor = sameHueIndicator ? theme.colorScheme.onSurface : theme.colorScheme.primary;
+    final inactiveColor = sameHueIndicator
+        ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.65)
+        : theme.colorScheme.onSurfaceVariant;
 
     // 工作态：简约无限循环动画
     if (isWorking) {
-      return MorphingInfinity(size: 22, strokeWidth: 1.8, color: primary);
+      return MorphingInfinity(size: 22, strokeWidth: 1.8, color: activeColor);
     }
 
     // 悬浮面板打开态：显示关闭图标
     if (panelOpen) {
-      return Icon(Icons.close_rounded, size: 24, color: primary);
+      return Icon(Icons.close_rounded, size: 24, color: activeColor);
     }
 
     // 未选中走细线稿轮廓（线条重量与其余 Material 图标一致），选中走实心填充
-    final color = isActive ? primary : inactiveColor;
-    final screenColor = theme.colorScheme.surface;
-    final eyeColor = isActive ? primary : inactiveColor;
+    final color = isActive ? activeColor : inactiveColor;
+    final screenColor = (sameHueIndicator && isHighlighted)
+        ? _BottomNavContent._sameHuePillColor(theme)
+        : theme.colorScheme.surface;
+    final eyeColor = isActive ? activeColor : inactiveColor;
 
     return AnimatedBuilder(
       animation: _eyeOpennessAnimation,

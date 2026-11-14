@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  次级操作正圆底：深炭灰表面 + 1dp 极细微亮描边，
+  在黑卡片上既不过分抢眼，也有清晰可点的轮廓。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/widget_qr_tile_bg" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/widget_qr_tile_border" />
+</shape>

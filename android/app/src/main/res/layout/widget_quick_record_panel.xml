@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录 · 3×3 高卡片：28dp 圆角曜石黑卡片，「左大圆 + 右双圆」。
+  3 列宽约 260dp：左侧 112dp 白圆，右侧两颗 72dp 炭灰圆纵向等距；
+  全部正圆，三颗按钮在方形卡片里形成明确主次，不用拉长胶囊。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_quick_record_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_qr_card"
+    android:contentDescription="@string/widget_quick_record_action"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="18dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="18dp">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1.2"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/qr_panel_primary"
+            android:layout_width="112dp"
+            android:layout_height="112dp"
+            android:background="@drawable/bg_widget_qr_solid_circle"
+            android:contentDescription="@string/widget_quick_record_action">
+
+            <ImageView
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_pen_accent" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/qr_panel_photo"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:background="@drawable/bg_widget_qr_secondary_circle"
+            android:contentDescription="选择相册图片">
+
+            <ImageView
+                android:layout_width="27dp"
+                android:layout_height="27dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_gallery_white" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/qr_panel_camera"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_widget_qr_secondary_circle"
+            android:contentDescription="启动相机拍照">
+
+            <ImageView
+                android:layout_width="27dp"
+                android:layout_height="27dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_camera_white" />
+        </FrameLayout>
+    </LinearLayout>
+</LinearLayout>

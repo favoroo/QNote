@@ -108,7 +108,7 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
               _PanelReveal(
                 controller: widget.entrance,
                 begin: 0.24,
-                child: _PanelInputRow(initialText: draftText),
+                child: _PanelInputRow(initialText: draftText, entrance: widget.entrance),
               ),
             ],
           ),
@@ -211,7 +211,6 @@ class _PanelReveal extends StatefulWidget {
 class _PanelRevealState extends State<_PanelReveal> {
   late final CurvedAnimation _animation;
   late final Animation<Offset> _slide;
-  bool _settled = false;
 
   @override
   void initState() {
@@ -221,29 +220,22 @@ class _PanelRevealState extends State<_PanelReveal> {
       curve: Interval(widget.begin, math.min(1.0, widget.begin + 0.64), curve: AppCurves.emphasized),
     );
     _slide = Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(_animation);
-    _settled = widget.controller.value >= 1.0 && !widget.controller.isAnimating;
-    widget.controller.addStatusListener(_handleStatus);
-  }
-
-  void _handleStatus(AnimationStatus status) {
-    final nextSettled = status == AnimationStatus.completed;
-    if (nextSettled != _settled && mounted) {
-      setState(() => _settled = nextSettled);
-    }
   }
 
   @override
   void dispose() {
-    widget.controller.removeStatusListener(_handleStatus);
     _animation.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_settled || AppMotion.reduce(context)) {
-      return widget.child;
-    }
+    // 稳态也保留同一层过渡包装，不能改成直接返回 child。
+    //
+    // 一旦在动画完成时把 FadeTransition 换成裸 child，同一位置的 widget 类型
+    // 变化会让整棵子树重挂载：输入框连同 FocusNode 一起销毁，键盘先收起、
+    // 新挂载的输入框再按定时器重新抢焦点——表现就是弹窗「缩回去又展开」。
+    // 稳态下 opacity=1、位移=0，不会建立离屏层，保留包装的代价可以忽略。
     return FadeTransition(
       opacity: _animation,
       child: SlideTransition(position: _slide, child: widget.child),
@@ -626,35 +618,23 @@ class _PanelStreamingTail extends ConsumerWidget {
   }
 }
 
-/// 新内容入场微动画：淡入 + 轻微上移归位，并在完成后主动摘除过渡包装。
+/// 新内容入场微动画：淡入 + 轻微上移归位。
 ///
-/// 仅在首次挂载时播放一次；完成后退化为直接返回 [child]，避免高频流式消息区保留多余 Opacity 层。
-class _PanelEntrance extends StatefulWidget {
+/// 只在首次挂载时从 0 播到 1；之后父级重建只要 tween 终值不变，
+/// [TweenAnimationBuilder] 就不会重启动画，因此无需在完成时把过渡层摘掉。
+/// 反过来，完成时换成裸 child 会让同一位置的 widget 类型变化、子树重挂载，
+/// 消息气泡里的滚动位置与图片状态都会跟着丢一次。
+class _PanelEntrance extends StatelessWidget {
   const _PanelEntrance({required this.child});
 
   final Widget child;
 
   @override
-  State<_PanelEntrance> createState() => _PanelEntranceState();
-}
-
-class _PanelEntranceState extends State<_PanelEntrance> {
-  bool _done = false;
-
-  @override
   Widget build(BuildContext context) {
-    if (_done || AppMotion.reduce(context)) {
-      return widget.child;
-    }
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.0, end: 1.0),
       duration: AppMotion.duration(context, AppDurations.fast),
       curve: AppCurves.emphasized,
-      onEnd: () {
-        if (mounted && !_done) {
-          setState(() => _done = true);
-        }
-      },
       builder: (context, t, child) => Opacity(
         opacity: t,
         child: Transform.translate(
@@ -663,7 +643,7 @@ class _PanelEntranceState extends State<_PanelEntrance> {
           child: child,
         ),
       ),
-      child: widget.child,
+      child: child,
     );
   }
 }
@@ -777,7 +757,7 @@ class _PanelQuoteCard extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 1),
-            child: Icon(_sourceIcon(quote.source), size: 16, color: theme.colorScheme.primary),
+            child: Icon(_sourceIcon(quote.source), size: 16, color: theme.accentInk),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -907,10 +887,13 @@ class _PanelImageAttachmentsState extends ConsumerState<_PanelImageAttachments> 
 /// （修复"删除文字后再打字，刚删的字又出现"的 Web 端输入异常）。
 /// 未发送草稿同步到 provider，面板最小化成气泡后重新打开仍能回填。
 class _PanelInputRow extends ConsumerStatefulWidget {
-  const _PanelInputRow({required this.initialText});
+  const _PanelInputRow({required this.initialText, required this.entrance});
 
   /// 面板挂载时的草稿（最小化/切页回来后恢复）
   final String initialText;
+
+  /// 打开/最小化的变形进度：聚焦要等它落定，避免键盘改写变形目标。
+  final Animation<double> entrance;
 
   @override
   ConsumerState<_PanelInputRow> createState() => _PanelInputRowState();
@@ -925,16 +908,43 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
   void initState() {
     super.initState();
     _inputController = TextEditingController(text: widget.initialText);
-    // 变形动画先长出来，再把焦点交给输入框；否则键盘会在中途把卡片顶走。
     // 光标落到草稿末尾，重新打开时可以直接继续输入。
     _inputController.selection = TextSelection.collapsed(offset: widget.initialText.length);
-    _focusTimer = Timer(const Duration(milliseconds: 280), () {
-      if (mounted) _focusNode.requestFocus();
-    });
+    _scheduleFocusAfterEntrance();
+  }
+
+  /// 等容器变形落定后再把焦点交给输入框。
+  ///
+  /// 键盘一旦在变形途中弹起，`viewInsets` 会一路改动弹窗的目标 Rect：
+  /// 正在飞行的容器被反复推着改尺寸，看起来忽大忽小；Android 上输入法
+  /// 还可能在布局变动时重连一次，进一步触发收放循环。
+  /// 先让卡片完整长出来，再晚一小拍聚焦，键盘只会弹一次。
+  void _scheduleFocusAfterEntrance() {
+    widget.entrance.addStatusListener(_handleEntranceStatus);
+    if (!widget.entrance.isAnimating) {
+      // 已经处于稳态（减弱动效 / 外部分享直接落位 / 从后台恢复）
+      _focusTimer = Timer(const Duration(milliseconds: 60), _requestInputFocus);
+    }
+  }
+
+  void _handleEntranceStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    // 监听不摘除：面板在「最小化途中又被点开」时不会重挂载，
+    // 需要第二次 completed 再把焦点交回来。
+    _focusTimer?.cancel();
+    _focusTimer = Timer(const Duration(milliseconds: 60), _requestInputFocus);
+  }
+
+  void _requestInputFocus() {
+    if (!mounted) return;
+    // 延时期间用户又开始最小化：不要在这次变形里抢焦点，等回到稳态再说
+    if (widget.entrance.value < 1 || widget.entrance.isAnimating) return;
+    _focusNode.requestFocus();
   }
 
   @override
   void dispose() {
+    widget.entrance.removeStatusListener(_handleEntranceStatus);
     _focusTimer?.cancel();
     _inputController.dispose();
     _focusNode.dispose();

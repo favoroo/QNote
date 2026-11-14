@@ -1682,7 +1682,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '多把密钥自动轮换；限流或额度用尽时冷却，结束后自动回池。',
+            '多把密钥自动轮换',
             style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.5),
           ),
         ],

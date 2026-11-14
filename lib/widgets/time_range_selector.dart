@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -53,6 +54,10 @@ class TimeRangeSelector extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: colorScheme.primary,
                       borderRadius: BorderRadius.circular(10),
+                      // 同色系背景下指示块与轨道同色，补细描边让「选中」仍可见
+                      border: Theme.of(context).accentNeedsOutline
+                          ? Border.all(color: colorScheme.outlineVariant)
+                          : null,
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.05),

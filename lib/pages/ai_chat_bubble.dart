@@ -481,7 +481,7 @@ class ChatBubble extends ConsumerWidget {
                                         ),
                                         blockquoteDecoration: BoxDecoration(
                                           color: theme.colorScheme.surfaceContainerLow,
-                                          border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 4)),
+                                          border: Border(left: BorderSide(color: theme.accentInk, width: 4)),
                                           borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
                                         ),
                                         blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -544,7 +544,7 @@ class ChatBubble extends ConsumerWidget {
           border: Border.all(
             color: isCancelled
                 ? theme.colorScheme.outlineVariant.withValues(alpha: 0.5)
-                : theme.colorScheme.primary.withValues(alpha: 0.25),
+                : theme.accentInk.withValues(alpha: 0.25),
           ),
         ),
         child: Column(
@@ -1208,7 +1208,7 @@ class _TypingBubble extends StatelessWidget {
                   BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2)),
                 ],
               ),
-              child: MorphingInfinity(size: 26, strokeWidth: 1.6, color: theme.colorScheme.primary),
+              child: MorphingInfinity(size: 26, strokeWidth: 1.6, color: theme.accentInk),
             ),
           ),
         ],
@@ -1309,7 +1309,7 @@ class _StreamingStatusCard extends ConsumerWidget {
                 // 思考中采用形变无限符号动画，流动生命力替代三个跳动圆点
                 Padding(
                   padding: const EdgeInsets.only(left: 8, right: 6),
-                  child: MorphingInfinity(size: 21, strokeWidth: 1.5, color: theme.colorScheme.primary),
+                  child: MorphingInfinity(size: 21, strokeWidth: 1.5, color: theme.accentInk),
                 ),
                 // 已用时递增计数：长任务期间传达"仍在推进，没有卡住"
                 Padding(

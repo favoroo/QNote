@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
 /// 自动朗读开关按钮（纯图标，点一下即开/关）。
@@ -55,7 +56,8 @@ class _AutoReadToggleButtonState extends State<AutoReadToggleButton> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return ValueListenableBuilder<bool>(
       valueListenable: QVoiceConfig.instance.autoReadState,
       builder: (context, enabled, _) {
@@ -65,7 +67,7 @@ class _AutoReadToggleButtonState extends State<AutoReadToggleButton> {
           // 关闭态用 volume_off 明示「现在不会读」，再配 primary 色区分开启态，
           // 比只调深浅更容易一眼扫出来
           icon: Icon(enabled ? Icons.volume_up_rounded : Icons.volume_off_rounded, size: widget.iconSize),
-          color: enabled ? scheme.primary : scheme.onSurfaceVariant,
+          color: enabled ? theme.accentInk : scheme.onSurfaceVariant,
         );
       },
     );

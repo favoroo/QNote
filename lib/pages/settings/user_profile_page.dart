@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -512,7 +513,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             // 描边带一点主色调，与卡片渐变底呼应，避免灰色环把头像「切」出来
-                            border: Border.all(color: colorScheme.primary.withValues(alpha: ringAlpha), width: 1.5),
+                            border: Border.all(color: theme.accentInk.withValues(alpha: ringAlpha), width: 1.5),
                           ),
                           child: ClipOval(
                             child: _avatarPath.isNotEmpty
@@ -644,7 +645,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
             child: Row(
               children: [
-                Icon(icon, size: 16, color: theme.colorScheme.primary),
+                Icon(icon, size: 16, color: theme.accentInk),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -721,14 +722,14 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+            Icon(icon, size: 14, color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -867,7 +868,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                       child: Row(
                         children: [
-                          Icon(Icons.monitor_weight_outlined, size: 16, color: theme.colorScheme.primary),
+                          Icon(Icons.monitor_weight_outlined, size: 16, color: theme.accentInk),
                           const SizedBox(width: 8),
                           Text(
                             '体重记录',
@@ -912,12 +913,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       children: [
                         Text(
                           _showWeightHistory ? '收起' : '历史',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.accentInk),
                         ),
                         Icon(
                           _showWeightHistory ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                           size: 16,
-                          color: theme.colorScheme.primary,
+                          color: theme.accentInk,
                         ),
                       ],
                     ),
@@ -936,9 +937,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: _weightInputFocusNode.hasFocus
-                      ? theme.colorScheme.primary.withValues(alpha: 0.8)
-                      : Colors.transparent,
+                  color: _weightInputFocusNode.hasFocus ? theme.accentInk.withValues(alpha: 0.8) : Colors.transparent,
                   width: 1,
                 ),
               ),
@@ -954,15 +953,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.calendar_today_rounded, size: 13, color: theme.colorScheme.primary),
+                          Icon(Icons.calendar_today_rounded, size: 13, color: theme.accentInk),
                           const SizedBox(width: 4),
                           Text(
                             _isToday(_weightDate) ? '今天' : DateFormat('MM-dd').format(_weightDate),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.primary,
-                            ),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.accentInk),
                           ),
                         ],
                       ),
@@ -1002,11 +997,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             child: Text(
                               _weightUnit,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.accentInk),
                             ),
                           ),
                         ),
@@ -1126,7 +1117,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           title,
           style: TextStyle(
             fontSize: 11,
-            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           ),
         ),
@@ -1192,11 +1183,11 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.add_rounded, size: 14, color: theme.colorScheme.primary),
+              Icon(Icons.add_rounded, size: 14, color: theme.accentInk),
               const SizedBox(width: 2),
               Text(
                 '添加字段',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.accentInk),
               ),
             ],
           ),
@@ -1285,7 +1276,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+                        borderSide: BorderSide(color: theme.accentInk.withValues(alpha: 0.5)),
                       ),
                     ),
                   ),

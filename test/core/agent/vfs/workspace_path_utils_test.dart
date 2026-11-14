@@ -257,7 +257,7 @@ void main() {
     test('parseWorkspaceColor 支持 hex、别名与 int', () {
       expect(parseWorkspaceColor('#FF0000'), const Color(0xFFFF0000));
       expect(parseWorkspaceColor('0x00FF00'), const Color(0xFF00FF00));
-      expect(parseWorkspaceColor('red'), const Color(0xFFFF3B30));
+      expect(parseWorkspaceColor('red'), const Color(0xFFF80004));
       expect(parseWorkspaceColor('经典蓝'), const Color(0xFF005BCB));
       expect(parseWorkspaceColor(0xFF00FF00), const Color(0xFF00FF00));
     });

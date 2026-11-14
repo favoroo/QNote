@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 /// 平铺式文本选择工具栏：全部菜单项直接可见，宽度不足时自动换行。
 ///
@@ -81,7 +82,7 @@ class QTextSelectionToolbar extends StatelessWidget {
       onPressed: item.onPressed,
       child: Text(
         item.label ?? AdaptiveTextSelectionToolbar.getButtonLabel(context, item),
-        style: isCustom ? TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600) : null,
+        style: isCustom ? TextStyle(color: Theme.of(context).accentInk, fontWeight: FontWeight.w600) : null,
       ),
     );
   }

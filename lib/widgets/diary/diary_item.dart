@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
@@ -176,7 +177,7 @@ class _DiaryItemState extends State<DiaryItem> {
       items: [
         if (onQuoteToQ != null)
           ActionMenuItem(
-            iconWidget: QIcon(size: 20, color: Theme.of(context).colorScheme.primary),
+            iconWidget: QIcon(size: 20, color: Theme.of(context).accentInk),
             label: '给小Q',
             onTap: () => onQuoteToQ?.call(record),
           ),
@@ -200,6 +201,7 @@ class _DiaryItemState extends State<DiaryItem> {
     '记账': Icons.account_balance_wallet,
     '运动健康': Icons.favorite_rounded,
     '健康': Icons.favorite_rounded,
+    '随想': Icons.psychology_alt_outlined,
   };
 
   static const _defaultIcon = Icons.description_outlined;
@@ -735,9 +737,13 @@ class _DiaryItemState extends State<DiaryItem> {
                                     onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
                                     child: Padding(
                                       padding: const EdgeInsets.all(16),
-                                      child: Container(
+                                      child: AnimatedContainer(
                                         width: 32,
                                         height: 32,
+                                        // 光晕颜色随状态切换（撤回为错误色、待提取为标签色）必须走动画：
+                                        // 否则倒计时结束的瞬间色相硬切，观感就是又闪了一下。
+                                        duration: AppMotion.duration(context, AppDurations.fast),
+                                        curve: AppCurves.standard,
                                         decoration: BoxDecoration(
                                           color: theme.colorScheme.surface,
                                           shape: BoxShape.circle,
@@ -1438,6 +1444,17 @@ class _DiaryItemState extends State<DiaryItem> {
     const brandGreen = TagColors.health;
     const sleepPurple = TagColors.sleep;
     const screenBlue = Color(0xFF0284C7);
+    final screenCardBg = Color.alphaBlend(
+      colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+      colorScheme.surface,
+    );
+    final screenInk = AppContrast.readable(screenBlue, screenCardBg);
+    const screenAppColors = [
+      Color(0xFF0284C7), // 主蓝
+      Color(0xFF14B8A6), // 青绿
+      Color(0xFF818CF8), // 靛蓝
+      Color(0xFFF59E0B), // 琥珀
+    ];
 
     // 屏幕使用时长（优先使用持久化数据，若无则使用当日异步检测补全数据）
     final screenMs = (bs['screen_time_ms'] as num?)?.toInt() ?? _liveScreenUsage?.totalTimeMs ?? 0;
@@ -1453,7 +1470,12 @@ class _DiaryItemState extends State<DiaryItem> {
       }
     } else if (_liveScreenUsage != null && _liveScreenUsage!.appList.isNotEmpty) {
       for (final a in _liveScreenUsage!.appList.take(4)) {
-        topApps.add({'name': a.appName, 'package': a.packageName, 'formatted': a.formattedDuration});
+        topApps.add({
+          'name': a.appName,
+          'package': a.packageName,
+          'duration_ms': a.totalTimeInForegroundMs,
+          'formatted': a.formattedDuration,
+        });
       }
     }
 
@@ -1478,8 +1500,8 @@ class _DiaryItemState extends State<DiaryItem> {
       } else {
         final dH = diffMins ~/ 60;
         final dM = diffMins % 60;
-        final tStr = dH > 0 ? '$dH小时$dM分' : '$dM分';
-        screenDiffDesc = diffMs > 0 ? '较昨日+$tStr' : '较昨日-$tStr';
+        final tStr = dH > 0 ? (dM > 0 ? '$dH小时$dM分' : '$dH小时') : '$dM分';
+        screenDiffDesc = diffMs > 0 ? '较昨日 +$tStr' : '较昨日 -$tStr';
       }
     }
 
@@ -1520,33 +1542,39 @@ class _DiaryItemState extends State<DiaryItem> {
                       ),
                     ),
                     const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                      decoration: BoxDecoration(
-                        color: (isTargetReached ? brandGreen : colorScheme.primary).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isTargetReached ? Icons.check_circle_rounded : Icons.flag_rounded,
-                            size: 13,
-                            color: isTargetReached ? brandGreen : colorScheme.primary,
+                    Builder(
+                      builder: (context) {
+                        final badgeBase = isTargetReached ? brandGreen : colorScheme.primary;
+                        final badgeInk = AppContrast.inkOnTint(badgeBase, colorScheme.surface, 0.12);
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: badgeBase.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            isTargetReached
-                                ? '达标 ${(steps / stepTarget * 100).toInt()}%'
-                                : '${(steps / stepTarget * 100).toInt()}% / 目标$stepTarget',
-                            style: TextStyle(
-                              fontSize: AppTypography.label,
-                              fontWeight: FontWeight.bold,
-                              color: isTargetReached ? brandGreen : colorScheme.primary,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isTargetReached ? Icons.check_circle_rounded : Icons.flag_rounded,
+                                size: 13,
+                                color: badgeInk,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isTargetReached
+                                    ? '达标 ${(steps / stepTarget * 100).toInt()}%'
+                                    : '${(steps / stepTarget * 100).toInt()}% / 目标$stepTarget',
+                                style: TextStyle(
+                                  fontSize: AppTypography.label,
+                                  fontWeight: FontWeight.bold,
+                                  color: badgeInk,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -1723,105 +1751,90 @@ class _DiaryItemState extends State<DiaryItem> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 标题与较昨日标签放左侧自适应换行，总时长与箭头锚定右上角，窄屏也不挤压溢出
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 标题区可收缩：与右侧时长组争抢宽度时宁可省略，也不让 Row 溢出裁切
                           Expanded(
-                            child: Row(
+                            child: Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 6,
+                              runSpacing: 4,
                               children: [
-                                const Icon(Icons.phone_android_rounded, size: 16, color: screenBlue),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    '屏幕使用',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.phone_android_rounded, size: 16, color: screenInk),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        '屏幕使用',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                                if (screenDiffDesc != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: screenBlue.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      screenDiffDesc,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: AppTypography.caption,
+                                        fontWeight: FontWeight.w600,
+                                        color: screenInk,
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
-                          // 时长与环比上下成组，横向只占较长一项，窄屏也能完整显示
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          const SizedBox(width: 8),
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 screenTimeDisplay,
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: screenBlue,
+                                  color: screenInk,
+                                  fontFeatures: const [FontFeature.tabularFigures()],
                                 ),
                               ),
-                              if (screenDiffDesc != null) ...[
-                                const SizedBox(height: 3),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                  decoration: BoxDecoration(
-                                    color: screenBlue.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    screenDiffDesc,
-                                    style: const TextStyle(
-                                      fontSize: AppTypography.caption,
-                                      fontWeight: FontWeight.w600,
-                                      color: screenBlue,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              const SizedBox(width: 2),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                size: 16,
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                              ),
                             ],
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            size: 16,
-                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                           ),
                         ],
                       ),
                       if (topApps.isNotEmpty) ...[
+                        if (topApps.any((app) => ((app['duration_ms'] as num?)?.toInt() ?? 0) > 0)) ...[
+                          const SizedBox(height: 8),
+                          _buildScreenUsageBar(
+                            theme,
+                            topApps: topApps.take(4).toList(),
+                            totalMs: screenMs,
+                            colors: screenAppColors,
+                          ),
+                        ],
                         const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (final app in topApps)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        app['name'] as String? ?? '应用',
-                                        style: TextStyle(
-                                          fontSize: AppTypography.label,
-                                          fontWeight: FontWeight.w500,
-                                          color: colorScheme.onSurface,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      app['formatted'] as String? ?? '',
-                                      style: TextStyle(
-                                        fontSize: AppTypography.caption,
-                                        fontWeight: FontWeight.bold,
-                                        color: screenBlue.withValues(alpha: 0.9),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
+                        _buildScreenAppsGrid(
+                          theme,
+                          topApps: topApps.take(4).toList(),
+                          colors: screenAppColors,
+                          accentInk: screenInk,
                         ),
                       ],
                     ],
@@ -1954,6 +1967,138 @@ class _DiaryItemState extends State<DiaryItem> {
           style: const TextStyle(fontSize: AppTypography.caption, fontWeight: FontWeight.w500),
         ),
       ],
+    );
+  }
+
+  /// 屏幕使用 Top 应用占比条，呼应上方睡眠分段条，直观展示各应用在总时长中的比例
+  Widget _buildScreenUsageBar(
+    ThemeData theme, {
+    required List<Map<String, dynamic>> topApps,
+    required int totalMs,
+    required List<Color> colors,
+  }) {
+    final colorScheme = theme.colorScheme;
+    final appDurations = [for (final app in topApps) ((app['duration_ms'] as num?)?.toInt() ?? 0).clamp(0, totalMs)];
+    final appsSum = appDurations.fold<int>(0, (sum, v) => sum + v);
+    if (appsSum <= 0) {
+      return const SizedBox.shrink();
+    }
+    final denom = (totalMs > appsSum ? totalMs : appsSum).clamp(1, 1 << 30);
+    final otherMs = (denom - appsSum).clamp(0, denom);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(
+        height: 6,
+        child: Row(
+          children: [
+            for (var i = 0; i < appDurations.length; i++)
+              if (appDurations[i] > 0)
+                Expanded(
+                  flex: (appDurations[i] * 1000 ~/ denom).clamp(1, 1000),
+                  child: Container(color: colors[i % colors.length]),
+                ),
+            if (otherMs > 0)
+              Expanded(
+                flex: (otherMs * 1000 ~/ denom).clamp(1, 1000),
+                child: Container(color: colorScheme.outlineVariant.withValues(alpha: 0.28)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 屏幕使用 Top 应用两列等宽网格，保证左右边线与时间列垂直对齐
+  Widget _buildScreenAppsGrid(
+    ThemeData theme, {
+    required List<Map<String, dynamic>> topApps,
+    required List<Color> colors,
+    required Color accentInk,
+  }) {
+    return Column(
+      children: [
+        for (var i = 0; i < topApps.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _buildScreenAppCell(
+                  theme,
+                  app: topApps[i],
+                  dotColor: colors[i % colors.length],
+                  accentInk: accentInk,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: i + 1 < topApps.length
+                    ? _buildScreenAppCell(
+                        theme,
+                        app: topApps[i + 1],
+                        dotColor: colors[(i + 1) % colors.length],
+                        accentInk: accentInk,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildScreenAppCell(
+    ThemeData theme, {
+    required Map<String, dynamic> app,
+    required Color dotColor,
+    required Color accentInk,
+  }) {
+    final colorScheme = theme.colorScheme;
+    final name = app['name'] as String? ?? '应用';
+    final formatted = app['formatted'] as String? ?? '';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: AppTypography.label,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurface,
+              ),
+            ),
+          ),
+          if (formatted.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            Text(
+              formatted,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: AppTypography.caption,
+                fontWeight: FontWeight.bold,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: accentInk,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

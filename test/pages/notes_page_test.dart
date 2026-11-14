@@ -295,4 +295,30 @@ void main() {
     expect(find.text('子级笔记'), findsNothing);
     expect(bodyTransition, findsNothing);
   });
+
+  testWidgets('长按列表空白处唤起页面级快捷菜单（新建/批量）', (tester) async {
+    final now = DateTime.now();
+    final note = Note(id: 'note-1', title: '测试笔记标题', createdAt: now, updatedAt: now);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          noteListProvider.overrideWith(() => _MockNoteListNotifier([note])),
+          folderListProvider.overrideWith(() => _MockFolderListNotifier([])),
+        ],
+        child: const MaterialApp(home: Scaffold(body: NotesPage())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 长按列表下方的空白区域：避开顶部唯一一行与右下角 FAB
+    final gesture = await tester.startGesture(const Offset(80, 500));
+    await tester.pump(const Duration(milliseconds: 700));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('新建笔记'), findsOneWidget);
+    expect(find.text('新建文件夹'), findsOneWidget);
+    expect(find.text('批量编辑'), findsOneWidget);
+  });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 
@@ -146,12 +147,12 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                               Text(
                                 _formatTime(_startHour!, _startMinute!),
                                 style: theme.textTheme.headlineMedium?.copyWith(
-                                  color: colorScheme.primary,
+                                  color: theme.accentInk,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              Icon(Icons.edit, size: 14, color: colorScheme.primary.withValues(alpha: 0.7)),
+                              Icon(Icons.edit, size: 14, color: theme.accentInk.withValues(alpha: 0.7)),
                             ],
                           ),
                         ),
@@ -225,7 +226,7 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                               padding: EdgeInsets.zero,
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              foregroundColor: colorScheme.primary,
+                              foregroundColor: theme.accentInk,
                               textStyle: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                           )
@@ -250,12 +251,12 @@ class _EditTagTimeSheetState extends State<EditTagTimeSheet> {
                                 Text(
                                   _formatTime(_endHour!, _endMinute!),
                                   style: theme.textTheme.headlineMedium?.copyWith(
-                                    color: colorScheme.primary,
+                                    color: theme.accentInk,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 const SizedBox(width: 4),
-                                Icon(Icons.edit, size: 14, color: colorScheme.primary.withValues(alpha: 0.7)),
+                                Icon(Icons.edit, size: 14, color: theme.accentInk.withValues(alpha: 0.7)),
                               ],
                             ),
                           ),

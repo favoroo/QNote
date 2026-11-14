@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -196,12 +197,9 @@ enum _SheetLevel {
 
   /// 三级：某个厂商下的模型
   provider,
-
-  /// 二级：某个路由组的成员
-  group,
 }
 
-/// 小Q 模型选择面板：一级列模型，厂商与组内成员退到下一级
+/// 小Q 模型选择面板：一级列模型与路由组，点即选中；厂商浏览退到下一级
 ///
 /// 参考 ZCode 的选择面板：思考强度跟着模型走，不再在输入区单独占一个胶囊。
 /// 点模型即写库并保持面板打开——用户接着就能调它的思考强度，不用先关面板
@@ -251,7 +249,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   /// 当前层级
   _SheetLevel _level = _SheetLevel.root;
 
-  /// 二级/三级的作用对象 id：厂商 id 或路由组 id
+  /// 二级/三级的作用对象 id：厂商 id
   String? _scopeId;
 
   /// 面板打开期间的绑定：点选写库成功后立即移动勾选，不依赖外部重建
@@ -307,11 +305,9 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
   ///
   /// 一级/厂商列表：当前绑定（具体模型就是它自己，路由组展开为全部启用成员）；
   /// 厂商面板：只作用于当前选中的那个模型，还没选中该厂商下的模型时为空
-  /// （面板提示先选模型）；路由组面板：作用于组内全部启用成员。
+  /// （面板提示先选模型）。
   List<ReasoningEffortTarget> _effortTargets() {
     switch (_level) {
-      case _SheetLevel.group:
-        return _withOverride(reasoningTargetsOf(AiModelRef.routeGroup(_scopeId!), widget.providers, widget.groups));
       case _SheetLevel.provider:
         final binding = _binding;
         if (binding == null || binding.isRouteGroup) return const [];
@@ -485,19 +481,11 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     switch (_level) {
       case _SheetLevel.provider:
         _goTo(_SheetLevel.providers);
-      case _SheetLevel.group:
       case _SheetLevel.providers:
         _goTo(_SheetLevel.root);
       case _SheetLevel.root:
         break;
     }
-  }
-
-  /// 点路由组：先写绑定再进成员面板（组内成员与档位都在那一屏里）
-  Future<void> _openGroup(AiRouteGroup group) async {
-    await _selectBinding(AiModelRef.routeGroup(group.id));
-    if (!mounted) return;
-    _goTo(_SheetLevel.group, scopeId: group.id);
   }
 
   @override
@@ -552,15 +540,10 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       case _SheetLevel.provider:
         final provider = _providerById(_scopeId);
         return provider?.models.length ?? 0;
-      case _SheetLevel.group:
-        final group = _groupById(_scopeId);
-        return group?.members.length ?? 0;
     }
   }
 
   AiProvider? _providerById(String? id) => widget.providers.where((p) => p.id == id).firstOrNull;
-
-  AiRouteGroup? _groupById(String? id) => widget.groups.where((g) => g.id == id).firstOrNull;
 
   /// 面板头部：一级是标题，二三级带「上一步」与当前范围名
   Widget _buildHeader(ThemeData theme) {
@@ -592,10 +575,6 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         final provider = _providerById(_scopeId);
         title = provider?.name ?? '已失效';
         subtitle = provider == null ? null : '${provider.models.length} 个模型';
-      case _SheetLevel.group:
-        final group = _groupById(_scopeId);
-        title = group?.name ?? '已失效';
-        subtitle = group == null ? null : '${group.enabledMembers.length} 个成员 · ${group.strategy.label}';
       case _SheetLevel.root:
         title = '';
         subtitle = null;
@@ -648,9 +627,8 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       _SheetLevel.root => _buildRootList(controller, theme),
       _SheetLevel.providers => _buildProviderList(controller, theme),
       _SheetLevel.provider => _buildProviderModels(controller, theme),
-      _SheetLevel.group => _buildGroupMembers(controller, theme),
     };
-    // 进入/退出厂商或成员层级时交叉淡化，避免整个列表硬替
+    // 进入/退出厂商层级时交叉淡化，避免整个列表硬替
     return AnimatedSwitcher(
       duration: AppMotion.duration(context, AppDurations.fast),
       switchInCurve: AppCurves.emphasized,
@@ -751,13 +729,13 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       leading: Icon(
         entry.isGroup ? Icons.alt_route_rounded : Icons.history_rounded,
         size: 20,
-        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        color: isSelected ? theme.accentInk : colorScheme.onSurfaceVariant,
       ),
       title: Text(
         entry.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
+        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? theme.accentInk : null),
       ),
       subtitle: subtitle.isEmpty
           ? null
@@ -767,15 +745,9 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
-      trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary) : null,
-      onTap: entry.isGroup ? () => _openGroupById(entry.ref.providerId) : () => _selectBinding(entry.ref),
+      trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: theme.accentInk) : null,
+      onTap: () => _selectBinding(entry.ref),
     );
-  }
-
-  Future<void> _openGroupById(String groupId) async {
-    final group = _groupById(groupId);
-    if (group == null) return;
-    await _openGroup(group);
   }
 
   Widget _buildGroupTile(ThemeData theme, AiRouteGroup group) {
@@ -784,19 +756,18 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     final isSelected = ref == _binding;
     final live = routeGroupLiveMemberCount(group, widget.providers);
     return ListTile(
-      leading: Icon(Icons.alt_route_rounded, color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant),
+      leading: Icon(Icons.alt_route_rounded, color: isSelected ? theme.accentInk : colorScheme.onSurfaceVariant),
       title: Text(
         group.name,
-        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
+        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? theme.accentInk : null),
       ),
       subtitle: Text(
         live == 0 ? '${group.strategy.label} · 模型均已停用' : '$live 个模型 · ${group.strategy.label}',
         style: theme.textTheme.bodySmall?.copyWith(color: live == 0 ? colorScheme.error : colorScheme.onSurfaceVariant),
       ),
-      trailing: isSelected
-          ? Icon(Icons.check_rounded, color: colorScheme.primary)
-          : Icon(Icons.chevron_right_rounded, color: colorScheme.outline),
-      onTap: () => _openGroup(group),
+      // 点组即选中整组，不进二级；组内成员由路由策略自动挑
+      trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: theme.accentInk) : null,
+      onTap: () => _selectBinding(ref),
     );
   }
 
@@ -834,10 +805,10 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       if (provider.isDefault) '默认',
     ].join(' · ');
     return ListTile(
-      leading: Icon(Icons.memory_rounded, color: inProvider ? colorScheme.primary : colorScheme.onSurfaceVariant),
+      leading: Icon(Icons.memory_rounded, color: inProvider ? theme.accentInk : colorScheme.onSurfaceVariant),
       title: Text(
         provider.name,
-        style: TextStyle(fontWeight: FontWeight.w600, color: inProvider ? colorScheme.primary : null),
+        style: TextStyle(fontWeight: FontWeight.w600, color: inProvider ? theme.accentInk : null),
       ),
       subtitle: Text(
         subtitle,
@@ -845,7 +816,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         overflow: TextOverflow.ellipsis,
         style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
-      trailing: Icon(Icons.chevron_right_rounded, color: inProvider ? colorScheme.primary : colorScheme.outline),
+      trailing: Icon(Icons.chevron_right_rounded, color: inProvider ? theme.accentInk : colorScheme.outline),
       onTap: () => _goTo(_SheetLevel.provider, scopeId: provider.id),
     );
   }
@@ -885,7 +856,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         model.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
+        style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? theme.accentInk : null),
       ),
       subtitle: subtitle.isEmpty
           ? null
@@ -895,52 +866,8 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
-      trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary) : null,
+      trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: theme.accentInk) : null,
       onTap: () => _selectBinding(ref),
-    );
-  }
-
-  // ── 二级：路由组成员 ────────────────────────────────────
-
-  Widget _buildGroupMembers(ScrollController controller, ThemeData theme) {
-    final colorScheme = theme.colorScheme;
-    final group = _groupById(_scopeId);
-    if (group == null) {
-      return Padding(
-        padding: const EdgeInsets.all(20),
-        child: Text('这个绑定已经失效，请重新选择', style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.error)),
-      );
-    }
-    return ListView(
-      controller: controller,
-      padding: const EdgeInsets.only(bottom: 16),
-      children: [
-        _sectionHeader(theme, '组内模型', trailing: '按「${group.strategy.label}」自动选择'),
-        for (final member in group.members) _buildMemberTile(theme, group, member),
-      ],
-    );
-  }
-
-  /// 成员行是只读的：选了路由组就是选整组，成员由路由策略自动挑
-  Widget _buildMemberTile(ThemeData theme, AiRouteGroup group, RouteGroupMember member) {
-    final colorScheme = theme.colorScheme;
-    final target = _targetOf(widget.providers, member.providerId, member.modelName);
-    final provider = target?.provider;
-    final model = target?.model;
-    final broken = provider == null || model == null;
-    final disabled = !member.enabled;
-    final subtitle = [
-      if (model == null || provider == null) '模型已删除',
-      // 模型名与厂商名相同时不重复占一行
-      if (provider != null && provider.name != model?.name) provider.name,
-      if (disabled) '组内已停用',
-      if (group.strategy == RouteStrategy.weight) '权重 ${member.weight}',
-    ].join(' · ');
-    final color = broken || disabled ? colorScheme.error : colorScheme.onSurfaceVariant;
-    return ListTile(
-      dense: true,
-      title: Text(model?.name ?? member.modelName, style: TextStyle(color: broken || disabled ? color : null)),
-      subtitle: subtitle.isEmpty ? null : Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: color)),
     );
   }
 
@@ -983,7 +910,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
             vendorId: first.provider.vendorId,
             customLevels: first.model.reasoningEfforts,
           );
-    final hint = state == null ? '' : _effortHint(state, options);
+    final hint = state == null ? '' : _effortHint(state);
     final showBinding = _level == _SheetLevel.root || _level == _SheetLevel.providers;
 
     return Container(
@@ -1003,9 +930,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
             if (state == null) ...[
               const SizedBox(height: 6),
               Text(
-                _level == _SheetLevel.provider
-                    ? '选中模型后即可调整它的思考强度'
-                    : (_level == _SheetLevel.group ? '组内没有可用模型' : '当前没有可调整的模型'),
+                _level == _SheetLevel.provider ? '选中模型后即可调整它的思考强度' : '当前没有可调整的模型',
                 style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ] else ...[
@@ -1079,7 +1004,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         if (state != null)
           Text(
             state.mixed ? '混合' : state.capability.labelFor(state.effort),
-            style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.w600),
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.accentInk, fontWeight: FontWeight.w600),
           ),
       ],
     );
@@ -1096,20 +1021,12 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
     return target?.model.name ?? binding.modelName;
   }
 
-  /// 档位说明：与单独弹层共用一套文案，再补充混合/通用参数的提醒
-  String _effortHint(ReasoningEffortState state, List<ReasoningEffortOption> options) {
+  /// 档位提示：只在状态需要额外解释时出现（组内不一致、按模型自定义），
+  /// 档位含义本身靠标签表达，不再重复说明
+  String _effortHint(ReasoningEffortState state) {
     final parts = <String>[];
     if (state.mixed) {
       parts.add('组内档位不一致，选择后统一写入全部启用成员');
-    } else {
-      final description = options.where((o) => o.effort == state.effort).map((o) => o.description).firstOrNull;
-      if (description != null) parts.add(description);
-    }
-    if (state.capability.isGeneric) {
-      parts.add('未收录该模型的思考参数，按通用字段发送，不支持时自动忽略');
-    }
-    if (state.capability.isBinary) {
-      parts.add('该模型主要靠开关表达思考，中间档会附带 reasoning_effort 尽力传达');
     }
     if (state.customized) {
       parts.add('档位已按模型设置自定义');

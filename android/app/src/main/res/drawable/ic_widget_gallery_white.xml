@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 相册图标（白）：只铺在主色块上，因此固定白色，不跟浅/深色主题走。 -->
+<!-- 相册图标（柔白）：铺在极简黑底次级圆钮上。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="@color/widget_qr_on_accent"
+        android:fillColor="@color/widget_qr_icon"
         android:pathData="M19,3H5c-1.1,0 -2,0.9 -2,2v14c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V5c0,-1.1 -0.9,-2 -2,-2zM8.5,12.5l2.5,3.01L14.5,11l4.5,6H5l3.5,-4.5z" />
 </vector>

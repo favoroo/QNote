@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 
 class CustomDatePickerDialog extends StatefulWidget {
@@ -128,7 +129,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
                   Text(
                     '选择日期',
                     style: theme.textTheme.labelMedium?.copyWith(
-                      color: colorScheme.primary,
+                      color: theme.accentInk,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.0,
                     ),
@@ -261,7 +262,7 @@ class _CustomDatePickerDialogState extends State<CustomDatePickerDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('取消', style: TextStyle(color: colorScheme.primary)),
+                  child: Text('取消', style: TextStyle(color: theme.accentInk)),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(

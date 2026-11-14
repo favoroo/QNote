@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录 1×1 正圆底板：配合固定宽高（52dp×52dp）使用，避免在非正方形格子下被拉成椭圆。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/widget_qr_surface" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/widget_qr_border" />
+</shape>

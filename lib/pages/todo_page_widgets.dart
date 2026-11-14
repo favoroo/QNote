@@ -486,7 +486,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelectionMode && isSelected
-              ? colorScheme.primary
+              ? theme.accentInk
               : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
           width: isSelectionMode && isSelected ? 1.8 : 1.0,
         ),
@@ -547,9 +547,10 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                     widget.onTap();
                   }
                 },
-                // 移动端整行长按已交给「拾起拖拽」识别器；这里再挂长按识别器，
+                // 移动端可拖拽条目的整行长按已交给「拾起拖拽」识别器；这里再挂长按识别器，
                 // 两者都在 500ms 判定并互相把对方踢出竞技场，菜单与拖拽只能随机生效。
-                onLongPress: (!useDragHandleFor(theme.platform) && !isSelectionMode)
+                // 已完成条目（isDraggable=false）没有拖拽路径兜底，长按菜单必须由卡片自己接管。
+                onLongPress: (widget.isDraggable && !isSelectionMode && !useDragHandleFor(theme.platform))
                     ? null
                     : () {
                         if (isSelectionMode) {

@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
@@ -50,6 +51,7 @@ import 'package:qnote_flutter/widgets/diary/cheer_burst_overlay.dart';
 import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
+import 'package:qnote_flutter/widgets/diary/sliver_day_collapsible.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/app_error_state.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
@@ -72,6 +74,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   static const double _timelineChromeHeight = 56 + 1 + 66;
 
   late DateTime _today;
+  late TimeOfDay _currentMinute;
   late DateTime _windowStartDate;
   final int _windowDays = 120;
   static const int _shiftDays = 30;
@@ -88,6 +91,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   final Map<int, BuildContext> _itemContexts = {};
   final Map<int, double> _itemHeights = {};
   Timer? _autoScrollTimer;
+  Timer? _minuteTickTimer;
   Offset? _lastDragPosition;
   bool _isScrollingFromList = false;
   bool _hasPerformedInitialScroll = false;
@@ -111,6 +115,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   final Map<String, DiaryRecord> _undoRecords = {};
   final Map<String, AnimationController> _undoControllers = {};
 
+  /// 提取后可撤回的窗口时长。
+  ///
+  /// 窗口内卡片停留在提取前的时间位置，方便用户就地撤回；过期后新时间才生效。
+  /// 15s 太长，用户往往已经看完结果还要干等，改为 8s。
+  static const Duration _undoWindow = Duration(seconds: 8);
+
   // 卡片拖动调时：长按时间线左侧圆形节点后，手指位移换算为整条记录的时间平移。
   // 手势统一由外层 GestureDetector 持有，避免卡片被 ListView 回收时拖拽中断。
   final Map<String, GlobalKey> _recordHandleKeys = {};
@@ -123,8 +133,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 每条记录卡片本体的 Key：发送后「弹窗变卡片」要量新卡片的落点。
   final Map<String, GlobalKey> _recordCardKeys = {};
 
-  /// 日期分隔条长按菜单的锚点：按日期复用，ListView 回收重建后仍能定位。
-  final Map<String, GlobalKey> _dateDividerKeys = {};
+  /// 进行中的单日展开/折叠动画控制器，key 为 'yyyy-MM-dd'；稳态日期不常驻动画器。
+  final Map<String, _DayExpandAnimation> _dayAnimations = {};
+
+  /// 已结束或被取消的单日动画器：延后到本帧卸载/更新完成后再释放，避免 Widget 解绑监听器时踩到已销毁对象。
+  final List<_DayExpandAnimation> _retiredDayAnimations = [];
+  bool _retiredFlushScheduled = false;
 
   /// 顶栏日期标题的长按菜单锚点（标题不随 ListView 回收）。
   final GlobalKey _topBarDateKey = GlobalKey();
@@ -149,9 +163,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 拖动灵敏度：与时间线节点高度保持同一口径（一个节点 = 30 分钟）。
   static const double _dragPixelsPerMinute = _nodeHeight / kTimelineNodeMinutes;
 
-  // _buildRecordsByDate 结果缓存，避免每次 rebuild 重算全表分组+排序
+  // _buildRecordsByDate 结果缓存，避免每次 rebuild 重算全表分组+排序与每槽 O(48 * R) 扫描
   List<DiaryRecord>? _lastAllRecords;
   Map<String, List<DiaryRecord>>? _cachedRecordsByDate;
+  Map<String, Map<int, List<DiaryRecord>>> _cachedDayNodesByDate = const {};
+  Set<String> _cachedDatesWithHealthSummary = const {};
   int _undoRecordsVersion = 0;
   int _cachedUndoRecordsVersion = -1;
 
@@ -240,14 +256,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       return _cachedRecordsByDate!;
     }
     final Map<String, List<DiaryRecord>> recordsByDate = {};
+    final Map<String, Map<int, List<DiaryRecord>>> dayNodesByDate = {};
+    final Set<String> datesWithHealthSummary = {};
     for (final r in allRecords) {
       if (r.isDeleted) continue;
       final preRecord = _undoRecords[r.id];
       final displayDate = preRecord != null ? preRecord.getEffectiveDate() : r.getEffectiveDate();
       final key = _dateKey(displayDate);
       recordsByDate.putIfAbsent(key, () => []).add(r);
+      final bs = r.bodyState;
+      if (bs != null && bs['source'] == 'mi_fitness' && bs['type'] == 'daily_summary') {
+        datesWithHealthSummary.add(key);
+      }
     }
-    // Sort each day's records by display time
+    // 按显示时间升序排列，并分桶到 48 个半小时槽位，避免时间线构建时每行全天扫描 O(48 * R)
     recordsByDate.forEach((key, list) {
       list.sort((a, b) {
         final preA = _undoRecords[a.id];
@@ -256,10 +278,20 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         final displayTimeB = preB != null ? preB.getDisplayTime() : b.getDisplayTime();
         return displayTimeA.compareTo(displayTimeB);
       });
+      final nodeMap = <int, List<DiaryRecord>>{};
+      for (final r in list) {
+        final pre = _undoRecords[r.id];
+        final displayTime = pre != null ? pre.getDisplayTime() : r.getDisplayTime();
+        final nodeIdx = ((displayTime.hour * 60 + displayTime.minute) ~/ 30).clamp(0, 47);
+        nodeMap.putIfAbsent(nodeIdx, () => []).add(r);
+      }
+      dayNodesByDate[key] = nodeMap;
     });
     // 写入缓存
     _lastAllRecords = allRecords;
     _cachedRecordsByDate = recordsByDate;
+    _cachedDayNodesByDate = dayNodesByDate;
+    _cachedDatesWithHealthSummary = datesWithHealthSummary;
     _cachedUndoRecordsVersion = _undoRecordsVersion;
     return recordsByDate;
   }
@@ -276,42 +308,126 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     return _dateExpandedOverrides[key] ?? _isDefaultExpanded(date);
   }
 
+  void _retireDayAnimation(_DayExpandAnimation anim) {
+    anim.controller.stop();
+    anim.generation++;
+    _retiredDayAnimations.add(anim);
+    if (_retiredFlushScheduled) {
+      return;
+    }
+    _retiredFlushScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _retiredFlushScheduled = false;
+      if (_retiredDayAnimations.isEmpty) {
+        return;
+      }
+      final toDispose = List<_DayExpandAnimation>.from(_retiredDayAnimations);
+      _retiredDayAnimations.clear();
+      for (final item in toDispose) {
+        item.dispose();
+      }
+    });
+  }
+
+  void _attachDayAnimationListener(String key, _DayExpandAnimation anim) {
+    anim.controller.addStatusListener((status) {
+      if (status != AnimationStatus.completed && status != AnimationStatus.dismissed) {
+        return;
+      }
+      // 仅在停稳在当前目标方向对应的终点时回收动画器，避免中途反向误删
+      final reachedTarget =
+          (anim.isExpanding && status == AnimationStatus.completed) ||
+          (!anim.isExpanding && status == AnimationStatus.dismissed);
+      if (!reachedTarget) {
+        return;
+      }
+      if (!mounted || !identical(_dayAnimations[key], anim)) {
+        return;
+      }
+      setState(() {
+        _dayAnimations.remove(key);
+        _retireDayAnimation(anim);
+      });
+    });
+  }
+
   void _toggleDateExpanded(DateTime date) {
     final key = _dateKey(date);
     final current = _isDateExpanded(date);
     final willExpand = !current;
+    final forwardDuration = AppMotion.duration(context, AppDurations.normal);
+    final reverseDuration = AppMotion.duration(context, AppDurations.fast);
+
+    _DayExpandAnimation? startedAnim;
 
     // 当用户点击屏幕上可见的日期分割栏时，内容是在该分割栏下方展开/收起；
-    // 该分割栏本身在 ListView 中的起始 offset 完全不变。
-    // 因此无需且严禁强行调用 jumpTo 重置 offset，否则会使当前视口发生剧烈跳动与位移。
+    // 该分割栏本身在视口中的起始 offset 完全不变，严禁强行 jumpTo。
     setState(() {
       _dateExpandedOverrides[key] = willExpand;
+
+      // 折叠后正文槽位会卸载，清掉旧槽位测量高度与 context，避免下次估算拿到过期值
+      if (!willExpand) {
+        final dayOffset = _dateToDayOffset(date);
+        if (dayOffset >= 0 && dayOffset < _windowDays) {
+          final baseIndex = dayOffset * _itemsPerDay;
+          for (var sub = 1; sub < _itemsPerDay; sub++) {
+            _itemHeights.remove(baseIndex + sub);
+            _itemContexts.remove(baseIndex + sub);
+          }
+        }
+      }
+
+      if (forwardDuration == Duration.zero && reverseDuration == Duration.zero) {
+        final existing = _dayAnimations.remove(key);
+        if (existing != null) {
+          _retireDayAnimation(existing);
+        }
+      } else {
+        final existing = _dayAnimations[key];
+        if (existing != null) {
+          existing.generation++;
+          existing.isExpanding = willExpand;
+          startedAnim = existing;
+        } else {
+          final anim = _DayExpandAnimation(
+            vsync: this,
+            forwardDuration: forwardDuration,
+            reverseDuration: reverseDuration,
+            initialValue: willExpand ? 0.0 : 1.0,
+            isExpanding: willExpand,
+            generation: 0,
+          );
+          _attachDayAnimationListener(key, anim);
+          _dayAnimations[key] = anim;
+          startedAnim = anim;
+        }
+      }
     });
-    _scheduleTimelineRemeasure();
+
+    if (startedAnim != null) {
+      if (willExpand) {
+        startedAnim!.controller.forward();
+      } else {
+        startedAnim!.controller.reverse();
+      }
+    }
     HapticFeedback.lightImpact();
   }
 
   void _expandDate(DateTime date) {
     final key = _dateKey(date);
+    final existing = _dayAnimations.remove(key);
+    if (existing != null) {
+      _retireDayAnimation(existing);
+    }
     if (!_isDateExpanded(date)) {
       setState(() {
         _dateExpandedOverrides[key] = true;
       });
-      _scheduleTimelineRemeasure();
-    }
-  }
-
-  /// 展开/收起动画结束后补一次重建。
-  ///
-  /// [TimelineItemWrapper] 只在重建时上报行高，而折叠动画期间每帧高度都在变，
-  /// 不补这一帧，拖动时间线定位用的高度表会停留在动画开始时的旧值。
-  void _scheduleTimelineRemeasure() {
-    final delay = AppMotion.duration(context, AppDurations.normal);
-    if (delay == Duration.zero) return;
-    Future.delayed(delay, () {
-      if (!mounted) return;
+    } else if (existing != null) {
+      // 原先正在收起途中被代码展开时，补一次重建以切回无动画稳态 Sliver
       setState(() {});
-    });
+    }
   }
 
   @override
@@ -320,6 +436,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     _today = DateTime(now.year, now.month, now.day);
+    _currentMinute = TimeOfDay(hour: now.hour, minute: now.minute);
     _windowStartDate = _today.subtract(const Duration(days: 60));
     _hasPerformedInitialScroll = false;
     _itemContexts.clear();
@@ -327,6 +444,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     _scrollController = ScrollController(keepScrollOffset: false);
     _scrollController.addListener(_onScroll);
+    _scheduleMinuteTick();
   }
 
   double _estimateOffsetForIndex(int targetIndex) {
@@ -808,14 +926,22 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     } else if (clickedDateTime.isAfter(selectionStart) && !clickedDateTime.isAfter(selectionEnd)) {
       // 2. 点击范围内的某个节点（排除开始节点）：将该节点及之后的节点取消勾选，即新范围是 [开始, 点击节点 - 30分钟]
       final newEndDateTime = clickedDateTime.subtract(const Duration(minutes: 30));
-      final newEndTime = TimeOfDay(hour: newEndDateTime.hour, minute: newEndDateTime.minute);
+      if (newEndDateTime.isBefore(selectionStart)) {
+        // 当点击的是落在起点半小时以内的专用节点（如「当前时间」）时，退回单选起点，避免终点早于起点。
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+          selectEvent.time,
+          date: selectEvent.date,
+        );
+      } else {
+        final newEndTime = TimeOfDay(hour: newEndDateTime.hour, minute: newEndDateTime.minute);
 
-      ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
-        selectEvent.time,
-        endTime: newEndTime,
-        date: selectEvent.date,
-        endDate: DateTime(newEndDateTime.year, newEndDateTime.month, newEndDateTime.day),
-      );
+        ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
+          selectEvent.time,
+          endTime: newEndTime,
+          date: selectEvent.date,
+          endDate: DateTime(newEndDateTime.year, newEndDateTime.month, newEndDateTime.day),
+        );
+      }
     } else if (clickedDateTime.isAfter(selectionEnd)) {
       // 3. 点击结束节点之后的节点：将范围延长到该节点，即新范围是 [开始, 点击节点]
       ref.read(diaryInputTimeProvider.notifier).state = TimelineTimeSelectEvent(
@@ -862,20 +988,51 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     return resolveTimelineRecordAnchor(start: start, end: end);
   }
 
+  void _scheduleMinuteTick() {
+    _minuteTickTimer?.cancel();
+    final now = DateTime.now();
+    // 对齐到下一分钟整点后 50ms 触发，防止系统定时器微提前导致分钟尚未跳变。
+    final delayMs = ((60 - now.second) * 1000 - now.millisecond + 50).clamp(50, 61000);
+    _minuteTickTimer = Timer(Duration(milliseconds: delayMs), () {
+      if (!mounted) return;
+      _syncCurrentTimeIfChanged();
+      _scheduleMinuteTick();
+    });
+  }
+
+  void _syncCurrentTimeIfChanged() {
+    final now = DateTime.now();
+    final todayNow = DateTime(now.year, now.month, now.day);
+    final minuteNow = TimeOfDay(hour: now.hour, minute: now.minute);
+    final dayChanged = !_isSameDay(_today, todayNow);
+    final minuteChanged = minuteNow.hour != _currentMinute.hour || minuteNow.minute != _currentMinute.minute;
+
+    if (!dayChanged && !minuteChanged) {
+      return;
+    }
+
+    if (dayChanged) {
+      setState(() {
+        _today = todayNow;
+        _currentMinute = minuteNow;
+        _windowStartDate = _today.subtract(const Duration(days: 60));
+      });
+      final allRecords = ref.read(diaryListProvider).valueOrNull;
+      final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
+      _scrollToCurrentTime(smooth: true, recordsByDate: recordsByDate);
+    } else {
+      setState(() {
+        _currentMinute = minuteNow;
+      });
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      final now = DateTime.now();
-      final todayNow = DateTime(now.year, now.month, now.day);
-      if (!_isSameDay(_today, todayNow)) {
-        setState(() {
-          _today = todayNow;
-          _windowStartDate = _today.subtract(const Duration(days: 60));
-        });
-        final allRecords = ref.read(diaryListProvider).valueOrNull;
-        final recordsByDate = allRecords != null ? _buildRecordsByDate(allRecords) : null;
-        _scrollToCurrentTime(smooth: true, recordsByDate: recordsByDate);
-      }
+      // 从后台恢复时定时器可能被系统挂起，立即同步当前分钟并重排下一分钟滴答。
+      _syncCurrentTimeIfChanged();
+      _scheduleMinuteTick();
     }
   }
 
@@ -893,6 +1050,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _cancelTokens.clear();
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoScrollTimer();
+    _minuteTickTimer?.cancel();
     _removeCardDragOverlay();
     _cardDrag = null;
     _recordHandleKeys.clear();
@@ -904,6 +1062,14 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _removeCheerBurst();
     _itemContexts.clear();
     _itemHeights.clear();
+    for (final anim in _dayAnimations.values) {
+      anim.dispose();
+    }
+    _dayAnimations.clear();
+    for (final anim in _retiredDayAnimations) {
+      anim.dispose();
+    }
+    _retiredDayAnimations.clear();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     for (final c in _undoControllers.values) {
@@ -912,6 +1078,32 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _undoControllers.clear();
     _undoRecords.clear();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 切回时间线标签页时顺便对齐当前时间，避免后台页签期间跨分钟导致旧「当前时间」残留一帧
+    if (TickerMode.valuesOf(context).enabled) {
+      final now = DateTime.now();
+      final todayNow = DateTime(now.year, now.month, now.day);
+      final minuteNow = TimeOfDay(hour: now.hour, minute: now.minute);
+      if (!_isSameDay(_today, todayNow)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _syncCurrentTimeIfChanged();
+        });
+      } else {
+        _currentMinute = minuteNow;
+      }
+    }
+    // 系统开启「减弱动画」时立即清掉进行中的日折叠过渡，直接按稳态渲染
+    if (AppMotion.reduce(context) && _dayAnimations.isNotEmpty) {
+      final active = _dayAnimations.values.toList();
+      _dayAnimations.clear();
+      for (final anim in active) {
+        _retireDayAnimation(anim);
+      }
+    }
   }
 
   DateTime? _lastVisibleDate;
@@ -1147,35 +1339,36 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   ];
 
   /// 长按日期分隔条或顶栏日期标题：直接展开标色菜单，并保留批量管理入口。
-  void _showDateActionMenu(DateTime date, {GlobalKey? anchorKey}) {
+  void _showDateActionMenu(DateTime date, {GlobalKey? anchorKey, BuildContext? anchorContext}) {
     final colorMarks = ref.read(diaryColorMarkProvider).valueOrNull ?? const <DateColorMark>[];
     final currentMark = colorMarks.where((m) => _isSameDay(m.date, date)).firstOrNull;
     final currentColor = currentMark != null ? _hexToColor(context, currentMark.color) : null;
+    final items = <ActionMenuItem>[
+      for (final option in _dateColorOptions)
+        ActionMenuItem(
+          iconWidget: Icon(
+            currentColor?.toARGB32() == option.color.toARGB32() ? Icons.check_circle_rounded : Icons.circle,
+            size: 20,
+            color: option.color,
+          ),
+          label: option.name,
+          onTap: () => _applyDateColorMark(date, option.color),
+        ),
+      if (currentMark != null)
+        ActionMenuItem(
+          icon: Icons.format_color_reset_outlined,
+          label: '清除颜色',
+          onTap: () => _applyDateColorMark(date, null),
+        ),
+      ActionMenuItem(icon: Icons.list_alt_rounded, label: '批量管理', onTap: _navigateToBatchManage),
+    ];
 
     HapticFeedback.lightImpact();
-    ActionMenu.show(
-      context: context,
-      key: anchorKey ?? _dateDividerKeyFor(date),
-      items: [
-        for (final option in _dateColorOptions)
-          ActionMenuItem(
-            iconWidget: Icon(
-              currentColor?.toARGB32() == option.color.toARGB32() ? Icons.check_circle_rounded : Icons.circle,
-              size: 20,
-              color: option.color,
-            ),
-            label: option.name,
-            onTap: () => _applyDateColorMark(date, option.color),
-          ),
-        if (currentMark != null)
-          ActionMenuItem(
-            icon: Icons.format_color_reset_outlined,
-            label: '清除颜色',
-            onTap: () => _applyDateColorMark(date, null),
-          ),
-        ActionMenuItem(icon: Icons.list_alt_rounded, label: '批量管理', onTap: _navigateToBatchManage),
-      ],
-    );
+    if (anchorContext != null) {
+      ActionMenu.showForContext(context: context, anchorContext: anchorContext, items: items);
+      return;
+    }
+    ActionMenu.show(context: context, key: anchorKey ?? _topBarDateKey, items: items);
   }
 
   /// 写入或清除某一天的颜色标记。
@@ -1648,7 +1841,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     // Dispose existing if any
     _undoControllers[recordId]?.dispose();
 
-    final controller = AnimationController(vsync: this, duration: const Duration(seconds: 15));
+    final controller = AnimationController(vsync: this, duration: _undoWindow);
     controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         final preRecord = _undoRecords[recordId];
@@ -2269,6 +2462,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
+    // 主题色与画布过近时，实心钮补一圈细描边立住边界；工作态的环与停止块同步切到高对比同色系前景色
+    // 工作态的环/停止块画在极淡的强调色底上，同色系背景里 primary 会糊掉，统一走可读强调色
+    final workingAccent = theme.accentInk;
     final progress = _batchExtractTotal > 0 ? (_batchExtractCompleted / _batchExtractTotal).clamp(0.0, 1.0) : 0.0;
 
     return PressableScale(
@@ -2281,11 +2477,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: _isBatchExtracting ? primary.withValues(alpha: isDark ? 0.14 : 0.08) : primary,
+          color: _isBatchExtracting ? workingAccent.withValues(alpha: isDark ? 0.14 : 0.10) : primary,
           shape: BoxShape.circle,
           border: _isBatchExtracting
-              ? Border.all(color: primary.withValues(alpha: isDark ? 0.22 : 0.14), width: 0.8)
-              : null,
+              ? Border.all(color: workingAccent.withValues(alpha: isDark ? 0.28 : 0.22), width: 0.9)
+              : (theme.accentNeedsOutline ? Border.all(color: theme.colorScheme.outlineVariant, width: 1.2) : null),
           boxShadow: [
             BoxShadow(
               color: theme.colorScheme.shadow.withValues(alpha: 0.06),
@@ -2314,12 +2510,12 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                       duration: AppMotion.duration(context, AppDurations.fast),
                       curve: AppCurves.emphasized,
                       builder: (context, value, _) =>
-                          LoadingRing(size: 32, strokeWidth: 1.3, color: primary, progress: value),
+                          LoadingRing(size: 32, strokeWidth: 1.3, color: theme.accentInk, progress: value),
                     ),
                     Container(
                       width: 9.5,
                       height: 9.5,
-                      decoration: BoxDecoration(color: primary, borderRadius: BorderRadius.circular(2.0)),
+                      decoration: BoxDecoration(color: workingAccent, borderRadius: BorderRadius.circular(2.0)),
                     ),
                   ],
                 )
@@ -2576,7 +2772,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     // 只有已绑定小米运动健康的用户才补日结空位卡，避免给不使用该功能的用户制造噪音
     final healthBound = ref.watch(healthBindingStatusProvider).valueOrNull ?? false;
     final selectEvent = ref.watch(diaryInputTimeProvider);
-    final currentInputTime = ref.watch(currentInputTimeProvider);
     final timelineRecordAnchor = _resolveTimelineRecordAnchor(selectEvent);
 
     if (diaryListAsync is AsyncData && !_hasPerformedInitialScroll) {
@@ -2710,402 +2905,37 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                           onLongPressMoveUpdate: _handleDragUpdate,
                           onLongPressEnd: _handleDragEnd,
                           onLongPressCancel: _handleDragCancel,
-                          child: ListView.builder(
-                            scrollCacheExtent: const ScrollCacheExtent.pixels(1500),
+                          child: CustomScrollView(
+                            scrollCacheExtent: const ScrollCacheExtent.pixels(600),
                             controller: _scrollController,
-                            padding: EdgeInsets.fromLTRB(
-                              16,
-                              12,
-                              16,
-                              // 底部让开悬浮按钮：记录钮压在最上面一层，内容不能藏在它下面
-                              _fabBottom + 56,
-                            ),
-                            itemCount: _windowDays * _itemsPerDay,
-                            itemBuilder: (context, i) {
-                              final dayOffset = i ~/ _itemsPerDay;
-                              final subIndex = i % _itemsPerDay;
-                              final date = _indexToDate(dayOffset);
-
-                              Widget childWidget;
-
-                              if (subIndex == 0) {
-                                final isExpanded = _isDateExpanded(date);
-                                final dateKey = _dateKey(date);
-                                final dayRecords = recordsByDate[dateKey] ?? const [];
-
-                                childWidget = Container(
-                                  key: ValueKey('div_${dayOffset}_${date.millisecondsSinceEpoch}'),
-                                  height: 80.0,
-                                  color: theme.scaffoldBackgroundColor,
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  alignment: Alignment.center,
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                      ),
-                                      InkWell(
-                                        key: _dateDividerKeyFor(date),
-                                        onTap: () => _toggleDateExpanded(date),
-                                        onLongPress: () => _showDateActionMenu(date),
-                                        borderRadius: BorderRadius.circular(20),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                _formatDividerDate(date),
-                                                style: theme.textTheme.titleSmall?.copyWith(
-                                                  color: _isToday(date)
-                                                      ? theme.colorScheme.primary
-                                                      : theme.colorScheme.onSurfaceVariant,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              _DateColorDot(date: date),
-                                              if (!isExpanded && dayRecords.isNotEmpty) ...[
-                                                const SizedBox(width: 6),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                                  decoration: BoxDecoration(
-                                                    color:
-                                                        (_isToday(date)
-                                                                ? theme.colorScheme.primary
-                                                                : theme.colorScheme.onSurfaceVariant)
-                                                            .withValues(alpha: 0.12),
-                                                    borderRadius: BorderRadius.circular(10),
-                                                  ),
-                                                  child: Text(
-                                                    '${dayRecords.length}',
-                                                    style: theme.textTheme.labelSmall?.copyWith(
-                                                      color: _isToday(date)
-                                                          ? theme.colorScheme.primary
-                                                          : theme.colorScheme.onSurfaceVariant,
-                                                      fontWeight: FontWeight.w600,
-                                                      fontSize: 10,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                              const SizedBox(width: 4),
-                                              AnimatedRotation(
-                                                turns: isExpanded ? 0.0 : -0.25,
-                                                duration: AppMotion.duration(context, AppDurations.normal),
-                                                curve: AppCurves.standard,
-                                                child: Icon(
-                                                  Icons.keyboard_arrow_down_rounded,
-                                                  size: 18,
-                                                  color: _isToday(date)
-                                                      ? theme.colorScheme.primary
-                                                      : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                      ),
-                                    ],
+                            slivers: [
+                              SliverPadding(
+                                padding: EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  // 底部让开悬浮按钮：记录钮压在最上面一层，内容不能藏在它下面
+                                  _fabBottom + 56,
+                                ),
+                                sliver: SliverMainAxisGroup(
+                                  slivers: _buildTimelineSlivers(
+                                    theme: theme,
+                                    recordsByDate: recordsByDate,
+                                    selectEvent: selectEvent,
+                                    timelineRecordAnchor: timelineRecordAnchor,
+                                    healthBound: healthBound,
                                   ),
-                                );
-                              } else if (!_isDateExpanded(date)) {
-                                childWidget = const SizedBox.shrink();
-                              } else {
-                                final nodeIndex = subIndex - 1;
-                                final time = TimeOfDay(hour: nodeIndex ~/ 2, minute: (nodeIndex % 2) * 30);
-                                final currentMinutes = time.hour * 60 + time.minute;
-                                final nextMinutes = currentMinutes + 30;
-                                final nodeStartDateTime = DateTime(
-                                  date.year,
-                                  date.month,
-                                  date.day,
-                                  time.hour,
-                                  time.minute,
-                                );
-
-                                final dateKey = _dateKey(date);
-                                final dayRecords = recordsByDate[dateKey] ?? const [];
-                                final recordsInInterval = dayRecords.where((r) {
-                                  final preRecord = _undoRecords[r.id];
-                                  final displayTime = preRecord != null
-                                      ? preRecord.getDisplayTime()
-                                      : r.getDisplayTime();
-                                  final rMinutes = displayTime.hour * 60 + displayTime.minute;
-                                  if (nodeIndex == 47) {
-                                    return rMinutes >= currentMinutes;
-                                  } else {
-                                    return rMinutes >= currentMinutes && rMinutes < nextMinutes;
-                                  }
-                                }).toList();
-
-                                final isUserSelected = selectEvent != null;
-
-                                bool isStandardNodeSelected = false;
-                                if (isUserSelected) {
-                                  final selectionStart = DateTime(
-                                    selectEvent.date.year,
-                                    selectEvent.date.month,
-                                    selectEvent.date.day,
-                                    selectEvent.time.hour,
-                                    selectEvent.time.minute,
-                                  );
-
-                                  if (selectEvent.endTime == null) {
-                                    isStandardNodeSelected = nodeStartDateTime.isAtSameMomentAs(selectionStart);
-                                  } else {
-                                    final selEndDate = selectEvent.endDate ?? selectEvent.date;
-                                    final selectionEnd = DateTime(
-                                      selEndDate.year,
-                                      selEndDate.month,
-                                      selEndDate.day,
-                                      selectEvent.endTime!.hour,
-                                      selectEvent.endTime!.minute,
-                                    );
-                                    isStandardNodeSelected =
-                                        !nodeStartDateTime.isBefore(selectionStart) &&
-                                        !nodeStartDateTime.isAfter(selectionEnd);
-                                  }
-                                }
-
-                                bool isDraggedSelected = false;
-                                if (_dragStartIndex != null && _dragEndIndex != null) {
-                                  final start = math.min(_dragStartIndex!, _dragEndIndex!);
-                                  final end = math.max(_dragStartIndex!, _dragEndIndex!);
-                                  isDraggedSelected = i >= start && i <= end;
-                                }
-
-                                final bool finalIsSelected = isDraggedSelected || isStandardNodeSelected;
-                                final bool isMultiSelect =
-                                    isDraggedSelected || (isUserSelected && selectEvent.endTime != null);
-
-                                final inputMinutes = currentInputTime.hour * 60 + currentInputTime.minute;
-                                final now = TimeOfDay.now();
-                                final nowMinutes = now.hour * 60 + now.minute;
-
-                                final isSelectedTimeInThisInterval = nodeIndex == 47
-                                    ? inputMinutes >= currentMinutes
-                                    : (inputMinutes >= currentMinutes && inputMinutes < nextMinutes);
-
-                                final showDedicatedSelectedNode =
-                                    isUserSelected &&
-                                    _isSameDay(selectEvent.date, date) &&
-                                    isSelectedTimeInThisInterval &&
-                                    !(currentInputTime.minute == 0 || currentInputTime.minute == 30);
-
-                                final isNowInThisInterval = nodeIndex == 47
-                                    ? nowMinutes >= currentMinutes
-                                    : (nowMinutes >= currentMinutes && nowMinutes < nextMinutes);
-
-                                final selectionStartForCurrentTime = isUserSelected
-                                    ? DateTime(
-                                        selectEvent.date.year,
-                                        selectEvent.date.month,
-                                        selectEvent.date.day,
-                                        selectEvent.time.hour,
-                                        selectEvent.time.minute,
-                                      )
-                                    : DateTime(0);
-                                final selectionEndForCurrentTime = isUserSelected && selectEvent.endTime != null
-                                    ? DateTime(
-                                        (selectEvent.endDate ?? selectEvent.date).year,
-                                        (selectEvent.endDate ?? selectEvent.date).month,
-                                        (selectEvent.endDate ?? selectEvent.date).day,
-                                        selectEvent.endTime!.hour,
-                                        selectEvent.endTime!.minute,
-                                      )
-                                    : DateTime(0);
-
-                                final nowDateTime = DateTime(date.year, date.month, date.day, now.hour, now.minute);
-                                final isCurrentTimeSelected =
-                                    isUserSelected &&
-                                    _isToday(date) &&
-                                    (selectEvent.endTime != null
-                                        ? (!nowDateTime.isBefore(selectionStartForCurrentTime) &&
-                                              !nowDateTime.isAfter(selectionEndForCurrentTime))
-                                        : (_isSameDay(selectEvent.date, date) &&
-                                              now.hour == currentInputTime.hour &&
-                                              now.minute == currentInputTime.minute));
-
-                                final showDedicatedCurrentTimeNode =
-                                    isNowInThisInterval &&
-                                    _isToday(date) &&
-                                    !(now.minute == 0 || now.minute == 30) &&
-                                    !isCurrentTimeSelected;
-
-                                final showDedicatedSelectedCurrentTimeNode =
-                                    isNowInThisInterval &&
-                                    _isToday(date) &&
-                                    !(now.minute == 0 || now.minute == 30) &&
-                                    isCurrentTimeSelected &&
-                                    !(isUserSelected &&
-                                        _isSameDay(selectEvent.date, date) &&
-                                        now.hour == currentInputTime.hour &&
-                                        now.minute == currentInputTime.minute);
-
-                                final isStandardNodeCurrentTime =
-                                    _isToday(date) && (now.hour == time.hour && now.minute == time.minute);
-
-                                // 专用节点（当前输入时刻 / 当前时刻）也可能落在选中区间里，
-                                // 加号只挂在区间末端那一行，用时刻精确比对即可。
-                                final dedicatedSelectedDateTime = DateTime(
-                                  date.year,
-                                  date.month,
-                                  date.day,
-                                  currentInputTime.hour,
-                                  currentInputTime.minute,
-                                );
-                                final dedicatedNowDateTime = DateTime(
-                                  date.year,
-                                  date.month,
-                                  date.day,
-                                  now.hour,
-                                  now.minute,
-                                );
-
-                                // 23:00 是日结槽位：当天没有真实日结卡时补一张可同步的空位卡。
-                                // 只在这一行计算，避免每个半小时节点都扫一遍当天记录。
-                                final showHealthPlaceholder =
-                                    nodeIndex == 47 &&
-                                    shouldShowHealthDailyPlaceholder(
-                                      date: date,
-                                      today: _today,
-                                      healthBound: healthBound,
-                                      hasDailySummary: dayRecords.any((r) {
-                                        final bs = r.bodyState;
-                                        return bs != null &&
-                                            bs['source'] == 'mi_fitness' &&
-                                            bs['type'] == 'daily_summary';
-                                      }),
-                                    );
-
-                                childWidget = Column(
-                                  key: (isNowInThisInterval && _isToday(date)) ? _currentTimeNodeKey : null,
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    _EmptyTimeNode(
-                                      key: ValueKey('n_${dayOffset}_$nodeIndex'),
-                                      time: time,
-                                      isSelected: finalIsSelected,
-                                      isMultiSelect: isMultiSelect,
-                                      isDraggedSelected: isDraggedSelected,
-                                      isCurrentTime: isStandardNodeCurrentTime,
-                                      onTap: () => _handleNodeTap(date, time),
-                                      onDoubleTap: () => _handleNodeDoubleTap(date, time),
-                                      onRecordTap: timelineRecordAnchor == nodeStartDateTime
-                                          ? _handleTimelineRecordTap
-                                          : null,
-                                    ),
-                                    if (showDedicatedSelectedNode)
-                                      _SelectedTimeNode(
-                                        time: currentInputTime,
-                                        isCurrentTime:
-                                            _isToday(date) &&
-                                            (now.hour == currentInputTime.hour &&
-                                                now.minute == currentInputTime.minute),
-                                        onTap: () => _handleNodeTap(date, currentInputTime),
-                                        onDoubleTap: () => _handleNodeDoubleTap(date, currentInputTime),
-                                        onRecordTap: timelineRecordAnchor == dedicatedSelectedDateTime
-                                            ? _handleTimelineRecordTap
-                                            : null,
-                                      ),
-                                    if (showDedicatedSelectedCurrentTimeNode)
-                                      _SelectedTimeNode(
-                                        time: now,
-                                        isCurrentTime: true,
-                                        onTap: () => _handleNodeTap(date, now),
-                                        onDoubleTap: () => _handleNodeDoubleTap(date, now),
-                                        onRecordTap: timelineRecordAnchor == dedicatedNowDateTime
-                                            ? _handleTimelineRecordTap
-                                            : null,
-                                      ),
-                                    if (showDedicatedCurrentTimeNode)
-                                      _CurrentTimeNode(
-                                        time: now,
-                                        onTap: () => _handleNodeTap(date, now),
-                                        onDoubleTap: () => _handleNodeDoubleTap(date, now),
-                                      ),
-                                    if (showHealthPlaceholder)
-                                      HealthDailyPlaceholderCard(date: date, isToday: _isToday(date)),
-                                    ...recordsInInterval.map((record) {
-                                      final healthDate = _healthSummaryDate(record);
-                                      final canUpdateHealth =
-                                          healthBound && healthDate != null && isSameCalendarDay(healthDate, _today);
-                                      return RepaintBoundary(
-                                        child: Opacity(
-                                          // 发送后飞行期间先藏起来，等盖板落位再揭开；
-                                          // 只改透明度，卡片仍占位，目标 Rect 可以照量。
-                                          opacity: _hiddenMorphRecordId == record.id ? 0 : 1,
-                                          child: _InsertingItemWrapper(
-                                            isInserting: _insertingRecordIds.contains(record.id),
-                                            // 飞行落位只补一圈辉光，不再从 0 长高。
-                                            animateSize: _glowOnlyRecordId != record.id,
-                                            child: _CollapsingItemWrapper(
-                                              isCollapsing: _deletingRecordIds.contains(record.id),
-                                              // 提取完成后标签/字段变多时，卡片高度平滑过渡，
-                                              // 避免下方列表内容瞬间跳位；裁切只作用于动画期间的新内容，
-                                              // 右侧提取钮的圆形实际落在卡片内边距内，不受影响。
-                                              child: AnimatedSize(
-                                                key: ValueKey('card_size_${record.id}'),
-                                                duration: AppMotion.duration(context, AppDurations.normal),
-                                                curve: AppCurves.standard,
-                                                alignment: Alignment.topCenter,
-                                                child: DiaryItem(
-                                                  record: record,
-                                                  cardKey: _recordCardKeyFor(record.id),
-                                                  timeDragHandleKey: _handleKeyFor(record.id),
-                                                  isTimeDragging: _cardDrag?.record.id == record.id,
-                                                  onTap: () => _handleEdit(record),
-                                                  onEdit: _handleEdit,
-                                                  onDelete: _handleDelete,
-                                                  onQuoteToQ: _quoteRecordToQ,
-                                                  onBatchManage: _navigateToBatchManage,
-                                                  onAiExtract: () => _handleAiExtract(record),
-                                                  onAiExtractLongPress: () => _handleAiExtractModelSelect(record),
-                                                  isExtracting: _extractingRecordIds.contains(record.id),
-                                                  onUndo: () => _undoExtract(record),
-                                                  isUndoable: _undoRecords.containsKey(record.id),
-                                                  undoAnimation: _undoControllers[record.id],
-                                                  isReviewHighlighted: _batchReviewHighlightId == record.id,
-                                                  onHealthSync: canUpdateHealth
-                                                      ? () => _handleUpdateHealthSummary(record.id, healthDate)
-                                                      : null,
-                                                  isHealthSyncing: _updatingHealthSummaryId == record.id,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }),
-                                  ],
-                                );
-                              }
-
-                              return TimelineItemWrapper(
-                                index: i,
-                                onMount: (index, ctx) => _itemContexts[index] = ctx,
-                                onUnmount: (index) => _itemContexts.remove(index),
-                                onHeightChange: (index, height) => _itemHeights[index] = height,
-                                child: subIndex == 0
-                                    ? childWidget
-                                    : AppCollapsible(
-                                        expanded: _isDateExpanded(date),
-                                        // 单行只做高度与透明度过渡，不再叠加位移：
-                                        // 48 行同时上移会互相挤压，观感是整块抖动
-                                        rise: 0,
-                                        child: childWidget,
-                                      ),
-                              );
-                            },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  // 数据库在 runApp 前就已打开，这里通常只经历一两帧。画加载圈会因弧线
+                  // 还没展开而只露出一个「点」，看起来更像故障，首屏直接留空更干净。
+                  loading: () => const SizedBox.shrink(),
                   error: (e, _) => AppErrorState(
                     error: e,
                     action: '加载记录失败',
@@ -3114,15 +2944,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                     onRetry: () => ref.invalidate(diaryListProvider),
                   ),
                 ),
-                // 首屏定位完成前，用加载态盖住时间线的预布局与校准，避免看到列表跳动。
+                // 首屏定位完成前，用画布色盖住时间线的预布局与校准，避免看到列表跳动。
+                // 不放加载圈：校准只差一两帧，圈来不及展开只会露出一个点，反而像故障。
                 // 放在 FAB 之前：只遮时间线，悬浮钮保持稳定，不会跟着闪一下。
                 if (diaryListAsync is AsyncData && !_initialTimelineSettled)
-                  Positioned.fill(
-                    child: ColoredBox(
-                      color: theme.scaffoldBackgroundColor,
-                      child: const Center(child: CircularProgressIndicator()),
-                    ),
-                  ),
+                  Positioned.fill(child: ColoredBox(color: theme.scaffoldBackgroundColor)),
                 // 每日日记 FAB（智能提取按钮左侧）
                 Positioned(right: 72, bottom: _fabBottom, child: _buildJournalFAB(theme)),
                 // Smart Extract FAB
@@ -3316,9 +3142,379 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     return _recordHandleKeys.putIfAbsent(recordId, () => GlobalKey());
   }
 
-  /// 日期分隔条的 Key；同一天跨 ListView 回收/重建仍是同一个。
-  GlobalKey _dateDividerKeyFor(DateTime date) {
-    return _dateDividerKeys.putIfAbsent(_dateKey(date), () => GlobalKey());
+  /// 将 120 天窗口按「正文是否挂载」切分为少量 Sliver 分段，并绑定展开/收起过渡动画。
+  List<Widget> _buildTimelineSlivers({
+    required ThemeData theme,
+    required Map<String, List<DiaryRecord>> recordsByDate,
+    required TimelineTimeSelectEvent? selectEvent,
+    required DateTime? timelineRecordAnchor,
+    required bool healthBound,
+  }) {
+    final nowDateTime = DateTime.now();
+    final now = TimeOfDay(hour: nowDateTime.hour, minute: nowDateTime.minute);
+    _currentMinute = now;
+    final selectionStart = selectEvent != null
+        ? DateTime(
+            selectEvent.date.year,
+            selectEvent.date.month,
+            selectEvent.date.day,
+            selectEvent.time.hour,
+            selectEvent.time.minute,
+          )
+        : null;
+    final selectionEnd = (selectEvent != null && selectEvent.endTime != null)
+        ? DateTime(
+            (selectEvent.endDate ?? selectEvent.date).year,
+            (selectEvent.endDate ?? selectEvent.date).month,
+            (selectEvent.endDate ?? selectEvent.date).day,
+            selectEvent.endTime!.hour,
+            selectEvent.endTime!.minute,
+          )
+        : null;
+
+    final segments = buildDiaryTimelineSegments(
+      windowStartDate: _windowStartDate,
+      daysCount: _windowDays,
+      hasBody: (date) => _isDateExpanded(date) || _dayAnimations.containsKey(_dateKey(date)),
+    );
+
+    final slivers = <Widget>[];
+    for (final segment in segments) {
+      final runStartDate = _indexToDate(segment.startDayOffset);
+      final runKey = _dateKey(runStartDate);
+      slivers.add(
+        SliverFixedExtentList.builder(
+          key: ValueKey('div_run_$runKey'),
+          itemExtent: kDiaryTimelineDividerHeight,
+          itemCount: segment.dividerCount,
+          addAutomaticKeepAlives: false,
+          itemBuilder: (context, indexInRun) {
+            final dayOffset = segment.startDayOffset + indexInRun;
+            final date = _indexToDate(dayOffset);
+            final globalIndex = dayOffset * _itemsPerDay;
+            return TimelineItemWrapper(
+              index: globalIndex,
+              onMount: (index, ctx) => _itemContexts[index] = ctx,
+              onUnmount: (index, ctx) {
+                if (identical(_itemContexts[index], ctx)) {
+                  _itemContexts.remove(index);
+                }
+              },
+              onHeightChange: (index, height) => _itemHeights[index] = height,
+              child: _buildDateDivider(theme: theme, date: date, recordsByDate: recordsByDate),
+            );
+          },
+        ),
+      );
+
+      if (segment.hasExpandedBody) {
+        final bodyDayOffset = segment.endDayOffset;
+        final bodyDate = _indexToDate(bodyDayOffset);
+        final bodyDateKey = _dateKey(bodyDate);
+        final anim = _dayAnimations[bodyDateKey];
+        final dayNodes = _cachedDayNodesByDate[bodyDateKey] ?? const <int, List<DiaryRecord>>{};
+        final hasDailyHealthSummary = _cachedDatesWithHealthSummary.contains(bodyDateKey);
+        final isBodyExpanded = _isDateExpanded(bodyDate);
+
+        slivers.add(
+          SliverDayCollapsible(
+            key: ValueKey('day_body_$bodyDateKey'),
+            sizeAnimation: anim?.sizeAnimation,
+            opacityAnimation: anim?.opacityAnimation,
+            isExpanding: anim?.isExpanding ?? true,
+            sliver: SliverList.builder(
+              itemCount: _itemsPerDay - 1,
+              addAutomaticKeepAlives: false,
+              itemBuilder: (context, nodeIndex) {
+                final globalIndex = bodyDayOffset * _itemsPerDay + 1 + nodeIndex;
+                return TimelineItemWrapper(
+                  index: globalIndex,
+                  onMount: (index, ctx) => _itemContexts[index] = ctx,
+                  onUnmount: (index, ctx) {
+                    if (identical(_itemContexts[index], ctx)) {
+                      _itemContexts.remove(index);
+                    }
+                  },
+                  onHeightChange: (index, height) {
+                    // 收起动画进行中节点已失活，避免把旧高度重新写入估算表
+                    if (isBodyExpanded) {
+                      _itemHeights[index] = height;
+                    }
+                  },
+                  child: _buildTimelineNodeItem(
+                    nodeIndex: nodeIndex,
+                    globalIndex: globalIndex,
+                    date: bodyDate,
+                    dateKey: bodyDateKey,
+                    now: now,
+                    selectEvent: selectEvent,
+                    selectionStart: selectionStart,
+                    selectionEnd: selectionEnd,
+                    timelineRecordAnchor: timelineRecordAnchor,
+                    healthBound: healthBound,
+                    dayNodes: dayNodes,
+                    hasDailyHealthSummary: hasDailyHealthSummary,
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
+    }
+    return slivers;
+  }
+
+  /// 构建单个日期分隔栏：稳态下用静态旋转图标，过渡期间与正文幕布共用同一动画控制器。
+  Widget _buildDateDivider({
+    required ThemeData theme,
+    required DateTime date,
+    required Map<String, List<DiaryRecord>> recordsByDate,
+  }) {
+    final isExpanded = _isDateExpanded(date);
+    final dateKey = _dateKey(date);
+    final anim = _dayAnimations[dateKey];
+    final dayRecords = recordsByDate[dateKey] ?? const [];
+    final isToday = _isToday(date);
+    final arrowIcon = Icon(
+      Icons.keyboard_arrow_down_rounded,
+      size: 18,
+      color: isToday ? theme.accentInk : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+    );
+
+    return Container(
+      key: ValueKey('div_$dateKey'),
+      height: kDiaryTimelineDividerHeight,
+      color: theme.scaffoldBackgroundColor,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.center,
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
+          Builder(
+            builder: (anchorContext) {
+              return InkWell(
+                onTap: () => _toggleDateExpanded(date),
+                onLongPress: () => _showDateActionMenu(date, anchorContext: anchorContext),
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatDividerDate(date),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: isToday ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      _DateColorDot(date: date),
+                      if (!isExpanded && dayRecords.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: (isToday ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant)
+                                .withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${dayRecords.length}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: isToday ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 4),
+                      if (anim != null)
+                        RotationTransition(turns: anim.arrowTurns, child: arrowIcon)
+                      else
+                        Transform.rotate(angle: isExpanded ? 0.0 : -math.pi / 2, child: arrowIcon),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
+        ],
+      ),
+    );
+  }
+
+  /// 构建单个半小时时间槽及其名下的记录卡片。
+  Widget _buildTimelineNodeItem({
+    required int nodeIndex,
+    required int globalIndex,
+    required DateTime date,
+    required String dateKey,
+    required TimeOfDay now,
+    required TimelineTimeSelectEvent? selectEvent,
+    required DateTime? selectionStart,
+    required DateTime? selectionEnd,
+    required DateTime? timelineRecordAnchor,
+    required bool healthBound,
+    required Map<int, List<DiaryRecord>> dayNodes,
+    required bool hasDailyHealthSummary,
+  }) {
+    final time = TimeOfDay(hour: nodeIndex ~/ 2, minute: (nodeIndex % 2) * 30);
+    final nodeStartDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final recordsInInterval = dayNodes[nodeIndex] ?? const <DiaryRecord>[];
+    final isToday = _isToday(date);
+
+    final slot = resolveDiaryTimelineSlot(
+      slotStart: nodeStartDateTime,
+      nodeIndex: nodeIndex,
+      now: DateTime(_today.year, _today.month, _today.day, now.hour, now.minute),
+      isToday: isToday,
+      selectionStart: selectionStart,
+      selectionEnd: selectionEnd,
+    );
+
+    bool isDraggedSelected = false;
+    if (_dragStartIndex != null && _dragEndIndex != null) {
+      final start = math.min(_dragStartIndex!, _dragEndIndex!);
+      final end = math.max(_dragStartIndex!, _dragEndIndex!);
+      isDraggedSelected = globalIndex >= start && globalIndex <= end;
+    }
+
+    final bool finalIsSelected = isDraggedSelected || slot.isStandardNodeSelected;
+    final bool isMultiSelect = isDraggedSelected || (selectEvent != null && selectEvent.endTime != null);
+
+    final dedicatedStart = slot.dedicatedSelectedStart;
+    final dedicatedStartTime = dedicatedStart != null
+        ? TimeOfDay(hour: dedicatedStart.hour, minute: dedicatedStart.minute)
+        : null;
+    final dedicatedSelectedNow = slot.dedicatedSelectedCurrentTime;
+    final dedicatedSelectedNowTime = dedicatedSelectedNow != null
+        ? TimeOfDay(hour: dedicatedSelectedNow.hour, minute: dedicatedSelectedNow.minute)
+        : null;
+    final dedicatedEnd = slot.dedicatedSelectedEnd;
+    final dedicatedEndTime = dedicatedEnd != null
+        ? TimeOfDay(hour: dedicatedEnd.hour, minute: dedicatedEnd.minute)
+        : null;
+    final dedicatedNow = slot.dedicatedCurrentTime;
+    final dedicatedNowTime = dedicatedNow != null
+        ? TimeOfDay(hour: dedicatedNow.hour, minute: dedicatedNow.minute)
+        : null;
+
+    final nowMinutes = now.hour * 60 + now.minute;
+    final slotMinutes = nodeIndex * 30;
+    final isNowInThisInterval = nodeIndex == 47
+        ? nowMinutes >= slotMinutes
+        : (nowMinutes >= slotMinutes && nowMinutes < slotMinutes + 30);
+
+    // 23:00 是日结槽位：当天没有真实日结卡时补一张可同步的空位卡。
+    // 只在这一行读取预计算标记，避免每个半小时节点重复扫全天记录。
+    final showHealthPlaceholder =
+        nodeIndex == 47 &&
+        shouldShowHealthDailyPlaceholder(
+          date: date,
+          today: _today,
+          healthBound: healthBound,
+          hasDailySummary: hasDailyHealthSummary,
+        );
+
+    return Column(
+      key: (isNowInThisInterval && isToday) ? _currentTimeNodeKey : null,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _EmptyTimeNode(
+          key: ValueKey('n_${dateKey}_$nodeIndex'),
+          time: time,
+          isSelected: finalIsSelected,
+          isMultiSelect: isMultiSelect,
+          isDraggedSelected: isDraggedSelected,
+          isCurrentTime: slot.isStandardNodeCurrentTime,
+          onTap: () => _handleNodeTap(date, time),
+          onDoubleTap: () => _handleNodeDoubleTap(date, time),
+          onRecordTap: timelineRecordAnchor == nodeStartDateTime ? _handleTimelineRecordTap : null,
+        ),
+        if (dedicatedStartTime != null)
+          _SelectedTimeNode(
+            time: dedicatedStartTime,
+            isCurrentTime: isToday && now.hour == dedicatedStartTime.hour && now.minute == dedicatedStartTime.minute,
+            onTap: () => _handleNodeTap(date, dedicatedStartTime),
+            onDoubleTap: () => _handleNodeDoubleTap(date, dedicatedStartTime),
+            onRecordTap: timelineRecordAnchor == dedicatedStart ? _handleTimelineRecordTap : null,
+          ),
+        if (dedicatedSelectedNowTime != null)
+          _SelectedTimeNode(
+            time: dedicatedSelectedNowTime,
+            isCurrentTime: true,
+            onTap: () => _handleNodeTap(date, dedicatedSelectedNowTime),
+            onDoubleTap: () => _handleNodeDoubleTap(date, dedicatedSelectedNowTime),
+            onRecordTap: timelineRecordAnchor == dedicatedSelectedNow ? _handleTimelineRecordTap : null,
+          ),
+        if (dedicatedEndTime != null)
+          _SelectedTimeNode(
+            time: dedicatedEndTime,
+            isCurrentTime: isToday && now.hour == dedicatedEndTime.hour && now.minute == dedicatedEndTime.minute,
+            onTap: () => _handleNodeTap(date, dedicatedEndTime),
+            onDoubleTap: () => _handleNodeDoubleTap(date, dedicatedEndTime),
+            onRecordTap: timelineRecordAnchor == dedicatedEnd ? _handleTimelineRecordTap : null,
+          ),
+        if (dedicatedNowTime != null)
+          _CurrentTimeNode(
+            time: dedicatedNowTime,
+            onTap: () => _handleNodeTap(date, dedicatedNowTime),
+            onDoubleTap: () => _handleNodeDoubleTap(date, dedicatedNowTime),
+          ),
+        if (showHealthPlaceholder) HealthDailyPlaceholderCard(date: date, isToday: isToday),
+        ...recordsInInterval.map((record) {
+          final healthDate = _healthSummaryDate(record);
+          final canUpdateHealth = healthBound && healthDate != null && isSameCalendarDay(healthDate, _today);
+          return RepaintBoundary(
+            child: Opacity(
+              // 发送后飞行期间先藏起来，等盖板落位再揭开；
+              // 只改透明度，卡片仍占位，目标 Rect 可以照量。
+              opacity: _hiddenMorphRecordId == record.id ? 0 : 1,
+              child: _InsertingItemWrapper(
+                isInserting: _insertingRecordIds.contains(record.id),
+                // 飞行落位只补一圈辉光，不再从 0 长高。
+                animateSize: _glowOnlyRecordId != record.id,
+                child: _CollapsingItemWrapper(
+                  isCollapsing: _deletingRecordIds.contains(record.id),
+                  // 提取完成后标签/字段变多时，卡片高度平滑过渡，
+                  // 避免下方列表内容瞬间跳位；裁切只作用于动画期间的新内容，
+                  // 右侧提取钮的圆形实际落在卡片内边距内，不受影响。
+                  child: AnimatedSize(
+                    key: ValueKey('card_size_${record.id}'),
+                    duration: AppMotion.duration(context, AppDurations.normal),
+                    curve: AppCurves.standard,
+                    alignment: Alignment.topCenter,
+                    child: DiaryItem(
+                      record: record,
+                      cardKey: _recordCardKeyFor(record.id),
+                      timeDragHandleKey: _handleKeyFor(record.id),
+                      isTimeDragging: _cardDrag?.record.id == record.id,
+                      onTap: () => _handleEdit(record),
+                      onEdit: _handleEdit,
+                      onDelete: _handleDelete,
+                      onQuoteToQ: _quoteRecordToQ,
+                      onBatchManage: _navigateToBatchManage,
+                      onAiExtract: () => _handleAiExtract(record),
+                      onAiExtractLongPress: () => _handleAiExtractModelSelect(record),
+                      isExtracting: _extractingRecordIds.contains(record.id),
+                      onUndo: () => _undoExtract(record),
+                      isUndoable: _undoRecords.containsKey(record.id),
+                      undoAnimation: _undoControllers[record.id],
+                      isReviewHighlighted: _batchReviewHighlightId == record.id,
+                      onHealthSync: canUpdateHealth ? () => _handleUpdateHealthSummary(record.id, healthDate) : null,
+                      isHealthSyncing: _updatingHealthSummaryId == record.id,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
   }
 
   /// 卡片本体的 Key；同一条记录跨 ListView 回收/重建仍是同一个。
@@ -3551,7 +3747,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
             left: drag.axisX - 1,
             top: indicatorY - 1,
             width: math.max(0.0, drag.cardLeft - drag.axisX + 1),
-            child: Container(height: 2, color: theme.colorScheme.primary.withValues(alpha: 0.35)),
+            child: Container(height: 2, color: theme.accentInk.withValues(alpha: 0.35)),
           ),
           Positioned(
             left: drag.axisX - 4,
@@ -3560,9 +3756,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
+                color: theme.accentInk,
                 shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: theme.colorScheme.primary.withValues(alpha: 0.35), blurRadius: 6)],
+                boxShadow: [BoxShadow(color: theme.accentInk.withValues(alpha: 0.35), blurRadius: 6)],
               ),
             ),
           ),
@@ -3611,7 +3807,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                               TextSpan(
                                 text: targetLabel,
                                 style: theme.textTheme.titleMedium?.copyWith(
-                                  color: theme.colorScheme.primary,
+                                  color: theme.accentInk,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -3619,7 +3815,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                 TextSpan(
                                   text: '  $deltaLabel',
                                   style: theme.textTheme.labelSmall?.copyWith(
-                                    color: theme.colorScheme.primary.withValues(alpha: 0.75),
+                                    color: theme.accentInk.withValues(alpha: 0.75),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),

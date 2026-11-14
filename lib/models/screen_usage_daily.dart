@@ -35,16 +35,24 @@ class ScreenUsageDaily {
 
   /// 该日是否已过完并采集完成；未过完的当日值只是进行中的累计
   final bool isComplete;
+
+  /// 采集口径。换代后同一天会按新口径重写（旧口径的数值可能系统性偏大）
   final String source;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// 采集口径：UsageEvents 事件流精确统计（当前版本）
+  static const String sourceUsageEvents = 'usage_events';
+
+  /// 采集口径：UsageStats 统计桶估算（旧版本，受滚动桶边界影响会偏大）
+  static const String sourceUsageStats = 'usage_stats';
 
   const ScreenUsageDaily({
     required this.date,
     required this.totalTimeMs,
     this.topApps = const [],
     this.isComplete = false,
-    this.source = 'usage_stats',
+    this.source = sourceUsageEvents,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -94,7 +102,7 @@ class ScreenUsageDaily {
       totalTimeMs: (map['total_time_ms'] as num?)?.toInt() ?? 0,
       topApps: _decodeApps(map['top_apps_json'] as String?),
       isComplete: ((map['is_complete'] as num?)?.toInt() ?? 0) != 0,
-      source: map['source'] as String? ?? 'usage_stats',
+      source: map['source'] as String? ?? sourceUsageStats,
       createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(map['updated_at'] as String? ?? '') ?? DateTime.now(),
     );

@@ -89,7 +89,7 @@ class _QVoicePageState extends ConsumerState<QVoicePage> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
               title: Text('自动朗读回复', style: theme.textTheme.bodyLarge),
               subtitle: Text(
-                '回复后朗读，可在对话界面右上角切换',
+                '回复后自动朗读',
                 style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ),

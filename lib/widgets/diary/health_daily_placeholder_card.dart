@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
@@ -287,7 +288,7 @@ class _HealthDailyPlaceholderCardState extends ConsumerState<HealthDailyPlacehol
       background = colorScheme.onSurfaceVariant.withValues(alpha: 0.1);
     } else if (mode == HealthPlaceholderMode.syncedWithoutCard) {
       text = '待生成';
-      foreground = colorScheme.primary;
+      foreground = theme.accentInk;
       background = colorScheme.primary.withValues(alpha: 0.1);
     } else if (mode == null) {
       text = '读取中';

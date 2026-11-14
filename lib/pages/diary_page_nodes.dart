@@ -97,15 +97,17 @@ class _EmptyTimeNode extends StatelessWidget {
     final theme = Theme.of(context);
     final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
+    // 选中态文字/圆点/贯穿线画在画布上，同色系背景里 primary 会糊掉，统一走可读强调色
+    final selectedAccent = theme.accentInk;
     final bool isSingleSelected = isSelected && !isMultiSelect;
 
     final circleColor = isSelected
-        ? theme.colorScheme.primary
+        ? selectedAccent
         : (isCurrentTime ? distinctColor.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant);
 
     final double circleSize = isSelected ? (isSingleSelected ? 10 : 16) : (isCurrentTime ? 10 : 8);
 
-    final labelColor = isSelected ? theme.colorScheme.primary : distinctColor;
+    final labelColor = isSelected ? selectedAccent : distinctColor;
 
     return PressableScale(
       onTap: onTap,
@@ -131,13 +133,7 @@ class _EmptyTimeNode extends StatelessWidget {
                         color: circleColor,
                         shape: BoxShape.circle,
                         boxShadow: isSelected && !isSingleSelected
-                            ? [
-                                BoxShadow(
-                                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                                  blurRadius: 8,
-                                  spreadRadius: 2,
-                                ),
-                              ]
+                            ? [BoxShadow(color: selectedAccent.withValues(alpha: 0.3), blurRadius: 8, spreadRadius: 2)]
                             : null,
                       ),
                       child: isSelected && !isSingleSelected
@@ -145,7 +141,10 @@ class _EmptyTimeNode extends StatelessWidget {
                               child: Container(
                                 width: 6,
                                 height: 6,
-                                decoration: BoxDecoration(color: theme.colorScheme.onPrimary, shape: BoxShape.circle),
+                                decoration: BoxDecoration(
+                                  color: AppContrast.onColor(selectedAccent),
+                                  shape: BoxShape.circle,
+                                ),
                               ),
                             )
                           : null,
@@ -157,7 +156,7 @@ class _EmptyTimeNode extends StatelessWidget {
                   curve: AppCurves.standard,
                   style: (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
                     color: isSelected
-                        ? theme.colorScheme.primary
+                        ? selectedAccent
                         : (isCurrentTime ? distinctColor : theme.colorScheme.onSurfaceVariant),
                     fontWeight: isSelected || isCurrentTime ? FontWeight.bold : FontWeight.w500,
                     fontSize: isSelected ? 13 : 12,
@@ -189,7 +188,7 @@ class _EmptyTimeNode extends StatelessWidget {
                     curve: AppCurves.standard,
                     height: 1,
                     color: isSelected
-                        ? theme.colorScheme.primary
+                        ? selectedAccent
                         : (isCurrentTime
                               ? distinctColor.withValues(alpha: 0.2)
                               : theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
@@ -228,7 +227,9 @@ class _SelectedTimeNode extends StatelessWidget {
     final theme = Theme.of(context);
     final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     final distinctColor = theme.colorScheme.secondary;
-    final labelColor = isCurrentTime ? distinctColor : theme.colorScheme.primary;
+    // 选中态圆点/时间/贯穿线与上一处同源，统一走可读强调色
+    final selectedAccent = theme.accentInk;
+    final labelColor = isCurrentTime ? distinctColor : selectedAccent;
 
     return PressableScale(
       onTap: onTap,
@@ -248,7 +249,7 @@ class _SelectedTimeNode extends StatelessWidget {
                     child: Container(
                       width: 10,
                       height: 10,
-                      decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: selectedAccent, shape: BoxShape.circle),
                     ),
                   ),
                 ),
@@ -259,7 +260,7 @@ class _SelectedTimeNode extends StatelessWidget {
                 Text(
                   timeStr,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.primary,
+                    color: selectedAccent,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
@@ -283,7 +284,7 @@ class _SelectedTimeNode extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(width: 12),
-                Expanded(child: Container(height: 1, color: theme.colorScheme.primary)),
+                Expanded(child: Container(height: 1, color: selectedAccent)),
                 const SizedBox(width: 16),
               ],
             ),
@@ -367,7 +368,7 @@ class TimelineItemWrapper extends StatefulWidget {
   final int index;
   final Widget child;
   final void Function(int index, BuildContext context) onMount;
-  final void Function(int index) onUnmount;
+  final void Function(int index, BuildContext context) onUnmount;
   final void Function(int index, double height) onHeightChange;
 
   const TimelineItemWrapper({
@@ -388,14 +389,33 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
   /// 避免把同一高度反复写进测量表。
   double? _lastReportedHeight;
 
+  /// 是否已安排本帧结束后的挂载与尺寸上报，防止同帧多次 didUpdateWidget 重复入队。
+  bool _postFrameScheduled = false;
+
+  /// 首次挂载或 index 变化后需要先通知父级更新 context 映射。
+  bool _needsMountCallback = true;
+
   @override
   void initState() {
     super.initState();
+    _schedulePostFrameReport();
+  }
+
+  void _schedulePostFrameReport() {
+    if (_postFrameScheduled) {
+      return;
+    }
+    _postFrameScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        widget.onMount(widget.index, context);
-        _reportHeight();
+      _postFrameScheduled = false;
+      if (!mounted) {
+        return;
       }
+      if (_needsMountCallback) {
+        _needsMountCallback = false;
+        widget.onMount(widget.index, context);
+      }
+      _reportHeight();
     });
   }
 
@@ -403,7 +423,9 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox != null && renderBox.hasSize) {
       final height = renderBox.size.height;
-      if (_lastReportedHeight == height) return;
+      if (_lastReportedHeight == height) {
+        return;
+      }
       _lastReportedHeight = height;
       widget.onHeightChange(widget.index, height);
     }
@@ -413,24 +435,16 @@ class _TimelineItemWrapperState extends State<TimelineItemWrapper> {
   void didUpdateWidget(TimelineItemWrapper oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.index != widget.index) {
-      widget.onUnmount(oldWidget.index);
+      widget.onUnmount(oldWidget.index, context);
       _lastReportedHeight = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          widget.onMount(widget.index, context);
-          _reportHeight();
-        }
-      });
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reportHeight();
-      });
+      _needsMountCallback = true;
     }
+    _schedulePostFrameReport();
   }
 
   @override
   void dispose() {
-    widget.onUnmount(widget.index);
+    widget.onUnmount(widget.index, context);
     super.dispose();
   }
 
@@ -712,5 +726,55 @@ class _DateColorDot extends ConsumerWidget {
         decoration: BoxDecoration(color: _hexToColor(context, mark.color), shape: BoxShape.circle),
       ),
     );
+  }
+}
+
+/// 单日时间线展开/折叠过渡控制器：在状态、Sliver 幕布与日期箭头之间共享同一条曲线。
+class _DayExpandAnimation {
+  _DayExpandAnimation({
+    required TickerProvider vsync,
+    required Duration forwardDuration,
+    required Duration reverseDuration,
+    required double initialValue,
+    required this.isExpanding,
+    required this.generation,
+  }) : controller = AnimationController(
+         vsync: vsync,
+         duration: forwardDuration,
+         reverseDuration: reverseDuration,
+         value: initialValue,
+       ) {
+    sizeAnimation = CurvedAnimation(
+      parent: controller,
+      curve: AppCurves.emphasizedSpatial,
+      reverseCurve: AppCurves.exit,
+    );
+    opacityAnimation = CurvedAnimation(
+      parent: controller,
+      curve: const Interval(0.1, 0.72, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.32, 1.0, curve: Curves.easeIn),
+    );
+    _arrowCurve = CurvedAnimation(parent: controller, curve: AppCurves.standard, reverseCurve: AppCurves.standard);
+    arrowTurns = Tween<double>(begin: -0.25, end: 0.0).animate(_arrowCurve);
+  }
+
+  final AnimationController controller;
+  late final CurvedAnimation sizeAnimation;
+  late final CurvedAnimation opacityAnimation;
+  late final CurvedAnimation _arrowCurve;
+  late final Animation<double> arrowTurns;
+  bool isExpanding;
+  int generation;
+  bool _disposed = false;
+
+  void dispose() {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    sizeAnimation.dispose();
+    opacityAnimation.dispose();
+    _arrowCurve.dispose();
+    controller.dispose();
   }
 }

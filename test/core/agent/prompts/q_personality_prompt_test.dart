@@ -70,6 +70,12 @@ void main() {
       expect(withoutMarket, isNot(contains('技能市场（skill_market）')));
       expect(withoutMarket, contains('网页搜索（web_search）'));
     });
+
+    test('目录布局包含 /health/ 与 /quick_prompts/', () {
+      final prompt = QSystemPrompt.buildSystemPrompt();
+      expect(prompt, contains('`/health/`'));
+      expect(prompt, contains('`/quick_prompts/`'));
+    });
   });
 
   group('QPersonalities 语气摘要', () {

@@ -26,6 +26,9 @@ class ScreenUsageDailyRepository {
   /// 必须用 MAX 合并而不是 ConflictAlgorithm.replace：系统 UsageStats 的每日
   /// bucket 会滚动淘汰，同一天越晚读到的数值可能反而更小，直接覆盖会让历史
   /// 柱状图随时间倒退。
+  ///
+  /// 例外：采集口径换代（[ScreenUsageDaily.source] 变化）的那一天按新口径重写，
+  /// 否则旧口径偏大的历史值会把新口径永远挡住。
   Future<bool> upsertSnapshot(ScreenUsageDaily snapshot) async {
     final changed = await upsertSnapshots([snapshot]);
     return changed.isNotEmpty && changed.first;
@@ -57,9 +60,13 @@ class ScreenUsageDailyRepository {
     }
 
     final existing = ScreenUsageDaily.fromMap(Map<String, dynamic>.from(rows.first));
-    final totalAdvanced = snapshot.totalTimeMs > existing.totalTimeMs;
 
-    // 明细只在新快照确实更全时替换：总时长前进、或旧明细缺失
+    // 采集口径换代（旧口径按统计桶估算，数值系统性偏大）时，继续走「不倒退」合并会让
+    // 新口径永远生效不了，所以这一天直接按新口径重写。
+    final sameSource = existing.source == snapshot.source;
+    final totalAdvanced = sameSource ? snapshot.totalTimeMs > existing.totalTimeMs : true;
+
+    // 明细只在新快照确实更全时替换：总时长前进、口径换代、或旧明细缺失
     final appsReplaced = snapshot.topApps.isNotEmpty && (totalAdvanced || existing.topApps.isEmpty);
 
     if (!totalAdvanced && !appsReplaced) {

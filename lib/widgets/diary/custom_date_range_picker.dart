@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 /// 自定义日期范围选择器对话框
 class CustomDateRangePickerDialog extends StatefulWidget {
@@ -186,7 +187,7 @@ class _CustomDateRangePickerDialogState extends State<CustomDateRangePickerDialo
                   Text(
                     '选择日期范围',
                     style: theme.textTheme.labelMedium?.copyWith(
-                      color: colorScheme.primary,
+                      color: theme.accentInk,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.0,
                     ),
@@ -214,17 +215,17 @@ class _CustomDateRangePickerDialogState extends State<CustomDateRangePickerDialo
                   ActionChip(
                     label: const Text('今天'),
                     onPressed: _selectToday,
-                    avatar: Icon(Icons.today, size: 16, color: colorScheme.primary),
+                    avatar: Icon(Icons.today, size: 16, color: theme.accentInk),
                   ),
                   ActionChip(
                     label: const Text('本周'),
                     onPressed: _selectThisWeek,
-                    avatar: Icon(Icons.date_range, size: 16, color: colorScheme.primary),
+                    avatar: Icon(Icons.date_range, size: 16, color: theme.accentInk),
                   ),
                   ActionChip(
                     label: const Text('本月'),
                     onPressed: _selectThisMonth,
-                    avatar: Icon(Icons.calendar_month, size: 16, color: colorScheme.primary),
+                    avatar: Icon(Icons.calendar_month, size: 16, color: theme.accentInk),
                   ),
                 ],
               ),
@@ -318,7 +319,7 @@ class _CustomDateRangePickerDialogState extends State<CustomDateRangePickerDialo
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('取消', style: TextStyle(color: colorScheme.primary)),
+                  child: Text('取消', style: TextStyle(color: theme.accentInk)),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
@@ -276,7 +277,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                           },
                           child: Text(
                             isAllSelected ? '取消全选' : '全选',
-                            style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: Theme.of(context).accentInk, fontWeight: FontWeight.bold),
                           ),
                         );
                       },
@@ -954,7 +955,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Widget _buildTree(BuildContext context, List<Folder> folders, List<Note> notes) {
     if (folders.isEmpty && notes.isEmpty) {
       // 空态与树之间交叉淡化，删除/新建最后一条时不再整页硬切
-      return AppMotion.switcher(
+      final emptyView = AppMotion.switcher(
         context: context,
         baseDuration: AppDurations.normal,
         child: KeyedSubtree(
@@ -984,12 +985,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           ),
         ),
       );
+      return _withBlankAreaMenu(emptyView);
     }
 
     final roots = _getTreeRoots(folders, notes);
     final theme = Theme.of(context);
 
-    return AppMotion.switcher(
+    final treeView = AppMotion.switcher(
       context: context,
       baseDuration: AppDurations.normal,
       child: KeyedSubtree(
@@ -1079,6 +1081,37 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         ),
       ),
     );
+    return _withBlankAreaMenu(treeView);
+  }
+
+  /// 长按列表空白处（未命中任何可见行）唤起页面级快捷菜单，锚点直接用长按落点；
+  /// 落点若在行内则不拦截，交给行自身的长按手势（拖拽拾起/行菜单）。
+  void _handleBlankAreaLongPress(LongPressStartDetails details) {
+    if (_isSelectionMode || _activeDraggingItem != null) return;
+
+    final position = details.globalPosition;
+    for (final key in _rowKeys.values) {
+      final box = key.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      // 命中已注册的可见行（含日记系统节点）不算空白处，维持行内原有交互
+      if ((box.localToGlobal(Offset.zero) & box.size).contains(position)) return;
+    }
+
+    HapticFeedback.lightImpact();
+    ActionMenu.showAt(
+      context: context,
+      position: position,
+      items: [
+        ActionMenuItem(icon: Icons.add, label: '新建笔记', onTap: () => _createNote()),
+        ActionMenuItem(icon: Icons.create_new_folder_outlined, label: '新建文件夹', onTap: () => _showCreateFolderDialog()),
+        ActionMenuItem(icon: Icons.select_all_outlined, label: '批量编辑', onTap: _enterSelectionMode),
+      ],
+    );
+  }
+
+  /// 给树的两种形态（空态/列表）统一包上「长按空白处弹菜单」手势层
+  Widget _withBlankAreaMenu(Widget child) {
+    return GestureDetector(onLongPressStart: _handleBlankAreaLongPress, behavior: HitTestBehavior.opaque, child: child);
   }
 
   void _editNote(Note note) {

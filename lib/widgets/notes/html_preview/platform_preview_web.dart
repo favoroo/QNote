@@ -28,7 +28,8 @@ class _PlatformPreviewState extends State<PlatformPreview> {
   @override
   void initState() {
     super.initState();
-    _currentContent = HtmlPersistenceHelper.prepareHtml(widget.htmlContent);
+    // srcdoc iframe 与父页面同源，所有笔记共用 localStorage，须按笔记隔离留存键名
+    _currentContent = HtmlPersistenceHelper.prepareHtml(widget.htmlContent, storageNamespace: widget.noteId);
     // 每个实例注册唯一的平台视图类型，避免同页多实例互相覆盖
     _viewType = 'qnote-html-preview-${const Uuid().v4()}';
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
@@ -48,7 +49,7 @@ class _PlatformPreviewState extends State<PlatformPreview> {
     super.didUpdateWidget(oldWidget);
     // 内容变化时直接更新 srcdoc（如悬浮小Q修改笔记后的预览刷新）
     if (widget.htmlContent != oldWidget.htmlContent || widget.noteId != oldWidget.noteId) {
-      _currentContent = HtmlPersistenceHelper.prepareHtml(widget.htmlContent);
+      _currentContent = HtmlPersistenceHelper.prepareHtml(widget.htmlContent, storageNamespace: widget.noteId);
       _iframe?.srcdoc = _currentContent.toJS;
     }
   }

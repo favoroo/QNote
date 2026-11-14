@@ -29,6 +29,17 @@ class ActionMenu {
     _showNear(context, anchorTopLeft: renderBox.localToGlobal(Offset.zero), anchorSize: renderBox.size, items: items);
   }
 
+  /// 在指定锚点组件附近弹菜单（适用于列表复用项，无需长期持有 GlobalKey）。
+  static void showForContext({
+    required BuildContext context,
+    required BuildContext anchorContext,
+    required List<ActionMenuItem> items,
+  }) {
+    final renderBox = anchorContext.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+    _showNear(context, anchorTopLeft: renderBox.localToGlobal(Offset.zero), anchorSize: renderBox.size, items: items);
+  }
+
   /// 在指定屏幕坐标附近弹菜单。
   ///
   /// 用于没有稳定锚点组件的场景（如「长按拾起后原地松手」）：此时卡片可能正被

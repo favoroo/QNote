@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-  主色块上的次级按钮底：半透明白圆。alpha 只能写进色值，
-  不能用 View.alpha（会连图标一起变透明）。
--->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
-    <solid android:color="@color/widget_qr_scrim" />
-</shape>

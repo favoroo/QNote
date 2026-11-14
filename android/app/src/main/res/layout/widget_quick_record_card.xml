@@ -1,73 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  快捷记录 · 方块（2 列宽 × 2 行高及以上）：外轮廓同样是胶囊/圆形（radius 999dp 按短边裁）。
-  内容只有竖向居中的三件：白色主操作圆、一行提示、两颗半透明白圆（相册 / 相机）。
-  提示文字固定为「记一下」，不放大段文案——组件是入口，不需要解释。
+  快捷记录 · 2×2 方块卡片：28dp 圆角曜石黑卡片。
+  方格子横向放不下「大圆 + 双圆」，改用纵向三段：84dp 白色主圆 + 下方两颗 52dp 炭灰圆。
+  三颗都是正圆，整组居中，上下留白均分。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_quick_record_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget_qr_pill"
+    android:background="@drawable/bg_widget_qr_card"
     android:contentDescription="@string/widget_quick_record_action"
     android:gravity="center"
     android:orientation="vertical"
-    android:paddingStart="12dp"
-    android:paddingTop="12dp"
-    android:paddingEnd="12dp"
-    android:paddingBottom="12dp">
+    android:paddingStart="10dp"
+    android:paddingTop="10dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="10dp">
 
-    <ImageButton
+    <FrameLayout
         android:id="@+id/qr_card_primary"
-        android:layout_width="46dp"
-        android:layout_height="46dp"
+        android:layout_width="84dp"
+        android:layout_height="84dp"
         android:background="@drawable/bg_widget_qr_solid_circle"
-        android:contentDescription="@string/widget_quick_record_action"
-        android:padding="12dp"
-        android:scaleType="centerInside"
-        android:src="@drawable/ic_widget_pen_accent" />
+        android:contentDescription="@string/widget_quick_record_action">
 
-    <TextView
-        android:id="@+id/qr_card_hint"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:ellipsize="end"
-        android:gravity="center"
-        android:maxLines="1"
-        android:text="记一下"
-        android:textColor="@color/widget_qr_on_accent"
-        android:textSize="13sp"
-        android:visibility="gone" />
+        <ImageView
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_pen_accent" />
+    </FrameLayout>
 
     <LinearLayout
-        android:id="@+id/qr_card_actions"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:gravity="center"
-        android:orientation="horizontal"
-        android:visibility="gone">
+        android:orientation="horizontal">
 
-        <ImageButton
+        <FrameLayout
             android:id="@+id/qr_card_photo"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/bg_widget_qr_scrim"
-            android:contentDescription="选择相册图片"
-            android:padding="8dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_widget_gallery_white" />
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_widget_qr_secondary_circle"
+            android:contentDescription="选择相册图片">
 
-        <ImageButton
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_gallery_white" />
+        </FrameLayout>
+
+        <FrameLayout
             android:id="@+id/qr_card_camera"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:layout_marginStart="10dp"
-            android:background="@drawable/bg_widget_qr_scrim"
-            android:contentDescription="启动相机拍照"
-            android:padding="8dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_widget_camera_white" />
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/bg_widget_qr_secondary_circle"
+            android:contentDescription="启动相机拍照">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_camera_white" />
+        </FrameLayout>
     </LinearLayout>
 </LinearLayout>

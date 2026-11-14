@@ -440,7 +440,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
 
       // 分类与标签规整化：如果分类仍为默认日常，但已提供标准语义分类或 explicitTags
       if (category == '日常' && explicitTags.isNotEmpty) {
-        final stdCats = ['饮食', '活动', '睡眠', '健康', '记账'];
+        final stdCats = ['饮食', '活动', '睡眠', '健康', '记账', '随想'];
         for (final sc in stdCats) {
           if (explicitTags.contains(sc)) {
             category = sc;

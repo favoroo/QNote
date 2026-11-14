@@ -186,7 +186,7 @@ class QPageContext {
     return [
       '当前页面上下文（用户通过全局悬浮快捷入口发起）',
       '用户当前位于【$pageName】：$scene',
-      '按用户指令处理即可，必要时先用 list_dir / read_file 自主探索相关数据',
+      '按用户指令处理即可，优先用 grep 定位或 read_files 批量读取相关数据（仅需浏览目录结构时用 list_dir）',
     ].join('\n');
   }
 

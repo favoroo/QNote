@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 
 /// 动态省略号：三个圆点依次渐显、周期尾整体淡出后循环，
@@ -14,7 +15,7 @@ class AnimatedEllipsis extends StatefulWidget {
   /// 圆点间距（单侧 margin）
   final double dotSpacing;
 
-  /// 圆点颜色，缺省取主题 primary
+  /// 圆点颜色，缺省取主题可读强调色 [AppThemeAccent.accentInk]
   final Color? color;
 
   const AnimatedEllipsis({super.key, this.dotSize = 4, this.dotSpacing = 1.5, this.color});
@@ -83,7 +84,7 @@ class _AnimatedEllipsisState extends State<AnimatedEllipsis> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.color ?? Theme.of(context).colorScheme.primary;
+    final color = widget.color ?? Theme.of(context).accentInk;
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {

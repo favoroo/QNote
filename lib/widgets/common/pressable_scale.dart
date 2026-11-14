@@ -38,6 +38,14 @@ class _PressableScaleState extends State<PressableScale> {
 
   bool get _interactive => widget.enabled && (widget.onTap != null || widget.onLongPress != null);
 
+  /// 仅当外部真的关心长按时才注册长按识别器。
+  ///
+  /// GestureDetector 只要挂了 [GestureDetector.onLongPressEnd] / [GestureDetector.onLongPressCancel]
+  /// 就会创建 LongPressGestureRecognizer。内层识别器在竞技场里比祖先更早命中、更早超时，
+  /// 会夺走祖先的长按（历史踩坑：时间线节点的长按滑动选时间段被此拦掉）。
+  /// 只用 onTap 时，长按结束/取消的复位由 onTapUp / onTapCancel 负责，无需长按识别器。
+  bool get _hasLongPress => widget.enabled && widget.onLongPress != null;
+
   void _setPressed(bool value) {
     if (!_interactive || _pressed == value) return;
     setState(() => _pressed = value);
@@ -53,8 +61,8 @@ class _PressableScaleState extends State<PressableScale> {
       onTapDown: _interactive ? (_) => _setPressed(true) : null,
       onTapUp: _interactive ? (_) => _setPressed(false) : null,
       onTapCancel: _interactive ? () => _setPressed(false) : null,
-      onLongPressEnd: _interactive ? (_) => _setPressed(false) : null,
-      onLongPressCancel: _interactive ? () => _setPressed(false) : null,
+      onLongPressEnd: _hasLongPress ? (_) => _setPressed(false) : null,
+      onLongPressCancel: _hasLongPress ? () => _setPressed(false) : null,
       child: AnimatedScale(
         scale: _pressed ? widget.pressedScale : 1.0,
         duration: AppMotion.duration(context, AppDurations.press),

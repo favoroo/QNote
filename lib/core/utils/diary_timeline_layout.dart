@@ -287,3 +287,170 @@ double estimateDiaryOffsetForTimeWithRecords({
   }
   return offset;
 }
+
+/// 时间线 Sliver 分段描述：连续折叠日期合并为一个日期分隔栏段落，
+/// 每个展开或正在过渡中的日期成为带时间槽正文的段落终点。
+class DiaryTimelineSegment {
+  const DiaryTimelineSegment({required this.startDayOffset, required this.endDayOffset, required this.hasExpandedBody});
+
+  /// 本段包含的起始日偏移（含）。
+  final int startDayOffset;
+
+  /// 本段包含的结束日偏移（含）；当 [hasExpandedBody] 为 true 时，
+  /// 本段末尾这一天紧跟它的 48 槽时间线正文 Sliver。
+  final int endDayOffset;
+
+  /// 末尾日期（[endDayOffset]）当前是否需要挂载时间线正文 Sliver。
+  final bool hasExpandedBody;
+
+  /// 本段包含的日期分隔栏数量。
+  int get dividerCount => endDayOffset - startDayOffset + 1;
+}
+
+/// 将 [daysCount] 天的时间线窗口按「正文是否挂载」切分为少量 Sliver 分段。
+///
+/// 连续折叠日期仅占用一个固定高度日期分隔栏段落，不再为折叠天生成 48 个
+/// 零高度占位节点，从而避免折叠区域在缓存区内大量挂载无效节点与动画控制器。
+List<DiaryTimelineSegment> buildDiaryTimelineSegments({
+  required DateTime windowStartDate,
+  required int daysCount,
+  required bool Function(DateTime date) hasBody,
+}) {
+  if (daysCount <= 0) {
+    return const [];
+  }
+  final segments = <DiaryTimelineSegment>[];
+  var runStart = 0;
+  for (var dayOffset = 0; dayOffset < daysCount; dayOffset++) {
+    final date = diaryDateForDayOffset(windowStartDate, dayOffset);
+    if (hasBody(date)) {
+      segments.add(DiaryTimelineSegment(startDayOffset: runStart, endDayOffset: dayOffset, hasExpandedBody: true));
+      runStart = dayOffset + 1;
+    }
+  }
+  if (runStart < daysCount) {
+    segments.add(DiaryTimelineSegment(startDayOffset: runStart, endDayOffset: daysCount - 1, hasExpandedBody: false));
+  }
+  return segments;
+}
+
+/// 单个半小时时间槽内标准节点与专用节点（选中起止 / 当前时刻）的展示状态。
+class DiaryTimelineSlotResolution {
+  const DiaryTimelineSlotResolution({
+    required this.isStandardNodeSelected,
+    required this.isStandardNodeCurrentTime,
+    required this.dedicatedSelectedStart,
+    required this.dedicatedSelectedCurrentTime,
+    required this.dedicatedSelectedEnd,
+    required this.dedicatedCurrentTime,
+  });
+
+  /// 标准半小时节点（`xx:00` / `xx:30`）自身是否处于选中范围。
+  final bool isStandardNodeSelected;
+
+  /// 标准半小时节点是否正好是当前时刻（整点或半点时内联显示「当前时间」徽章）。
+  final bool isStandardNodeCurrentTime;
+
+  /// 选中起点的非整半点专用行（null 表示不渲染）。
+  final DateTime? dedicatedSelectedStart;
+
+  /// 落在选中区间内且尚未被起止专用行覆盖的「当前时刻」选中专用行（null 表示不渲染）。
+  final DateTime? dedicatedSelectedCurrentTime;
+
+  /// 选中终点的非整半点专用行（null 表示不渲染）。
+  final DateTime? dedicatedSelectedEnd;
+
+  /// 未被选中的非整半点「当前时刻」专用行（null 表示不渲染）。
+  final DateTime? dedicatedCurrentTime;
+}
+
+/// 解析单个半小时时间槽的选中态与「当前时间」专用节点归属。
+///
+/// 全部以 [selectionStart] / [selectionEnd] 为唯一选中事实来源，不依赖表单草稿的
+/// 独立时间快照；否则页面停留在前台或跨分钟重建后，旧草稿时间会导致「点击当前时间
+/// 却高亮上方另一行」的错位。
+DiaryTimelineSlotResolution resolveDiaryTimelineSlot({
+  required DateTime slotStart,
+  required int nodeIndex,
+  required DateTime now,
+  required bool isToday,
+  DateTime? selectionStart,
+  DateTime? selectionEnd,
+}) {
+  final slotMinute = DateTime(slotStart.year, slotStart.month, slotStart.day, slotStart.hour, slotStart.minute);
+  final slotMinutes = nodeIndex * 30;
+
+  bool isInSlot(DateTime candidate) {
+    if (!isSameCalendarDay(candidate, slotMinute)) {
+      return false;
+    }
+    final minutes = candidate.hour * 60 + candidate.minute;
+    return nodeIndex == 47 ? minutes >= slotMinutes : (minutes >= slotMinutes && minutes < slotMinutes + 30);
+  }
+
+  bool isHalfHour(DateTime candidate) => candidate.minute == 0 || candidate.minute == 30;
+
+  final normalizedStart = selectionStart != null
+      ? DateTime(
+          selectionStart.year,
+          selectionStart.month,
+          selectionStart.day,
+          selectionStart.hour,
+          selectionStart.minute,
+        )
+      : null;
+  final normalizedEnd = selectionEnd != null
+      ? DateTime(selectionEnd.year, selectionEnd.month, selectionEnd.day, selectionEnd.hour, selectionEnd.minute)
+      : null;
+
+  var isStandardNodeSelected = false;
+  if (normalizedStart != null) {
+    if (normalizedEnd == null) {
+      isStandardNodeSelected = slotMinute.isAtSameMomentAs(normalizedStart);
+    } else {
+      isStandardNodeSelected = !slotMinute.isBefore(normalizedStart) && !slotMinute.isAfter(normalizedEnd);
+    }
+  }
+
+  final nowAtSlotDate = DateTime(slotMinute.year, slotMinute.month, slotMinute.day, now.hour, now.minute);
+  final isStandardNodeCurrentTime =
+      isToday && nowAtSlotDate.hour == slotMinute.hour && nowAtSlotDate.minute == slotMinute.minute;
+
+  final dedicatedSelectedStart = normalizedStart != null && isInSlot(normalizedStart) && !isHalfHour(normalizedStart)
+      ? normalizedStart
+      : null;
+
+  final dedicatedSelectedEnd =
+      normalizedEnd != null &&
+          (normalizedStart == null || !normalizedEnd.isAtSameMomentAs(normalizedStart)) &&
+          isInSlot(normalizedEnd) &&
+          !isHalfHour(normalizedEnd)
+      ? normalizedEnd
+      : null;
+
+  final isCurrentTimeSelected =
+      normalizedStart != null &&
+      isToday &&
+      (normalizedEnd != null
+          ? (!nowAtSlotDate.isBefore(normalizedStart) && !nowAtSlotDate.isAfter(normalizedEnd))
+          : nowAtSlotDate.isAtSameMomentAs(normalizedStart));
+
+  final isNowDedicatedInSlot = isToday && isInSlot(nowAtSlotDate) && !isHalfHour(nowAtSlotDate);
+  final nowCoveredBySelection =
+      (dedicatedSelectedStart != null && dedicatedSelectedStart.isAtSameMomentAs(nowAtSlotDate)) ||
+      (dedicatedSelectedEnd != null && dedicatedSelectedEnd.isAtSameMomentAs(nowAtSlotDate));
+
+  final dedicatedCurrentTime = isNowDedicatedInSlot && !isCurrentTimeSelected ? nowAtSlotDate : null;
+  final dedicatedSelectedCurrentTime = isNowDedicatedInSlot && isCurrentTimeSelected && !nowCoveredBySelection
+      ? nowAtSlotDate
+      : null;
+
+  return DiaryTimelineSlotResolution(
+    isStandardNodeSelected: isStandardNodeSelected,
+    isStandardNodeCurrentTime: isStandardNodeCurrentTime,
+    dedicatedSelectedStart: dedicatedSelectedStart,
+    dedicatedSelectedCurrentTime: dedicatedSelectedCurrentTime,
+    dedicatedSelectedEnd: dedicatedSelectedEnd,
+    dedicatedCurrentTime: dedicatedCurrentTime,
+  );
+}

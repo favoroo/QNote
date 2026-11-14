@@ -166,6 +166,10 @@ void main() {
       final doc = registry.getSkillContent('timeline-manager')!;
       expect(doc.contains('<!-- id: xxx -->'), isTrue);
       expect(doc.contains('严禁使用 YAML Frontmatter'), isTrue);
+      // 与 VFS 读取输出的 `- 详情:` 保持一致，且示例不能自违「严禁生造一级分类」规范
+      expect(doc.contains('- 详情:'), isTrue);
+      expect(doc.contains('- 内容:'), isFalse);
+      expect(doc.contains('- 分类: 工作'), isFalse);
     });
 
     test('frontend-design 覆盖交付、移动端与反模式关键规范', () {

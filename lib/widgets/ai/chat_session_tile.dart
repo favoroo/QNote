@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
@@ -123,8 +124,8 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
       return AppCheckbox(value: widget.isChecked);
     }
     final Widget icon = isRunning
-        ? LoadingRing(size: 16, strokeWidth: 1.8, color: widget.isActive ? scheme.primary : scheme.onSurfaceVariant)
-        : Icon(Icons.chat_bubble_outline, size: 16, color: widget.isActive ? scheme.primary : theme.disabledColor);
+        ? LoadingRing(size: 16, strokeWidth: 1.8, color: widget.isActive ? theme.accentInk : scheme.onSurfaceVariant)
+        : Icon(Icons.chat_bubble_outline, size: 16, color: widget.isActive ? theme.accentInk : theme.disabledColor);
     if (!widget.session.isPinned) {
       return icon;
     }
@@ -143,10 +144,7 @@ class _ChatSessionTileState extends ConsumerState<ChatSessionTile> {
     final session = widget.session;
     // 该会话的小Q任务是否正在生成：列表项转圈 + 「生成中」副标题提示
     final isRunning = ref.watch(agentRunningSessionsProvider.select((s) => s.contains(session.id)));
-    final titleStyle = TextStyle(
-      fontWeight: FontWeight.w500,
-      color: widget.isActive ? theme.colorScheme.primary : null,
-    );
+    final titleStyle = TextStyle(fontWeight: FontWeight.w500, color: widget.isActive ? theme.accentInk : null);
 
     return Dismissible(
       key: ValueKey(session.id),

@@ -73,4 +73,53 @@ void main() {
     await tester.pump();
     expect(find.text('删除'), findsNothing);
   });
+
+  testWidgets('ActionMenu.showForContext 按锚点 Context 位置弹出并支持未挂载兜底', (tester) async {
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    late BuildContext pageCtx;
+    late BuildContext anchorCtx;
+
+    await tester.pumpWidget(
+      wrap(
+        Builder(
+          builder: (context) {
+            pageCtx = context;
+            return Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 40, right: 24),
+                child: Builder(
+                  builder: (ctx) {
+                    anchorCtx = ctx;
+                    return const SizedBox(width: 80, height: 32, child: Text('日期'));
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    ActionMenu.showForContext(
+      context: pageCtx,
+      anchorContext: anchorCtx,
+      items: [ActionMenuItem(icon: Icons.palette_outlined, label: '标色', onTap: () {})],
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('标色'), findsOneWidget);
+    final anchorBox = anchorCtx.findRenderObject()! as RenderBox;
+    final anchorRect = anchorBox.localToGlobal(Offset.zero) & anchorBox.size;
+    final menuTop = tester.getTopLeft(find.text('标色')).dy;
+    // 锚点位于顶部时菜单应展开在锚点底部附近
+    expect(menuTop, greaterThanOrEqualTo(anchorRect.bottom));
+
+    ActionMenu.dismiss(immediate: true);
+    await tester.pump();
+    expect(find.text('标色'), findsNothing);
+  });
 }

@@ -166,6 +166,8 @@ class ScreenUsageService {
       topApps: rawApps.whereType<Map<dynamic, dynamic>>().map((e) => ScreenAppUsage.fromMap(e)).toList(),
       // 今日尚未过完，标记为未完成，避免被当成整日数据参与环比
       isComplete: !isToday,
+      // 原生侧已改用事件流精确统计；标注口径，让仓储把旧统计桶口径的历史日重写掉
+      source: ScreenUsageDaily.sourceUsageEvents,
       createdAt: now,
       updatedAt: now,
     );

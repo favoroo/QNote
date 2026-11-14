@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 class TimeScrollPicker extends StatefulWidget {
   final int initialHour;
@@ -120,7 +121,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                          color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
                           height: 1.0,
                           leadingDistribution: TextLeadingDistribution.even,
                         ),
@@ -167,7 +168,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                          color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
                           height: 1.0,
                           leadingDistribution: TextLeadingDistribution.even,
                         ),
@@ -202,7 +203,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
               maxLength: 2,
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
+                color: theme.accentInk,
                 height: 1.0,
                 leadingDistribution: TextLeadingDistribution.even,
               ),
@@ -213,7 +214,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                  borderSide: BorderSide(color: theme.accentInk, width: 2),
                 ),
                 contentPadding: EdgeInsets.zero,
               ),
@@ -254,7 +255,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
               maxLength: 2,
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
+                color: theme.accentInk,
                 height: 1.0,
                 leadingDistribution: TextLeadingDistribution.even,
               ),
@@ -265,7 +266,7 @@ class _TimeScrollPickerState extends State<TimeScrollPicker> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                  borderSide: BorderSide(color: theme.accentInk, width: 2),
                 ),
                 contentPadding: EdgeInsets.zero,
               ),

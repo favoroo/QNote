@@ -45,7 +45,7 @@ class _GenericToolFeedbackWidgetState extends State<_GenericToolFeedbackWidget> 
       ),
       blockquoteDecoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
-        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 4)),
+        border: Border(left: BorderSide(color: theme.accentInk, width: 4)),
         borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
       ),
       blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -465,9 +465,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
             : theme.colorScheme.primaryContainer.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: hasError
-              ? theme.colorScheme.error.withValues(alpha: 0.3)
-              : theme.colorScheme.primary.withValues(alpha: 0.22),
+          color: hasError ? theme.colorScheme.error.withValues(alpha: 0.3) : theme.accentInk.withValues(alpha: 0.22),
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -486,7 +484,7 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
                   Icon(
                     hasError ? Icons.error_outline : Icons.task_alt_rounded,
                     size: 15,
-                    color: hasError ? theme.colorScheme.error : theme.colorScheme.primary,
+                    color: hasError ? theme.colorScheme.error : theme.accentInk,
                   ),
                   const SizedBox(width: 8),
                   Expanded(

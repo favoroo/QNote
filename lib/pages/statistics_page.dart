@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -361,7 +362,9 @@ class _TabSwitcherState extends State<_TabSwitcher> {
           color: isActive ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(19),
           border: Border.all(
-            color: isActive ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.45),
+            color: isActive
+                ? (Theme.of(context).accentNeedsOutline ? colorScheme.outlineVariant : colorScheme.primary)
+                : colorScheme.outlineVariant.withValues(alpha: 0.45),
             width: 1,
           ),
           boxShadow: isActive

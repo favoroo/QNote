@@ -835,10 +835,11 @@ class VirtualWorkspaceService {
         'description':
             'themeMode 为兼容字段（由背景推导，仅 backgroundStyle=system 时为 "system"）；'
             'backgroundStyle 可选: "system"(跟随系统) | "light"(浅色) | "dark"(深色) | '
-            '"oled"(OLED纯黑) | "accent"(主题色背景，自动微调避免与主题色融合) | '
+            '"oled"(OLED纯黑) | "paper"(暖纸米色) | "mist"(雾蓝浅蓝) | "pine"(松林深绿) | '
+            '"accent"(主题色背景，自动微调避免与主题色融合) | '
             '"custom"(自定义背景，颜色取 customBackgroundColor)；'
             'accentColor / customBackgroundColor 为 16 进制颜色（如 #005BCB 经典蓝、#C5E803 荧光黄绿、'
-            '#E91E8C 玫瑰粉红、#00E676 春天亮绿、#FF3B30 活力红、#FF9500 活力橙、'
+            '#E91E8C 玫瑰粉红、#00E676 春天亮绿、#F80004 赤焰红、#FF9500 活力橙、'
             '#00BCD4 湖水青、#7C4DFF 典雅紫）',
       };
       return const JsonEncoder.withIndent('  ').convert(data);

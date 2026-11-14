@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -215,11 +216,11 @@ class _SearchViewState extends ConsumerState<SearchView> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: theme.colorScheme.primary),
+          Icon(icon, size: 18, color: theme.accentInk),
           const SizedBox(width: 8),
           Text(
             title,
-            style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleSmall?.copyWith(color: theme.accentInk, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -253,7 +254,7 @@ class _DiaryResultTile extends StatelessWidget {
     final contentPreview = diary.content.length > 80 ? '${diary.content.substring(0, 80)}...' : diary.content;
 
     return ListTile(
-      leading: Icon(Icons.book_outlined, color: theme.colorScheme.primary),
+      leading: Icon(Icons.book_outlined, color: theme.accentInk),
       title: diary.displayTag.isNotEmpty
           ? highlightSearchMatch(diary.displayTag, query, theme)
           : highlightSearchMatch(diary.title, query, theme),

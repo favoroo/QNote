@@ -47,6 +47,10 @@ class MainActivity : FlutterActivity() {
         private const val TAG = "QNote"
         private val iconExecutor = Executors.newSingleThreadExecutor()
 
+        /// 屏幕使用情况的重活（事件流按天聚合，最长回填 14 天）放这条独立后台线程，
+        /// 既不占主线程，也不和批量取图抢 iconExecutor
+        private val usageExecutor = Executors.newSingleThreadExecutor()
+
         /// shared_preferences 插件的存储文件与键前缀（见 LegacySharedPreferencesPlugin）。
         private const val PREFS_NAME = "FlutterSharedPreferences"
         private const val PREFS_KEY_PREFIX = "flutter."
@@ -389,8 +393,8 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "getTodayUsage" -> {
-                    try {
-                        val limit = call.argument<Int>("limit") ?: 30
+                    val limit = call.argument<Int>("limit") ?: 30
+                    runUsageQueryAsync(result, "USAGE_QUERY_FAILED") {
                         val calendar = java.util.Calendar.getInstance().apply {
                             set(java.util.Calendar.HOUR_OF_DAY, 0)
                             set(java.util.Calendar.MINUTE, 0)
@@ -400,8 +404,9 @@ class MainActivity : FlutterActivity() {
                         val startTime = calendar.timeInMillis
                         val endTime = System.currentTimeMillis()
 
-                        val appList = helper.getUsageStats(startTime, endTime, limit)
-                        val totalTime = helper.calculateTotalScreenTime(startTime, endTime)
+                        val payload = HashMap<String, Any?>(
+                            helper.getUsageSnapshot(startTime, endTime, limit)
+                        )
 
                         // 获取昨天全天时长以计算对比差值
                         val yesterdayCal = java.util.Calendar.getInstance().apply {
@@ -416,26 +421,15 @@ class MainActivity : FlutterActivity() {
                         yesterdayCal.set(java.util.Calendar.MINUTE, 59)
                         yesterdayCal.set(java.util.Calendar.SECOND, 59)
                         yesterdayCal.set(java.util.Calendar.MILLISECOND, 999)
-                        val yesterdayEnd = yesterdayCal.timeInMillis
-                        val yesterdayTotalTime = helper.calculateTotalScreenTime(yesterdayStart, yesterdayEnd)
-
-                        result.success(
-                            mapOf(
-                                "totalTime" to totalTime,
-                                "yesterdayTotalTimeMs" to yesterdayTotalTime,
-                                "appList" to appList
-                            )
-                        )
-                    } catch (e: Exception) {
-                        result.error("USAGE_QUERY_FAILED", e.localizedMessage, null)
+                        payload["yesterdayTotalTimeMs"] = helper.calculateTotalScreenTime(yesterdayStart, yesterdayCal.timeInMillis)
+                        payload
                     }
                 }
                 "getUsageForDate" -> {
-                    try {
-                        val dateMillis = call.argument<Long>("dateMillis") ?: System.currentTimeMillis()
-                        val limit = call.argument<Int>("limit") ?: 10
-                        val includeIcons = call.argument<Boolean>("includeIcons") ?: false
-
+                    val dateMillis = call.argument<Long>("dateMillis") ?: System.currentTimeMillis()
+                    val limit = call.argument<Int>("limit") ?: 10
+                    val includeIcons = call.argument<Boolean>("includeIcons") ?: false
+                    runUsageQueryAsync(result, "DATE_USAGE_QUERY_FAILED") {
                         val targetCal = java.util.Calendar.getInstance().apply {
                             timeInMillis = dateMillis
                             set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -467,8 +461,9 @@ class MainActivity : FlutterActivity() {
                             }
                         }
 
-                        val appList = helper.getUsageStats(startTime, endTime, limit, includeIcons)
-                        val totalTime = helper.calculateTotalScreenTime(startTime, endTime)
+                        val payload = HashMap<String, Any?>(
+                            helper.getUsageSnapshot(startTime, endTime, limit, includeIcons)
+                        )
 
                         // 获取前一天的屏幕总时长
                         val prevCal = (targetCal.clone() as java.util.Calendar).apply {
@@ -479,37 +474,21 @@ class MainActivity : FlutterActivity() {
                         prevCal.set(java.util.Calendar.MINUTE, 59)
                         prevCal.set(java.util.Calendar.SECOND, 59)
                         prevCal.set(java.util.Calendar.MILLISECOND, 999)
-                        val prevEnd = prevCal.timeInMillis
-                        val prevTotalTime = helper.calculateTotalScreenTime(prevStart, prevEnd)
-
-                        result.success(
-                            mapOf(
-                                "totalTime" to totalTime,
-                                "yesterdayTotalTimeMs" to prevTotalTime,
-                                "appList" to appList
-                            )
-                        )
-                    } catch (e: Exception) {
-                        result.error("DATE_USAGE_QUERY_FAILED", e.localizedMessage, null)
+                        payload["yesterdayTotalTimeMs"] = helper.calculateTotalScreenTime(prevStart, prevCal.timeInMillis)
+                        payload
                     }
                 }
                 "getWeeklyScreenTime" -> {
-                    try {
-                        val weeklyList = helper.getWeeklyScreenTime()
-                        result.success(weeklyList)
-                    } catch (e: Exception) {
-                        result.error("WEEKLY_QUERY_FAILED", e.localizedMessage, null)
+                    runUsageQueryAsync(result, "WEEKLY_QUERY_FAILED") {
+                        helper.getWeeklyScreenTime()
                     }
                 }
                 "getDailyScreenTimeRange" -> {
-                    try {
-                        val startMillis = call.argument<Long>("startMillis") ?: System.currentTimeMillis()
-                        val endMillis = call.argument<Long>("endMillis") ?: System.currentTimeMillis()
-                        val appLimit = call.argument<Int>("appLimitPerDay") ?: 20
-                        val dailyList = helper.getDailyScreenTimeRange(startMillis, endMillis, appLimit)
-                        result.success(dailyList)
-                    } catch (e: Exception) {
-                        result.error("DAILY_RANGE_QUERY_FAILED", e.localizedMessage, null)
+                    val startMillis = call.argument<Long>("startMillis") ?: System.currentTimeMillis()
+                    val endMillis = call.argument<Long>("endMillis") ?: System.currentTimeMillis()
+                    val appLimit = call.argument<Int>("appLimitPerDay") ?: 20
+                    runUsageQueryAsync(result, "DAILY_RANGE_QUERY_FAILED") {
+                        helper.getDailyScreenTimeRange(startMillis, endMillis, appLimit)
                     }
                 }
                 "getAppIcons" -> {
@@ -532,6 +511,23 @@ class MainActivity : FlutterActivity() {
                 else -> {
                     result.notImplemented()
                 }
+            }
+        }
+    }
+
+    /**
+     * 屏幕使用情况的统计查询放到后台线程，回包再切回主线程
+     * （MethodChannel 的 result 必须在主线程调用）。
+     *
+     * 事件流按自然日聚合是百毫秒级的重活，放在主线程会让统计页首帧卡顿。
+     */
+    private fun runUsageQueryAsync(result: MethodChannel.Result, errorCode: String, block: () -> Any?) {
+        usageExecutor.execute {
+            try {
+                val value = block()
+                mainHandler.post { result.success(value) }
+            } catch (e: Exception) {
+                mainHandler.post { result.error(errorCode, e.localizedMessage, null) }
             }
         }
     }

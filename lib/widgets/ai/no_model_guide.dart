@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 
 /// 未配置模型时的统一引导弹窗
@@ -21,7 +22,7 @@ Future<void> showNoModelConfiguredDialog(BuildContext context, {String scene = '
     builder: (ctx) {
       final theme = Theme.of(ctx);
       return AlertDialog(
-        icon: Icon(Icons.extension_off_rounded, color: theme.colorScheme.primary),
+        icon: Icon(Icons.extension_off_rounded, color: theme.accentInk),
         title: const Text('还没有可用的模型'),
         content: Text(
           scene.isEmpty

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -461,7 +462,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                     _showAdvancedPath ? '收起' : '修改',
                     style: TextStyle(
                       fontSize: AppTypography.label,
-                      color: colorScheme.primary,
+                      color: theme.accentInk,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -499,7 +500,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           // 自动同步（主开关）：启用时默认打开启动同步并设置 15 分钟后台轮询
           _buildSettingRow(
             icon: Icons.autorenew_rounded,
-            iconColor: colorScheme.primary,
+            iconColor: theme.accentInk,
             title: '自动同步',
             trailing: Switch(
               value: _webdavEnabled,
@@ -527,7 +528,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
                 const Divider(height: 1, indent: 56, endIndent: 16),
                 _buildSettingRow(
                   icon: Icons.schedule_rounded,
-                  iconColor: colorScheme.primary,
+                  iconColor: theme.accentInk,
                   title: '同步频率',
                   trailing: DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
@@ -565,7 +566,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
           // 同步附件图片开关
           _buildSettingRow(
             icon: Icons.photo_library_outlined,
-            iconColor: colorScheme.primary,
+            iconColor: theme.accentInk,
             title: '同步附件图片',
             trailing: Switch(
               value: _syncImages,
@@ -774,7 +775,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+              borderSide: BorderSide(color: theme.accentInk, width: 1.5),
             ),
             suffixIcon: isPassword
                 ? IconButton(

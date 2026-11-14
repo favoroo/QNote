@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 
 /// 形变无限符号加载动画（MorphingInfinity）
@@ -68,7 +69,7 @@ class _MorphingInfinityState extends State<MorphingInfinity> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = widget.color ?? Theme.of(context).colorScheme.primary;
+    final effectiveColor = widget.color ?? Theme.of(context).accentInk;
 
     return RepaintBoundary(
       child: AnimatedBuilder(

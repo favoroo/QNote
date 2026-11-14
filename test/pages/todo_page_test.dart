@@ -131,6 +131,38 @@ void main() {
     expect(find.text('删除'), findsOneWidget);
   });
 
+  testWidgets('已完成待办长按也能弹出操作菜单', (tester) async {
+    final todos = [
+      Todo(
+        id: 't-1',
+        title: '已经完成的任务',
+        isCompleted: true,
+        folderId: 'folder-1',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          todoListProvider.overrideWith(() => _MockTodoListNotifier(todos)),
+          todoFolderListProvider.overrideWith(() => _MockTodoFolderNotifier()),
+        ],
+        child: const MaterialApp(home: TodoPage()),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // 已完成条目不参与拖拽排序（isDraggable=false），移动端长按菜单由卡片自身
+    // 识别器兜底；回归用例：防止该识别器被「拖拽接管」条件误判为 null。
+    await tester.longPress(find.text('已经完成的任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('批量管理'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
+  });
+
   testWidgets('点击FAB弹出底部大弹窗，支持回车连续添加待办', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

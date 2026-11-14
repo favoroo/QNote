@@ -211,7 +211,7 @@ Color? parseWorkspaceColor(dynamic raw) {
       return const Color(0xFFE91E8C);
     }
     if (s == 'green' || s == '春天亮绿') return const Color(0xFF00E676);
-    if (s == 'red' || s == '红色' || s == '活力红') return const Color(0xFFFF3B30);
+    if (s == 'red' || s == '红色' || s == '活力红' || s == '赤焰红') return const Color(0xFFF80004);
     if (s == 'orange' || s == '橙色' || s == '活力橙') {
       return const Color(0xFFFF9500);
     }
@@ -254,7 +254,7 @@ String workspaceThemeModeToString(ThemeMode mode) {
   }
 }
 
-/// 解析背景预设（支持 system/light/dark/oled/accent/custom 及其中文别名）
+/// 解析背景预设（支持 system/light/dark/oled/accent/custom/paper/mist/pine 及其中文别名）
 AppBackgroundPreset parseWorkspaceBackgroundPreset(dynamic raw) {
   if (raw == null) return AppBackgroundPreset.system;
   final s = raw.toString().trim().toLowerCase();
@@ -272,6 +272,15 @@ AppBackgroundPreset parseWorkspaceBackgroundPreset(dynamic raw) {
   }
   if (s == 'custom' || s == '自定义' || s == '自定义颜色' || s == '自定义背景色') {
     return AppBackgroundPreset.custom;
+  }
+  if (s == 'paper' || s == '暖纸' || s == '纸色' || s == '米色') {
+    return AppBackgroundPreset.paper;
+  }
+  if (s == 'mist' || s == '雾蓝' || s == '雾霾蓝') {
+    return AppBackgroundPreset.mist;
+  }
+  if (s == 'pine' || s == '松林' || s == '松林绿' || s == '森林绿') {
+    return AppBackgroundPreset.pine;
   }
   return AppBackgroundPreset.system;
 }

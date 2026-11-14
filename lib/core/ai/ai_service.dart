@@ -2035,8 +2035,26 @@ class AiService {
 
     LoggerService.instance.logAI('统一提取请求', details: '类型=$inputType, 有文本=$hasText, 有图片=$hasImage');
 
+    // 纯文本请求不注入图片/notes 规则，省去冗余指令并杜绝纯文本场景误输出 notes
+    const imageRulesText =
+        '4. 图片处理与 notes：截图提取核心数据与指标（如深睡1.5h、步数、心率）；食物图必须提取具体菜品名称及配料。\n'
+        '   - 必须且仅在 results[0] 输出一个 notes 字段汇总图片新识别到的关键信息（不要重复用户已有文字）；\n'
+        '   - notes 格式固定为 "图：" + 图片具体信息，多标签场景不要在后续元素重复输出 notes。';
+    const imageOutputFormat =
+        'JSON: {"results":[{"id":"标签id","time":"可选时间","fields":{},"notes":"图：..."}]}（无有用信息输出 {"results":[]}）';
+    const textOutputFormat =
+        'JSON: {"results":[{"id":"标签id","time":"可选时间","fields":{}}]}（纯文本禁止输出 notes 字段；无有用信息输出 {"results":[]}）';
+    const imageExamplesText =
+        '- [食物照片:米饭、香菇滑鸡和白灼生菜] → {"results":[{"id":"diet","fields":{"rating":"健康"},"notes":"图：香菇滑鸡、白灼生菜、一碗米饭"}]}\n'
+        '- [健康App截图:睡眠6h46min质量一般、步数5047/6000、卡路里294/300kcal、中高强度活动21min、心率84次/分] → {"results":[{"id":"sleep","fields":{"duration":6.77,"quality":"一般"},"notes":"图：睡眠6时46分质量一般，步数5047/6000步，卡路里294/300千卡，中高强度活动21分钟，心率84次/分"},{"id":"activity","fields":{"type":"运动","duration":0.35}}]}';
+
     var systemPrompt = defaultSystemPrompts['unified_extraction'] ?? '';
-    systemPrompt = systemPrompt.replaceAll('{{contextStr}}', contextStr ?? '').replaceAll('{{schema}}', schema);
+    systemPrompt = systemPrompt
+        .replaceAll('{{contextStr}}', contextStr ?? '')
+        .replaceAll('{{schema}}', schema)
+        .replaceAll('{{imageRules}}', hasImage ? imageRulesText : '')
+        .replaceAll('{{outputFormat}}', hasImage ? imageOutputFormat : textOutputFormat)
+        .replaceAll('{{imageExamples}}', hasImage ? imageExamplesText : '');
 
     dynamic requestBody;
 

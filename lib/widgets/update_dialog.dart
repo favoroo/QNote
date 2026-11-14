@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:qnote_flutter/core/network/update_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/utils/app_installer.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
@@ -278,7 +279,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     value: _totalBytes > 0 ? _progress.clamp(0.0, 1.0) : null,
                     minHeight: 8,
                     backgroundColor: colorScheme.surfaceContainerHighest,
-                    valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                    valueColor: AlwaysStoppedAnimation<Color>(theme.accentInk),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -287,10 +288,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   children: [
                     Text(
                       _totalBytes > 0 ? '${(_progress * 100).toStringAsFixed(1)}%' : '下载中',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: theme.textTheme.labelMedium?.copyWith(color: theme.accentInk, fontWeight: FontWeight.bold),
                     ),
                     Text(
                       _totalBytes > 0
@@ -309,12 +307,12 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.speed_rounded, size: 14, color: colorScheme.primary.withValues(alpha: 0.8)),
+                            Icon(Icons.speed_rounded, size: 14, color: theme.accentInk.withValues(alpha: 0.8)),
                             const SizedBox(width: 4),
                             Text(
                               _formatSpeed(_speedBytesPerSec),
                               style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.primary,
+                                color: theme.accentInk,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -396,7 +394,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         h3: TextStyle(color: colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
                         listBullet: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13, height: 1.6),
                         strong: TextStyle(color: colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
-                        a: TextStyle(color: colorScheme.primary, fontSize: 13, decoration: TextDecoration.underline),
+                        a: TextStyle(color: theme.accentInk, fontSize: 13, decoration: TextDecoration.underline),
                         code: TextStyle(
                           color: colorScheme.onSurfaceVariant,
                           backgroundColor: colorScheme.surfaceContainerHighest,
@@ -531,7 +529,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   AppInstaller.openInBrowser(widget.updateInfo.originalDownloadUrl);
                 },
                 style: TextButton.styleFrom(
-                  foregroundColor: colorScheme.primary,
+                  foregroundColor: Theme.of(context).accentInk,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
                 child: const Text('浏览器下载'),

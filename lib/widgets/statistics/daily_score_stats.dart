@@ -7,6 +7,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
 import 'package:qnote_flutter/core/storage/daily_score_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -349,7 +350,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.insights, size: 48, color: theme.colorScheme.primary),
+                                      Icon(Icons.insights, size: 48, color: theme.accentInk),
                                       const SizedBox(height: 16),
                                       const Text(
                                         '今日表现',

@@ -14,18 +14,23 @@ import android.widget.RemoteViews
  * 快捷记录桌面组件。
  *
  * 视觉规则（改动前请先读完）：
- * - 整个组件就是一块主色，纯色无渐变；外轮廓统一用 radius=999dp 的胶囊 shape，
- *   系统按短边裁切，所以横条是胶囊、1×1 与方块是正圆，不会出现圆角矩形与圆形混用。
- * - 组件里所有按钮容器都是正圆，颜色只有两种：白色实心（主操作）、半透明白（次级）。
- * - 主操作圆本身就是入口，不再额外放一支笔按钮——提示旁边再放笔是重复表达。
- * - 文字固定为「记一下」，只有横条与较高的方块出现，其余尺寸只留图形。
+ * - 极简曜石黑体系：深黑表面 + 1dp 微亮发丝描边，浅/深色壁纸下均保持清晰轮廓。
+ * - 纯图标、无文字，所有按钮一律正圆：柔白大圆 = 主操作（记一条），
+ *   深炭灰微描边圆 = 相册 / 相机，靠尺寸分级与偏置（左大右双 / 上大下双）建立主次。
+ * - 长条形态不再把按钮拉成撑满整条的胶囊，而是让胶囊坞只包住三颗圆钮并整体居中，
+ *   两侧留白就是留白，视觉上是悬浮工具条而不是被拉长的色块。
  *
- * RemoteViews 不能自适应，所以按 launcher 给出的 dp 尺寸切换五套布局：
- * - 1×1            → 主色圆 + 白色笔（button）
- * - 1 行高          → 胶囊横条：提示 + 相册 / 相机（bar）
- * - 1 格宽的高格    → 竖向胶囊：主操作圆，够高再向下长出相册 / 相机（tall）
- * - 宽而矮的方块    → 一排圆钮：主操作圆 + 相册 / 相机（wide）
- * - 其余方块        → 胶囊/圆：主操作圆 + 提示 + 操作排（card）
+ * RemoteViews 不能自适应，所以按 launcher 给出的 dp 尺寸切换九套布局：
+ * - 1×1              → 60dp 黑色正圆 + 柔白笔（button）
+ * - 2×1              → 60dp 黑胶囊：46 / 38 / 38dp 三颗紧凑正圆均分（bar_small）
+ * - 3~4×1            → 68dp 黑胶囊：56 / 48 / 48dp 三颗正圆均分（bar）
+ * - 1 格宽的高格      → 竖胶囊容器：三颗正圆纵向均分（tall）
+ * - 2×2              → 28dp 圆角黑卡片：上 84dp 大圆 + 下两颗 52dp 圆（card）
+ * - 2×3 / 2×4        → 28dp 圆角黑卡片：上 96dp 大圆 + 下两颗 64dp 圆（panel_narrow）
+ * - 3×2              → 28dp 圆角黑卡片：左 112dp 大圆 + 右两颗 64dp 圆（wide_small）
+ * - 4×2              → 28dp 圆角黑卡片：左 136dp 大圆 + 右两颗 68dp 圆（wide）
+ * - 3×3              → 28dp 圆角黑卡片：左 112dp 大圆 + 右两颗 72dp 圆（panel）
+ * - 4×3 / 4×4        → 28dp 圆角黑卡片：左 160dp 大圆 + 右两颗 92dp 圆（panel_large）
  */
 class QuickRecordWidgetProvider : AppWidgetProvider() {
 
@@ -33,12 +38,12 @@ class QuickRecordWidgetProvider : AppWidgetProvider() {
         // 布局切换阈值（dp）。尺寸来自 AppWidgetManager 的 min/max 宽高，见 widgetSize()。
         private const val SMALL_MAX = 100
         private const val ONE_ROW_MAX = 100
-        private const val WIDE_MIN_WIDTH = 170
-        private const val WIDE_MAX_HEIGHT = 160
-        private const val BAR_ACTIONS_MIN_WIDTH = 150
+        private const val BAR_LARGE_MIN_WIDTH = 230
         private const val TALL_ACTIONS_MIN_HEIGHT = 150
-        private const val CARD_ACTIONS_MIN_HEIGHT = 110
-        private const val CARD_HINT_MIN_HEIGHT = 160
+        private const val PANEL_MIN_HEIGHT = 240
+        private const val PANEL_MIN_WIDTH = 240
+        private const val WIDE_LARGE_MIN_WIDTH = 300
+        private const val WIDE_MIN_WIDTH = 220
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -67,14 +72,19 @@ class QuickRecordWidgetProvider : AppWidgetProvider() {
         val layout = pickLayout(size.first, size.second)
         val views = RemoteViews(context.packageName, layout)
 
-        // 所有布局的根 id 一致：点色块任意空白都打开输入弹窗。
+        // 所有布局的根 id 一致：点组件任意空白都打开输入弹窗。
         views.setOnClickPendingIntent(R.id.widget_quick_record_root, pendingIntent(context, "input", appWidgetId))
 
         when (layout) {
-            R.layout.widget_quick_record -> bindBar(views, context, appWidgetId, size.first)
-            R.layout.widget_quick_record_wide -> bindWide(views, context, appWidgetId, size.first)
+            R.layout.widget_quick_record -> bindBar(views, context, appWidgetId)
+            R.layout.widget_quick_record_bar_small -> bindBar(views, context, appWidgetId)
+            R.layout.widget_quick_record_wide -> bindWide(views, context, appWidgetId)
+            R.layout.widget_quick_record_wide_small -> bindWide(views, context, appWidgetId)
+            R.layout.widget_quick_record_panel -> bindPanel(views, context, appWidgetId)
+            R.layout.widget_quick_record_panel_large -> bindPanel(views, context, appWidgetId)
+            R.layout.widget_quick_record_panel_narrow -> bindPanel(views, context, appWidgetId)
             R.layout.widget_quick_record_tall -> bindTall(views, context, appWidgetId, size.second)
-            R.layout.widget_quick_record_card -> bindCard(views, context, appWidgetId, size.second)
+            R.layout.widget_quick_record_card -> bindCard(views, context, appWidgetId)
             // button 形态整格一个热区，无需额外绑定
         }
 
@@ -82,65 +92,60 @@ class QuickRecordWidgetProvider : AppWidgetProvider() {
     }
 
     private fun pickLayout(width: Int, height: Int): Int = when {
-        // 1×1：整格色块 + 笔。高度也要小于一格，避免 1×2 被误判
+        // 1×1：居中黑圆 + 笔。高度也要小于一格，避免 1×2 被误判
         width < SMALL_MAX && height < SMALL_MAX -> R.layout.widget_quick_record_button
-        // 1 行高且横向更宽：胶囊横条
-        height < ONE_ROW_MAX && width >= height -> R.layout.widget_quick_record
-        // 1 格宽的高格：竖向胶囊
+        // 1 行高：2 列用紧凑三圆条，3~4 列用标准三圆条
+        height < ONE_ROW_MAX && width >= height ->
+            if (width >= BAR_LARGE_MIN_WIDTH) R.layout.widget_quick_record else R.layout.widget_quick_record_bar_small
+        // 1 格宽的高格：竖胶囊容器 + 三颗正圆
         width < SMALL_MAX -> R.layout.widget_quick_record_tall
-        // 宽而矮的方块（3×2、4×2）：高度不够上下堆叠，改成一排圆钮
-        width >= WIDE_MIN_WIDTH && height < WIDE_MAX_HEIGHT -> R.layout.widget_quick_record_wide
-        // 其余（2×2、2×3、2×4、3×3、4×3、4×4…）用大色块
+        // 高卡片（2×3、2×4）：纵向大圆 + 双圆
+        height >= PANEL_MIN_HEIGHT && width < PANEL_MIN_WIDTH -> R.layout.widget_quick_record_panel_narrow
+        // 高卡片（4×3、4×4）：大号「左大圆 + 右双圆」
+        height >= PANEL_MIN_HEIGHT && width >= WIDE_LARGE_MIN_WIDTH -> R.layout.widget_quick_record_panel_large
+        // 高卡片（3×3）：「左大圆 + 右双圆」标准号
+        height >= PANEL_MIN_HEIGHT -> R.layout.widget_quick_record_panel
+        // 宽卡片（4×2）：大号「左大圆 + 右双圆」
+        width >= WIDE_LARGE_MIN_WIDTH -> R.layout.widget_quick_record_wide
+        // 宽卡片（3×2）：标准号「左大圆 + 右双圆」
+        width >= WIDE_MIN_WIDTH -> R.layout.widget_quick_record_wide_small
+        // 2×2：纵向大圆 + 双圆
         else -> R.layout.widget_quick_record_card
     }
 
-    private fun bindWide(views: RemoteViews, context: Context, appWidgetId: Int, width: Int) {
+    private fun bindWide(views: RemoteViews, context: Context, appWidgetId: Int) {
         views.setOnClickPendingIntent(R.id.qr_wide_primary, pendingIntent(context, "input", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_wide_photo, pendingIntent(context, "photo", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_wide_camera, pendingIntent(context, "camera", appWidgetId))
-
-        // 3 列宽只有约 180dp，主操作圆 + 两颗圆钮已经占满；4 列宽才在中间补「记一下」。
-        views.setViewVisibility(
-            R.id.qr_wide_hint,
-            if (width >= 230) View.VISIBLE else View.GONE
-        )
     }
 
-    private fun bindBar(views: RemoteViews, context: Context, appWidgetId: Int, width: Int) {
-        // 2 列宽只有约 120dp，提示 + 两颗圆钮会互相挤压；3 列宽起才露出快捷按钮。
-        val showActions = width >= BAR_ACTIONS_MIN_WIDTH
-        views.setViewVisibility(R.id.qr_bar_photo, if (showActions) View.VISIBLE else View.GONE)
-        views.setViewVisibility(R.id.qr_bar_camera, if (showActions) View.VISIBLE else View.GONE)
+    private fun bindPanel(views: RemoteViews, context: Context, appWidgetId: Int) {
+        views.setOnClickPendingIntent(R.id.qr_panel_primary, pendingIntent(context, "input", appWidgetId))
+        views.setOnClickPendingIntent(R.id.qr_panel_photo, pendingIntent(context, "photo", appWidgetId))
+        views.setOnClickPendingIntent(R.id.qr_panel_camera, pendingIntent(context, "camera", appWidgetId))
+    }
+
+    private fun bindBar(views: RemoteViews, context: Context, appWidgetId: Int) {
+        views.setOnClickPendingIntent(R.id.qr_bar_primary, pendingIntent(context, "input", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_bar_photo, pendingIntent(context, "photo", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_bar_camera, pendingIntent(context, "camera", appWidgetId))
     }
 
     private fun bindTall(views: RemoteViews, context: Context, appWidgetId: Int, height: Int) {
-        // 主操作圆是唯一入口：点它、点胶囊任意位置都打开输入弹窗。
         views.setOnClickPendingIntent(R.id.qr_tall_primary, pendingIntent(context, "input", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_tall_photo, pendingIntent(context, "photo", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_tall_camera, pendingIntent(context, "camera", appWidgetId))
 
-        // 1×2 只有约 120dp 高，三颗圆叠起来会挤到贴边；够高才露出次级按钮。
+        // 极矮的竖格（不足 150dp）只留主白圆；够高才露出两颗次级圆。
         val showActions = height >= TALL_ACTIONS_MIN_HEIGHT
         views.setViewVisibility(R.id.qr_tall_photo, if (showActions) View.VISIBLE else View.GONE)
         views.setViewVisibility(R.id.qr_tall_camera, if (showActions) View.VISIBLE else View.GONE)
     }
 
-    private fun bindCard(views: RemoteViews, context: Context, appWidgetId: Int, height: Int) {
+    private fun bindCard(views: RemoteViews, context: Context, appWidgetId: Int) {
         views.setOnClickPendingIntent(R.id.qr_card_primary, pendingIntent(context, "input", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_card_photo, pendingIntent(context, "photo", appWidgetId))
         views.setOnClickPendingIntent(R.id.qr_card_camera, pendingIntent(context, "camera", appWidgetId))
-
-        // 2×2 只够「主操作圆 + 一排圆钮」；更高的方块才补一句「记一下」。
-        views.setViewVisibility(
-            R.id.qr_card_actions,
-            if (height >= CARD_ACTIONS_MIN_HEIGHT) View.VISIBLE else View.GONE
-        )
-        views.setViewVisibility(
-            R.id.qr_card_hint,
-            if (height >= CARD_HINT_MIN_HEIGHT) View.VISIBLE else View.GONE
-        )
     }
 
     /**

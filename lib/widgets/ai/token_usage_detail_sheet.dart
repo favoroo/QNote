@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/token_usage_format.dart';
@@ -144,7 +145,6 @@ class TokenUsageDetailView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     if (!detail.hasData) {
       return _EmptyState(period: detail.period);
     }
@@ -181,11 +181,6 @@ class TokenUsageDetailView extends StatelessWidget {
             item: detail.models[i],
             totalTokens: total,
           ),
-        const SizedBox(height: 16),
-        Text(
-          '本机数据不参与云同步；仅统计服务端返回的 usage。',
-          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-        ),
       ],
     );
   }
@@ -225,7 +220,7 @@ class _SummaryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.primary.withValues(alpha: tintAlpha),
         borderRadius: BorderRadius.circular(AppRadius.medium),
-        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.18)),
+        border: Border.all(color: theme.accentInk.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,7 +357,7 @@ class _RankRow extends StatelessWidget {
               textAlign: TextAlign.center,
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: rank <= 3 ? colorScheme.primary : colorScheme.outline,
+                color: rank <= 3 ? theme.accentInk : colorScheme.outline,
               ),
             ),
           ),
@@ -401,7 +396,7 @@ class _RankRow extends StatelessWidget {
                     value: share.clamp(0.0, 1.0),
                     minHeight: 6,
                     backgroundColor: colorScheme.surfaceContainerHighest,
-                    valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                    valueColor: AlwaysStoppedAnimation<Color>(theme.accentInk),
                   ),
                 ),
                 const SizedBox(height: 4),

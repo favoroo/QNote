@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,6 +12,7 @@ import 'package:qnote_flutter/core/ai/builtin_provider.dart';
 import 'package:qnote_flutter/core/ai/model_vision_capability.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/ai_account_routing.dart';
 import 'package:qnote_flutter/models/ai_config.dart';
@@ -615,12 +618,15 @@ class AiConfigPageState extends ConsumerState<AiConfigPage> {
   }
 
   Widget _badge(ThemeData theme, String text, Color color) {
+    // 淡底 + 同色文字的胶囊：底色用传入色，文字必须按「贴在自身淡底上的可读前景」压深，
+    // 否则同色系主题色背景下文字与淡底一起融进卡片（原来的 color 直接用会看不见）。
+    final ink = AppContrast.inkOnTint(color, theme.cardColor, 0.1);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
       child: Text(
         text,
-        style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
+        style: theme.textTheme.labelSmall?.copyWith(color: ink, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -685,7 +691,7 @@ class AiConfigPageState extends ConsumerState<AiConfigPage> {
                   ? Icons.auto_awesome_motion_rounded
                   : Icons.image_outlined,
               size: 20,
-              color: isAssistant ? colorScheme.primary : Colors.purple.shade400,
+              color: isAssistant ? theme.accentInk : Colors.purple.shade400,
             ),
             const SizedBox(width: 12),
             Expanded(

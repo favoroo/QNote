@@ -5,7 +5,24 @@ import 'package:qnote_flutter/core/theme/app_contrast.dart';
 /// 背景预设。
 ///
 /// 索引用于 SharedPreferences 持久化，只能追加，不能调整既有顺序。
-enum AppBackgroundPreset { system, light, dark, oled, accent, custom }
+enum AppBackgroundPreset { system, light, dark, oled, accent, custom, paper, mist, pine }
+
+/// 背景预设的展示顺序（与枚举索引解耦）。
+///
+/// 枚举索引是持久化键、只能追加，新增的纯色背景会排在 `custom` 之后；
+/// 但设置页希望第 9 格仍是可打开拾色器的「自定义」，所以这里单独给出
+/// 视觉顺序，并按明暗分组排列（浅色一行 / 深色一行 / 特殊一行）。
+const List<AppBackgroundPreset> backgroundPresetDisplayOrder = [
+  AppBackgroundPreset.light,
+  AppBackgroundPreset.paper,
+  AppBackgroundPreset.mist,
+  AppBackgroundPreset.dark,
+  AppBackgroundPreset.oled,
+  AppBackgroundPreset.pine,
+  AppBackgroundPreset.system,
+  AppBackgroundPreset.accent,
+  AppBackgroundPreset.custom,
+];
 
 /// 背景设置：预设 + 自定义颜色。
 @immutable
@@ -23,7 +40,9 @@ class AppBackgroundSetting {
 
   /// 当前槽位实际生效的画布色。
   ///
-  /// 主题色/自定义色与强调色过近时会自动偏移，避免背景和按钮/图标融在一起。
+  /// 画布始终等于用户所选颜色本身：主题色背景就是强调色原色、自定义背景就是所选色，
+  /// 不做任何压暗/提亮。背景与按钮过近时，微调的是按钮那侧的强调色（见 [AppTheme]），
+  /// 这样用户看到的底色和他选的颜色完全一致。
   Color resolveCanvas({required Color accentColor, required Brightness platformBrightness}) {
     switch (preset) {
       case AppBackgroundPreset.system:
@@ -36,10 +55,16 @@ class AppBackgroundSetting {
         return AppSurfacePalette.legacyDark.canvas;
       case AppBackgroundPreset.oled:
         return const Color(0xFF000000);
+      case AppBackgroundPreset.paper:
+        return const Color(0xFFF3E8D8);
+      case AppBackgroundPreset.mist:
+        return const Color(0xFFD6E4F0);
+      case AppBackgroundPreset.pine:
+        return const Color(0xFF0E2A22);
       case AppBackgroundPreset.accent:
-        return ensureAccentGap(accentColor, accentColor);
+        return accentColor;
       case AppBackgroundPreset.custom:
-        return ensureAccentGap(customColor, accentColor);
+        return customColor;
     }
   }
 
@@ -57,6 +82,9 @@ class AppBackgroundSetting {
       case AppBackgroundPreset.oled:
       case AppBackgroundPreset.accent:
       case AppBackgroundPreset.custom:
+      case AppBackgroundPreset.paper:
+      case AppBackgroundPreset.mist:
+      case AppBackgroundPreset.pine:
         final canvas = resolveCanvas(accentColor: accentColor, platformBrightness: platformBrightness);
         return AppSurfacePalette.derived(canvas);
     }
@@ -76,6 +104,9 @@ class AppBackgroundSetting {
         return 2;
       case AppBackgroundPreset.accent:
       case AppBackgroundPreset.custom:
+      case AppBackgroundPreset.paper:
+      case AppBackgroundPreset.mist:
+      case AppBackgroundPreset.pine:
         final canvas = resolveCanvas(accentColor: accentColor, platformBrightness: Brightness.light);
         return AppContrast.onColor(canvas) == AppContrast.lightInk ? 2 : 1;
     }
@@ -89,45 +120,90 @@ class AppBackgroundSetting {
   int get hashCode => Object.hash(preset, customColor.toARGB32());
 }
 
-/// 保证背景与强调色至少保持 [minRatio] 的 WCAG 对比度。
+/// 把 [color] 沿同色系微调，直到它与 [against] 至少保持 [minRatio] 的对比度。
 ///
-/// 用于「主题色背景」「自定义色恰好等于主题色」等场景：朝黑/朝白两个方向逐级尝试，
-/// 取调整量更小的一侧，尽量保留原色相与明度，只做「一点点偏差」。
-Color ensureAccentGap(Color background, Color accent, {double minRatio = 1.3}) {
-  if (AppContrast.contrastRatio(background, accent) >= minRatio) {
-    return background;
+/// 用于「背景切成了主题色/自定义色，而按钮、开关、选中态恰好也是这个颜色」的场景：
+/// 在 HSL 空间保持色相并轻微收回一点饱和度（与 [_liftSurface] 同路），优先朝亮端
+/// 抬升明度，避免往纯黑混色时把高饱和黄/绿/橙压成发灰发脏的泥巴色；只有画布
+/// 本身接近纯白、亮端空间不够时才朝暗端收敛。
+///
+/// 注意调的是**第一个参数**（要移动的那个色），调用方传入的是强调色、参照物是画布；
+/// 画布本身始终等于用户所选颜色，不会因为「避免按钮融进背景」而整页变暗。
+Color ensureAccentGap(Color color, Color against, {double minRatio = 1.18}) {
+  if (AppContrast.contrastRatio(color, against) >= minRatio) {
+    return color;
   }
-  const step = 0.02;
-  for (var t = step; t <= 1.0; t += step) {
-    Color? candidate;
-    for (final target in const [Colors.black, Colors.white]) {
-      final adjusted = Color.lerp(background, target, t)!;
-      if (AppContrast.contrastRatio(adjusted, accent) >= minRatio) {
-        candidate = adjusted;
-        break;
-      }
-    }
-    if (candidate != null) {
+  final h = HSLColor.fromColor(color);
+  final saturation = (h.saturation * 0.96).clamp(0.0, 1.0);
+  const step = 0.005;
+
+  // 优先朝亮端抬升：亮色系保持通透鲜亮，不会混黑变脏
+  for (var i = 1; i <= 200; i++) {
+    final lightness = (h.lightness + i * step).clamp(0.0, 1.0);
+    final candidate = h.withLightness(lightness).withSaturation(saturation).toColor();
+    if (AppContrast.contrastRatio(candidate, against) >= minRatio) {
       return candidate;
     }
+    if (lightness >= 1.0) {
+      break;
+    }
   }
-  // 黑白中总有一侧能把对比度拉到 1.3 以上，这里只是兜底
-  return AppContrast.onColor(accent);
+
+  // 画布接近纯白时亮端余量不足，改为沿同色系朝暗端压低
+  for (var i = 1; i <= 200; i++) {
+    final lightness = (h.lightness - i * step).clamp(0.0, 1.0);
+    final candidate = h.withLightness(lightness).withSaturation(saturation).toColor();
+    if (AppContrast.contrastRatio(candidate, against) >= minRatio) {
+      return candidate;
+    }
+    if (lightness <= 0.0) {
+      break;
+    }
+  }
+
+  // 极端边界兜底
+  return AppContrast.onColor(against);
 }
+
+/// 主题里按钮/FAB/开关实际使用的强调色。
+///
+/// 画布始终等于用户所选颜色；只有派生背景（主题色/自定义/OLED）下画布与强调色
+/// 过近时，才把**按钮这一侧**推开一档，保证控件可见。legacy 主题保持原色。
+///
+/// 预览组件与主题必须走同一个函数，否则设置页看到的小圆点和真实按钮会对不上。
+Color resolvePrimaryAccent(Color accentColor, AppSurfacePalette palette) =>
+    palette.isLegacy ? accentColor : ensureAccentGap(accentColor, palette.canvas);
+
+/// 卡片表面与画布的目标对比度。
+///
+/// 对齐纯黑画布（`#000000` 叠 7% 白 → `#121212`）的实测值：卡片只比画布亮「一丝」，
+/// 既能靠明度差分层，又不会让用户觉得顶栏/卡片是另一种颜色。纯白画布因为已经到顶
+/// 无法再提亮，才会退化成同色（只靠描边区分）。
+const double _surfaceContrast = 1.12;
 
 /// 把画布色朝白「提亮成卡片表面色」，同时保住原色相。
 ///
 /// 早先的实现直接叠 55% 白，饱和的中亮度底色会被冲成灰米色（实测黄绿 `#B3CB41`
-/// 变成 `#DDE8AA`，看起来像换了个颜色）。这里改在 HSL 空间只抬明度：按剩余空间
-/// 比例抬升，越亮的底抬得越少，并轻微降一点饱和避免高亮后刺眼，色相保持不变。
+/// 变成 `#DDE8AA`，看起来像换了个颜色）。这里改在 HSL 空间只抬明度：
+/// 按目标对比度二分反解明度，无论画布深浅，卡片与画布的明度差都保持一致，
+/// 色相完全不变，饱和度轻微回收一点避免高亮后发荧光。
 Color _liftSurface(Color canvas) {
   final h = HSLColor.fromColor(canvas);
-  // 剩余空间比例抬升：中间亮度底抬得多、已经很亮的底几乎不动，避免过曝成白。
-  // 0.30 是「卡片能看出层次」与「不跑色」的折中：黄绿 #B3CB41 抬到 #C7D77E，
-  // 仍明显是同色系；再大就开始发白，再小则卡片和画布几乎分不开。
-  final lift = 0.30 * (1 - h.lightness);
-  final lightness = (h.lightness + lift).clamp(0.0, 0.97);
-  return h.withLightness(lightness).withSaturation((h.saturation * 0.92).clamp(0.0, 1.0)).toColor();
+  final saturation = (h.saturation * 0.96).clamp(0.0, 1.0);
+  // 明度与亮度单调相关，二分找到刚好达到目标对比度的明度
+  var low = h.lightness;
+  var high = 1.0;
+  for (var i = 0; i < 16; i++) {
+    final mid = (low + high) / 2;
+    final candidate = h.withLightness(mid).withSaturation(saturation).toColor();
+    if (AppContrast.contrastRatio(canvas, candidate) >= _surfaceContrast) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+  // 画布已经接近纯白时提不上去，落到白色（与纯白预设一致）
+  return h.withLightness(high).withSaturation(saturation).toColor();
 }
 
 /// 表面调色板：把背景色推导成 App 需要的全部中性表面与文字角色。
@@ -199,7 +275,7 @@ class AppSurfacePalette {
     final isDark = ink == AppContrast.lightInk;
     final canvasLuminance = canvas.computeLuminance();
 
-    // 表面：浅底朝白抬升（接近白底时直接白），深底只轻微抬升；
+    // 表面：浅底朝白提亮一丝（对齐纯黑画布的 1.12 对比度），深底同样只轻微抬升；
     // 抬升若把正文对比度压到 AA 以下，深色底改用轻微压暗，靠表面色差区分卡片
     Color surface;
     if (isDark) {

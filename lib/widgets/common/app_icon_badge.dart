@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 
 /// 主题色实心图标底座。
@@ -54,13 +55,22 @@ class AppIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background = backgroundColor ?? Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    // 同色系背景（主题色背景）下底座与卡片几乎同色，圆底会「消失」；
+    // 此时底座改用抬升一档的容器色——同色系但不糊，前景仍由 onColor 保证可读。
+    final sameHue = backgroundColor == null && theme.accentNeedsOutline;
+    final background = backgroundColor ?? (sameHue ? scheme.surfaceContainerHigh : scheme.primary);
     final foreground = foregroundColor ?? AppContrast.onColor(background);
     final effectiveRadius = borderRadius ?? BorderRadius.circular(size / 2);
 
     Widget badge = Material(
       color: background,
-      shape: RoundedRectangleBorder(borderRadius: effectiveRadius),
+      shape: RoundedRectangleBorder(
+        borderRadius: effectiveRadius,
+        // 同色系底座再补一圈细描边，形状边界更明确
+        side: sameHue ? BorderSide(color: scheme.outline.withValues(alpha: 0.35)) : BorderSide.none,
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,

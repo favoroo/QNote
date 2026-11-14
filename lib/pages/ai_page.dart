@@ -27,6 +27,7 @@ import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/config/defaults.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -1552,14 +1553,14 @@ class _AiPageState extends ConsumerState<AiPage> {
                                   color: primary.withValues(alpha: isDark ? 0.14 : 0.08),
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: primary.withValues(alpha: isDark ? 0.22 : 0.14),
+                                    color: theme.accentInk.withValues(alpha: isDark ? 0.22 : 0.14),
                                     width: 0.8,
                                   ),
                                 ),
                                 child: Stack(
                                   alignment: Alignment.center,
                                   children: [
-                                    LoadingRing(size: 32, strokeWidth: 1.3, color: primary),
+                                    LoadingRing(size: 32, strokeWidth: 1.3, color: theme.accentInk),
                                     Container(
                                       width: 9.5,
                                       height: 9.5,

@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/models/note.dart';
@@ -141,6 +142,21 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   bool _isSaving = false;
   String _lastSavedTitle = '';
   String _lastSavedContent = '';
+
+  /// 「已保存」提示的短暂展示窗口：保存成功后出现，稍后自动淡出。
+  ///
+  /// 这个状态不需要常驻——用户真正关心的是「保存中」和「未保存」，
+  /// 一切都存好之后还一直挂着一行字，只会占地方。
+  bool _showSavedHint = false;
+  Timer? _savedHintTimer;
+
+  /// 「保存中…」是否已经展示出来。
+  ///
+  /// 本地写库通常一两帧就结束；若在保存刚开始就把文案切到「保存中…」，
+  /// 会立刻又切到「已保存」，文字连续闪两次。延迟 120ms 再亮出来，
+  /// 快速保存直接走「未保存 → 已保存」，慢保存才看得到「保存中…」。
+  bool _showSavingStatus = false;
+  Timer? _savingStatusTimer;
 
   // Newly uploaded paths for cleanup on discard
   final List<String> _newlyUploadedPaths = [];
@@ -434,15 +450,19 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   bool get _isDirty =>
       _normalizeTitle(_titleController.text) != _lastSavedTitle || _serializeToMarkdown() != _lastSavedContent;
 
-  /// AppBar 副标题的保存状态文案
-  String get _saveStatusLabel => _isSaving ? '保存中…' : (_isDirty ? '未保存' : '已保存');
+  /// AppBar 右侧的保存状态文案；null 表示当前无需展示（已保存提示会淡出）
+  String? get _saveStatusLabel {
+    if (_isSaving && _showSavingStatus) return '保存中…';
+    if (_isDirty) return '未保存';
+    return _showSavedHint ? '已保存' : null;
+  }
 
   /// 上一帧实际渲染出来的保存状态文案。
   ///
   /// 打字本身不会重建编辑器（TextField 自己重绘），所以「已保存 → 未保存」这一跳
   /// 要主动补一次 setState；用「与上一帧渲染值比较」而不是布尔标记来判定，
   /// 因为 initState 期间的监听器回调会先把布尔标记消费掉，导致真正改动时不再刷新。
-  String _renderedSaveStatusLabel = '';
+  String? _renderedSaveStatusLabel;
 
   void _notifyDirtyVisible() {
     if (!mounted) {
@@ -459,31 +479,61 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     if (!mounted) {
       return;
     }
+    _savingStatusTimer?.cancel();
+    if (value) {
+      // 先不亮「保存中…」：本地写库很快，超过 120ms 才值得让用户看到
+      _savingStatusTimer = Timer(const Duration(milliseconds: 120), () {
+        if (!mounted || !_isSaving) return;
+        setState(() => _showSavingStatus = true);
+      });
+    }
     setState(() {
       _isSaving = value;
+      if (!value) _showSavingStatus = false;
     });
   }
 
-  /// AppBar 副标题的「保存中…/已保存/未保存」状态行
-  Widget _buildSaveStatusLine(ThemeData theme) {
+  /// 保存成功后短暂显示「已保存」再淡出，避免常驻提示变成噪音。
+  void _flashSavedHint() {
+    _savedHintTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _showSavedHint = true);
+    _savedHintTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted) setState(() => _showSavedHint = false);
+    });
+  }
+
+  /// AppBar 右侧的保存状态徽标（保存中… / 未保存 / 已保存）。
+  ///
+  /// 原先常驻占 AppBar 底下整整一行，标题区被压低，而且「已保存」在绝大多数
+  /// 时候都没有信息量。现在挪到标题右侧并固定占位宽度：出现/消失不会把标题
+  /// 挤来挤去；空闲且提示已淡出时只是一块空白。
+  Widget _buildSaveStatusBadge(ThemeData theme) {
     final label = _saveStatusLabel;
     // 记下本帧真正渲染出来的文案，供 _notifyDirtyVisible 判断要不要补一次重建
     _renderedSaveStatusLabel = label;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: AnimatedSwitcher(
-        duration: AppMotion.duration(context, AppDurations.fast),
-        child: Text(
-          label,
-          key: ValueKey<String>(label),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: _isSaving || _isDirty
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-          ),
+    return SizedBox(
+      width: 52,
+      child: Center(
+        // 状态文字切换统一走全局「淡入 + 轻微放大」过渡：比默认纯交叉淡化
+        // 更有层次，也不会出现两段文字糊在一起的重影感
+        child: AppMotion.switcher(
+          context: context,
+          baseDuration: AppDurations.normal,
+          child: label == null
+              ? const SizedBox.shrink(key: ValueKey('note-save-status-idle'))
+              : Text(
+                  label,
+                  key: ValueKey('note-save-status-$label'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: _isSaving || _isDirty
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                  ),
+                ),
         ),
       ),
     );
@@ -555,6 +605,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
       _lastSavedContent = content;
     }
     _setSaving(false);
+    if (saved) {
+      // 「已保存」只在落库成功后短暂亮一下，不常驻
+      _flashSavedHint();
+    }
     // 旧图物理删除挪到写库成功之后：原先在退出时先删图再保存，
     // 保存一失败笔记就会引用到已经被删掉的文件
     if (saved) {
@@ -634,6 +688,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _qContainer?.read(floatingQProvider.notifier).popOverlayContext(_qContext);
     _hideHeadingMenu();
     _autoSaveTimer?.cancel();
+    _savedHintTimer?.cancel();
+    _savingStatusTimer?.cancel();
     _historyTimer?.cancel();
     _titleController.dispose();
     _scrollController.dispose();
@@ -1315,8 +1371,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
-          // 保存状态常驻可见：原来 _isSaving 只当重入锁用，用户完全看不出内容存没存上
-          bottom: PreferredSize(preferredSize: const Size.fromHeight(20), child: _buildSaveStatusLine(theme)),
+          // 标题按整条工具栏居中：保存状态固定在右侧后，不能让它把标题往左挤
+          centerTitle: true,
           leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack),
           title: TextField(
             controller: _titleController,
@@ -1331,6 +1387,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             ),
           ),
           actions: [
+            // 保存状态：只在保存中/未保存/刚保存成功时出现，不常驻
+            _buildSaveStatusBadge(theme),
             // JSON 笔记：一键格式化缩进
             if (_fileType == NoteFileType.json)
               IconButton(icon: const Icon(Icons.data_object), onPressed: _formatJson, tooltip: '格式化 JSON'),
@@ -1362,6 +1420,16 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                 duration: AppMotion.duration(context, AppDurations.normal),
                 switchInCurve: AppCurves.emphasized,
                 switchOutCurve: AppCurves.exit,
+                // 默认 layoutBuilder 为 center 对齐且约束 loose，正文不足一屏时
+                // 滚动区会收缩高度后整体垂直居中，顶部空出大片空白；
+                // 改为撑满 + 顶部对齐，短笔记贴顶显示（同 statistics_page 的处理）
+                layoutBuilder: (currentChild, previousChildren) {
+                  return Stack(
+                    alignment: Alignment.topCenter,
+                    fit: StackFit.expand,
+                    children: [...previousChildren, ?currentChild],
+                  );
+                },
                 child: KeyedSubtree(
                   key: ValueKey(_isPreviewActive ? 'preview' : 'editor'),
                   child: _isPreviewActive ? _buildPreviewBody(theme) : _buildEditorBody(theme),
@@ -1478,7 +1546,7 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         // 悬停高亮：primary 描边包裹目标段，提示松手后图片将插入到该段之前
         return Container(
           decoration: BoxDecoration(
-            border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.6), width: 2),
+            border: Border.all(color: theme.accentInk.withValues(alpha: 0.6), width: 2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: child,

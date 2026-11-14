@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -438,7 +439,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                         },
                         child: Text(
                           isCurrentFolderAllSelected ? '取消全选' : '全选',
-                          style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Theme.of(context).accentInk, fontWeight: FontWeight.bold),
                         ),
                       )
                     : Row(
@@ -1047,18 +1048,16 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   return ListTile(
                     leading: Icon(
                       isCurrent ? Icons.folder : Icons.folder_outlined,
-                      color: isCurrent ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                      color: isCurrent ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
                     ),
                     title: Text(
                       f.name,
                       style: TextStyle(
                         fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                        color: isCurrent ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                        color: isCurrent ? theme.accentInk : theme.colorScheme.onSurface,
                       ),
                     ),
-                    trailing: isCurrent
-                        ? Text('当前分类', style: TextStyle(fontSize: 12, color: theme.colorScheme.primary))
-                        : null,
+                    trailing: isCurrent ? Text('当前分类', style: TextStyle(fontSize: 12, color: theme.accentInk)) : null,
                     onTap: () {
                       Navigator.pop(ctx);
                       if (!isCurrent) {

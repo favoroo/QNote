@@ -1,56 +1,96 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  快捷记录 · 1 行高横条（2×1 ～ 4×1）：整条是一颗主色胶囊。
-  只放一句「记一下」+ 右侧两颗半透明白圆（相册 / 相机）。不再放笔图标：
-  整条本身就是输入入口，再摆一支笔是重复表达。
-  2 列宽只有约 120dp，放不下按钮，provider 会把两颗按钮隐藏，只留提示。
+  快捷记录 · 3~4 列宽 1 行条（3×1 / 4×1）：整条黑胶囊容器 + 三格等分正圆坞。
+  黑色胶囊铺满整条作为组件表面（不会被误读成被拉长的按钮），
+  内部三颗正圆按钮各占 weight=1 的一格居中：宽条是均匀分布的工具条。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_quick_record_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget_qr_pill"
+    android:background="@android:color/transparent"
     android:contentDescription="@string/widget_quick_record_action">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="68dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_widget_qr_pill"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="7dp">
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
 
-        <TextView
-            android:id="@+id/qr_bar_hint"
+        <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="记一下"
-            android:textColor="@color/widget_qr_on_accent"
-            android:textSize="13sp" />
+            android:gravity="center"
+            android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/qr_bar_photo"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/bg_widget_qr_scrim"
-            android:contentDescription="选择相册图片"
-            android:padding="7dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_widget_gallery_white" />
+            <FrameLayout
+                android:id="@+id/qr_bar_primary"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_widget_qr_solid_circle"
+                android:contentDescription="@string/widget_quick_record_action">
 
-        <ImageButton
-            android:id="@+id/qr_bar_camera"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/bg_widget_qr_scrim"
-            android:contentDescription="启动相机拍照"
-            android:padding="7dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_widget_camera_white" />
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_pen_accent" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:id="@+id/qr_bar_photo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_widget_qr_secondary_circle"
+                android:contentDescription="选择相册图片">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_gallery_white" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:id="@+id/qr_bar_camera"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_widget_qr_secondary_circle"
+                android:contentDescription="启动相机拍照">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_widget_camera_white" />
+            </FrameLayout>
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>

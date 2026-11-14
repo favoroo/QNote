@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/image_model_detection.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
@@ -353,7 +354,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                         ),
                         title: Text(
                           group.name,
-                          style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? colorScheme.primary : null),
+                          style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? theme.accentInk : null),
                         ),
                         subtitle: Text(
                           live == 0 ? '${group.strategy.label} · 模型均已停用' : '$live 个模型 · ${group.strategy.label}',
@@ -361,7 +362,7 @@ class _ModelPickerSheetState extends State<ModelPickerSheet> {
                             color: live == 0 ? colorScheme.error : colorScheme.onSurfaceVariant,
                           ),
                         ),
-                        trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: colorScheme.primary) : null,
+                        trailing: isSelected ? Icon(Icons.check_rounded, size: 20, color: theme.accentInk) : null,
                         onTap: () => Navigator.of(context).pop(ModelPickerResult(ref)),
                       );
                     }),

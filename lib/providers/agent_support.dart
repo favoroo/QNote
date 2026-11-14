@@ -142,13 +142,13 @@ Future<String> buildBaseDynamicContext({List<String> extraSections = const [], Q
           (userProfile.birthday != null && userProfile.birthday!.isNotEmpty))) {
     final Map<String, dynamic> enrichedProfile = {
       'id': userProfile.id,
-      'name': userProfile.name,
-      'nickname': userProfile.nickname,
-      'birthday': userProfile.birthday,
-      'height': userProfile.height,
-      'gender': userProfile.gender,
-      'otherInfo': userProfile.otherInfo,
-      'customFields': userProfile.customFields,
+      if (userProfile.name != null && userProfile.name!.isNotEmpty) 'name': userProfile.name,
+      if (userProfile.nickname != null && userProfile.nickname!.isNotEmpty) 'nickname': userProfile.nickname,
+      if (userProfile.birthday != null && userProfile.birthday!.isNotEmpty) 'birthday': userProfile.birthday,
+      if (userProfile.height != null) 'height': userProfile.height,
+      if (userProfile.gender != null && userProfile.gender!.isNotEmpty) 'gender': userProfile.gender,
+      if (userProfile.otherInfo != null && userProfile.otherInfo!.isNotEmpty) 'otherInfo': userProfile.otherInfo,
+      if (userProfile.customFields.isNotEmpty) 'customFields': userProfile.customFields,
     };
 
     if (userProfile.birthday != null && userProfile.birthday!.isNotEmpty) {
@@ -163,7 +163,8 @@ Future<String> buildBaseDynamicContext({List<String> extraSections = const [], Q
       enrichedProfile['latestWeight'] = sortedWeights.first.weight;
     }
 
-    buffer.writeln('- 用户资料: ${const JsonEncoder.withIndent('  ').convert(enrichedProfile)}');
+    // 过滤空字段并用紧凑单行 JSON 输出，减少上下文 token 浪费
+    buffer.writeln('- 用户资料: ${jsonEncode(enrichedProfile)}');
   }
 
   // 小Q长期记忆（对齐 Hermes 冻结快照语义：仅在对话开始时读取注入一次，

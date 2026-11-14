@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/config/app_changelog.dart';
 import 'package:qnote_flutter/config/app_version.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 class ChangelogPage extends StatelessWidget {
   const ChangelogPage({super.key});
@@ -43,9 +44,7 @@ class ChangelogPage extends StatelessWidget {
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isCurrent
-              ? colorScheme.primary.withValues(alpha: 0.4)
-              : colorScheme.outlineVariant.withValues(alpha: 0.3),
+          color: isCurrent ? theme.accentInk.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.3),
         ),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),

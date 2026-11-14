@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
+
 /// 极简缺口圆环匀速旋转加载动画（LoadingRing）
 ///
 /// 遵循 loading-ui.com 的 Ring 设计：
@@ -87,7 +89,7 @@ class _LoadingRingState extends State<LoadingRing> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = widget.color ?? Theme.of(context).colorScheme.primary;
+    final effectiveColor = widget.color ?? Theme.of(context).accentInk;
     final progress = widget.progress;
 
     // 确定进度：画一整圈极淡底轨 + 一段进度弧，不再旋转

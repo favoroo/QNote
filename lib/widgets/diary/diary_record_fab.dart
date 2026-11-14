@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -34,10 +35,11 @@ class DiaryRecordFabStyle {
     if (compact) {
       // 时间线节点行里的小圆钮：实心主色 + 轻辉光，和 1px 选中线同色，
       // 一眼就能看出「在这条线上记录」。它同时是记录面板容器变形的起点。
+      final needsOutline = AppContrast.contrastRatio(scheme.primary, theme.scaffoldBackgroundColor) < 1.35;
       return DiaryRecordFabStyle(
         background: scheme.primary,
         foreground: scheme.onPrimary,
-        border: null,
+        border: needsOutline ? Border.all(color: scheme.outlineVariant, width: 1.0) : null,
         boxShadow: [
           BoxShadow(color: scheme.primary.withValues(alpha: 0.28), blurRadius: 10, offset: const Offset(0, 3)),
         ],
@@ -49,9 +51,9 @@ class DiaryRecordFabStyle {
       // 直接拿它铺底等于给时间线开了扇窗——底下滚过的文字会透上来，和胶囊里的
       // 时间叠在一起。先把它混到不透明的 surface 上，色调不变但彻底挡住背后。
       // 选中态用主色容器而不是主色实心：它是过渡状态，不该和右侧实心的智能提取
-      // 按钮抢同样的视觉重量。
+      // 按钮抢同样的视觉重量；文字/圆点走 onPrimaryContainer，在同色系背景上仍可读。
       background: hasSelection ? Color.alphaBlend(scheme.primaryContainer, scheme.surface) : scheme.surface,
-      foreground: hasSelection ? scheme.primary : scheme.onSurfaceVariant,
+      foreground: hasSelection ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
       border: hasSelection ? null : Border.all(color: scheme.outlineVariant, width: 1.5),
       boxShadow: [
         BoxShadow(
@@ -60,7 +62,7 @@ class DiaryRecordFabStyle {
           offset: const Offset(0, 3),
         ),
       ],
-      dotColor: hasSelection ? scheme.primary : scheme.tertiary,
+      dotColor: hasSelection ? scheme.onPrimaryContainer : scheme.tertiary,
     );
   }
 }
@@ -398,6 +400,7 @@ class _DiaryInlineRecordButtonState extends State<DiaryInlineRecordButton> {
                   decoration: BoxDecoration(
                     color: style.background,
                     shape: BoxShape.circle,
+                    border: style.border,
                     boxShadow: style.boxShadow,
                   ),
                   child: Icon(Icons.add_rounded, size: DiaryRecordFab.inlineIconSize, color: style.foreground),

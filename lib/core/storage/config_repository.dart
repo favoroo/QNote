@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
@@ -515,6 +516,27 @@ class ConfigRepository {
         break;
       }
     }
+
+    await _ensureThoughtShortcut(existing);
+  }
+
+  /// 「随想」标签一次性补齐标记（设备本地，避免用户主动删除后被反复加回）
+  static const String _thoughtShortcutPrefsFlag = 'shortcut_thought_added_v1';
+
+  /// 老用户平滑升级：新增「随想」树洞标签。
+  ///
+  /// 不改动已有标签及排序，只追加到末尾；默认安装走上面的整表初始化，
+  /// 这里只处理已有数据的升级场景。
+  Future<void> _ensureThoughtShortcut(List<ShortcutConfig> existing) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_thoughtShortcutPrefsFlag) == true) return;
+
+    if (!existing.any((c) => c.id == 'thought' || c.name == '随想')) {
+      final thought = defaultShortcutConfigs.firstWhere((c) => c.id == 'thought');
+      final maxSortOrder = existing.fold<int>(-1, (max, c) => c.sortOrder > max ? c.sortOrder : max);
+      await insertShortcutConfig(thought.copyWith(sortOrder: maxSortOrder + 1));
+    }
+    await prefs.setBool(_thoughtShortcutPrefsFlag, true);
   }
 
   Future<void> restoreDefaultShortcutConfigs() async {

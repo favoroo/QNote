@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -70,6 +71,13 @@ const double _kDialogMaxHeight = 640;
 const double _kDialogMinHeight = 240;
 const double _kDialogVerticalMargin = 24;
 
+/// 键盘避让的过渡时长。
+///
+/// Android 上 `viewInsets` 往往是一次跳变或几段跳变，若布局直接跟每一帧
+/// 重算，弹窗会在键盘落定的瞬间「咔」地缩一下。这里统一用一段短动效
+/// 收放，和系统键盘弹起的时间大致同步，看起来是卡片跟着键盘一起让位。
+const Duration _kKeyboardAvoidDuration = Duration(milliseconds: 220);
+
 /// 气泡尺寸与贴边留白。
 ///
 /// 尺寸与落点算法统一放在 `lib/core/utils/q_bubble_layout.dart`：那里把「避开
@@ -122,6 +130,12 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
   Size _lastSize = Size.zero;
   EdgeInsets _lastPadding = EdgeInsets.zero;
   double _lastKeyboardInset = 0;
+
+  /// 最小化/关闭开始时锁定的键盘高度。
+  ///
+  /// 收起键盘要几百毫秒，这期间 `viewInsets` 会一路回落。若变形目标 Rect
+  /// 仍跟着它变，卡片会在缩向气泡的同时突然拉长，视觉上就是「缩一半又弹回」。
+  double _frozenKeyboardInset = 0;
   bool _reduceMotion = false;
 
   /// 路由变化导致的隐藏：直接落终态，不在新页面上方播放退场动画。
@@ -237,6 +251,9 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
       setState(() => _minimizing = false);
       return;
     }
+    // 调用方已收起焦点，键盘会随后回落；把当前高度锁住，
+    // 收缩目标在整个变形过程中保持不变。
+    _frozenKeyboardInset = _lastKeyboardInset;
     setState(() => _minimizing = true);
     _morphController.reverse();
   }
@@ -244,6 +261,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
   /// × 彻底关闭：轻量缩放淡出，会话已由 provider 清空。
   void _startClose() {
     _minimizing = false;
+    _frozenKeyboardInset = _lastKeyboardInset;
     if (_reduceMotion) {
       _morphController.value = 0;
       return;
@@ -349,6 +367,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     _lastPadding = padding;
     _lastKeyboardInset = keyboardInset;
     _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final layoutKeyboardInset = _resolveKeyboardInset(keyboardInset);
 
     ref.listen<FloatingQPanelMode>(floatingQProvider.select((s) => s.panelMode), (prev, next) {
       if (prev == next) return;
@@ -371,7 +390,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     // 时构建一次，交给 AnimatedBuilder.child 复用。变形每帧只重建外壳
     // （Positioned/圆角/阴影/裁剪），不再每帧重建整块对话面板与消息列表。
     final showDialog = _closing || _minimizing || mode == FloatingQPanelMode.panel;
-    final Widget? dialogPage = showDialog ? _buildDialogPage(size) : null;
+    final Widget? dialogPage = showDialog ? _buildDialogPage(size, padding, layoutKeyboardInset) : null;
 
     return ValueListenableBuilder<int>(
       valueListenable: floatingQModalCount,
@@ -391,7 +410,15 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
               return Stack(
                 children: [
                   if (showDialog)
-                    ..._buildDialogLayers(size, padding, keyboardInset, bubblePosition, child!, hidden: layerHidden),
+                    ..._buildDialogLayers(
+                      size,
+                      padding,
+                      keyboardInset,
+                      layoutKeyboardInset,
+                      bubblePosition,
+                      child!,
+                      hidden: layerHidden,
+                    ),
                   // 气泡根节点是 AnimatedPositioned，直接再包 Opacity/Offstage 会
                   // 在 Stack 与 Positioned 之间插入 RenderObject、破坏 ParentData；
                   // 它只有几十像素，模态遮挡时干脆不挂载（无需保留内部拖拽状态）。
@@ -431,6 +458,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     Size size,
     EdgeInsets padding,
     double keyboardInset,
+    double layoutKeyboardInset,
     Offset? bubblePosition,
     Widget page, {
     required bool hidden,
@@ -470,7 +498,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
       ];
     }
 
-    final dialogRect = _readDialogRect() ?? _lastDialogRect ?? _fallbackDialogRect(size, padding, keyboardInset);
+    final dialogRect = _readDialogRect() ?? _lastDialogRect ?? _fallbackDialogRect(size, padding, layoutKeyboardInset);
     _lastDialogRect = dialogRect;
     final bubbleRect = _bubbleRect(size, padding, keyboardInset, bubblePosition);
     final origin = _minimizing ? bubbleRect : (_openOrigin ?? dialogRect);
@@ -597,38 +625,62 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
   }
 
   /// 居中弹窗页面：按最终屏幕坐标布局，供变形窗口裁切/量取。
-  Widget _buildDialogPage(Size size) {
-    final padding = MediaQuery.paddingOf(context);
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final bottomInset = math.max(padding.bottom, keyboardInset);
-    final availableHeight = math.max(
-      _kDialogMinHeight,
-      size.height - padding.top - _kDialogVerticalMargin * 2 - bottomInset,
-    );
-    final dialogHeight = math.min(_kDialogMaxHeight, availableHeight);
+  ///
+  /// 键盘高度不直接拿 `viewInsets` 硬算：外面套一层 [TweenAnimationBuilder]，
+  /// 让卡片高度/位置在 [_kKeyboardAvoidDuration] 内平滑过渡。面板本体作为
+  /// `child` 预先构建，动画期间只重新布局、不重建输入框与消息列表。
+  Widget _buildDialogPage(Size size, EdgeInsets padding, double keyboardInset) {
     final dialogWidth = math.min(_kDialogMaxWidth, math.max(0.0, size.width - 32));
     // 会话切换时面板必须重挂载：输入草稿从 provider 回填，避免串到另一段对话
     final sessionKey = ref.watch(floatingQProvider.select((s) => (s.contextSignature, s.externalShareMode)));
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, padding.top + _kDialogVerticalMargin, 16, bottomInset + _kDialogVerticalMargin),
-      child: Center(
-        child: SizedBox(
-          width: dialogWidth,
-          height: dialogHeight,
-          child: _FloatingQPanel(
-            key: ValueKey('floating-q-panel-${sessionKey.$1 ?? 'none'}-${sessionKey.$2}'),
-            surfaceKey: _surfaceKey,
-            entrance: _morphController,
-            panelSelection: _panelSelection,
-            onUndo: _handleUndo,
-            onMinimize: _handleMinimize,
-            onClose: _handleClose,
-            onExpand: _handleExpand,
-          ),
-        ),
-      ),
+    final panel = _FloatingQPanel(
+      key: ValueKey('floating-q-panel-${sessionKey.$1 ?? 'none'}-${sessionKey.$2}'),
+      surfaceKey: _surfaceKey,
+      entrance: _morphController,
+      panelSelection: _panelSelection,
+      onUndo: _handleUndo,
+      onMinimize: _handleMinimize,
+      onClose: _handleClose,
+      onExpand: _handleExpand,
     );
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: keyboardInset),
+      duration: AppMotion.duration(context, _kKeyboardAvoidDuration),
+      curve: AppCurves.emphasized,
+      child: panel,
+      builder: (context, animatedInset, child) {
+        final bottomInset = math.max(padding.bottom, animatedInset);
+        final availableHeight = math.max(
+          _kDialogMinHeight,
+          size.height - padding.top - _kDialogVerticalMargin * 2 - bottomInset,
+        );
+        final dialogHeight = math.min(_kDialogMaxHeight, availableHeight);
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            padding.top + _kDialogVerticalMargin,
+            16,
+            bottomInset + _kDialogVerticalMargin,
+          ),
+          child: Center(
+            child: SizedBox(width: dialogWidth, height: dialogHeight, child: child),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 布局目标里使用的键盘高度。
+  ///
+  /// 最小化/关闭期间锁住开始那一刻的高度：收起键盘要几百毫秒，若目标 Rect
+  /// 还跟着 `viewInsets` 一起回落，卡片会在缩向气泡的同时被拉长。
+  /// 其余时候直接跟随 `viewInsets`（由 [_buildDialogPage] 内部平滑过渡）；
+  /// 打开变形期间不会再有“输入框自身”的键盘弹出——焦点已推迟到变形结束，
+  /// 此时若屏幕上有键盘，说明用户原本就在别的输入框里，按它让位反而正确。
+  double _resolveKeyboardInset(double rawInset) {
+    if (_minimizing || _closing) return _frozenKeyboardInset;
+    return rawInset;
   }
 
   Rect? _readDialogRect() {

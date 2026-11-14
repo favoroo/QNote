@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 
 enum TimePickerMode { date, time, dateTime }
@@ -226,7 +227,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
               maxLength: 2,
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
+                color: theme.accentInk,
                 height: 1.0,
                 leadingDistribution: TextLeadingDistribution.even,
               ),
@@ -237,7 +238,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                  borderSide: BorderSide(color: theme.accentInk, width: 2),
                 ),
                 contentPadding: EdgeInsets.zero,
               ),
@@ -277,7 +278,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
               maxLength: 2,
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
+                color: theme.accentInk,
                 height: 1.0,
                 leadingDistribution: TextLeadingDistribution.even,
               ),
@@ -288,7 +289,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+                  borderSide: BorderSide(color: theme.accentInk, width: 2),
                 ),
                 contentPadding: EdgeInsets.zero,
               ),
@@ -343,9 +344,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                       index.toString().padLeft(2, '0'),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         height: 1.0,
                         leadingDistribution: TextLeadingDistribution.even,
                       ),
@@ -381,9 +380,7 @@ class _TimeDateDialogState extends State<TimeDateDialog> {
                       index.toString().padLeft(2, '0'),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color: isSelected ? theme.accentInk : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                         height: 1.0,
                         leadingDistribution: TextLeadingDistribution.even,
                       ),

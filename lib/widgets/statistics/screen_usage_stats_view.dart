@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_snapshot_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -675,7 +676,7 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
                     style: TextStyle(
                       fontSize: AppTypography.caption,
                       fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                      color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                      color: selected ? Theme.of(context).accentInk : colorScheme.onSurfaceVariant,
                     ),
                   ),
                 );

@@ -35,6 +35,14 @@ class JournalService {
 
   static String _ymd(DateTime d) => '${_ym(d)}-${d.day.toString().padLeft(2, '0')}';
 
+  static final RegExp _ymdTitlePattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+  /// 日记笔记在列表中的展示标题：父级月份文件夹已含年份（如 2026-11），
+  /// 日期行去掉 `YYYY-` 前缀只留 `MM-dd`，避免年份重复显示。
+  /// 仅严格匹配 `yyyy-MM-dd` 时裁剪，历史/异常标题原样返回；
+  /// 落库的 title 保持完整 `yyyy-MM-dd`，排序与日期区间查询不受影响。
+  static String displayTitle(String title) => _ymdTitlePattern.hasMatch(title) ? title.substring(5) : title;
+
   /// 判断一条笔记是否为日记
   static bool isJournalNote(String id) => id.startsWith(noteIdPrefix);
 

@@ -168,20 +168,20 @@ void main() {
       expect(find.text('当前生效个性'), findsOneWidget);
       expect(find.text('活泼元气'), findsWidgets);
       expect(find.textContaining('元气小Q'), findsOneWidget);
-      expect(find.textContaining('说话；填写后点'), findsNothing);
+      expect(find.textContaining('描述为空，仍按'), findsNothing);
     });
 
     testWidgets('自定义描述为空时显式提示实际回退到经典管家', (tester) async {
       await pumpPage(tester, {'activeId': QPersonalities.customId, 'customPrompt': ''});
 
-      expect(find.textContaining('说话；填写后点'), findsOneWidget, reason: '静默回退必须在界面上可见，否则用户只会觉得「设置没生效」');
+      expect(find.textContaining('描述为空，仍按'), findsOneWidget, reason: '静默回退必须在界面上可见，否则用户只会觉得「设置没生效」');
       expect(find.text('经典管家'), findsWidgets);
     });
 
     testWidgets('自定义有内容时展示人格文本与结尾复述句预览', (tester) async {
       await pumpPage(tester, {'activeId': QPersonalities.customId, 'customPrompt': '你是毒舌但护短的搭档。不许说客套话。'});
 
-      expect(find.textContaining('说话；填写后点'), findsNothing);
+      expect(find.textContaining('描述为空，仍按'), findsNothing);
       expect(find.textContaining('毒舌但护短'), findsWidgets);
       expect(find.textContaining('结尾复述句：你是毒舌但护短的搭档。'), findsOneWidget);
     });

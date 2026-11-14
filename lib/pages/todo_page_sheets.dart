@@ -247,9 +247,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                         color: isCurrent ? theme.colorScheme.primary : theme.colorScheme.onSurface,
                       ),
                     ),
-                    trailing: isCurrent
-                        ? Text('当前分类', style: TextStyle(fontSize: 12, color: theme.colorScheme.primary))
-                        : null,
+                    trailing: isCurrent ? Text('当前分类', style: TextStyle(fontSize: 12, color: theme.accentInk)) : null,
                     onTap: () => Navigator.pop(ctx, f.id),
                   );
                 }),
@@ -333,7 +331,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                     ),
                   ),
                   child: _isCompleted
-                      ? Icon(Icons.check, size: 15, color: isDark ? Colors.white70 : colorScheme.primary)
+                      ? Icon(Icons.check, size: 15, color: isDark ? Colors.white70 : theme.accentInk)
                       : null,
                 ),
               ),

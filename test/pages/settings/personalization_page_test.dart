@@ -42,9 +42,20 @@ void main() {
     expect(find.text('浅色'), findsOneWidget);
     expect(find.text('深色'), findsOneWidget);
     expect(find.text('OLED 纯黑'), findsOneWidget);
+    expect(find.text('暖纸'), findsOneWidget);
+    expect(find.text('雾蓝'), findsOneWidget);
+    expect(find.text('松林'), findsOneWidget);
     expect(find.text('主题色'), findsNWidgets(2));
     expect(find.text('自定义'), findsOneWidget);
     expect(find.text('恢复默认设置'), findsOneWidget);
+
+    await tester.tap(find.text('松林'));
+    await tester.pump();
+    expect(container.read(backgroundSettingProvider).preset, AppBackgroundPreset.pine);
+
+    await tester.tap(find.text('暖纸'));
+    await tester.pump();
+    expect(container.read(backgroundSettingProvider).preset, AppBackgroundPreset.paper);
 
     await tester.tap(find.text('深色'));
     await tester.pump();
@@ -109,7 +120,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('自定义颜色'), findsOneWidget);
-    expect(find.text('选择任意颜色'), findsOneWidget);
+    expect(find.byIcon(Icons.palette_outlined), findsOneWidget);
 
     await tester.ensureVisible(find.text('自定义颜色'));
     await tester.pump();
@@ -145,7 +156,7 @@ void main() {
 
     expect(container.read(accentColorProvider).toARGB32(), 0xFF123456);
     expect(find.text('#123456'), findsOneWidget);
-    expect(find.text('选择任意颜色'), findsNothing);
+    expect(find.byIcon(Icons.palette_outlined), findsNothing);
   });
 
   testWidgets('推荐搭配一键同时应用背景与主题色', (tester) async {

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -277,7 +279,7 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
             _sectionTitle(
               theme,
               '成员（${_members.where((m) => m.enabled).length} 个启用）',
-              '长按拖动调整顺序${_strategy == RouteStrategy.failover ? '（即优先级）' : ''}',
+              _strategy == RouteStrategy.failover ? '顺序即优先级' : '长按可调整顺序',
               action: TextButton.icon(
                 onPressed: providers.isEmpty ? null : () => _addMembers(providers),
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -299,11 +301,6 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
                 _preferVision = value;
                 _dirty = true;
               }),
-            ),
-            _hint(
-              theme,
-              '组内模型需都能胜任该角色：小Q 对话需支持工具调用，'
-              '生图需支持 images/generations。',
             ),
           ],
         ),
@@ -470,12 +467,15 @@ class _AiRouteGroupEditPageState extends ConsumerState<AiRouteGroupEditPage> {
   }
 
   Widget _badge(ThemeData theme, String text, Color color) {
+    // 淡底 + 同色文字：文字按「贴在自身淡底上的可读前景」压深，
+    // 否则同色系背景下文字会和淡底一起融进卡片
+    final ink = AppContrast.inkOnTint(color, theme.cardColor, 0.1);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
       child: Text(
         text,
-        style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
+        style: theme.textTheme.labelSmall?.copyWith(color: ink, fontWeight: FontWeight.w600),
       ),
     );
   }

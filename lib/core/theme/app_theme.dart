@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
@@ -57,12 +58,29 @@ class AppTheme {
 
   static ThemeData _build(Color accentColor, AppSurfacePalette palette) {
     final isDark = palette.isDark;
-    // 主题色始终使用用户所选的原色：背景可以自由换，但按钮/FAB/开关/复选框/文字图标
-    // 都不再被背景「带偏」成过深或过浅的另一套颜色，选什么就显示什么。
-    final primary = accentColor;
+    // 画布永远等于用户所选颜色；只有画布和强调色过近（例如「主题色背景」）时，
+    // 才把按钮/FAB/开关这一侧的强调色推开一档，保证控件在背景上仍可辨认。
+    // legacy 主题维持原色，避免默认观感变化。
+    final primary = resolvePrimaryAccent(accentColor, palette);
     final onPrimary = AppContrast.onColor(primary);
     final primaryContainer = primary.withValues(alpha: isDark ? 0.18 : 0.10);
-    final onPrimaryContainer = AppContrast.readable(primary, Color.alphaBlend(primaryContainer, palette.surface));
+    // 强调色当**字色/图标/细线**画在画布或卡片上时的可读版本（同时对齐画布、卡片与
+    // 容器淡底三个落点）。同色系背景下 primary 与画布只有 ~1.05:1，当底色正好，当字色
+    // 却几乎看不见；实心底（FAB/按钮/开关）继续用 primary 保持鲜艳。
+    final onPrimaryContainer = AppContrast.inkFor(primary, [
+      palette.canvas,
+      palette.surface,
+      Color.alphaBlend(primaryContainer, palette.surface),
+    ]);
+    // 主题色与画布/表面过近时，实心按钮与选中开关靠细描边界定轮廓，而不靠压暗底色
+    final needsAccentOutline = !palette.isLegacy && AppContrast.contrastRatio(primary, palette.canvas) < 1.35;
+    final needsSwitchOutline = !palette.isLegacy && AppContrast.contrastRatio(primary, palette.surface) < 1.35;
+    // 派生背景下「主题色当字色/图标/细线」要用可读版本（见 [AppAccentInk]）；
+    // legacy 保持 primary，默认观感一字不变。
+    // 亮底与深底的最优解并不对称：深底把强调色提亮成同色系浅色依然清透；
+    // 亮底把高饱和强调色压深只会发浊（荧光黄绿会变成暗橄榄），所以亮底改用调色板
+    // 里校准过的中性墨色——它本身带一丝画布色相，和背景同族但不脏。
+    final accentInk = palette.isLegacy ? primary : (isDark ? onPrimaryContainer : palette.onSurface);
 
     // legacy 的 secondary/tertiary 是既有视觉的一部分，派生背景则跟随校准后的中性色，
     // 避免固定色在饱和背景上失去对比度
@@ -143,7 +161,7 @@ class AppTheme {
         elevation: 2,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        selectedItemColor: primary,
+        selectedItemColor: accentInk,
         unselectedItemColor: palette.onSurfaceVariant,
         type: BottomNavigationBarType.fixed,
         backgroundColor: palette.surface,
@@ -183,13 +201,13 @@ class AppTheme {
         indicatorColor: primary.withValues(alpha: isDark ? 0.15 : 0.12),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return IconThemeData(color: primary);
+            return IconThemeData(color: accentInk);
           }
           return IconThemeData(color: palette.onSurfaceVariant);
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return TextStyle(color: primary, fontSize: 11, fontWeight: FontWeight.w600);
+            return TextStyle(color: accentInk, fontSize: 11, fontWeight: FontWeight.w600);
           }
           return TextStyle(color: palette.onSurfaceVariant, fontSize: 11);
         }),
@@ -204,6 +222,7 @@ class AppTheme {
           backgroundColor: primary,
           foregroundColor: onPrimary,
           elevation: 0,
+          side: needsAccentOutline ? BorderSide(color: palette.outlineVariant, width: 0.9) : null,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
@@ -211,11 +230,20 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: primary,
+          foregroundColor: accentInk,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           textStyle: const TextStyle(fontWeight: FontWeight.w500),
         ),
       ),
+      // 进度指示器默认就用 primary 画在表面上；同色系背景上必须换成可读强调色，
+      // 否则转圈等于「看不见的加载中」。调用方显式传色的（如实心按钮上的白环）不受影响。
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: accentInk),
+      sliderTheme: SliderThemeData(
+        activeTrackColor: accentInk,
+        thumbColor: accentInk,
+        inactiveTrackColor: palette.outlineVariant,
+      ),
+      textSelectionTheme: TextSelectionThemeData(cursorColor: accentInk, selectionHandleColor: accentInk),
       iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(foregroundColor: palette.onSurfaceVariant)),
       // 浅色 SnackBar 继续用 M3 默认的 inverseSurface；深色改抬升容器色并同步文字色，
       // 否则默认正文仍按 onInverseSurface 绘制，落在深色底上会读不清。
@@ -270,7 +298,12 @@ class AppTheme {
           }
           return isDark ? palette.outline : palette.surfaceContainerHigh;
         }),
-        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+        trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected) && needsSwitchOutline) {
+            return palette.outlineVariant;
+          }
+          return Colors.transparent;
+        }),
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {
@@ -297,6 +330,10 @@ class AppTheme {
         yearStyle: TextStyle(height: 1.0, leadingDistribution: TextLeadingDistribution.even),
       ),
       pageTransitionsTheme: _pageTransitionsTheme,
+      // 派生背景才注册可读强调色令牌；legacy 不注册，组件层取到的仍是 primary
+      extensions: palette.isLegacy
+          ? null
+          : [AppAccentInk(ink: accentInk, needsOutline: needsAccentOutline || needsSwitchOutline)],
     );
 
     if (palette.isLegacy) {

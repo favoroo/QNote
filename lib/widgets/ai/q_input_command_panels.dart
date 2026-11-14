@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
+
 /// 斜杠命令面板：输入 `/` 触发的技能候选浮层
 ///
 /// 展示技能名、一句话描述与使用次数徽标；点击后由父级将命令词
@@ -36,7 +38,7 @@ class SlashCommandPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
             child: Row(
               children: [
-                Icon(Icons.bolt_rounded, size: 14, color: colorScheme.primary),
+                Icon(Icons.bolt_rounded, size: 14, color: theme.accentInk),
                 const SizedBox(width: 4),
                 Text(
                   '斜杠命令',
@@ -82,7 +84,7 @@ class SlashCommandPanel extends StatelessWidget {
                               Text(
                                 '/$name',
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: colorScheme.primary,
+                                  color: theme.accentInk,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -179,7 +181,7 @@ class AtReferencePanel extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: Row(
                   children: [
-                    Icon(kind.icon, size: 18, color: colorScheme.primary),
+                    Icon(kind.icon, size: 18, color: theme.accentInk),
                     const SizedBox(width: 10),
                     Expanded(child: Text(kind.label, style: theme.textTheme.bodyMedium)),
                     Icon(

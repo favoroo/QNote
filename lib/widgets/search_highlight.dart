@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 /// 把 [text] 中首个 [query] 命中处加粗着色；未命中或关键词为空时退化为普通 [Text]。
 ///
@@ -48,7 +49,7 @@ Widget highlightSearchMatch(
           text: match,
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: theme.colorScheme.primary,
+            color: theme.accentInk,
             backgroundColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
           ),
         ),

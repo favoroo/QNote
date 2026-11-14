@@ -10,6 +10,7 @@ import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/providers/fixed_event_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/time_scroll_picker.dart';
 
@@ -822,10 +823,7 @@ class FixedEventsPageState extends ConsumerState<FixedEventsPage> {
               const SizedBox(width: 6),
               Text(
                 '${config.name} 的字段',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: theme.textTheme.labelSmall?.copyWith(color: theme.accentInk, fontWeight: FontWeight.w600),
               ),
             ],
           ),

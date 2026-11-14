@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
+
 /// 小Q 机器人绘制风格。
 enum QRobotStyle {
   /// 实心填充：机身外壳 + 内衬环框 + 液晶屏 + 双眼，层次饱满。
@@ -58,7 +60,7 @@ class QIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final effectiveColor = color ?? theme.colorScheme.primary;
+    final effectiveColor = color ?? theme.accentInk;
     final effectiveEyeColor = eyeColor ?? theme.colorScheme.surface;
     final effectiveScreenColor = screenColor ?? effectiveColor;
 
@@ -89,7 +91,7 @@ class QAvatar extends StatelessWidget {
   /// 图标/头像尺寸（宽和高相同）
   final double size;
 
-  /// 机器人主色（机身、天线），默认为当前主题的 primary 色
+  /// 机器人主色（机身、天线），默认为当前主题的可读强调色 [AppThemeAccent.accentInk]
   final Color? color;
 
   /// 内部屏幕颜色（默认等于主色）
@@ -130,9 +132,9 @@ class QAvatar extends StatelessWidget {
     // 当 withBackground = true 时，默认采用用户最青睐的「白净通透机身」视觉：
     // 底座为实心 primary 主色，机身为纯白 onPrimary，屏幕为 primary，内圈与眼睛为 onPrimary 纯白；
     // 这样头像在列表与气泡中具备极高辨识度与现代质感。
-    final effectiveColor = color ?? (withBackground ? theme.colorScheme.onPrimary : primary);
+    final effectiveColor = color ?? (withBackground ? theme.colorScheme.onPrimary : theme.accentInk);
 
-    final effectiveScreenColor = screenColor ?? (withBackground ? (backgroundColor ?? primary) : primary);
+    final effectiveScreenColor = screenColor ?? (withBackground ? (backgroundColor ?? primary) : theme.accentInk);
 
     final effectiveEyeColor = eyeColor ?? (withBackground ? theme.colorScheme.onPrimary : theme.colorScheme.surface);
 

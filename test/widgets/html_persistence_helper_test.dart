@@ -30,5 +30,31 @@ void main() {
       final result = HtmlPersistenceHelper.prepareHtml(source);
       expect('__qnote_auto_persist_script'.allMatches(result).length, equals(1));
     });
+
+    test('prepareHtml keeps empty storage namespace by default (mobile compat)', () {
+      const source = '<html><body><h1>Hello</h1></body></html>';
+      final result = HtmlPersistenceHelper.prepareHtml(source);
+      expect(result.contains("STORAGE_NS = '';"), isTrue);
+      expect(result.contains('__QNOTE_STORAGE_NS__'), isFalse);
+    });
+
+    test('prepareHtml injects sanitized per-note storage namespace', () {
+      const source = '<html><body><h1>Hello</h1></body></html>';
+      final result = HtmlPersistenceHelper.prepareHtml(source, storageNamespace: '42');
+      expect(result.contains("STORAGE_NS = '42__';"), isTrue);
+
+      final sanitized = HtmlPersistenceHelper.prepareHtml(source, storageNamespace: 'A#B_c_1');
+      expect(sanitized.contains("STORAGE_NS = 'a-b-c-1__';"), isTrue);
+
+      final invalid = HtmlPersistenceHelper.prepareHtml(source, storageNamespace: '***');
+      expect(invalid.contains("STORAGE_NS = '';"), isTrue);
+    });
+
+    test('auto persist script contains scroll persistence logic', () {
+      const source = '<html><body><h1>Hello</h1></body></html>';
+      final result = HtmlPersistenceHelper.prepareHtml(source);
+      expect(result.contains('__qnote_scroll_v1__'), isTrue);
+      expect(result.contains('data-no-scroll-persist'), isTrue);
+    });
   });
 }

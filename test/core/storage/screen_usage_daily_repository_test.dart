@@ -35,6 +35,7 @@ void main() {
     int totalMs, {
     List<ScreenAppUsage> apps = const [],
     bool isComplete = true,
+    String source = ScreenUsageDaily.sourceUsageStats,
   }) {
     final now = DateTime(2026, 9, 19);
     return ScreenUsageDaily(
@@ -42,6 +43,7 @@ void main() {
       totalTimeMs: totalMs,
       topApps: apps,
       isComplete: isComplete,
+      source: source,
       createdAt: now,
       updatedAt: now,
     );
@@ -149,6 +151,34 @@ void main() {
 
     final earliest = await repo.earliestDate();
     expect(earliest, DateTime(2026, 9, 2));
+  });
+
+  test('采集口径换代时按新口径重写，不被旧口径的虚高值挡住', () async {
+    final day = DateTime(2026, 9, 12);
+    // 旧口径（统计桶）存下的偏大值
+    await repo.upsertSnapshot(
+      snapshot(
+        day,
+        5 * 3600 * 1000,
+        apps: [const ScreenAppUsage(packageName: 'com.old', appName: '旧', timeMs: 5 * 3600 * 1000)],
+      ),
+    );
+
+    // 新口径（事件流）重算后更小，但必须覆盖
+    final advanced = await repo.upsertSnapshot(
+      snapshot(
+        day,
+        2 * 3600 * 1000,
+        apps: [const ScreenAppUsage(packageName: 'com.new', appName: '新', timeMs: 2 * 3600 * 1000)],
+        source: ScreenUsageDaily.sourceUsageEvents,
+      ),
+    );
+
+    expect(advanced, isTrue);
+    final read = await repo.getByDate(ScreenUsageDaily.dateKey(day));
+    expect(read!.totalTimeMs, 2 * 3600 * 1000);
+    expect(read.topApps.single.packageName, 'com.new');
+    expect(read.source, ScreenUsageDaily.sourceUsageEvents);
   });
 
   test('损坏的 top_apps_json 降级为空明细而不影响总时长', () async {

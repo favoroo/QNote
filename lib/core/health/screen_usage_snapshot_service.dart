@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/screen_usage_daily_repository.dart';
+import 'package:qnote_flutter/models/screen_usage_daily.dart';
 
 final screenUsageSnapshotServiceProvider = Provider<ScreenUsageSnapshotService>((ref) {
   return ScreenUsageSnapshotService(ref);
@@ -22,6 +23,10 @@ class ScreenUsageSnapshotService {
   static const Duration throttle = Duration(minutes: 30);
 
   static const String _kLastSnapshotMs = 'screen_usage_last_snapshot_ms';
+
+  /// 上次落库时的采集口径。换代后必须无视节流重跑一次回填，
+  /// 否则旧口径偏大的快照会一直盖住今天的大数字和柱子。
+  static const String _kSnapshotSource = 'screen_usage_last_snapshot_source';
 
   final Ref _ref;
 
@@ -80,6 +85,10 @@ class ScreenUsageSnapshotService {
 
   Future<bool> _throttled() async {
     final prefs = await SharedPreferences.getInstance();
+    // 采集口径换代（如统计桶 -> 事件流）后强制跑一次回填，让新口径尽快覆盖旧值
+    if (prefs.getString(_kSnapshotSource) != ScreenUsageDaily.sourceUsageEvents) {
+      return false;
+    }
     final last = prefs.getInt(_kLastSnapshotMs);
     if (last == null) {
       return false;
@@ -91,5 +100,6 @@ class ScreenUsageSnapshotService {
   Future<void> _recordSnapshotTime() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kLastSnapshotMs, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setString(_kSnapshotSource, ScreenUsageDaily.sourceUsageEvents);
   }
 }

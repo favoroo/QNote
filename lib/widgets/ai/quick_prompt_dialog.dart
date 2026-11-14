@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/quick_prompt_provider.dart';
 
@@ -40,7 +41,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
             // 标题行
             Row(
               children: [
-                Icon(Icons.bolt_rounded, size: 20, color: theme.colorScheme.primary),
+                Icon(Icons.bolt_rounded, size: 20, color: theme.accentInk),
                 const SizedBox(width: 8),
                 Text('常用提示词', style: theme.textTheme.titleMedium),
                 const Spacer(),
@@ -102,7 +103,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: Icon(Icons.circle, size: 6, color: theme.colorScheme.primary.withValues(alpha: 0.6)),
+            child: Icon(Icons.circle, size: 6, color: theme.accentInk.withValues(alpha: 0.6)),
           ),
           const SizedBox(width: 10),
           // 点击文本区 → 选中并填充

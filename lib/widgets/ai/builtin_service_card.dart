@@ -1,9 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
+
 import 'package:qnote_flutter/core/ai/builtin_provider.dart';
 import 'package:qnote_flutter/core/ai/builtin_request_signer.dart';
 import 'package:qnote_flutter/core/ai/builtin_service_config_service.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/models/builtin_service_config.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 
@@ -88,7 +91,7 @@ class _BuiltinServiceCardState extends State<BuiltinServiceCard> {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        _badge(theme, '免费', colorScheme.primary),
+                        _badge(theme, '免费', theme.accentInk),
                       ],
                     ),
                   ),
@@ -208,12 +211,14 @@ class _BuiltinServiceCardState extends State<BuiltinServiceCard> {
   }
 
   Widget _badge(ThemeData theme, String label, Color color) {
+    // 同色系背景下淡底与文字会一起融进卡片，文字按淡底上的可读前景压深
+    final ink = AppContrast.inkOnTint(color, theme.cardColor, 0.1);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
       child: Text(
         label,
-        style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600),
+        style: theme.textTheme.labelSmall?.copyWith(color: ink, fontWeight: FontWeight.w600),
       ),
     );
   }

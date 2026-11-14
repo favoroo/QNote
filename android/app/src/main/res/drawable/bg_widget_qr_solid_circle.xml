@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  主操作圆：纯白实心，铺在主色块上做唯一的高亮焦点。
-  与 bg_widget_qr_scrim 一样是正圆，保证组件里所有圆形按钮形状完全一致。
--->
+<!-- 主操作正圆底：柔白实心，固定宽高下永远是正圆。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
-    <solid android:color="@color/widget_qr_on_accent" />
+    <solid android:color="@color/widget_qr_on_surface" />
 </shape>

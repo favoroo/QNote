@@ -139,7 +139,7 @@ Future<AiExtractResult?> extractExistingRecord({
       imageBase64: imageBase64,
       mimeType: shouldSendImage ? ImageRepository.getMimeType(photos.first) : null,
       schema: schemaStr,
-      contextStr: contextMap.toString(),
+      contextStr: jsonEncode(contextMap),
       cancelToken: cancelToken,
     );
 

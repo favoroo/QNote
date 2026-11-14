@@ -247,7 +247,8 @@ class ScreenUsageDayView {
 }
 
 /// 单日详情：今天与系统窗口内的近期日走实时查询（能拿到图标与完整榜单），
-/// 更早的日期回落到快照。总时长取两者最大值，与快照的「不倒退」策略保持一致。
+/// 更早的日期回落到快照。今天直接采用实时值；近期日取实时与快照的较大值，
+/// 与快照的「不倒退」策略保持一致。
 final screenUsageDayProvider = FutureProvider.family<ScreenUsageDayView, DateTime>((ref, date) async {
   final day = DateTime(date.year, date.month, date.day);
   final now = DateTime.now();
@@ -270,11 +271,14 @@ final screenUsageDayProvider = FutureProvider.family<ScreenUsageDayView, DateTim
 
   final liveTotal = live?.totalTimeMs ?? 0;
   final snapshotTotal = snapshot?.totalTimeMs ?? 0;
-  final totalMs = liveTotal > snapshotTotal ? liveTotal : snapshotTotal;
+  // 今天的事件流数据是实时且单调增长的权威值，有就直用；历史日才需要与快照比大小兜底
+  // （事件流只保留约 7~10 天，过期日期只能依赖当时落库的快照）。
+  final totalMs = isToday && live != null ? liveTotal : (liveTotal > snapshotTotal ? liveTotal : snapshotTotal);
 
-  final useLiveApps = live != null && live.appList.isNotEmpty && liveTotal >= snapshotTotal;
+  final useLiveApps = live != null && (isToday || (live.appList.isNotEmpty && liveTotal >= snapshotTotal));
+  final liveApps = live?.appList ?? const <AppUsageInfo>[];
   final apps = useLiveApps
-      ? live.appList
+      ? liveApps
       : (snapshot?.topApps ?? const [])
             .map(
               (e) => AppUsageInfo(

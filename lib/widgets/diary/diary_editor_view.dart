@@ -1332,6 +1332,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       '饮食': Icons.restaurant,
       '活动': Icons.directions_run,
       '记账': Icons.account_balance_wallet,
+      '随想': Icons.psychology_alt_outlined,
     };
     const tagColors = TagColors.map;
 

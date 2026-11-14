@@ -137,7 +137,9 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   Text(
                     'QNote',
                     style: theme.textTheme.headlineLarge?.copyWith(
-                      color: colorScheme.primary,
+                      // 同色系主题背景下 raw primary 与抽屉表面只有 ~1.05:1，
+                      // 品牌字样会「糊」进底色；onPrimaryContainer 是同一支强调色的可读版本
+                      color: colorScheme.onPrimaryContainer,
                       fontWeight: FontWeight.bold,
                       letterSpacing: -0.5,
                     ),
@@ -215,7 +217,8 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                   Text(
                     'Version ${AppVersion.version}',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                      // 原来的 0.5 alpha 在亮色/同色系底上几乎看不见，收敛到 0.75 保证可读
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
                     ),
                   ),
                 ],
@@ -401,8 +404,8 @@ class _DrawerMenuItem extends StatelessWidget {
       trailing: Icon(
         Icons.chevron_right,
         size: 20,
-        // 0.25 时箭头几乎看不见，提到 0.4 让「可进入」的暗示清晰且不过重
-        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+        // 0.25 时箭头几乎看不见，提到 0.6 让「可进入」的暗示在亮色/同色系底上也清晰可见
+        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
       ),
       // Web/桌面端悬停与键盘聚焦反馈；ListTileThemeData 不提供 hoverColor，
       // 因此只能在 widget 上局部设置（浅色底用更低 alpha 保持克制）。

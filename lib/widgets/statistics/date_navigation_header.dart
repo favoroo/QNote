@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 
 /// 统计页的日期导航条：左右逐日切换 + 点中间标签开日历，整条单行紧凑。
@@ -120,7 +121,6 @@ class DateNavigationHeader extends StatelessWidget {
   /// 用 Flexible 而非 Expanded：Expanded 会把选择器撑满整行，
   /// 把「今天」胶囊推到最右侧，脱离标签。
   Widget _buildDateSelector(BuildContext context, VoidCallback? onTap) {
-    final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
     return Flexible(
@@ -142,7 +142,7 @@ class DateNavigationHeader extends StatelessWidget {
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(width: 6),
-                Icon(Icons.calendar_month, size: 16, color: colorScheme.primary),
+                Icon(Icons.calendar_month, size: 16, color: theme.accentInk),
               ],
             ),
           ),

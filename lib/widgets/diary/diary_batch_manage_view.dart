@@ -374,6 +374,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     '饮食': TagColors.diet,
     '活动': TagColors.activity,
     '记账': TagColors.finance,
+    '随想': TagColors.thought,
   };
 
   static const _defaultColor = TagColors.defaultTag;
@@ -1802,6 +1803,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
     '饮食': Icons.restaurant,
     '活动': Icons.directions_run,
     '记账': Icons.account_balance_wallet,
+    '随想': Icons.psychology_alt_outlined,
   };
 
   static const _defaultIcon = Icons.description_outlined;
@@ -1811,6 +1813,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
     '饮食': TagColors.diet,
     '活动': TagColors.activity,
     '记账': TagColors.finance,
+    '随想': TagColors.thought,
   };
 
   static const _defaultColor = TagColors.defaultTag;

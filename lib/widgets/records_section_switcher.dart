@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -78,6 +79,8 @@ class RecordsSectionSwitcher extends StatelessWidget {
               decoration: BoxDecoration(
                 color: colorScheme.primary,
                 borderRadius: BorderRadius.circular(_segmentHeight / 2),
+                // 同色系背景（主题色背景）下实心指示块与轨道同色，补一圈细描边交代边界
+                border: theme.accentNeedsOutline ? Border.all(color: colorScheme.outlineVariant) : null,
               ),
             ),
           ),

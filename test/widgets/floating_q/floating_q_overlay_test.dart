@@ -393,4 +393,62 @@ void main() {
       expect(find.text('AI 会话页'), findsOneWidget);
     });
   });
+
+  group('键盘避让与入场稳定性', () {
+    testWidgets('变形落定不重挂载输入框，焦点只在落定后请求', (tester) async {
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      _notifier(tester)
+        ..recordPointerDown(const Offset(100, 500))
+        ..openPanel();
+      await tester.pump();
+
+      final editableBefore = tester.state<EditableTextState>(find.byType(EditableText));
+      // 变形途中不能抢焦点：否则键盘会在卡片飞行时把目标 Rect 顶走
+      expect(tester.testTextInput.hasAnyClients, isFalse);
+
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.testTextInput.hasAnyClients, isFalse);
+
+      // 越过 460ms 变形终点
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        identical(editableBefore, tester.state<EditableTextState>(find.byType(EditableText))),
+        isTrue,
+        reason: '变形结束若替换包装层，输入框会重挂载并丢掉焦点',
+      );
+
+      // 再推过落定后的 60ms 聚焦延迟
+      await tester.pump(const Duration(milliseconds: 100));
+      final editable = tester.widget<EditableText>(find.byType(EditableText));
+      expect(editable.focusNode.hasFocus, isTrue, reason: '变形落定后输入框应拿到焦点');
+    });
+
+    testWidgets('键盘弹起时弹窗平滑收缩到键盘上方', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+      await _openPanel(tester);
+
+      final panel = find.byKey(const ValueKey('panel'));
+      final fullHeight = tester.getSize(panel).height;
+      expect(fullHeight, closeTo(640, 1));
+
+      // 模拟键盘一次跳变到 300 高：布局应走 220ms 过渡，而不是瞬间缩到位
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pump();
+      expect(tester.getSize(panel).height, greaterThan(496 + 60));
+
+      await tester.pump(const Duration(milliseconds: 110));
+      expect(tester.getSize(panel).height, inExclusiveRange(496, fullHeight));
+
+      // 844 - 上下留白 48 - 键盘 300
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.getSize(panel).height, closeTo(496, 1));
+    });
+  });
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:qnote_flutter/core/ai/account_auth_types.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 /// 短信验证码登录弹层（AutoClaw / Loomy 共用）
 ///
@@ -131,7 +132,7 @@ class _SmsLoginSheetState extends State<SmsLoginSheet> {
         children: [
           Row(
             children: [
-              Icon(Icons.sms_outlined, size: 22, color: colorScheme.primary),
+              Icon(Icons.sms_outlined, size: 22, color: theme.accentInk),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

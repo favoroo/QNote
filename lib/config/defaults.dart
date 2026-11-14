@@ -1,4 +1,3 @@
-import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/shortcut_category.dart';
@@ -6,45 +5,40 @@ import 'package:qnote_flutter/models/ai_roles.dart';
 
 final defaultSystemPrompts = <String, String>{
   'assistant_greeting': '嗨，我是小Q —— 记待办、写笔记、打卡时间线、看统计，说一句就行',
-  'analysis_system': QSystemPrompt.buildSystemPrompt(),
   'unified_extraction': '''
-你是智能标签识别助手，从用户输入中识别标签并提取结构化字段。
+你是结构化记录提取器，从用户输入中识别时间线标签并输出严格 JSON。
 
-[当前时间]
+[时间上下文]
 {{contextStr}}
 
 [Schema]
 {{schema}}
 
 [提取规则]
-1. 严禁虚构/改写字段名：只提取Schema中定义的ID和字段，且fields内部的键名（Key）必须严格与Schema定义的字段ID完全一致。无有用信息输出 {"results":[]}。
-2. 选项匹配：select尽量用给定选项，allowCustom=true时才可自定义。
-3. 时间推断：基准为[当前时间]中的today。时间格式 HH:mm (跨天加-，如-23:00，范围用~连接)。早8:00,午12:00,晚19:00,宵23:00。若提供 userSelectedTime 且无其他明确时间，则强制使用该时间。
-4. 业务逻辑：
-   - 饮食：根据食物营养健康度判定评价(rating)：蔬菜/低糖果蔬/水煮清淡少油少盐/白开水/无糖茶/适量营养补剂->健康；普通家常正餐/常规简餐/低糖咖啡/适度碳水->一般；油炸/甜食/高糖奶茶/膨化零食/快餐烧烤->不健康；深夜夜宵暴饮暴食/狂饮高糖高烈度酒/大量高脂高热量堆叠->过于放纵。日常维C/鱼油属补剂(diet)，治病药(如布洛芬)属用药(health)。严禁输出无意义的种类或渠道字段，饮食仅提取rating。
-   - 图片处理：截图提核心数据和指标(如深睡1.5h)；食物图必须提具体食物、菜品名称及配料信息(如：香菇滑鸡、白灼生菜、玄米饭)。
-   - 精神状态/身体感受：状态不错、头脑清醒、精力充沛->健康标签，severity="轻微"或空；疲惫、头晕、乏力、犯困->健康标签，symptom=["疲劳"]，severity根据描述定(严重/中度/轻微)。
-   - 心情/情绪：被骂、不开心、难过、焦虑、愤怒、委屈等情绪类表达->活动标签，type="情绪"；"开心""感动""兴奋"等积极情绪同理。如同时包含具体活动和情绪（如"和朋友聊天很开心"），归为对应活动类型即可。
+1. 严格对齐 Schema：仅输出 Schema 中定义的标签 id 与字段名（fields 内 key 必须与字段 id 完全一致）；select 优先匹配给定选项，仅 allowCustom=true 时可自定义。无有用信息输出 {"results":[]}。
+2. 时间规则：
+   - 日期基准为 [时间上下文] 的 recordDate（仅当 recordDate 等于 today.date 且原文说“刚才/现在”时参考 today.time）。
+   - 格式 HH:mm（24小时制），范围用 ~ 连接，前一天加 - 前缀（如跨夜睡眠 "-23:00~07:00"，昨晚十点 "-22:00"）；粗略时段：早 08:00 / 午 12:00 / 晚 19:00 / 宵 23:00。
+   - 严禁编造时间：仅当输入明确提及时间或时段时才输出 time；原文未提时间时，若提供 userSelectedTime 则原样填为 time，否则省略 time 字段。
+3. 分类与字段规则：
+   - 饮食(diet)：按健康度判定 rating——蔬果/水煮清淡少油盐/白开水/无糖茶/适量营养补剂→健康；普通家常正餐/常规简餐/低糖咖啡/适度碳水→一般；油炸/甜食/高糖奶茶/膨化零食/快餐烧烤→不健康；深夜暴饮暴食/大量高脂高糖堆叠/狂饮高烈度酒→过于放纵。除 Schema 已定义字段外，严禁额外自造种类或渠道字段。
+   - 健康(health)：症状/用药/明确身体感受（状态不错、疲惫、头晕等）归 health；日常维C/鱼油等营养补剂归 diet，治病药（如布洛芬）归 health 的 medication。
+   - 随想(thought)：纯情绪表达（开心/难过/焦虑/委屈等）、灵感想法、反思或碎碎念归 thought；若同时含具体活动（如“和朋友聊天很开心”）只归 activity，含身体不适归 health，不重复输出 thought。
+   - 不凑空标签：仅当包含多个独立事件时才输出多条，不要为常规数据额外附带空字段标签。
+{{imageRules}}
 
-[输出格式] JSON: {"results":[{"id":"标签id","time":"时间","fields":{},"notes":"备注"}]}
-若未提取到任何有用信息, 输出: {"results":[]}
-纯文本输入不输出notes，图片或图文输入必须输出notes。
-notes规则：
-- 只在results数组的第一个元素上输出一个notes字段，多标签场景汇总所有图片信息到这一个notes中，后续结果不要重复输出notes。
-- 格式必须为"图："+图片具体信息（如是食物图，详细列出识别到的所有具体食物和菜品名称）。
-- 不要重复用户已输入的文字内容，工具会自动将notes拼接到用户正文下方。
+[输出格式]
+{{outputFormat}}
 
 [示例]
-- 昨晚十点睡，睡了八个小时 → {"results":[{"id":"sleep","time":"-22:00","fields":{"duration":8}}]}
-- 下午3点喝奶茶，地铁5元，健身房跑1小时 → {"results":[{"id":"diet","time":"15:00","fields":{"rating":"不健康"}},{"id":"consumption","time":"18:00","fields":{"_category":"expense","type":"交通","amount":5}},{"id":"activity","time":"20:00","fields":{"type":"运动","duration":1}}]}
+- 昨晚11点睡到早上7点，睡了8小时 → {"results":[{"id":"sleep","time":"-23:00~07:00","fields":{"duration":8}}]}
+- 下午3点喝奶茶，地铁5元，健身房跑1小时 → {"results":[{"id":"diet","time":"15:00","fields":{"rating":"不健康"}},{"id":"consumption","fields":{"_category":"expense","type":"交通","amount":5}},{"id":"activity","fields":{"type":"运动","duration":1}}]}
 - 今天头痛得厉害，吃了布洛芬 → {"results":[{"id":"health","fields":{"symptom":["头痛"],"severity":"严重","medication":"布洛芬"}}]}
 - 状态不错，头脑清醒 → {"results":[{"id":"health","fields":{}}]}
 - 感觉有点累，头有点晕 → {"results":[{"id":"health","fields":{"symptom":["疲劳","头晕"],"severity":"轻微"}}]}
-- 今天被领导骂了，不开心 → {"results":[{"id":"activity","fields":{"type":"情绪"}}]}
-- 感觉有点焦虑 → {"results":[{"id":"activity","fields":{"type":"情绪"}}]}
-- [食物照片:米饭、香菇滑鸡和白灼生菜] → {"results":[{"id":"diet","fields":{"rating":"健康"},"notes":"图：香菇滑鸡、白灼生菜、一碗米饭"}]}
-- [健康App截图:睡眠6h46min质量一般、步数5047/6000、卡路里294/300kcal、中高强度活动21min、心率84次/分] → {"results":[{"id":"sleep","fields":{"duration":6.77,"quality":"一般"},"notes":"图：睡眠6时46分质量一般，步数5047/6000步，卡路里294/300千卡，中高强度活动21分钟，心率84次/分"},{"id":"activity","fields":{"type":"运动","duration":0.35}},{"id":"health","fields":{}}]}
-''',
+- 今天被领导骂了，不开心 → {"results":[{"id":"thought","fields":{}}]}
+- 突然想到一个不错的产品点子 → {"results":[{"id":"thought","fields":{}}]}
+{{imageExamples}}''',
   'daily_score_system': '''
 你是专业的健康生活评估师，根据用户一天的生活记录、小米运动健康客观数据与屏幕使用时间进行综合评分。
 
@@ -56,19 +50,16 @@ notes规则：
 5. 屏幕 (screen): 屏幕使用时间越短越好，适度使用加分，过度沉迷手机大幅扣分；参考当日屏幕总时长与Top应用
 
 [评分规则]
-- 基础分60分，根据各维度表现加减分
-- 越健康、越自律、越规律，分数越高
-- 有运动、早睡早起、健康饮食大幅加分
-- 熬夜、暴饮暴食、久坐不动大幅扣分
-- 屏幕使用时间过长（如超过6小时）扣分，适度节制加分
-- 记录越完整，评分越准确
+- 基础分60分，根据各维度表现加减分；越健康、自律、规律分数越高
+- 有运动、早睡早起、健康饮食大幅加分；熬夜、暴饮暴食、久坐不动、屏幕时长过长（如超6小时）大幅扣分
+- 记录过少导致无法客观评估时，将 "canScore" 设为 false
 - 注意：症状本身（如头痛、感冒）不是人为可控的，不直接扣分；但如果忽视健康、不及时用药或休息，则扣分
 - 若健康数据或屏幕使用时间为空，如实基于现有记录评分，不编造数据
 
-[输出格式] JSON（summary 和 suggestions 字段必须使用 Markdown 格式，支持换行、列表、加粗等）:
+[输出格式] 严格 JSON（summary 和 suggestions 字段使用 Markdown 格式，支持换行、列表、加粗）:
 {
-  "canScore": true,           // 是否可评分(记录过少时为false)
-  "totalScore": 78,           // 总分
+  "canScore": true,
+  "totalScore": 78,
   "dimensionScores": {
     "sleep": 85,
     "diet": 70,
@@ -76,21 +67,9 @@ notes规则：
     "health": 90,
     "screen": 75
   },
-  "summary": "今天整体生活规律度尚可，但存在明显的饮食结构和久坐隐患。\n\n睡眠达标（8小时）且入睡时间较早，值得肯定；健康管理上按时服药，表现优秀。\n\n主要扣分点在于晚餐夜宵过于油腻且热量较高，存在明显的饮食放纵现象。",
-  "suggestions": "**1. 晚餐需严格控制**：今晚尽量清淡，减少高蛋白和高GI食物摄入。\n\n**2. 打破久坐模式**：建议在午休后或工作间隙增加5-10分钟的轻体力活动。\n\n**3. 增加日常运动**：周末可适当增加有氧运动（如快走30分钟以上）。\n\n**4. 饮食均衡**：继续保持早餐和午餐的良好习惯。"
+  "summary": "今天整体生活规律度尚可，但存在明显的饮食结构和久坐隐患。\\n\\n睡眠达标（8小时）且入睡时间较早，值得肯定；健康管理上按时服药，表现优秀。\\n\\n主要扣分点在于晚餐夜宵过于油腻且热量较高，存在明显的饮食放纵现象。",
+  "suggestions": "**1. 晚餐需严格控制**：今晚尽量清淡，减少高脂和高GI食物摄入。\\n\\n**2. 打破久坐模式**：建议在工作间隙增加5-10分钟的轻体力活动。\\n\\n**3. 增加日常运动**：可适当增加有氧运动（如快走30分钟以上）。"
 }
-
-[当日记录]
-{{records}}
-
-[健康数据]
-{{healthData}}
-
-[屏幕使用时间]
-{{screenData}}
-
-[用户信息]
-{{userInfo}}
 ''',
 };
 
@@ -157,6 +136,15 @@ final defaultShortcutConfigs = <ShortcutConfig>[
     updatedAt: DateTime.now(),
   ),
   ShortcutConfig(
+    id: 'thought',
+    name: '随想',
+    hasPopup: false,
+    fields: [],
+    sortOrder: 4,
+    createdAt: DateTime.now(),
+    updatedAt: DateTime.now(),
+  ),
+  ShortcutConfig(
     id: 'consumption',
     name: '记账',
     hasPopup: true,
@@ -191,7 +179,7 @@ final defaultShortcutConfigs = <ShortcutConfig>[
         ],
       ),
     ],
-    sortOrder: 4,
+    sortOrder: 5,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
   ),
@@ -200,7 +188,7 @@ final defaultShortcutConfigs = <ShortcutConfig>[
     name: '其他',
     hasPopup: false,
     fields: [],
-    sortOrder: 5,
+    sortOrder: 6,
     createdAt: DateTime.now(),
     updatedAt: DateTime.now(),
   ),
@@ -213,7 +201,7 @@ const defaultAiRoles = AiRoles(assistant: null, timelineOptimization: null);
 
 const defaultAiTemperatures = AiTemperatures();
 
-const defaultActiveShortcuts = ['睡眠', '饮食', '活动', '健康', '记账', '其他'];
+const defaultActiveShortcuts = ['睡眠', '饮食', '活动', '健康', '随想', '记账', '其他'];
 
 const defaultMoodLabels = ['很差', '较差', '一般', '较好', '很好'];
 

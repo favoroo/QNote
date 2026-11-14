@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/config/ai_vendors.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/vendor_filter.dart';
@@ -212,7 +213,7 @@ class _VendorPickerSheetState extends State<VendorPickerSheet> {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: selected
-                  ? colorScheme.primary.withValues(alpha: 0.6)
+                  ? theme.accentInk.withValues(alpha: 0.6)
                   : colorScheme.outlineVariant.withValues(alpha: 0.5),
             ),
           ),
@@ -237,7 +238,7 @@ class _VendorPickerSheetState extends State<VendorPickerSheet> {
                         fontSize: AppTypography.body,
                         height: 1.25,
                         fontWeight: FontWeight.w600,
-                        color: selected ? colorScheme.primary : null,
+                        color: selected ? theme.accentInk : null,
                       ),
                     ),
                     if (badge != null) ...[
@@ -266,7 +267,7 @@ class _VendorPickerSheetState extends State<VendorPickerSheet> {
         style: theme.textTheme.labelSmall?.copyWith(
           fontSize: AppTypography.caption,
           height: 1.1,
-          color: theme.colorScheme.primary,
+          color: theme.accentInk,
           fontWeight: FontWeight.w600,
         ),
       ),

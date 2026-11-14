@@ -29,12 +29,15 @@
     <color name="widget_ai_circle">#007AFF</color>
     <color name="widget_ai_robot">#FFFFFFFF</color>
     <!--
-      快捷记录组件专属 token：纯色、无渐变。整个组件就是一块主色大色块，
-      图标统一是白圆/白图标，深浅色下都只有这一套主色，靠系统主题切换底色即可。
+      快捷记录组件专属 token：极简曜石黑便当盒体系（深浅色主题下均保持统一黑色质感）。
     -->
-    <color name="widget_qr_accent">#2F6BFF</color>
-    <color name="widget_qr_on_accent">#FFFFFFFF</color>
-    <color name="widget_qr_scrim">#26FFFFFF</color>
+    <color name="widget_qr_surface">#F2101013</color>
+    <color name="widget_qr_border">#26FFFFFF</color>
+    <color name="widget_qr_on_surface">#F4F4F6</color>
+    <color name="widget_qr_on_primary">#111114</color>
+    <color name="widget_qr_icon">#F0F0F3</color>
+    <color name="widget_qr_tile_bg">#EB23252B</color>
+    <color name="widget_qr_tile_border">#1EFFFFFF</color>
     <color name="dialog_bg">#FFFFFF</color>
     <color name="dialog_text">#1C1C1E</color>
     <color name="dialog_input_bg">#F2F2F7</color>

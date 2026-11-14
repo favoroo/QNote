@@ -374,7 +374,7 @@ void main() {
       expect(find.widgetWithText(ChoiceChip, '低'), findsOneWidget);
     });
 
-    testWidgets('路由组二级列成员，档位作用于全部启用成员', (tester) async {
+    testWidgets('点路由组即选中，档位作用于全部启用成员', (tester) async {
       final group = _group(
         strategy: RouteStrategy.failover,
         members: const [
@@ -398,13 +398,13 @@ void main() {
       await tester.tap(find.text('故障转移组'));
       await tester.pumpAndSettle();
 
-      expect(find.text('组内模型'), findsOneWidget);
-      expect(find.text('按「顺序」自动选择'), findsOneWidget);
-      // 组内停用的成员也列出来，但要标出来
-      expect(find.text('gpt-5.4'), findsOneWidget);
-      expect(find.textContaining('组内已停用'), findsOneWidget);
+      // 不进二级：没有「上一步」，勾选移到组行，底部说明当前绑定是路由组
+      expect(find.text('上一步'), findsNothing);
+      expect(find.text('当前路由组'), findsOneWidget);
+      expect(find.byIcon(Icons.check_rounded), findsOneWidget);
 
-      // 档位按首个成员（gpt-5.4-mini）的能力给，组内其他成员不支持的档位由发信层跳过
+      // 档位按首个成员（gpt-5.4-mini）的能力给，作用对象展开为全部启用成员，
+      // 组内其他成员不支持的档位由发信层跳过
       await tester.tap(find.text('高'));
       await tester.pumpAndSettle();
 
@@ -440,7 +440,7 @@ void main() {
       expect(find.widgetWithText(ChoiceChip, '极高'), findsOneWidget);
     });
 
-    testWidgets('路由组的管理入口先选成员，再配置该成员的档位', (tester) async {
+    testWidgets('路由组选中后「管理思考档位」先选成员，再配置该成员的档位', (tester) async {
       final group = _group(
         members: const [
           RouteGroupMember(providerId: 'p1', modelName: 'gpt-5.4-mini'),
@@ -463,6 +463,7 @@ void main() {
 
       await tester.tap(find.text('故障转移组'));
       await tester.pumpAndSettle();
+      // 绑定到组后底部入口作用于全部成员，先弹成员选择
       await tester.tap(find.textContaining('管理思考档位'));
       await tester.pumpAndSettle();
 

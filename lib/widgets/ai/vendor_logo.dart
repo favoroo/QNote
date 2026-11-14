@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:qnote_flutter/config/ai_vendors.dart';
+import 'package:qnote_flutter/core/theme/app_accent.dart';
 
 /// 厂商图标文件名中「单色图」的名单（取自各 SVG 根节点的 `fill="currentColor"`）
 ///
@@ -63,14 +64,15 @@ class VendorLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final asset = vendorIconAsset(vendorId);
     final icon = asset == null ? '' : asset.split('/').last.replaceAll('.svg', '');
     final monochrome = monochromeVendorIcons.contains(icon);
 
     final Widget content;
     if (asset == null) {
-      content = _letterFallback(colorScheme);
+      content = _letterFallback(theme.accentInk);
     } else {
       content = Center(
         child: SvgPicture.asset(
@@ -81,7 +83,7 @@ class VendorLogo extends StatelessWidget {
           // 单色图按主题着色；彩色图保留原色，不加滤镜
           colorFilter: monochrome ? ColorFilter.mode(colorScheme.onSurfaceVariant, BlendMode.srcIn) : null,
           // 资源缺失时不留空白方块：兜底成首字母，界面仍然可读
-          placeholderBuilder: (_) => _letterFallback(colorScheme),
+          placeholderBuilder: (_) => _letterFallback(theme.accentInk),
         ),
       );
     }
@@ -105,13 +107,13 @@ class VendorLogo extends StatelessWidget {
     );
   }
 
-  Widget _letterFallback(ColorScheme colorScheme) {
+  Widget _letterFallback(Color color) {
     final label = (fallbackLabel ?? getProviderById(vendorId ?? '')?.name ?? '').trim();
     final letter = label.isEmpty ? '?' : label.substring(0, 1).toUpperCase();
     return Center(
       child: Text(
         letter,
-        style: TextStyle(fontSize: size * 0.44, fontWeight: FontWeight.w600, color: colorScheme.primary, height: 1),
+        style: TextStyle(fontSize: size * 0.44, fontWeight: FontWeight.w600, color: color, height: 1),
       ),
     );
   }
