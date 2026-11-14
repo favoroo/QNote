@@ -43,6 +43,7 @@ import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
+import 'package:qnote_flutter/widgets/ai/workflow_process_view.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
@@ -82,6 +83,11 @@ class _AiPageState extends ConsumerState<AiPage> {
   // 键盘动画中间帧的贴底校准定时器（见 build 内 inset 监听）
   Timer? _insetScrollDebounce;
 
+  /// 本帧是否已排过贴底任务：正文/状态/思考三个 provider 可能在同一帧各触发一次，
+  /// 合并成一次 post-frame 滚动，避免同一帧重复 jumpTo 造成多余布局。
+  bool _scrollToBottomScheduled = false;
+  bool _scrollToBottomImmediate = false;
+
   bool _isTyping = false;
   AiModelRef? _activeModelId;
 
@@ -118,10 +124,16 @@ class _AiPageState extends ConsumerState<AiPage> {
   // 避免每次重建都把整段历史重扫一遍。provider 增删消息都会生成新 List，
   // 因此用 identical 比较列表引用即可判定内容是否变化。
   List<ChatMessage>? _cacheSource;
+  bool _cacheIsLiveTurn = false;
   List<ChatTimelineEntry>? _cachedTimeline;
   Set<String>? _cachedImageKeys;
   // null 既可能是「还没算」也可能是「算出来就是 null」，有效性统一由 _cacheSource 判定
   int? _cachedReeditIndex;
+
+  // 按轮次 turnKey 记录用户手动展开/收起的工作流状态，切换会话时重置，
+  // 同一轮在「流式进行中 → 生成结束落库」切换时不会丢失用户当前展开视图。
+  String? _workflowExpandedSessionId;
+  final Map<String, bool> _workflowExpandedByTurn = {};
 
   // 输入增强状态：斜杠命令 / @ 引用浮层（非 null 即展示对应面板）
   String? _slashQuery;
@@ -362,12 +374,22 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   void _scrollToBottom({bool immediate = false}) {
+    // 同一帧内可能被正文/状态/思考多个监听同时触发：合并成一次，
+    // 且只要有一次要求瞬跳，就按瞬跳处理。
+    _scrollToBottomImmediate |= immediate;
+    if (_scrollToBottomScheduled) {
+      return;
+    }
+    _scrollToBottomScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottomScheduled = false;
+      final jump = _scrollToBottomImmediate;
+      _scrollToBottomImmediate = false;
       if (!mounted || !_scrollController.hasClients) {
         return;
       }
       final target = _scrollController.position.maxScrollExtent;
-      if (immediate) {
+      if (jump) {
         _scrollController.jumpTo(target);
       } else {
         AppMotion.animateScrollTo(_scrollController, target, context: context);
@@ -1197,18 +1219,26 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   Widget _buildChatArea(ChatSession? currentChat, ThemeData theme) {
     final stateMessages = currentChat?.messages ?? const <ChatMessage>[];
+    if (_workflowExpandedSessionId != currentChat?.id) {
+      _workflowExpandedSessionId = currentChat?.id;
+      _workflowExpandedByTurn.clear();
+    }
 
-    // 三个派生结果一起重算：都以 stateMessages 为唯一输入，命中缓存时整组复用。
-    // 缓存键刻意不含 hasStreaming——流式开始/结束不改变历史消息，
-    // 不应因此击穿缓存重扫全部消息。
-    if (!identical(stateMessages, _cacheSource)) {
+    final hasStreaming =
+        ref.watch(aiStreamingMessageProvider.select((value) => value != null)) ||
+        ref.watch(aiStreamingStatusProvider.select((value) => value != null));
+
+    // 三个派生结果一起重算：都以 stateMessages + hasStreaming 为输入，命中缓存时整组复用。
+    // hasStreaming 只在一次任务开始/结束时翻转两次，逐 token 输出不会击穿缓存。
+    if (!identical(stateMessages, _cacheSource) || _cacheIsLiveTurn != hasStreaming) {
       _cacheSource = stateMessages;
+      _cacheIsLiveTurn = hasStreaming;
       // 生图卡片已展示过的图片键：assistant 正文里模型回显的同一张 `![image](<路径>)`
       // 据此跳过渲染，避免一张生成图在会话流里出现两次
       _cachedImageKeys = collectGeneratedImageKeys(stateMessages);
-      // 消息归一抽在纯函数里（思考步骤独立成行 + 连续工具聚合成折叠链），
+      // 消息归一抽在纯函数里（工作流统一折叠 + 单思考直通），
       // 便于在没有数据库和 UI 的环境下锁定顺序、可见性与撤回下标
-      _cachedTimeline = buildChatTimelineEntries(stateMessages);
+      _cachedTimeline = buildChatTimelineEntries(stateMessages, isLiveTurn: hasStreaming);
       _cachedReeditIndex = reeditableUserIndex(stateMessages);
     }
     final generatedImageKeys = _cachedImageKeys!;
@@ -1226,9 +1256,20 @@ class _AiPageState extends ConsumerState<AiPage> {
           ]
         : timeline;
 
-    final hasStreaming =
-        ref.watch(aiStreamingMessageProvider.select((value) => value != null)) ||
-        ref.watch(aiStreamingStatusProvider.select((value) => value != null));
+    var lastUserIdx = -1;
+    for (var i = stateMessages.length - 1; i >= 0; i--) {
+      if (stateMessages[i].role == 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    final activeTurnKey = 'turn_${lastUserIdx}_0';
+    final lastTimelineMsg = displayItems.isNotEmpty ? displayItems.last.message : null;
+    final lastWorkflow = lastTimelineMsg != null && lastTimelineMsg.role == 'workflow'
+        ? (lastTimelineMsg.uiDetails?['workflow'] as WorkflowData?)
+        : null;
+    final hasLiveWorkflowInList = hasStreaming && (lastWorkflow?.isLive ?? false);
+
     final showTyping =
         _isTyping && !hasStreaming && displayItems.isNotEmpty && displayItems.last.message.role == 'user';
     final showStreaming = hasStreaming;
@@ -1335,6 +1376,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                 regenerateEnabled: !_isTyping,
                 onContinue: () => ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
                 onPause: () => ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
+                isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
+                onWorkflowExpandedChanged: (key, expanded) => setState(() => _workflowExpandedByTurn[key] = expanded),
               );
               // 我最后发的那条提问：点一下把提问填回输入框慢慢改，撤回留到点发送时；
               // 失败气泡仍走长按弹重试菜单
@@ -1375,6 +1418,10 @@ class _AiPageState extends ConsumerState<AiPage> {
                 isLastInGroup: true,
                 generatedImageKeys: generatedImageKeys,
                 onSendToQ: _attachImageToInput,
+                hasLiveWorkflowInList: hasLiveWorkflowInList,
+                activeTurnKey: activeTurnKey,
+                isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
+                onWorkflowExpandedChanged: (key, expanded) => setState(() => _workflowExpandedByTurn[key] = expanded),
               ),
             );
           },
@@ -1676,7 +1723,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                       child: SizedBox(
                         width: 52,
                         height: 52,
-                        child: UnifiedImage(imagePath: imgPath, fit: BoxFit.cover),
+                        // 显式传尺寸让 UnifiedImage 按 52×2 解码，避免 52px 缩略图按 720px 解码
+                        child: UnifiedImage(imagePath: imgPath, width: 52, height: 52, fit: BoxFit.cover),
                       ),
                     ),
                     Positioned(

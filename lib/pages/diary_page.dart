@@ -89,6 +89,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   bool _isShiftingWindow = false;
   double? _shiftTargetOffset;
   final Map<int, BuildContext> _itemContexts = {};
+
+  /// 日期分隔栏 context，按时间线全局 index 索引（与 [_itemContexts] 同键）。
+  /// 滚动判断当前日期时只量这些每天一个的锚点，避免遍历展开日里 48 个时间槽和全部记录卡。
+  final Map<int, BuildContext> _dividerContexts = {};
   final Map<int, double> _itemHeights = {};
   Timer? _autoScrollTimer;
   Timer? _minuteTickTimer;
@@ -440,6 +444,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _windowStartDate = _today.subtract(const Duration(days: 60));
     _hasPerformedInitialScroll = false;
     _itemContexts.clear();
+    _dividerContexts.clear();
     _itemHeights.clear();
 
     _scrollController = ScrollController(keepScrollOffset: false);
@@ -1061,6 +1066,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _batchReviewHighlightTimer?.cancel();
     _removeCheerBurst();
     _itemContexts.clear();
+    _dividerContexts.clear();
     _itemHeights.clear();
     for (final anim in _dayAnimations.values) {
       anim.dispose();
@@ -1148,39 +1154,13 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         // Find the Y coordinate for the center of the viewport on screen
         final double centerYOnScreen = viewportBox.localToGlobal(Offset(0, viewportBox.size.height / 2)).dy;
 
-        int? centerIndex;
-        double minDistanceAboveCenter = double.infinity;
-        int? closestHeaderIndexAbove;
-
-        // Convert to list to avoid ConcurrentModificationError during iteration
-        final entries = _itemContexts.entries.toList();
-        for (final entry in entries) {
-          final ctx = entry.value;
-          if (!ctx.mounted) continue;
-          final RenderBox? itemBox = ctx.findRenderObject() as RenderBox?;
-          if (itemBox != null && itemBox.hasSize) {
-            final double itemTop = itemBox.localToGlobal(Offset.zero).dy;
-            final double itemBottom = itemTop + itemBox.size.height;
-            if (centerYOnScreen >= itemTop && centerYOnScreen <= itemBottom) {
-              centerIndex = entry.key;
-              break;
-            }
-            // 针对折叠日期（48个slot高度为0），若中心刚好落在槽位缝隙中，
-            // 记录中心线上方最近的分割栏或有效节点作为兜底可视天数
-            if (itemTop <= centerYOnScreen) {
-              final distance = centerYOnScreen - itemTop;
-              if (distance < minDistanceAboveCenter) {
-                minDistanceAboveCenter = distance;
-                closestHeaderIndexAbove = entry.key;
-              }
-            }
-          }
-        }
-
-        final targetIndex = centerIndex ?? closestHeaderIndexAbove;
-        if (targetIndex != null) {
-          final dayOffset = targetIndex ~/ _itemsPerDay;
-          final visibleDate = _indexToDate(dayOffset);
+        // 只量日期分隔栏（每天一个），不再遍历 _itemContexts（包含展开日 48 个
+        // 时间槽 + 全部记录卡）：弹道滚动时这个方法逐帧执行，全量
+        // findRenderObject/localToGlobal 会直接拖慢滚动。分隔栏滚出缓存区的
+        // 超长展开日再由完整 item 列表兜底一次。
+        final visibleDayOffset = _resolveVisibleDayOffset(centerYOnScreen);
+        if (visibleDayOffset != null) {
+          final visibleDate = _indexToDate(visibleDayOffset);
 
           final selectedDate = ref.read(selectedDateProvider);
           if (!_isSameDay(selectedDate, visibleDate) &&
@@ -1197,6 +1177,38 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
         }
       }
     }
+  }
+
+  /// 求视口中心线所在日期（dayOffset）。优先用分隔栏锚点；中心落在超长展开日、
+  /// 分隔栏已滚出挂载范围时，回退到完整 item 列表（item index 本身含 dayOffset）。
+  int? _resolveVisibleDayOffset(double centerYOnScreen) {
+    final dividerIndex = _closestIndexAbove(centerYOnScreen, _dividerContexts);
+    if (dividerIndex != null) {
+      return dividerIndex ~/ _itemsPerDay;
+    }
+    final itemIndex = _closestIndexAbove(centerYOnScreen, _itemContexts);
+    return itemIndex == null ? null : itemIndex ~/ _itemsPerDay;
+  }
+
+  /// 找出中心线上方最近的一个挂载 item，返回它的 index。
+  int? _closestIndexAbove(double centerYOnScreen, Map<int, BuildContext> contexts) {
+    int? closest;
+    double minDistance = double.infinity;
+    for (final entry in contexts.entries) {
+      final ctx = entry.value;
+      if (!ctx.mounted) continue;
+      final RenderBox? itemBox = ctx.findRenderObject() as RenderBox?;
+      if (itemBox == null || !itemBox.hasSize) continue;
+      final double itemTop = itemBox.localToGlobal(Offset.zero).dy;
+      if (itemTop <= centerYOnScreen) {
+        final distance = centerYOnScreen - itemTop;
+        if (distance < minDistance) {
+          minDistance = distance;
+          closest = entry.key;
+        }
+      }
+    }
+    return closest;
   }
 
   double _calculateDaysHeight(DateTime startDate, int daysCount) {
@@ -1222,6 +1234,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _windowStartDate = newStartDate;
     _shiftTargetOffset = prevOffset + shiftHeight;
     _itemContexts.clear();
+    _dividerContexts.clear();
     _itemHeights.clear();
 
     setState(() {});
@@ -1249,6 +1262,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _windowStartDate = _windowStartDate.add(const Duration(days: _shiftDays));
     _shiftTargetOffset = prevOffset - removedHeight;
     _itemContexts.clear();
+    _dividerContexts.clear();
     _itemHeights.clear();
 
     setState(() {});
@@ -1324,6 +1338,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
     _windowStartDate = _today.add(Duration(days: newStartDiff));
     _itemContexts.clear();
+    _dividerContexts.clear();
     _itemHeights.clear();
 
     setState(() {});
@@ -3194,10 +3209,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
             final globalIndex = dayOffset * _itemsPerDay;
             return TimelineItemWrapper(
               index: globalIndex,
-              onMount: (index, ctx) => _itemContexts[index] = ctx,
+              onMount: (index, ctx) {
+                _itemContexts[index] = ctx;
+                _dividerContexts[index] = ctx;
+              },
               onUnmount: (index, ctx) {
                 if (identical(_itemContexts[index], ctx)) {
                   _itemContexts.remove(index);
+                }
+                if (identical(_dividerContexts[index], ctx)) {
+                  _dividerContexts.remove(index);
                 }
               },
               onHeightChange: (index, height) => _itemHeights[index] = height,

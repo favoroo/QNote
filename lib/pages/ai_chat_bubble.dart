@@ -9,11 +9,23 @@ class _StreamingBubble extends ConsumerStatefulWidget {
   final Set<String> generatedImageKeys;
   final ValueChanged<String>? onSendToQ;
 
+  /// 历史列表末尾是否已有本轮的 `isLive` 工作流项（若有则由该项承接单行流水，避免重复）
+  final bool hasLiveWorkflowInList;
+
+  /// 当前流式轮次的 turnKey，用于跨「流式 → 落库」保留用户展开态
+  final String activeTurnKey;
+  final bool Function(String turnKey)? isWorkflowExpanded;
+  final void Function(String turnKey, bool expanded)? onWorkflowExpandedChanged;
+
   const _StreamingBubble({
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
     this.generatedImageKeys = const {},
     this.onSendToQ,
+    this.hasLiveWorkflowInList = false,
+    this.activeTurnKey = 'turn_-1_0',
+    this.isWorkflowExpanded,
+    this.onWorkflowExpandedChanged,
   });
 
   @override
@@ -28,11 +40,73 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
   String _pendingContent = '';
   Timer? _flushTimer;
 
+  /// 是否已有可展示的流式正文。由 provider 订阅更新，build 不再直接 watch 全量正文。
+  bool _hasStreamingContent = false;
+
+  /// 首帧 build 前（initState 的 fireImmediately 回调）只写字段，不触发 setState。
+  bool _ready = false;
+
+  ProviderSubscription<String?>? _contentSubscription;
+
   /// 约 8 个汉字的增量才触发一次重渲染，正文越长省下的解析越多
   static const int _minFlushDelta = 24;
 
   /// 未达增量阈值时最长等待多久补渲染一次，保证尾部内容最终跟上
   static const Duration _flushInterval = Duration(milliseconds: 200);
+
+  @override
+  void initState() {
+    super.initState();
+    // provider 约 60ms 写一次完整正文；若在 build 中直接 watch，气泡子树会以
+    // 16Hz 重建。改为订阅 + 按渲染阈值/定时器 setState，把流式重建压到约 5Hz。
+    _contentSubscription = ref.listenManual<String?>(
+      aiStreamingMessageProvider,
+      (previous, next) => _handleStreamingContent(next),
+      fireImmediately: true,
+    );
+    _ready = true;
+  }
+
+  void _handleStreamingContent(String? latest) {
+    final hasContent = latest != null && latest.trim().isNotEmpty;
+
+    if (!hasContent) {
+      // 状态行模式：清掉残留正文与挂起的补渲染
+      _flushTimer?.cancel();
+      _flushTimer = null;
+      _pendingContent = '';
+      if (_hasStreamingContent || _renderedContent.isNotEmpty) {
+        _hasStreamingContent = false;
+        _renderedContent = '';
+        if (_ready) setState(() {});
+      }
+      return;
+    }
+
+    _hasStreamingContent = true;
+
+    if (_renderedContent.isEmpty) {
+      // 首块正文立即渲染：节流只用于压制长正文的高频重解析，
+      // 不该让状态卡在首个 token 到达后再多停 200ms。
+      _flushTimer?.cancel();
+      _flushTimer = null;
+      _renderedContent = latest;
+      if (_ready) setState(() {});
+      return;
+    }
+
+    if (latest == _renderedContent) return;
+
+    if (latest.length - _renderedContent.length >= _minFlushDelta || !latest.startsWith(_renderedContent)) {
+      // 增量达阈值，或内容被整体替换（重发/重试），立即跟上
+      _flushTimer?.cancel();
+      _flushTimer = null;
+      _renderedContent = latest;
+      if (_ready) setState(() {});
+    } else {
+      _scheduleFlush(latest);
+    }
+  }
 
   void _scheduleFlush(String latest) {
     // 内容没有实际增长时不要挂定时器：否则 200ms 后 setState 又会走到同一
@@ -48,58 +122,84 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
 
   @override
   void dispose() {
+    _contentSubscription?.close();
     _flushTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final streamingContent = ref.watch(aiStreamingMessageProvider);
-    // 正文与阶段性状态互斥展示：优先正文；正文未到时展示状态行（思考中/准备中…）
-    final hasContent = streamingContent != null && streamingContent.trim().isNotEmpty;
-    final statusText = hasContent ? null : ref.watch(aiStreamingStatusProvider);
-    // 正文流式输出时本身在持续增长，无需已用时计时
-    final statusStartedAt = hasContent ? null : ref.watch(aiStreamingStartedAtProvider);
+    // 正文已在 _handleStreamingContent 中订阅并按阈值节流，这里只读本地状态；
+    // 状态行/思考区仍按各自 provider 更新，更新频率远低于正文流。
+    // 正文与阶段性状态互斥展示：优先正文；正文未到时展示单行流水状态
+    final statusText = _hasStreamingContent ? null : ref.watch(aiStreamingStatusProvider);
+    final statusStartedAt = _hasStreamingContent ? null : ref.watch(aiStreamingStartedAtProvider);
+    final content = _hasStreamingContent ? _renderedContent : '';
 
-    String content = '';
-    if (hasContent) {
-      if (_renderedContent.isEmpty) {
-        // 首块正文立即渲染：节流只用于压制长正文的高频重解析，
-        // 不该让状态卡在首个 token 到达后再多停 200ms。
-        _flushTimer?.cancel();
-        _flushTimer = null;
-        _renderedContent = streamingContent;
-      } else if (streamingContent != _renderedContent) {
-        if (streamingContent.length - _renderedContent.length >= _minFlushDelta ||
-            !streamingContent.startsWith(_renderedContent)) {
-          // 增量达阈值，或内容被整体替换（重发/重试），立即跟上
-          _flushTimer?.cancel();
-          _flushTimer = null;
-          _renderedContent = streamingContent;
-        } else {
-          _scheduleFlush(streamingContent);
-        }
+    // 列表末尾已有本轮活跃工作流时，等待态完全由工作流那一行承接，这里仅在正文到达后出泡
+    if (widget.hasLiveWorkflowInList) {
+      if (!_hasStreamingContent) {
+        return const SizedBox.shrink();
       }
-      content = _renderedContent;
-    } else {
-      // 状态行模式：清掉残留正文与挂起的补渲染
-      _flushTimer?.cancel();
-      _flushTimer = null;
-      _renderedContent = '';
+      return RepaintBoundary(
+        child: ChatBubble(
+          key: const ValueKey('streaming_chat_bubble'),
+          message: ChatMessage(role: 'assistant', content: content, timestamp: DateTime.now()),
+          isFirstInGroup: false,
+          isLastInGroup: widget.isLastInGroup,
+          generatedImageKeys: widget.generatedImageKeys,
+          onSendToQ: widget.onSendToQ,
+        ),
+      );
     }
 
-    // 独立重绘边界：流式气泡逐帧刷新时不连带整条列表重绘
+    // 首轮尚未产生落库工作流步骤时：
+    // - 正文未到达前：用扁平单行 WorkflowProcessView 承担流式流水（不套重气泡壳）
+    // - 正文开始流式后：若存在实时思考，用 ThinkingProcessView 挂在正文上方一行
     final liveThought = ref.watch(aiStreamingThoughtProvider)?.trim() ?? '';
-    // 正文开始流式后，把本轮思考以独立步骤行留在正文上方（对齐 ZCode 的时间线：
-    // 思考 → 回答），状态卡阶段则由气泡内部的实时思考区承担
-    final showThoughtRow = hasContent && liveThought.isNotEmpty;
+    final turnStartedAt = ref.watch(aiStreamingTurnStartedAtProvider);
+    final theme = Theme.of(context);
+    final expanded = widget.isWorkflowExpanded?.call(widget.activeTurnKey) ?? false;
+    final onExpandedChanged = widget.onWorkflowExpandedChanged;
+
+    if (!_hasStreamingContent) {
+      return RepaintBoundary(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.isFirstInGroup) const _AssistantSenderHeader(bottom: 2),
+            Padding(
+              padding: EdgeInsets.only(left: 4, right: 4, bottom: widget.isLastInGroup ? 12 : 2),
+              child: WorkflowProcessView(
+                workflow: WorkflowData(
+                  turnKey: widget.activeTurnKey,
+                  steps: const [],
+                  summary: const WorkflowSummary(),
+                  isLive: true,
+                ),
+                expanded: expanded,
+                onExpandedChanged: onExpandedChanged != null ? (v) => onExpandedChanged(widget.activeTurnKey, v) : null,
+                liveThought: liveThought,
+                liveTurnStartedAt: turnStartedAt,
+                liveStatusText: statusText,
+                liveStartedAt: statusStartedAt,
+                hasStreamingOutput: false,
+                toolBuilder: (ctx, msg) =>
+                    ChatBubble.buildToolFeedback(ctx, msg, theme, onSendToQ: widget.onSendToQ, flat: true),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final showThoughtRow = liveThought.isNotEmpty;
     final bubble = ChatBubble(
       // 固定 Key：思考行在首字到达后插入到气泡上方，若气泡没有 Key
       // 会因 Column 第 0 个子节点变化而被卸载重建，入场动画和气泡状态都会重来。
       key: const ValueKey('streaming_chat_bubble'),
       message: ChatMessage(role: 'assistant', content: content, timestamp: DateTime.now()),
-      statusText: statusText,
-      statusStartedAt: statusStartedAt,
       // 组抬头统一由外层列稳定渲染（与历史气泡同一 bottom: 6 间距），思考行弹出时头像不会上下跳一格
       isFirstInGroup: false,
       isLastInGroup: widget.isLastInGroup,
@@ -111,25 +211,7 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (widget.isFirstInGroup)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const QAvatar(size: 24, withBackground: true),
-                  const SizedBox(width: 6),
-                  Text(
-                    '小Q',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          if (widget.isFirstInGroup) const _AssistantSenderHeader(bottom: 6),
           AppCollapsible(
             expanded: showThoughtRow,
             rise: 4,
@@ -140,7 +222,11 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
                     child: ThinkingProcessView(
                       thought: liveThought,
                       isStreaming: true,
-                      startedAt: ref.watch(aiStreamingTurnStartedAtProvider),
+                      startedAt: turnStartedAt,
+                      expanded: widget.isWorkflowExpanded != null ? expanded : null,
+                      onExpandedChanged: onExpandedChanged != null
+                          ? (v) => onExpandedChanged(widget.activeTurnKey, v)
+                          : null,
                     ),
                   )
                 : const SizedBox.shrink(),
@@ -182,6 +268,10 @@ class ChatBubble extends ConsumerWidget {
   /// 重新生成是否可点（流式输出中禁用，避免与进行中的任务并发）
   final bool regenerateEnabled;
 
+  /// 按轮次 turnKey 查询/保存工作流与思考步骤的展开态（跨流式与落库保持状态）
+  final bool Function(String turnKey)? isWorkflowExpanded;
+  final void Function(String turnKey, bool expanded)? onWorkflowExpandedChanged;
+
   const ChatBubble({
     super.key,
     required this.message,
@@ -196,6 +286,8 @@ class ChatBubble extends ConsumerWidget {
     this.onSendToQ,
     this.onRegenerate,
     this.regenerateEnabled = true,
+    this.isWorkflowExpanded,
+    this.onWorkflowExpandedChanged,
   });
 
   /// 是否为待处理的步数上限消息（渲染「继续/暂停」按钮）
@@ -243,12 +335,13 @@ class ChatBubble extends ConsumerWidget {
         (message.isError ?? false) != true &&
         message.content.trim().isNotEmpty;
 
-    // 该消息是否还有可渲染的主体（正文 / 思考过程 / 工具卡片）
+    // 该消息是否还有可渲染的主体（正文 / 思考过程 / 工具卡片 / 工作流）
     final hasRenderableBody =
         message.content.trim().isNotEmpty ||
         (message.thought?.trim().isNotEmpty ?? false) ||
         message.role == 'tool' ||
         message.role == 'tool_group' ||
+        message.role == 'workflow' ||
         message.uiDetails != null;
 
     // 正文为空的助手消息属于工具调用中转（列表层已过滤），这里再兜一层；
@@ -262,6 +355,8 @@ class ChatBubble extends ConsumerWidget {
 
     // 思考段：扁平时间线行，不套气泡壳（对齐 ZCode 的「思考 · 3 秒」步骤行）
     if (message.role == 'thought') {
+      final turnKey = message.uiDetails?['turnKey'] as String?;
+      final controlled = turnKey != null && isWorkflowExpanded != null && onWorkflowExpandedChanged != null;
       return _OneShotBubbleEntrance(
         entranceKey: entranceKey,
         beginOffsetY: 12,
@@ -271,28 +366,74 @@ class ChatBubble extends ConsumerWidget {
           children: [
             // 思考行也承担「小Q」抬头：它是本轮回复的第一行，
             // 若不给抬头，紧随其后的正文气泡会因「同组」判定不再显示头像
-            if (isFirstInGroup)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2, left: 4, right: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const QAvatar(size: 24, withBackground: true),
-                    const SizedBox(width: 6),
-                    Text(
-                      '小Q',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            if (isFirstInGroup) const _AssistantSenderHeader(bottom: 2),
             Padding(
               padding: EdgeInsets.only(left: 4, right: 4, bottom: isLastInGroup ? 12 : 2),
-              child: ThinkingProcessView(thought: message.content, durationSeconds: message.thoughtSeconds),
+              child: ThinkingProcessView(
+                thought: message.content,
+                durationSeconds: message.thoughtSeconds,
+                expanded: controlled ? isWorkflowExpanded!(turnKey) : null,
+                onExpandedChanged: controlled ? (v) => onWorkflowExpandedChanged!(turnKey, v) : null,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 统一工作流折叠行：单行汇总或流式单行流水，点击展开完整步骤时间线
+    if (message.role == 'workflow') {
+      final workflow = message.uiDetails?['workflow'] as WorkflowData?;
+      if (workflow == null) return const SizedBox.shrink();
+      final controlled = isWorkflowExpanded != null && onWorkflowExpandedChanged != null;
+      return _OneShotBubbleEntrance(
+        entranceKey: 'workflow|${workflow.turnKey}',
+        beginOffsetY: 12,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isFirstInGroup) const _AssistantSenderHeader(bottom: 2),
+            Padding(
+              padding: EdgeInsets.only(left: 4, right: 4, bottom: isLastInGroup ? 12 : 2),
+              child: workflow.isLive
+                  ? _LiveWorkflowBubbleRow(
+                      workflow: workflow,
+                      expanded: controlled ? isWorkflowExpanded!(workflow.turnKey) : null,
+                      onExpandedChanged: controlled ? (v) => onWorkflowExpandedChanged!(workflow.turnKey, v) : null,
+                      onSendToQ: onSendToQ,
+                    )
+                  : WorkflowProcessView(
+                      workflow: workflow,
+                      expanded: controlled ? isWorkflowExpanded!(workflow.turnKey) : null,
+                      onExpandedChanged: controlled ? (v) => onWorkflowExpandedChanged!(workflow.turnKey, v) : null,
+                      toolBuilder: (ctx, msg) => buildToolFeedback(ctx, msg, theme, onSendToQ: onSendToQ, flat: true),
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 工具步骤 / 连续工具链：与思考行同一条扁平时间线，不套助手气泡壳。
+    // 再套一层气泡会形成「气泡底 + 工具卡底」的双层背景，并把上下间距撑大一圈。
+    if (message.role == 'tool' || message.role == 'tool_group') {
+      return _OneShotBubbleEntrance(
+        entranceKey: entranceKey,
+        beginOffsetY: 12,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isFirstInGroup) const _AssistantSenderHeader(bottom: 2),
+            Padding(
+              padding: EdgeInsets.only(left: 4, right: 4, bottom: isLastInGroup ? 12 : 2),
+              child: message.role == 'tool_group'
+                  ? ToolChainGroupWidget(
+                      toolMessages: (message.uiDetails?['messages'] as List<ChatMessage>?) ?? const [],
+                      theme: theme,
+                    )
+                  : buildToolFeedback(context, message, theme, onSendToQ: onSendToQ),
             ),
           ],
         ),
@@ -307,23 +448,14 @@ class ChatBubble extends ConsumerWidget {
         children: [
           // Avatar and sender name header - 仅当同组第一条消息时显示，同一回复多条消息避免重复显示头像
           if (isFirstInGroup)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!isUser) ...[
-                    const QAvatar(size: 24, withBackground: true),
-                    const SizedBox(width: 6),
-                    Text(
-                      '小Q',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ] else ...[
+            if (!isUser)
+              const _AssistantSenderHeader(bottom: 6)
+            else
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
                       userName,
                       style: TextStyle(
@@ -354,9 +486,8 @@ class ChatBubble extends ConsumerWidget {
                         ),
                       ),
                   ],
-                ],
+                ),
               ),
-            ),
           // Bubble container
           // 朗读/合成中点击本条气泡即中断播放（与豆包一致）；其余气泡不接管点击，
           // 交给外层聊天区域的收起键盘逻辑
@@ -445,48 +576,7 @@ class ChatBubble extends ConsumerWidget {
                                         generatedImageKeys: generatedImageKeys,
                                         onSendToQ: onSendToQ,
                                       ),
-                                      styleSheet: MarkdownStyleSheet(
-                                        p: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14, height: 1.5),
-                                        h1: TextStyle(
-                                          color: theme.colorScheme.onSurface,
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.6,
-                                        ),
-                                        h2: TextStyle(
-                                          color: theme.colorScheme.onSurface,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.5,
-                                        ),
-                                        h3: TextStyle(
-                                          color: theme.colorScheme.onSurface,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.4,
-                                        ),
-                                        code: TextStyle(
-                                          fontFamily: 'monospace',
-                                          fontSize: 13,
-                                          // 行内代码贴浅色底，亮主题色原字会看不清，改中性墨色
-                                          color: theme.colorScheme.onSurface,
-                                          backgroundColor: Colors.transparent,
-                                        ),
-                                        codeblockDecoration: BoxDecoration(
-                                          color: theme.colorScheme.surfaceContainerLow,
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(
-                                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                                          ),
-                                        ),
-                                        blockquoteDecoration: BoxDecoration(
-                                          color: theme.colorScheme.surfaceContainerLow,
-                                          border: Border(left: BorderSide(color: theme.accentInk, width: 4)),
-                                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
-                                        ),
-                                        blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                        listBullet: TextStyle(color: theme.colorScheme.onSurface),
-                                      ),
+                                      styleSheet: _markdownStyleSheetFor(theme),
                                     ),
                                   ],
                                 ],
@@ -518,12 +608,14 @@ class ChatBubble extends ConsumerWidget {
 
   /// 构建工具调用执行反馈与小Q确认交互卡片
   ///
-  /// [onSendToQ] 供图片卡片的长按菜单「给小Q」使用，工具链折叠面板等无该语义的场景可不传。
+  /// [onSendToQ] 供图片卡片的长按菜单「给小Q」使用，工具链折叠面板等无该语义的场景可不传；
+  /// [flat] 为 true 时去掉外层背景与边框（用于工作流展开时间线内嵌）。
   static Widget buildToolFeedback(
     BuildContext context,
     ChatMessage message,
     ThemeData theme, {
     ValueChanged<String>? onSendToQ,
+    bool flat = false,
   }) {
     final uiDetails = message.uiDetails;
     final isAskUser = message.toolName == 'ask_user' || uiDetails?['type'] == 'ask_user';
@@ -957,12 +1049,12 @@ class ChatBubble extends ConsumerWidget {
 
     // list_dir 目录遍历结果折叠展示，防止几十条条目拉长屏幕
     if (message.toolName == 'list_dir') {
-      return _DirectoryFeedbackWidget(message: message, theme: theme);
+      return _DirectoryFeedbackWidget(message: message, theme: theme, flat: flat);
     }
 
     // grep 全局检索结果折叠展示
     if (message.toolName == 'grep') {
-      return _GrepFeedbackWidget(message: message, theme: theme);
+      return _GrepFeedbackWidget(message: message, theme: theme, flat: flat);
     }
 
     // fetch_url 返回的网页正文过长，气泡里只显示标题摘要，点击可打开原网页
@@ -1006,7 +1098,7 @@ class ChatBubble extends ConsumerWidget {
       );
     }
 
-    return _GenericToolFeedbackWidget(message: message, theme: theme);
+    return _GenericToolFeedbackWidget(message: message, theme: theme, flat: flat);
   }
 
   /// 用户消息里的附件图片网格：单图大图展示，多图九宫格缩略，均可点击放大与长按操作
@@ -1144,6 +1236,71 @@ class ChatBubble extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 活跃轮次尾部的实时工作流宿主：独立订阅流式思考、工具状态与正文起始，
+/// 避免状态变化连带整个历史气泡列表重建。
+class _LiveWorkflowBubbleRow extends ConsumerWidget {
+  final WorkflowData workflow;
+  final bool? expanded;
+  final ValueChanged<bool>? onExpandedChanged;
+  final ValueChanged<String>? onSendToQ;
+
+  const _LiveWorkflowBubbleRow({required this.workflow, this.expanded, this.onExpandedChanged, this.onSendToQ});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final liveThought = ref.watch(aiStreamingThoughtProvider);
+    final liveStatus = ref.watch(aiStreamingStatusProvider);
+    final liveStartedAt = ref.watch(aiStreamingStartedAtProvider);
+    final liveTurnStartedAt = ref.watch(aiStreamingTurnStartedAtProvider);
+    final hasStreamingOutput = ref.watch(aiStreamingMessageProvider.select((v) => v != null && v.trim().isNotEmpty));
+
+    return WorkflowProcessView(
+      workflow: workflow,
+      expanded: expanded,
+      onExpandedChanged: onExpandedChanged,
+      liveThought: liveThought,
+      liveTurnStartedAt: liveTurnStartedAt,
+      liveStatusText: liveStatus,
+      liveStartedAt: liveStartedAt,
+      hasStreamingOutput: hasStreamingOutput,
+      toolBuilder: (ctx, msg) => ChatBubble.buildToolFeedback(ctx, msg, theme, onSendToQ: onSendToQ, flat: true),
+    );
+  }
+}
+
+/// 小Q 的组抬头（头像 + 名称）
+///
+/// 思考行、工具步骤行与正文气泡共用，保证同一轮回复的抬头位置与间距一致。
+class _AssistantSenderHeader extends StatelessWidget {
+  /// 与下一条内容之间的间距
+  final double bottom;
+
+  const _AssistantSenderHeader({this.bottom = 6});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom, left: 4, right: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const QAvatar(size: 24, withBackground: true),
+          const SizedBox(width: 6),
+          Text(
+            '小Q',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1419,4 +1576,47 @@ class _OneShotBubbleEntranceState extends State<_OneShotBubbleEntrance> with Sin
       },
     );
   }
+}
+
+/// 流式正文的 Markdown 样式表只随主题变化。
+///
+/// 气泡在流式期间会反复重建，若每次 build 都新建 [MarkdownStyleSheet]，
+/// 几十个 TextStyle / BoxDecoration 会持续产生垃圾；这里按 ThemeData 实例缓存，
+/// 主题切换后自动重建。
+MarkdownStyleSheet _markdownStyleSheetFor(ThemeData theme) {
+  final cached = _MarkdownStyleSheetCache._entry;
+  if (cached != null && identical(cached.theme, theme)) {
+    return cached.style;
+  }
+  final style = MarkdownStyleSheet(
+    p: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14, height: 1.5),
+    h1: TextStyle(color: theme.colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.bold, height: 1.6),
+    h2: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold, height: 1.5),
+    h3: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.bold, height: 1.4),
+    code: TextStyle(
+      fontFamily: 'monospace',
+      fontSize: 13,
+      // 行内代码贴浅色底，亮主题色原字会看不清，改中性墨色
+      color: theme.colorScheme.onSurface,
+      backgroundColor: Colors.transparent,
+    ),
+    codeblockDecoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+    ),
+    blockquoteDecoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerLow,
+      border: Border(left: BorderSide(color: theme.accentInk, width: 4)),
+      borderRadius: const BorderRadius.horizontal(right: Radius.circular(6)),
+    ),
+    blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    listBullet: TextStyle(color: theme.colorScheme.onSurface),
+  );
+  _MarkdownStyleSheetCache._entry = (theme: theme, style: style);
+  return style;
+}
+
+class _MarkdownStyleSheetCache {
+  static ({ThemeData theme, MarkdownStyleSheet style})? _entry;
 }

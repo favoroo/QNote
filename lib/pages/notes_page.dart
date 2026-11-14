@@ -899,11 +899,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             tile,
             AppCollapsible(
               expanded: item.folder!.isExpanded,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [for (final child in node.children) _buildTreeNode(child)],
-              ),
+              // 折叠时不再递归构建整棵子树：AppCollapsible 收起时会自行保留
+              // 最后一份真实内容播放退场，稳态下隐藏节点不产生任何 widget 分配。
+              child: item.folder!.isExpanded
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [for (final child in node.children) _buildTreeNode(child)],
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),

@@ -118,6 +118,13 @@ class _DiaryItemState extends State<DiaryItem> {
   TodayScreenUsage? _liveScreenUsage;
   bool _hasFetchedLiveScreenUsage = false;
 
+  /// 正文解析结果缓存。卡片在滚动进入视口、页面重建时会反复 build，
+  /// 但同一条记录的正文与标签不会变，没必要每次重新切行、匹配字段键。
+  DiaryRecord? _richContentRecord;
+  bool _richContentMultiTag = false;
+  List<String>? _cachedDisplayLines;
+  List<String>? _cachedRemarkLines;
+
   @override
   void initState() {
     super.initState();
@@ -665,67 +672,64 @@ class _DiaryItemState extends State<DiaryItem> {
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
-                              SingleChildScrollView(
-                                physics: const NeverScrollableScrollPhysics(),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildHeader(
-                                      theme,
-                                      tagColor,
-                                      categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
-                                          ? record.displayTag
-                                          : null,
-                                    ),
-                                    if (_isHealthDailySummary)
-                                      _buildHealthDailySummaryCard(theme, tagColor)
-                                    else if (hasMultipleTags)
-                                      _buildMultiTagSections(theme)
-                                    else ...[
-                                      _buildTagAndFieldsRow(theme, tagColor),
-                                      _buildSingleTagContent(theme, tagColor),
-                                    ],
-                                    if (record.photos.isNotEmpty)
-                                      Builder(
-                                        builder: (context) {
-                                          final screenWidth = MediaQuery.of(context).size.width;
-                                          final maxWidth = screenWidth - 132 - _contentIndent;
-                                          const spacing = 6.0;
-                                          final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
-                                          return Padding(
-                                            padding: const EdgeInsets.only(left: _contentIndent, top: 4),
-                                            child: Wrap(
-                                              spacing: spacing,
-                                              runSpacing: spacing,
-                                              children: record.photos.asMap().entries.map((entry) {
-                                                final index = entry.key;
-                                                final photo = entry.value;
-                                                return GestureDetector(
-                                                  behavior: HitTestBehavior.opaque,
-                                                  onTap: () {
-                                                    Navigator.of(context).push(
-                                                      AppMotion.galleryRoute(
-                                                        FullScreenImageGallery(
-                                                          images: record.photos,
-                                                          initialIndex: index,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: UnifiedImage(
-                                                    imagePath: photo,
-                                                    width: itemWidth,
-                                                    height: itemWidth,
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            ),
-                                          );
-                                        },
-                                      ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildHeader(
+                                    theme,
+                                    tagColor,
+                                    categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
+                                        ? record.displayTag
+                                        : null,
+                                  ),
+                                  if (_isHealthDailySummary)
+                                    _buildHealthDailySummaryCard(theme, tagColor)
+                                  else if (hasMultipleTags)
+                                    _buildMultiTagSections(theme)
+                                  else ...[
+                                    _buildTagAndFieldsRow(theme, tagColor),
+                                    _buildSingleTagContent(theme, tagColor),
                                   ],
-                                ),
+                                  if (record.photos.isNotEmpty)
+                                    Builder(
+                                      builder: (context) {
+                                        final screenWidth = MediaQuery.of(context).size.width;
+                                        final maxWidth = screenWidth - 132 - _contentIndent;
+                                        const spacing = 6.0;
+                                        final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
+                                        return Padding(
+                                          padding: const EdgeInsets.only(left: _contentIndent, top: 4),
+                                          child: Wrap(
+                                            spacing: spacing,
+                                            runSpacing: spacing,
+                                            children: record.photos.asMap().entries.map((entry) {
+                                              final index = entry.key;
+                                              final photo = entry.value;
+                                              return GestureDetector(
+                                                behavior: HitTestBehavior.opaque,
+                                                onTap: () {
+                                                  Navigator.of(context).push(
+                                                    AppMotion.galleryRoute(
+                                                      FullScreenImageGallery(
+                                                        images: record.photos,
+                                                        initialIndex: index,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                child: UnifiedImage(
+                                                  imagePath: photo,
+                                                  width: itemWidth,
+                                                  height: itemWidth,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                ],
                               ),
                               if (onAiExtract != null && !_isHealthDailySummary)
                                 Positioned(
@@ -1136,145 +1140,160 @@ class _DiaryItemState extends State<DiaryItem> {
 
     if (cleanText.isEmpty) return null;
 
-    final rawLines = cleanText.split('\n');
-    final displayLines = <String>[];
-    final remarkLines = <String>[];
-    bool inRemarkSection = false;
+    // 同一条记录的正文与标签不变，按 record 实例复用解析结果。
+    // 卡片滚动进入视口、页面重建时会反复 build，这里省掉重复切行与键匹配。
+    final canReuseParsed = identical(record, _richContentRecord) && _richContentMultiTag == isMultiTag;
+    late final List<String> displayLines;
+    late final List<String> remarkLines;
+    if (canReuseParsed) {
+      displayLines = _cachedDisplayLines!;
+      remarkLines = _cachedRemarkLines!;
+    } else {
+      final rawLines = cleanText.split('\n');
+      displayLines = <String>[];
+      remarkLines = <String>[];
+      bool inRemarkSection = false;
 
-    final keysToSkip = {
-      'duration',
-      'quality',
-      'fallasleeptime',
-      'type',
-      'rating',
-      'item',
-      'amount',
-      'incometype',
-      'symptom',
-      'severity',
-      'notes',
-      'note',
-      'remark',
-      'remarks',
-      'health',
-      'medication',
-      '时长',
-      '质量',
-      '入睡时间',
-      '类型',
-      '评价',
-      '项目',
-      '金额',
-      '收入类型',
-      '症状',
-      '严重程度',
-      '备注',
-      '种类',
-      '睡眠质量',
-      '类别',
-      '用药',
-    };
+      final keysToSkip = {
+        'duration',
+        'quality',
+        'fallasleeptime',
+        'type',
+        'rating',
+        'item',
+        'amount',
+        'incometype',
+        'symptom',
+        'severity',
+        'notes',
+        'note',
+        'remark',
+        'remarks',
+        'health',
+        'medication',
+        '时长',
+        '质量',
+        '入睡时间',
+        '类型',
+        '评价',
+        '项目',
+        '金额',
+        '收入类型',
+        '症状',
+        '严重程度',
+        '备注',
+        '种类',
+        '睡眠质量',
+        '类别',
+        '用药',
+      };
 
-    String normalizeKey(String key) {
-      return key.trim().toLowerCase().replaceAll(_keyNoisePattern, '');
-    }
-
-    for (final entry in record.tagEntries) {
-      for (final f in entry.fields.entries) {
-        keysToSkip.add(normalizeKey(f.key));
-        final label = _getFieldLabel(entry.name, f.key, entry.fields);
-        keysToSkip.add(normalizeKey(label));
-      }
-    }
-
-    for (final line in rawLines) {
-      final trimmedLine = line.trim();
-      if (trimmedLine.isEmpty) continue;
-
-      if (inRemarkSection) {
-        remarkLines.add(trimmedLine);
-        continue;
+      String normalizeKey(String key) {
+        return key.trim().toLowerCase().replaceAll(_keyNoisePattern, '');
       }
 
-      if (trimmedLine.startsWith('备注：')) {
-        inRemarkSection = true;
-        final rem = trimmedLine.substring(3).trim();
-        if (rem.isNotEmpty) remarkLines.add(rem);
-        continue;
-      } else if (trimmedLine.startsWith('备注:')) {
-        inRemarkSection = true;
-        final rem = trimmedLine.substring(3).trim();
-        if (rem.isNotEmpty) remarkLines.add(rem);
-        continue;
-      }
-
-      if (!trimmedLine.contains(':') && !trimmedLine.contains('：')) {
-        displayLines.add(trimmedLine);
-        continue;
-      }
-
-      // 支持逗号、分号及竖线(| / ｜)拆分多项属性与详细指标
-      final matches = _fieldPairPattern.allMatches(trimmedLine);
-
-      if (matches.isEmpty) {
-        displayLines.add(trimmedLine);
-        continue;
-      }
-
-      final remainingSegments = <String>[];
-      int lastIndex = 0;
-
-      for (final match in matches) {
-        final key = match.group(1)?.trim() ?? '';
-        final normKey = normalizeKey(key);
-        String lastPartNorm = '';
-        if (key.contains('-')) {
-          lastPartNorm = normalizeKey(key.split('-').last);
+      for (final entry in record.tagEntries) {
+        for (final f in entry.fields.entries) {
+          keysToSkip.add(normalizeKey(f.key));
+          final label = _getFieldLabel(entry.name, f.key, entry.fields);
+          keysToSkip.add(normalizeKey(label));
         }
-        final val = match.group(3)?.trim() ?? '';
+      }
 
-        bool shouldSkip = false;
-        for (final skipKey in keysToSkip) {
-          if (normKey == skipKey || (normKey.length <= 4 && normKey.contains(skipKey))) {
-            shouldSkip = true;
-            break;
-          }
-          if (lastPartNorm.isNotEmpty && lastPartNorm == skipKey) {
-            shouldSkip = true;
-            break;
-          }
-        }
+      for (final line in rawLines) {
+        final trimmedLine = line.trim();
+        if (trimmedLine.isEmpty) continue;
 
-        if (shouldSkip) {
-          lastIndex = match.end;
+        if (inRemarkSection) {
+          remarkLines.add(trimmedLine);
           continue;
         }
 
-        final colon = match.group(2) ?? '：';
-        remainingSegments.add('$key$colon$val');
-        lastIndex = match.end;
-      }
+        if (trimmedLine.startsWith('备注：')) {
+          inRemarkSection = true;
+          final rem = trimmedLine.substring(3).trim();
+          if (rem.isNotEmpty) remarkLines.add(rem);
+          continue;
+        } else if (trimmedLine.startsWith('备注:')) {
+          inRemarkSection = true;
+          final rem = trimmedLine.substring(3).trim();
+          if (rem.isNotEmpty) remarkLines.add(rem);
+          continue;
+        }
 
-      if (lastIndex < trimmedLine.length) {
-        final suffix = trimmedLine.substring(lastIndex).trim().replaceAll(_edgeSeparatorPattern, '');
-        if (suffix.isNotEmpty) {
-          final normSuffix = normalizeKey(suffix);
-          bool suffixShouldSkip = false;
+        if (!trimmedLine.contains(':') && !trimmedLine.contains('：')) {
+          displayLines.add(trimmedLine);
+          continue;
+        }
+
+        // 支持逗号、分号及竖线(| / ｜)拆分多项属性与详细指标
+        final matches = _fieldPairPattern.allMatches(trimmedLine);
+
+        if (matches.isEmpty) {
+          displayLines.add(trimmedLine);
+          continue;
+        }
+
+        final remainingSegments = <String>[];
+        int lastIndex = 0;
+
+        for (final match in matches) {
+          final key = match.group(1)?.trim() ?? '';
+          final normKey = normalizeKey(key);
+          String lastPartNorm = '';
+          if (key.contains('-')) {
+            lastPartNorm = normalizeKey(key.split('-').last);
+          }
+          final val = match.group(3)?.trim() ?? '';
+
+          bool shouldSkip = false;
           for (final skipKey in keysToSkip) {
-            if (normSuffix == skipKey) {
-              suffixShouldSkip = true;
+            if (normKey == skipKey || (normKey.length <= 4 && normKey.contains(skipKey))) {
+              shouldSkip = true;
+              break;
+            }
+            if (lastPartNorm.isNotEmpty && lastPartNorm == skipKey) {
+              shouldSkip = true;
               break;
             }
           }
-          if (!suffixShouldSkip) {
-            remainingSegments.add(suffix);
+
+          if (shouldSkip) {
+            lastIndex = match.end;
+            continue;
           }
+
+          final colon = match.group(2) ?? '：';
+          remainingSegments.add('$key$colon$val');
+          lastIndex = match.end;
+        }
+
+        if (lastIndex < trimmedLine.length) {
+          final suffix = trimmedLine.substring(lastIndex).trim().replaceAll(_edgeSeparatorPattern, '');
+          if (suffix.isNotEmpty) {
+            final normSuffix = normalizeKey(suffix);
+            bool suffixShouldSkip = false;
+            for (final skipKey in keysToSkip) {
+              if (normSuffix == skipKey) {
+                suffixShouldSkip = true;
+                break;
+              }
+            }
+            if (!suffixShouldSkip) {
+              remainingSegments.add(suffix);
+            }
+          }
+        }
+
+        if (remainingSegments.isNotEmpty) {
+          displayLines.add(remainingSegments.join(' · '));
         }
       }
 
-      if (remainingSegments.isNotEmpty) {
-        displayLines.add(remainingSegments.join(' · '));
-      }
+      _richContentRecord = record;
+      _richContentMultiTag = isMultiTag;
+      _cachedDisplayLines = displayLines;
+      _cachedRemarkLines = remarkLines;
     }
 
     final elements = <Widget>[];
@@ -1319,23 +1338,27 @@ class _DiaryItemState extends State<DiaryItem> {
     );
   }
 
+  /// 卡片内高频格式化：DateFormat 初始化要查 locale 符号表，复用实例避免每卡每次 build 重建。
+  static final DateFormat _hourMinuteFormat = DateFormat.Hm();
+  static final DateFormat _monthDayFormat = DateFormat('MM-dd');
+
   String _formatTimeRangeWithDate() {
     final start = record.startTime ?? record.time;
     // 小米运动健康日结汇总卡片固定在每天 23:00，仅展示时间刻度，不重复展开冗长起止
     if (_isHealthDailySummary) {
-      return DateFormat.Hm().format(start);
+      return _hourMinuteFormat.format(start);
     }
-    final startDateStr = DateFormat('MM-dd').format(start);
-    final startStr = DateFormat.Hm().format(start);
+    final startDateStr = _monthDayFormat.format(start);
+    final startStr = _hourMinuteFormat.format(start);
 
     if (record.endTime != null) {
       final end = record.endTime!;
-      final endStr = DateFormat.Hm().format(end);
+      final endStr = _hourMinuteFormat.format(end);
 
       final isCrossDate = start.year != end.year || start.month != end.month || start.day != end.day;
 
       if (isCrossDate) {
-        final endDateStr = DateFormat('MM-dd').format(end);
+        final endDateStr = _monthDayFormat.format(end);
         return '$startDateStr $startStr → $endDateStr $endStr';
       }
       return '$startDateStr $startStr → $endStr';
@@ -1356,7 +1379,7 @@ class _DiaryItemState extends State<DiaryItem> {
 
     if (entry.startHour == null || entry.startMinute == null) {
       // 容错：如果 startHour 没解析出来但 entry.time 与起始时间字符串相同，也判定为重复
-      final startHm = DateFormat.Hm().format(recordStart);
+      final startHm = _hourMinuteFormat.format(recordStart);
       if (entry.time != null && (entry.time == startHm || entry.time!.startsWith(startHm))) {
         return true;
       }

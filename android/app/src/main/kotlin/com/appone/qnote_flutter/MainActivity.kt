@@ -139,10 +139,65 @@ class MainActivity : FlutterActivity() {
         // SurfaceView，晚于它设置窗口底色会在首帧前露出一瞬系统主题色。
         applySavedLaunchBackground()
         super.onCreate(savedInstanceState)
+        applyHighRefreshRate()
         handleIntent(intent)
         // 升级覆盖安装后系统不会自动触发小组件 onUpdate，冷启动时主动刷新一次，
         // 避免旧小组件持有失效的 PendingIntent 导致点击无反应
         updateAllWidgets()
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        // 部分 ROM 在回前台、分屏切换或省电模式变化后会重置窗口模式，恢复时重新声明一次
+        applyHighRefreshRate()
+    }
+
+    /**
+     * 把窗口切到当前分辨率下支持的最高刷新率。
+     *
+     * Flutter 引擎按 Choreographer 的 vsync 出帧，本身不向系统声明帧率偏好；
+     * 不少高刷机型（尤其国产 ROM）会把没有声明的第三方应用限制在 60Hz，
+     * 表现就是 120/144Hz 屏幕上整个 App 仍然是 60 帧。这里显式写入
+     * [android.view.WindowManager.LayoutParams.preferredDisplayModeId]，
+     * 让系统在高刷模式下渲染本窗口。
+     *
+     * 只改刷新率、不改分辨率：优先选与当前模式同分辨率的最高刷新率模式，
+     * 找不到同分辨率模式时才退回全量模式。系统仍可按省电/热控策略忽略该提示。
+     */
+    private fun applyHighRefreshRate() {
+        try {
+            val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
+            }
+            if (display == null) return
+
+            val currentMode = display.mode
+            val modes = display.supportedModes.toList()
+            if (modes.isEmpty()) return
+            val sameResolution = modes.filter {
+                it.physicalWidth == currentMode.physicalWidth && it.physicalHeight == currentMode.physicalHeight
+            }
+            val candidates = if (sameResolution.isEmpty()) modes else sameResolution
+            val bestMode = candidates.maxByOrNull { it.refreshRate } ?: return
+            // 60Hz 屏幕无需干预，保持系统默认行为
+            if (bestMode.refreshRate <= 60.5f) return
+
+            val attrs = window.attributes
+            if (attrs.preferredDisplayModeId == bestMode.modeId &&
+                attrs.preferredRefreshRate == bestMode.refreshRate
+            ) {
+                return
+            }
+            attrs.preferredDisplayModeId = bestMode.modeId
+            attrs.preferredRefreshRate = bestMode.refreshRate
+            window.attributes = attrs
+        } catch (e: Exception) {
+            // 显示模式只是体验优化：任何 ROM 差异导致的异常都不能影响正常启动
+            Log.w(TAG, "设置高刷新率失败，沿用系统默认帧率", e)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -1,8 +1,49 @@
+/// 工具语义分类：用于将多轮 ReAct 中的零散工具调用归并成人类可读的一行摘要。
+enum AgentToolCategory {
+  /// 查阅、检索、读取、识别类只读工具
+  read,
+
+  /// 创建、写入、编辑、移动、删除类修改工具
+  write,
+
+  /// 技能加载与技能市场查询
+  skill,
+
+  /// 其他工具（兜底归类）
+  other,
+}
+
 /// 工具代码名 → 用户可读中文文案的展示层映射。
 ///
 /// 仅用于 UI 展示（执行中状态、反馈卡标题等），不改动发给模型的工具定义
 /// 与会话持久化里的原始工具名，历史消息在渲染时读此映射做转换。
 abstract final class AgentToolLabels {
+  /// 只读查阅类工具集合
+  static const Set<String> _readTools = {
+    'read_file',
+    'read_files',
+    'list_dir',
+    'grep',
+    'view_image',
+    'describe_image',
+    'web_search',
+    'fetch_url',
+  };
+
+  /// 写入修改类工具集合
+  static const Set<String> _writeTools = {'write_file', 'write_files', 'edit_file', 'move_file', 'delete_file'};
+
+  /// 技能相关工具集合
+  static const Set<String> _skillTools = {'skill', 'skill_market'};
+
+  /// 返回工具对应的语义分类
+  static AgentToolCategory categoryOf(String toolName) {
+    if (_readTools.contains(toolName)) return AgentToolCategory.read;
+    if (_writeTools.contains(toolName)) return AgentToolCategory.write;
+    if (_skillTools.contains(toolName)) return AgentToolCategory.skill;
+    return AgentToolCategory.other;
+  }
+
   /// 各工具的执行中文案（进行时措辞），覆盖 17 个注册工具。
   static const Map<String, String> _progressLabels = {
     'generate_image': '正在生成图片',
@@ -63,6 +104,31 @@ abstract final class AgentToolLabels {
     }
     final detail = _detailFor(toolName, details);
     return detail == null ? label : '$label · $detail';
+  }
+
+  /// 工作流折叠态单行流水的「刚完成动作」短标签（如「已读取 · 2026-11.md」）。
+  static String completedLineLabel(String toolName, {Map<String, dynamic>? details, bool isError = false}) {
+    final base = switch (toolName) {
+      'read_file' => '已读取',
+      'read_files' => '已批量读取',
+      'list_dir' => '已查看目录',
+      'grep' => '已搜索笔记',
+      'write_file' => '已写入',
+      'write_files' => '已批量写入',
+      'edit_file' => '已编辑',
+      'move_file' => '已移动',
+      'delete_file' => '已删除',
+      'view_image' => '已查看图片',
+      'describe_image' => '已识别图片',
+      'web_search' => '已联网搜索',
+      'fetch_url' => '已读取网页',
+      'skill' => '已加载技能',
+      'skill_market' => '已查询技能市场',
+      _ => _resultLabels[toolName] != null ? '已${_resultLabels[toolName]}' : (toolName.isEmpty ? '已完成操作' : toolName),
+    };
+    final detail = _detailFor(toolName, details);
+    final text = detail == null ? base : '$base · $detail';
+    return isError ? '$text（失败）' : text;
   }
 
   /// 从流式生成中的部分参数 JSON 提取关键信息快照（仅展示用途）。

@@ -18,12 +18,19 @@ class ThoughtTailScrollView extends StatefulWidget {
   /// 滚动区内边距
   final EdgeInsetsGeometry padding;
 
+  /// 是否自动贴底跟随新内容
+  ///
+  /// 流式思考需要一直看到最新一句；已结束的思考段展开时应从开头阅读，
+  /// 否则一打开就停在末尾，用户得自己往回翻。
+  final bool autoFollow;
+
   const ThoughtTailScrollView({
     super.key,
     required this.text,
     this.maxHeight = 96,
     this.textStyle,
     this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    this.autoFollow = true,
   });
 
   @override
@@ -36,7 +43,36 @@ class _ThoughtTailScrollViewState extends State<ThoughtTailScrollView> {
   /// 是否自动跟随滚动到底部；用户拖离底部后暂停
   bool _follow = true;
 
+  /// 上次构建时的顶部渐隐状态，仅在可见性变化时触发重建
+  bool _showTopFade = false;
+
   bool get _isNearBottom => !_controller.hasClients || _controller.position.maxScrollExtent - _controller.offset < 24;
+
+  @override
+  void initState() {
+    super.initState();
+    _follow = widget.autoFollow;
+    if (_follow) {
+      _scheduleFollowScroll();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ThoughtTailScrollView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 只有文本真正增长才贴底。以前每次 build 都调度贴底，拖动过程中下一帧
+    // 就会把偏移量拽回 maxScrollExtent，思考区看起来完全滑不动。
+    if (oldWidget.text != widget.text) {
+      _scheduleFollowScroll();
+    }
+    // 流式结束（autoFollow 关闭）后不再贴底，保留用户当前阅读位置
+    if (oldWidget.autoFollow != widget.autoFollow) {
+      _follow = widget.autoFollow;
+      if (_follow) {
+        _scheduleFollowScroll();
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -52,31 +88,38 @@ class _ThoughtTailScrollViewState extends State<ThoughtTailScrollView> {
     });
   }
 
+  /// 滚动通知：拖动期间绝不能恢复跟随，否则每帧都会被贴底打断；
+  /// 只有松手后仍停在底部附近才恢复自动跟随。
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification && notification.dragDetails != null) {
+      _follow = false;
+    } else if (notification is ScrollEndNotification) {
+      _follow = _isNearBottom;
+    }
+    // 顶部渐隐只在状态切换时重建，滚动过程中不逐帧 setState
+    final showTopFade = _controller.hasClients && _controller.offset > 2;
+    if (showTopFade != _showTopFade) {
+      _showTopFade = showTopFade;
+      setState(() {});
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    _scheduleFollowScroll();
     // 已滚离顶部时顶部渐隐，提示上方还有思考内容
-    final showTopFade = _controller.hasClients && _controller.offset > 2;
     return ShaderMask(
       shaderCallback: (rect) => LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: showTopFade ? const [Colors.transparent, Colors.white] : const [Colors.white, Colors.white],
-        stops: showTopFade ? const [0.0, 0.16] : null,
+        colors: _showTopFade ? const [Colors.transparent, Colors.white] : const [Colors.white, Colors.white],
+        stops: _showTopFade ? const [0.0, 0.16] : null,
       ).createShader(rect),
       blendMode: BlendMode.dstIn,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: widget.maxHeight),
         child: NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            if (notification is ScrollUpdateNotification) {
-              // 用户拖动即暂停跟随；拖动后重新滚回底部附近则自动恢复
-              if (notification.dragDetails != null) _follow = false;
-              setState(() {}); // 刷新顶部渐隐的可见性
-            }
-            if (_isNearBottom) _follow = true;
-            return false;
-          },
+          onNotification: _handleScrollNotification,
           child: SingleChildScrollView(
             controller: _controller,
             padding: widget.padding,

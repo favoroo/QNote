@@ -212,6 +212,9 @@ class FloatingQState {
   /// 本轮任务的开始时间（发送指令时记录，结束清理），供状态行显示已用时
   final DateTime? streamingStartedAt;
 
+  /// 当前推理轮次的开始时间（turnStart 时刷新），供「思考 · N 秒」递增计时
+  final DateTime? streamingTurnStartedAt;
+
   /// 待撤回的变更处数
   final int pendingUndoCount;
 
@@ -258,6 +261,7 @@ class FloatingQState {
     this.streamingThought,
     this.streamingText,
     this.streamingStartedAt,
+    this.streamingTurnStartedAt,
     this.pendingUndoCount = 0,
     this.isUndoing = false,
     this.pendingQuote,
@@ -301,6 +305,7 @@ class FloatingQState {
     String? streamingThought,
     String? streamingText,
     DateTime? streamingStartedAt,
+    DateTime? streamingTurnStartedAt,
     int? pendingUndoCount,
     bool? isUndoing,
     QTextQuote? pendingQuote,
@@ -317,6 +322,7 @@ class FloatingQState {
     bool clearStreamingThought = false,
     bool clearStreamingText = false,
     bool clearStreamingStartedAt = false,
+    bool clearStreamingTurnStartedAt = false,
     bool clearQuote = false,
     bool clearPendingImages = false,
     bool clearAttachedImages = false,
@@ -334,6 +340,9 @@ class FloatingQState {
       streamingThought: clearStreamingThought ? null : (streamingThought ?? this.streamingThought),
       streamingText: clearStreamingText ? null : (streamingText ?? this.streamingText),
       streamingStartedAt: clearStreamingStartedAt ? null : (streamingStartedAt ?? this.streamingStartedAt),
+      streamingTurnStartedAt: clearStreamingTurnStartedAt
+          ? null
+          : (streamingTurnStartedAt ?? this.streamingTurnStartedAt),
       pendingUndoCount: pendingUndoCount ?? this.pendingUndoCount,
       isUndoing: isUndoing ?? this.isUndoing,
       pendingQuote: clearQuote ? null : (pendingQuote ?? this.pendingQuote),
@@ -382,6 +391,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 当前运行中任务的展示态，切回所属页面时恢复
   DateTime? _runStartedAt;
+  DateTime? _runTurnStartedAt;
   String? _runStatus;
 
   /// 是否有任务在跑（跨页面阻止并发发送）
@@ -490,6 +500,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       streamingThought: isRunSession && _thoughtBuffer.isNotEmpty ? _thoughtBuffer.toString() : null,
       streamingText: isRunSession && _streamBuffer.isNotEmpty ? _streamBuffer.toString() : null,
       streamingStartedAt: isRunSession ? _runStartedAt : null,
+      streamingTurnStartedAt: isRunSession ? _runTurnStartedAt : null,
       pendingUndoCount: _pendingUndo.length,
       pendingQuote: restored?.pendingQuote,
       externalShareMode: external,
@@ -973,8 +984,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             _thoughtBuffer.clear();
             // 上一轮的正文会被状态行覆盖，朗读跟着作废，否则"念半截又从头念"
             _speech?.onTurnStart();
+            _runTurnStartedAt = DateTime.now();
             if (!_discardRun && _runSignature == state.contextSignature) {
-              state = state.copyWith(clearStreamingThought: true);
+              state = state.copyWith(clearStreamingThought: true, streamingTurnStartedAt: _runTurnStartedAt);
             }
             // 首轮不展示步数，避免"第 1 步"这类无信息量文案
             _setStatus((event.turn ?? 0) > 1 ? '小Q思考中 · 第 ${event.turn} 步' : '小Q思考中');
@@ -1020,9 +1032,18 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             _setStatus('${AgentToolLabels.progressLabel(toolName, event.toolCall?.arguments)}$extraProgress');
             break;
           case AgentEventType.toolCompleted:
+            if (event.message != null) {
+              _appendSessionMessage(event.message!, signature);
+            }
+            break;
           case AgentEventType.assistantMessage:
             if (event.message != null) {
               _appendSessionMessage(event.message!, signature);
+            }
+            // 本轮思考已随消息落入会话（工作流或思考行接管展示），清空实时思考缓冲
+            _thoughtBuffer.clear();
+            if (!_discardRun && _runSignature == state.contextSignature) {
+              state = state.copyWith(clearStreamingThought: true);
             }
             break;
           case AgentEventType.finished:
@@ -1096,6 +1117,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
           clearStreamingText: true,
           clearStreamingThought: true,
           clearStreamingStartedAt: true,
+          clearStreamingTurnStartedAt: true,
         );
       } else {
         final isRunSession = state.contextSignature == signature;
@@ -1114,6 +1136,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             clearStreamingText: true,
             clearStreamingThought: true,
             clearStreamingStartedAt: true,
+            clearStreamingTurnStartedAt: true,
           );
         } else {
           // 任务所属页面已切走：结果写回暂存会话，回来时以未读气泡提示
@@ -1131,12 +1154,14 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
             clearStreamingText: true,
             clearStreamingThought: true,
             clearStreamingStartedAt: true,
+            clearStreamingTurnStartedAt: true,
           );
         }
       }
       _runSignature = null;
       _runStatus = null;
       _runStartedAt = null;
+      _runTurnStartedAt = null;
       _sessionMessages = const [];
     }
   }
@@ -1281,7 +1306,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       if (_discardRun || _runSignature != state.contextSignature) return;
       final content = _streamBuffer.toString();
       if (content.isNotEmpty) {
-        state = state.copyWith(streamingText: content, clearStatusText: true, clearStreamingThought: true);
+        state = state.copyWith(streamingText: content, clearStatusText: true);
       } else if (_thoughtBuffer.isNotEmpty) {
         state = state.copyWith(streamingThought: _thoughtBuffer.toString());
       }

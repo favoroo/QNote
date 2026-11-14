@@ -263,6 +263,10 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
   /// 拖回底部附近自动恢复（与 ThoughtTailScrollView 同一套约定）
   bool _follow = true;
 
+  /// 按轮次 turnKey 记录面板工作流与思考步骤的展开态，会话切换时重置
+  String? _workflowSignature;
+  final Map<String, bool> _workflowExpandedByTurn = {};
+
   bool get _isNearBottom =>
       !_listController.hasClients || _listController.position.maxScrollExtent - _listController.offset < 24;
 
@@ -298,7 +302,13 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     // 的 `==`（List 走标识比较），所以这里天然按「消息是否换过」触发。
     final messages = ref.watch(floatingQProvider.select((s) => s.messages));
     final phase = ref.watch(floatingQProvider.select((s) => s.phase));
+    final contextSignature = ref.watch(floatingQProvider.select((s) => s.contextSignature));
     final hasStreamingTail = ref.watch(floatingQProvider.select(hasPanelStreamingTail));
+
+    if (_workflowSignature != contextSignature) {
+      _workflowSignature = contextSignature;
+      _workflowExpandedByTurn.clear();
+    }
 
     // 消息流或流式状态变化（正文、状态文案、实时思考内容）时滚到底部：
     // 新消息落地是离散事件，强制恢复跟随并贴底；流式增量仅在跟随态贴底
@@ -318,21 +328,89 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
     // 生图卡片已展示过的图片键：面板气泡用纯 Text 渲染正文，模型回显的
     // `![image](<路径>)` 需要按同一套规则剥离，否则会把原始标记文本露出来
     final generatedImageKeys = collectGeneratedImageKeys(messages);
+    final timeline = buildChatTimelineEntries(messages, isLiveTurn: hasStreamingTail);
 
-    for (final message in messages) {
-      // 生图结果直接以图片卡预览；其余工具中间消息不在快捷面板展示
-      //（进行中的操作由状态行实时表达）
+    var lastUserIdx = -1;
+    for (var i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role == 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    final activeTurnKey = 'turn_${lastUserIdx}_0';
+    final lastTimelineMsg = timeline.isNotEmpty ? timeline.last.message : null;
+    final lastWorkflow = lastTimelineMsg != null && lastTimelineMsg.role == 'workflow'
+        ? (lastTimelineMsg.uiDetails?['workflow'] as WorkflowData?)
+        : null;
+    final hasLiveWorkflowInList = hasStreamingTail && (lastWorkflow?.isLive ?? false);
+
+    for (final entry in timeline) {
+      final message = entry.message;
+
+      // 单段纯思考：1 步直出紧凑行
+      if (message.role == 'thought') {
+        final turnKey = message.uiDetails?['turnKey'] as String?;
+        children.add(
+          _buildEntrance(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: ThinkingProcessView(
+                thought: message.content,
+                durationSeconds: message.thoughtSeconds,
+                compact: true,
+                expanded: turnKey != null ? (_workflowExpandedByTurn[turnKey] ?? false) : null,
+                onExpandedChanged: turnKey != null ? (v) => setState(() => _workflowExpandedByTurn[turnKey] = v) : null,
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      // 多轮思考 + 工具调用统一收进单行工作流
+      if (message.role == 'workflow') {
+        final workflow = message.uiDetails?['workflow'] as WorkflowData?;
+        if (workflow == null) continue;
+        final expanded = _workflowExpandedByTurn[workflow.turnKey] ?? false;
+        void onExpandedChanged(bool v) => setState(() => _workflowExpandedByTurn[workflow.turnKey] = v);
+        children.add(
+          _buildEntrance(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: workflow.isLive
+                  ? _PanelLiveWorkflowRow(
+                      workflow: workflow,
+                      expanded: expanded,
+                      onExpandedChanged: onExpandedChanged,
+                      toolBuilder: _buildCompactToolStep,
+                    )
+                  : WorkflowProcessView(
+                      workflow: workflow,
+                      compact: true,
+                      expanded: expanded,
+                      onExpandedChanged: onExpandedChanged,
+                      toolBuilder: _buildCompactToolStep,
+                    ),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      // 外露特殊卡片：生图大图与小Q向你提问确认卡
       if (message.role == 'tool') {
+        if (message.toolName == 'ask_user' || message.uiDetails?['type'] == 'ask_user') {
+          children.add(_buildEntrance(_buildAskUserCard(theme, message)));
+          continue;
+        }
         final imageCard = _buildGeneratedImageCard(theme, message);
         if (imageCard != null) children.add(_buildEntrance(imageCard));
         continue;
       }
+
       final displayContent = message.role == 'assistant'
           ? stripRedundantImageMarkdown(message.content, generatedImageKeys)
           : message.content;
-      // Agent 每轮发起工具调用前会生成「正文为空、仅承载 tool_calls」的 assistant
-      // 中转消息（与 AI 主页面 isChatTimelineVisibleMessage 过滤的是同一类消息），
-      // 快捷面板不渲染思考胶囊，这类消息只会渲染成空白胶囊卡片，直接跳过
       if (displayContent.trim().isEmpty) continue;
       children.add(_buildEntrance(_buildBubble(theme, message, displayContent)));
       // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
@@ -351,7 +429,13 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
 
     // 流式区独立订阅，高频重建只落在这一块
     if (hasStreamingTail) {
-      children.add(_buildStreamingTail(generatedImageKeys));
+      children.add(
+        _buildStreamingTail(
+          generatedImageKeys: generatedImageKeys,
+          hasLiveWorkflowInList: hasLiveWorkflowInList,
+          activeTurnKey: activeTurnKey,
+        ),
+      );
     }
 
     if (children.isEmpty) {
@@ -436,8 +520,73 @@ class _PanelMessagesState extends ConsumerState<_PanelMessages> {
   static bool hasPanelStreamingTail(FloatingQState s) =>
       s.statusText != null || (s.streamingText != null && s.streamingText!.isNotEmpty);
 
-  Widget _buildStreamingTail(Set<String> generatedImageKeys) {
-    return _PanelStreamingTail(generatedImageKeys: generatedImageKeys);
+  Widget _buildStreamingTail({
+    required Set<String> generatedImageKeys,
+    required bool hasLiveWorkflowInList,
+    required String activeTurnKey,
+  }) {
+    return _PanelStreamingTail(
+      generatedImageKeys: generatedImageKeys,
+      hasLiveWorkflowInList: hasLiveWorkflowInList,
+      activeTurnKey: activeTurnKey,
+      expanded: _workflowExpandedByTurn[activeTurnKey] ?? false,
+      onExpandedChanged: (v) => setState(() => _workflowExpandedByTurn[activeTurnKey] = v),
+      toolBuilder: _buildCompactToolStep,
+    );
+  }
+
+  /// 面板工作流展开态里的紧凑工具步骤行
+  Widget _buildCompactToolStep(BuildContext context, ChatMessage toolMessage) {
+    return _PanelCompactToolStep(message: toolMessage);
+  }
+
+  /// ask_user 外露确认卡片（精简版，避免问答交互确认被折叠隐藏）
+  Widget _buildAskUserCard(ThemeData theme, ChatMessage message) {
+    final uiDetails = message.uiDetails;
+    final question = uiDetails?['question'] as String? ?? message.content;
+    final status = uiDetails?['status'] as String?;
+    final choice = uiDetails?['choice'] as String?;
+    final isConfirmed = status == 'confirmed';
+    final isCancelled = status == 'cancelled';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8, right: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(AppRadius.medium),
+          border: Border.all(
+            color: (isCancelled ? theme.colorScheme.outline : theme.accentInk).withValues(alpha: 0.35),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isConfirmed ? Icons.check_circle_outline : (isCancelled ? Icons.cancel_outlined : Icons.help_outline),
+                  size: 14,
+                  color: isCancelled ? theme.colorScheme.outline : theme.accentInk,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  isConfirmed && choice != null ? '已选择：$choice' : (isCancelled ? '已取消提问' : '小Q询问'),
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            if (question.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(question.trim(), style: theme.textTheme.bodySmall),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   /// 新内容入场微动画：见 [_PanelEntrance]。
@@ -529,91 +678,228 @@ Widget _panelAssistantBubble(ThemeData theme, String content) {
   );
 }
 
-/// 等待态状态行：状态文案 + 思考形变无限符号动画 + 已用时递增计数。
-Widget _panelStatusLine(ThemeData theme, String statusText, DateTime? startedAt) {
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 8, top: 2),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+/// 面板活跃工作流宿主：独立订阅流式状态、实时思考与正文起始
+class _PanelLiveWorkflowRow extends ConsumerWidget {
+  final WorkflowData workflow;
+  final bool expanded;
+  final ValueChanged<bool> onExpandedChanged;
+  final Widget Function(BuildContext context, ChatMessage toolMessage) toolBuilder;
+
+  const _PanelLiveWorkflowRow({
+    required this.workflow,
+    required this.expanded,
+    required this.onExpandedChanged,
+    required this.toolBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final liveThought = ref.watch(floatingQProvider.select((s) => s.streamingThought));
+    final liveStatus = ref.watch(floatingQProvider.select((s) => s.statusText));
+    final liveStartedAt = ref.watch(floatingQProvider.select((s) => s.streamingStartedAt));
+    final liveTurnStartedAt = ref.watch(floatingQProvider.select((s) => s.streamingTurnStartedAt));
+    final hasStreamingOutput = ref.watch(
+      floatingQProvider.select((s) => s.streamingText != null && s.streamingText!.isNotEmpty),
+    );
+
+    return WorkflowProcessView(
+      workflow: workflow,
+      compact: true,
+      expanded: expanded,
+      onExpandedChanged: onExpandedChanged,
+      liveThought: liveThought,
+      liveTurnStartedAt: liveTurnStartedAt,
+      liveStatusText: liveStatus,
+      liveStartedAt: liveStartedAt,
+      hasStreamingOutput: hasStreamingOutput,
+      toolBuilder: toolBuilder,
+    );
+  }
+}
+
+/// 面板工作流展开后的单个工具步骤行：单行摘要，点击可展开文本详情（异常项默认展开）
+class _PanelCompactToolStep extends StatefulWidget {
+  final ChatMessage message;
+
+  const _PanelCompactToolStep({required this.message});
+
+  @override
+  State<_PanelCompactToolStep> createState() => _PanelCompactToolStepState();
+}
+
+class _PanelCompactToolStepState extends State<_PanelCompactToolStep> {
+  late bool _expanded = widget.message.isError == true;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final msg = widget.message;
+    final isError = msg.isError == true;
+    final bodyText = msg.content.trim();
+    final hasBody = bodyText.isNotEmpty;
+    final label = AgentToolLabels.completedLineLabel(msg.toolName ?? '', details: msg.uiDetails, isError: isError);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Flexible(
-          child: Text(
-            statusText,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+        InkWell(
+          onTap: hasBody ? () => setState(() => _expanded = !_expanded) : null,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+            child: Row(
+              children: [
+                Icon(
+                  isError ? Icons.error_outline_rounded : Icons.check_circle_outline,
+                  size: 14,
+                  color: isError ? colorScheme.error : colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: AppTypography.bodySmall,
+                      color: isError ? colorScheme.error : colorScheme.onSurface.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ),
+                if (hasBody)
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: AppMotion.duration(context, AppDurations.normal),
+                    curve: AppCurves.emphasized,
+                    child: Icon(Icons.keyboard_arrow_down_rounded, size: 15, color: colorScheme.outline),
+                  ),
+              ],
+            ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 7),
-          child: MorphingInfinity(size: 20, strokeWidth: 1.5, color: theme.colorScheme.primary),
-        ),
-        StreamingElapsedText(
-          startedAt: startedAt,
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        AppCollapsible(
+          expanded: _expanded && hasBody,
+          rise: 0,
+          child: _expanded && hasBody
+              ? Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(left: 18, top: 2, bottom: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.35)),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Text(
+                      bodyText,
+                      style: TextStyle(
+                        fontSize: AppTypography.label,
+                        height: 1.45,
+                        color: isError ? colorScheme.error : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
         ),
       ],
-    ),
-  );
+    );
+  }
 }
 
-/// 实时思考尾随区：裸文本不加容器，限高 2 行自动贴底滚动。
-Widget _panelThoughtTail(ThemeData theme, String thought) {
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: ThoughtTailScrollView(
-      text: thought,
-      maxHeight: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-      textStyle: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-        fontStyle: FontStyle.italic,
-        height: 1.4,
-      ),
-    ),
-  );
-}
-
-/// 面板流式尾部：状态行（含实时思考）或流式正文。
-///
-/// 必须是独立 widget，不能是 [_PanelMessagesState] 里的一个方法：`ref.watch`
-/// 挂在哪个 Element 上，就重建哪个 Element。放在面板 State 的 build 里，正文
-/// 每 60ms 增长一次就会把面板里全部历史气泡一起重建；拆出来后高频重建只落在
-/// 这一个节点上，历史消息完全不受影响。
+/// 面板流式尾部：无活跃工作流时承担首轮单行流水，有正文时承载流式输出气泡。
 class _PanelStreamingTail extends ConsumerWidget {
-  const _PanelStreamingTail({required this.generatedImageKeys});
+  const _PanelStreamingTail({
+    required this.generatedImageKeys,
+    required this.hasLiveWorkflowInList,
+    required this.activeTurnKey,
+    required this.expanded,
+    required this.onExpandedChanged,
+    required this.toolBuilder,
+  });
 
   final Set<String> generatedImageKeys;
+  final bool hasLiveWorkflowInList;
+  final String activeTurnKey;
+  final bool expanded;
+  final ValueChanged<bool> onExpandedChanged;
+  final Widget Function(BuildContext context, ChatMessage toolMessage) toolBuilder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final statusText = ref.watch(floatingQProvider.select((s) => s.statusText));
+    final streamingText = ref.watch(floatingQProvider.select((s) => s.streamingText)) ?? '';
+    final hasText = streamingText.isNotEmpty;
+
+    if (hasLiveWorkflowInList) {
+      if (!hasText) {
+        return const SizedBox.shrink();
+      }
+      return _PanelEntrance(
+        child: _panelAssistantBubble(theme, stripRedundantImageMarkdown(streamingText, generatedImageKeys)),
+      );
+    }
+
+    final liveThought = ref.watch(floatingQProvider.select((s) => s.streamingThought))?.trim() ?? '';
+    final turnStartedAt = ref.watch(floatingQProvider.select((s) => s.streamingTurnStartedAt));
+
     final Widget child;
-    if (statusText != null) {
+    if (!hasText) {
+      final statusText = ref.watch(floatingQProvider.select((s) => s.statusText));
       final startedAt = ref.watch(floatingQProvider.select((s) => s.streamingStartedAt));
-      final liveThought = ref.watch(floatingQProvider.select((s) => s.streamingThought))?.trim() ?? '';
+      child = Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: WorkflowProcessView(
+          workflow: WorkflowData(
+            turnKey: activeTurnKey,
+            steps: const [],
+            summary: const WorkflowSummary(),
+            isLive: true,
+          ),
+          compact: true,
+          expanded: expanded,
+          onExpandedChanged: onExpandedChanged,
+          liveThought: liveThought,
+          liveTurnStartedAt: turnStartedAt,
+          liveStatusText: statusText,
+          liveStartedAt: startedAt,
+          hasStreamingOutput: false,
+          toolBuilder: toolBuilder,
+        ),
+      );
+    } else {
       child = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _PanelEntrance(child: _panelStatusLine(theme, statusText, startedAt)),
-          // 思考中状态行下方挂实时思考尾随区（模型返回思考增量时才出现）
-          if (liveThought.isNotEmpty) _PanelEntrance(child: _panelThoughtTail(theme, liveThought)),
+          if (liveThought.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: ThinkingProcessView(
+                thought: liveThought,
+                isStreaming: true,
+                startedAt: turnStartedAt,
+                compact: true,
+                expanded: expanded,
+                onExpandedChanged: onExpandedChanged,
+              ),
+            ),
+          _PanelEntrance(
+            child: _panelAssistantBubble(theme, stripRedundantImageMarkdown(streamingText, generatedImageKeys)),
+          ),
         ],
       );
-    } else {
-      final streamingText = ref.watch(floatingQProvider.select((s) => s.streamingText)) ?? '';
-      child = _PanelEntrance(
-        child: _panelAssistantBubble(theme, stripRedundantImageMarkdown(streamingText, generatedImageKeys)),
-      );
     }
-    // 状态行 ↔ 正文气泡交叉淡化，避免流式结束时整棵子树硬替
+    // 状态流水 ↔ 正文气泡交叉淡化，避免硬切换
     return AnimatedSwitcher(
       duration: AppMotion.duration(context, AppDurations.fast),
       switchInCurve: AppCurves.emphasized,
       switchOutCurve: AppCurves.exit,
-      child: KeyedSubtree(key: ValueKey(statusText != null ? 'status' : 'text'), child: child),
+      child: KeyedSubtree(key: ValueKey(hasText ? 'text' : 'status'), child: child),
     );
   }
 }

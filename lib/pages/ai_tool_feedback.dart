@@ -9,7 +9,10 @@ class _GenericToolFeedbackWidget extends StatefulWidget {
   final ChatMessage message;
   final ThemeData theme;
 
-  const _GenericToolFeedbackWidget({required this.message, required this.theme});
+  /// 嵌入工作流折叠时间线时去掉外层卡片边框底色，避免多层嵌套框
+  final bool flat;
+
+  const _GenericToolFeedbackWidget({required this.message, required this.theme, this.flat = false});
 
   @override
   State<_GenericToolFeedbackWidget> createState() => _GenericToolFeedbackWidgetState();
@@ -89,6 +92,68 @@ class _GenericToolFeedbackWidgetState extends State<_GenericToolFeedbackWidget> 
       );
     }
 
+    final header = InkWell(
+      onTap: hasBody ? () => setState(() => _isExpanded = !_isExpanded) : null,
+      borderRadius: BorderRadius.circular(widget.flat ? 8 : 10),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: widget.flat ? 2 : 10, vertical: widget.flat ? 4 : 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_outline, size: 15, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+            if (hasBody) ...[
+              const SizedBox(width: 4),
+              AnimatedRotation(
+                turns: _isExpanded ? 0.5 : 0,
+                duration: AppMotion.duration(context, AppDurations.normal),
+                curve: AppCurves.emphasized,
+                child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    final body = _CollapsibleToolBody(
+      expanded: _isExpanded,
+      hasBody: hasBody,
+      showDivider: !widget.flat,
+      bodyBuilder: (context) => widget.flat
+          ? Container(
+              margin: const EdgeInsets.only(left: 20, top: 2, bottom: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35)),
+              ),
+              child: buildBody(),
+            )
+          : Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: buildBody()),
+    );
+
+    if (widget.flat) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [header, body],
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
@@ -101,52 +166,9 @@ class _GenericToolFeedbackWidgetState extends State<_GenericToolFeedbackWidget> 
         mainAxisSize: MainAxisSize.min,
         children: [
           // 头部折叠条：工具标签 + 关键信息摘要，点击展开/收起正文
-          InkWell(
-            onTap: hasBody ? () => setState(() => _isExpanded = !_isExpanded) : null,
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.check_circle_outline, size: 15, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ),
-                  if (hasBody) ...[
-                    const SizedBox(width: 4),
-                    AnimatedRotation(
-                      turns: _isExpanded ? 0.5 : 0,
-                      duration: AppMotion.duration(context, AppDurations.normal),
-                      curve: AppCurves.emphasized,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+          header,
           // 展开内容区：长结果带滚动上限，与目录/检索折叠卡一致
-          _CollapsibleToolBody(
-            expanded: _isExpanded,
-            hasBody: hasBody,
-            bodyBuilder: (context) =>
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: buildBody()),
-          ),
+          body,
         ],
       ),
     );
@@ -157,7 +179,10 @@ class _DirectoryFeedbackWidget extends StatefulWidget {
   final ChatMessage message;
   final ThemeData theme;
 
-  const _DirectoryFeedbackWidget({required this.message, required this.theme});
+  /// 嵌入工作流折叠时间线时去掉外层卡片边框底色
+  final bool flat;
+
+  const _DirectoryFeedbackWidget({required this.message, required this.theme, this.flat = false});
 
   @override
   State<_DirectoryFeedbackWidget> createState() => _DirectoryFeedbackWidgetState();
@@ -206,6 +231,105 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
 
     final pathHint = path.isNotEmpty ? path : '/';
 
+    final header = InkWell(
+      onTap: totalCount == 0 ? null : () => setState(() => _isExpanded = !_isExpanded),
+      borderRadius: BorderRadius.circular(widget.flat ? 8 : 10),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: widget.flat ? 2 : 10, vertical: widget.flat ? 4 : 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_open_outlined, size: 15, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                totalCount == 0 ? '已查看目录 $pathHint（空）' : '已查看目录 $pathHint（$totalCount 项）',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+            if (totalCount > 0) ...[
+              const SizedBox(width: 4),
+              AnimatedRotation(
+                turns: _isExpanded ? 0.5 : 0,
+                duration: AppMotion.duration(context, AppDurations.normal),
+                curve: AppCurves.emphasized,
+                child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    final listContent = Container(
+      constraints: const BoxConstraints(maxHeight: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: displayList.map((item) {
+            final isDir = item.endsWith('/');
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Icon(
+                    isDir ? Icons.folder_outlined : Icons.insert_drive_file_outlined,
+                    size: 13,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      item,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+
+    final body = _CollapsibleToolBody(
+      expanded: _isExpanded,
+      hasBody: displayList.isNotEmpty,
+      showDivider: !widget.flat,
+      bodyBuilder: (context) => widget.flat
+          ? Container(
+              margin: const EdgeInsets.only(left: 20, top: 2, bottom: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35)),
+              ),
+              child: listContent,
+            )
+          : listContent,
+    );
+
+    if (widget.flat) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [header, body],
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
@@ -218,87 +342,9 @@ class _DirectoryFeedbackWidgetState extends State<_DirectoryFeedbackWidget> {
         mainAxisSize: MainAxisSize.min,
         children: [
           // 头部胶囊：目录路径 + 条目总数 + 展开/收起按钮
-          InkWell(
-            onTap: totalCount == 0 ? null : () => setState(() => _isExpanded = !_isExpanded),
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.folder_open_outlined, size: 15, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      totalCount == 0 ? '已查看目录 $pathHint（空）' : '已查看目录 $pathHint（$totalCount 项）',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ),
-                  if (totalCount > 0) ...[
-                    const SizedBox(width: 4),
-                    AnimatedRotation(
-                      turns: _isExpanded ? 0.5 : 0,
-                      duration: AppMotion.duration(context, AppDurations.normal),
-                      curve: AppCurves.emphasized,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+          header,
           // 展开内容区：当条目数较多时提供带滚动的列表
-          _CollapsibleToolBody(
-            expanded: _isExpanded,
-            hasBody: displayList.isNotEmpty,
-            bodyBuilder: (context) => Container(
-              constraints: const BoxConstraints(maxHeight: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: displayList.map((item) {
-                    final isDir = item.endsWith('/');
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isDir ? Icons.folder_outlined : Icons.insert_drive_file_outlined,
-                            size: 13,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              item,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ),
+          body,
         ],
       ),
     );
@@ -310,7 +356,10 @@ class _GrepFeedbackWidget extends StatefulWidget {
   final ChatMessage message;
   final ThemeData theme;
 
-  const _GrepFeedbackWidget({required this.message, required this.theme});
+  /// 嵌入工作流折叠时间线时去掉外层卡片边框底色
+  final bool flat;
+
+  const _GrepFeedbackWidget({required this.message, required this.theme, this.flat = false});
 
   @override
   State<_GrepFeedbackWidget> createState() => _GrepFeedbackWidgetState();
@@ -355,6 +404,73 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
 
     final queryHint = query.isNotEmpty ? '「$query」' : '';
 
+    final header = InkWell(
+      onTap: total == 0 ? null : () => setState(() => _isExpanded = !_isExpanded),
+      borderRadius: BorderRadius.circular(widget.flat ? 8 : 10),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: widget.flat ? 2 : 10, vertical: widget.flat ? 4 : 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_rounded, size: 15, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                total == 0 ? '搜索笔记 $queryHint（未找到）' : '搜索笔记 $queryHint（$total 条）',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+            if (total > 0) ...[
+              const SizedBox(width: 4),
+              AnimatedRotation(
+                turns: _isExpanded ? 0.5 : 0,
+                duration: AppMotion.duration(context, AppDurations.normal),
+                curve: AppCurves.emphasized,
+                child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    final bodyContent = Container(
+      constraints: const BoxConstraints(maxHeight: 200),
+      padding: const EdgeInsets.all(10),
+      child: SingleChildScrollView(child: MarkdownBody(data: message.content, selectable: true)),
+    );
+
+    final body = _CollapsibleToolBody(
+      expanded: _isExpanded,
+      hasBody: message.content.trim().isNotEmpty,
+      showDivider: !widget.flat,
+      bodyBuilder: (context) => widget.flat
+          ? Container(
+              margin: const EdgeInsets.only(left: 20, top: 2, bottom: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35)),
+              ),
+              child: bodyContent,
+            )
+          : bodyContent,
+    );
+
+    if (widget.flat) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [header, body],
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
@@ -365,56 +481,7 @@ class _GrepFeedbackWidgetState extends State<_GrepFeedbackWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: total == 0 ? null : () => setState(() => _isExpanded = !_isExpanded),
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.search_rounded, size: 15, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      total == 0 ? '搜索笔记 $queryHint（未找到）' : '搜索笔记 $queryHint（$total 条）',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ),
-                  if (total > 0) ...[
-                    const SizedBox(width: 4),
-                    AnimatedRotation(
-                      turns: _isExpanded ? 0.5 : 0,
-                      duration: AppMotion.duration(context, AppDurations.normal),
-                      curve: AppCurves.emphasized,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          _CollapsibleToolBody(
-            expanded: _isExpanded,
-            hasBody: message.content.trim().isNotEmpty,
-            bodyBuilder: (context) => Container(
-              constraints: const BoxConstraints(maxHeight: 200),
-              padding: const EdgeInsets.all(10),
-              child: SingleChildScrollView(child: MarkdownBody(data: message.content, selectable: true)),
-            ),
-          ),
-        ],
+        children: [header, body],
       ),
     );
   }
@@ -457,108 +524,100 @@ class _ToolChainGroupWidgetState extends State<ToolChainGroupWidget> {
     });
     final summaryText = summarySegments.join('、');
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(
-        color: hasError
-            ? theme.colorScheme.errorContainer.withValues(alpha: 0.18)
-            : theme.colorScheme.primaryContainer.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: hasError ? theme.colorScheme.error.withValues(alpha: 0.3) : theme.accentInk.withValues(alpha: 0.22),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 头部总览条：点击展开/折叠全部步骤
-          InkWell(
-            onTap: () => setState(() => _isExpanded = !_isExpanded),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: Row(
-                children: [
-                  Icon(
-                    hasError ? Icons.error_outline : Icons.task_alt_rounded,
-                    size: 15,
-                    color: hasError ? theme.colorScheme.error : theme.accentInk,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '已连续完成 $totalCount 步 · $summaryText',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: hasError ? theme.colorScheme.error : theme.colorScheme.onSurface.withValues(alpha: 0.9),
-                      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 头部总览条：扁平步骤行，点击展开/折叠全部步骤。
+        // 不再包一层带底色的卡片：外层已经是消息时间线，再套一层会出现
+        // 「气泡底 + 工具链底」的双层背景，并把上下间距撑得很大。
+        InkWell(
+          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            // 与思考行的标题行同高：扁平时间线里两行节奏一致，也保留可点区域
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              children: [
+                Icon(
+                  hasError ? Icons.error_outline : Icons.task_alt_rounded,
+                  size: 15,
+                  color: hasError ? theme.colorScheme.error : theme.accentInk,
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    '已连续完成 $totalCount 步 · $summaryText',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: hasError ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  AnimatedRotation(
-                    turns: _isExpanded ? 0.5 : 0,
-                    duration: AppMotion.duration(context, AppDurations.normal),
-                    curve: AppCurves.emphasized,
-                    child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 6),
+                AnimatedRotation(
+                  turns: _isExpanded ? 0.5 : 0,
+                  duration: AppMotion.duration(context, AppDurations.normal),
+                  curve: AppCurves.emphasized,
+                  child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: theme.colorScheme.outline),
+                ),
+              ],
             ),
           ),
-          // 展开状态：逐条紧凑渲染每一个工具的专属反馈卡
-          _CollapsibleToolBody(
-            expanded: _isExpanded,
-            hasBody: messages.isNotEmpty,
-            bodyBuilder: (context) => Container(
-              constraints: const BoxConstraints(maxHeight: 280),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (int i = 0; i < messages.length; i++) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8, right: 6),
-                              child: Container(
-                                width: 16,
-                                height: 16,
-                                // 步骤序号改实心主题色小圆，淡底配同色数字看不清
-                                decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
-                                child: Center(
-                                  child: Text(
-                                    '${i + 1}',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.onPrimary,
-                                    ),
+        ),
+        // 展开状态：逐条紧凑渲染每一个工具的专属反馈卡。
+        // 左侧缩进对齐头部文案，形成时间线层级；内容过长仍限高内滚。
+        _CollapsibleToolBody(
+          expanded: _isExpanded,
+          hasBody: messages.isNotEmpty,
+          showDivider: false,
+          bodyBuilder: (context) => Container(
+            constraints: const BoxConstraints(maxHeight: 280),
+            padding: const EdgeInsets.only(left: 21, top: 1, bottom: 2),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (int i = 0; i < messages.length; i++) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 7, right: 6),
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              // 步骤序号改实心主题色小圆，淡底配同色数字看不清
+                              decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+                              child: Center(
+                                child: Text(
+                                  '${i + 1}',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onPrimary,
                                   ),
                                 ),
                               ),
                             ),
-                            Expanded(child: ChatBubble.buildToolFeedback(context, messages[i], theme)),
-                          ],
-                        ),
+                          ),
+                          Expanded(child: ChatBubble.buildToolFeedback(context, messages[i], theme)),
+                        ],
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -573,7 +632,15 @@ class _CollapsibleToolBody extends StatelessWidget {
   final bool hasBody;
   final WidgetBuilder bodyBuilder;
 
-  const _CollapsibleToolBody({required this.expanded, required this.hasBody, required this.bodyBuilder});
+  /// 是否在内容上方画分隔线；扁平工具链头部不需要，带底色的工具卡需要
+  final bool showDivider;
+
+  const _CollapsibleToolBody({
+    required this.expanded,
+    required this.hasBody,
+    required this.bodyBuilder,
+    this.showDivider = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -587,7 +654,7 @@ class _CollapsibleToolBody extends StatelessWidget {
               key: const ValueKey('tool_body'),
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
-              children: [const Divider(height: 1), bodyBuilder(context)],
+              children: [if (showDivider) const Divider(height: 1), bodyBuilder(context)],
             )
           : const SizedBox.shrink(),
     );

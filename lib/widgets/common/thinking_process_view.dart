@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/utils/chat_timeline.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 
@@ -25,24 +26,13 @@ String latestThoughtLine(String thought) {
 
 /// 思考耗时文案（如「3 秒」「1 分 20 秒」）；无有效秒数返回空串
 ///
-/// 秒数缺失时宁可不显示，也不用「0 秒」这类没有信息量的占位。
-String thinkingDurationLabel(int? seconds) {
-  if (seconds == null || seconds < 1) {
-    return '';
-  }
-  if (seconds < 60) {
-    return '$seconds 秒';
-  }
-  final minutes = seconds ~/ 60;
-  final rest = seconds % 60;
-  return rest == 0 ? '$minutes 分' : '$minutes 分 $rest 秒';
-}
+/// 复用纯逻辑层 [formatWorkflowDuration]，保持时间线与思考行口径一致。
+String thinkingDurationLabel(int? seconds) => formatWorkflowDuration(seconds);
 
 /// 一段思考过程的展示：折叠态单行横向滚动展示最新思考，点击标题行展开全文
 ///
 /// 视觉与交互对齐 ZCode：默认只占一行、不打断对话阅读；展开后限高滚动并自动
-/// 贴底跟随。一段思考 = 一个实例，多轮 ReAct 的多段思考各自独立收放，
-/// 用户能逐段回看，而不是只剩最后一段。
+/// 贴底跟随。支持非受控（组件自管）与受控（由外层按 turnKey 跨流式保留状态）两种模式。
 class ThinkingProcessView extends StatefulWidget {
   /// 截至当前的完整思考文本（调用方累积）
   final String thought;
@@ -59,6 +49,15 @@ class ThinkingProcessView extends StatefulWidget {
   /// 标题文案，默认「思考」
   final String label;
 
+  /// 受控展开状态；传入非 null 值时交由调用方记忆（如跨流式保留展开态）
+  final bool? expanded;
+
+  /// 受控模式下的展开切换回调
+  final ValueChanged<bool>? onExpandedChanged;
+
+  /// 紧凑模式：用于工作流展开列表或悬浮小Q面板内，收紧间距与最大高度
+  final bool compact;
+
   const ThinkingProcessView({
     super.key,
     required this.thought,
@@ -66,6 +65,9 @@ class ThinkingProcessView extends StatefulWidget {
     this.durationSeconds,
     this.startedAt,
     this.label = '思考',
+    this.expanded,
+    this.onExpandedChanged,
+    this.compact = false,
   });
 
   @override
@@ -73,23 +75,30 @@ class ThinkingProcessView extends StatefulWidget {
 }
 
 class _ThinkingProcessViewState extends State<ThinkingProcessView> {
-  bool _expanded = false;
+  bool _internalExpanded = false;
 
   /// 用户手动展开/收起过：流式结束时保留用户的选择
   bool _userToggled = false;
+
+  bool get _isExpanded => widget.expanded ?? _internalExpanded;
 
   @override
   void didUpdateWidget(covariant ThinkingProcessView oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 流式结束：自动回落到单行；用户手动展开过则保持展开
-    if (oldWidget.isStreaming && !widget.isStreaming && !_userToggled) {
-      _expanded = false;
+    if (widget.expanded == null && oldWidget.isStreaming && !widget.isStreaming && !_userToggled) {
+      _internalExpanded = false;
     }
   }
 
   void _toggle() {
+    final next = !_isExpanded;
+    if (widget.onExpandedChanged != null) {
+      widget.onExpandedChanged!(next);
+      return;
+    }
     setState(() {
-      _expanded = !_expanded;
+      _internalExpanded = next;
       _userToggled = true;
     });
   }
@@ -100,6 +109,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
     final colorScheme = theme.colorScheme;
     final latest = latestThoughtLine(widget.thought);
     final durationText = widget.isStreaming ? '' : thinkingDurationLabel(widget.durationSeconds);
+    final expanded = _isExpanded;
 
     // 外层直接用普通 Column，主体交给 AppCollapsible 与标题箭头同频（normal 档），
     // 收起时能保留完整思考区播放退场而不会只剩一块白底在缩高度。
@@ -115,19 +125,19 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
             borderRadius: BorderRadius.circular(8),
             child: Semantics(
               button: true,
-              label: _expanded ? '收起思考' : '展开思考',
+              label: expanded ? '收起思考' : '展开思考',
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+                padding: EdgeInsets.symmetric(horizontal: widget.compact ? 2 : 4, vertical: widget.compact ? 3 : 5),
                 child: Row(
                   children: [
-                    _ThinkingGlyph(isStreaming: widget.isStreaming, color: colorScheme.onSurfaceVariant),
+                    ThinkingBreathingGlyph(isStreaming: widget.isStreaming, color: colorScheme.onSurfaceVariant),
                     const SizedBox(width: 7),
                     Text(
                       widget.label,
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                     ),
                     if (widget.isStreaming)
-                      _StreamingThoughtClock(startedAt: widget.startedAt)
+                      StreamingThoughtClock(startedAt: widget.startedAt)
                     else if (durationText.isNotEmpty)
                       Text(' · $durationText', style: TextStyle(fontSize: 12, color: colorScheme.outline)),
                     const SizedBox(width: 8),
@@ -135,22 +145,24 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                       child: AppMotion.switcher(
                         context: context,
                         scale: false,
-                        child: _expanded
+                        child: expanded
                             ? const SizedBox.shrink(key: ValueKey('thought_latest_empty'))
                             : KeyedSubtree(
                                 key: const ValueKey('thought_latest_line'),
-                                child: _LatestThoughtLine(
+                                child: RollingSingleLineText(
                                   text: latest,
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                                    // 折叠态是正文之外最常被扫读的一行，透明度太低
+                                    // 会和背景糊成一片，看起来像空白
+                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
                                   ),
                                 ),
                               ),
                       ),
                     ),
                     AnimatedRotation(
-                      turns: _expanded ? 0.5 : 0,
+                      turns: expanded ? 0.5 : 0,
                       duration: AppMotion.duration(context, AppDurations.normal),
                       curve: AppCurves.emphasized,
                       child: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: colorScheme.outline),
@@ -163,11 +175,11 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
         ),
         // 展开态：完整思考过程，限高滚动并自动贴底
         AppCollapsible(
-          expanded: _expanded,
+          expanded: expanded,
           rise: 0,
-          child: _expanded
+          child: expanded
               ? Padding(
-                  padding: const EdgeInsets.only(left: 26, top: 2, bottom: 8),
+                  padding: EdgeInsets.only(left: widget.compact ? 18 : 26, top: 2, bottom: widget.compact ? 4 : 8),
                   child: Container(
                     width: double.infinity,
                     decoration: BoxDecoration(
@@ -177,7 +189,9 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                     ),
                     child: ThoughtTailScrollView(
                       text: widget.thought,
-                      maxHeight: 320,
+                      maxHeight: widget.compact ? 200 : 320,
+                      // 流式时贴底看最新思考；已结束的段落从开头展示，方便回看
+                      autoFollow: widget.isStreaming,
                       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                       textStyle: TextStyle(fontSize: 12, height: 1.6, color: colorScheme.onSurfaceVariant),
                     ),
@@ -190,18 +204,26 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
   }
 }
 
-/// 思考图标：流式期间轻微呼吸，替代静态图标传达「仍在思考」
-class _ThinkingGlyph extends StatefulWidget {
+/// 思考/工作流呼吸图标：流式期间轻微呼吸，替代静态图标传达「仍在推进」
+class ThinkingBreathingGlyph extends StatefulWidget {
   final bool isStreaming;
   final Color color;
+  final IconData icon;
+  final double size;
 
-  const _ThinkingGlyph({required this.isStreaming, required this.color});
+  const ThinkingBreathingGlyph({
+    super.key,
+    required this.isStreaming,
+    required this.color,
+    this.icon = Icons.psychology_outlined,
+    this.size = 15,
+  });
 
   @override
-  State<_ThinkingGlyph> createState() => _ThinkingGlyphState();
+  State<ThinkingBreathingGlyph> createState() => _ThinkingBreathingGlyphState();
 }
 
-class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProviderStateMixin {
+class _ThinkingBreathingGlyphState extends State<ThinkingBreathingGlyph> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
@@ -227,7 +249,7 @@ class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProvide
   }
 
   @override
-  void didUpdateWidget(covariant _ThinkingGlyph oldWidget) {
+  void didUpdateWidget(covariant ThinkingBreathingGlyph oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isStreaming != widget.isStreaming) {
       _sync();
@@ -252,7 +274,7 @@ class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProvide
 
   @override
   Widget build(BuildContext context) {
-    final icon = Icon(Icons.psychology_outlined, size: 15, color: widget.color);
+    final icon = Icon(widget.icon, size: widget.size, color: widget.color);
     if (!widget.isStreaming || _reduceMotion) {
       return icon;
     }
@@ -264,16 +286,16 @@ class _ThinkingGlyphState extends State<_ThinkingGlyph> with SingleTickerProvide
 }
 
 /// 流式思考的递增耗时（「 · 3 秒」），每秒自增
-class _StreamingThoughtClock extends StatefulWidget {
+class StreamingThoughtClock extends StatefulWidget {
   final DateTime? startedAt;
 
-  const _StreamingThoughtClock({this.startedAt});
+  const StreamingThoughtClock({super.key, this.startedAt});
 
   @override
-  State<_StreamingThoughtClock> createState() => _StreamingThoughtClockState();
+  State<StreamingThoughtClock> createState() => _StreamingThoughtClockState();
 }
 
-class _StreamingThoughtClockState extends State<_StreamingThoughtClock> {
+class _StreamingThoughtClockState extends State<StreamingThoughtClock> {
   Timer? _timer;
 
   /// 当前所在子树是否可见；TickerMode 关闭时暂停秒表，避免后台空转
@@ -297,7 +319,7 @@ class _StreamingThoughtClockState extends State<_StreamingThoughtClock> {
   }
 
   @override
-  void didUpdateWidget(covariant _StreamingThoughtClock oldWidget) {
+  void didUpdateWidget(covariant StreamingThoughtClock oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncTicker();
   }
@@ -334,22 +356,25 @@ class _StreamingThoughtClockState extends State<_StreamingThoughtClock> {
   }
 }
 
-/// 折叠态的最新一行：横向滚动贴尾，左侧渐隐提示还有更早的思考
-class _LatestThoughtLine extends StatefulWidget {
+/// 折叠态的单行横向滚动文本：贴尾跟随，左侧渐隐提示还有更早内容
+class RollingSingleLineText extends StatefulWidget {
   final String text;
   final TextStyle? style;
 
-  const _LatestThoughtLine({required this.text, this.style});
+  const RollingSingleLineText({super.key, required this.text, this.style});
 
   @override
-  State<_LatestThoughtLine> createState() => _LatestThoughtLineState();
+  State<RollingSingleLineText> createState() => _RollingSingleLineTextState();
 }
 
-class _LatestThoughtLineState extends State<_LatestThoughtLine> {
+class _RollingSingleLineTextState extends State<RollingSingleLineText> {
   final ScrollController _controller = ScrollController();
 
   /// 是否自动跟随到最右（最新）；用户向左拖离后暂停
   bool _follow = true;
+
+  /// 上次构建时的左侧渐隐状态，仅在可见性变化时触发重建
+  bool _showLeftFade = false;
 
   bool get _isNearTail => !_controller.hasClients || _controller.position.maxScrollExtent - _controller.offset < 2;
 
@@ -361,7 +386,7 @@ class _LatestThoughtLineState extends State<_LatestThoughtLine> {
   }
 
   @override
-  void didUpdateWidget(covariant _LatestThoughtLine oldWidget) {
+  void didUpdateWidget(covariant RollingSingleLineText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.text != widget.text && _follow) {
       _scheduleTailScroll();
@@ -382,25 +407,36 @@ class _LatestThoughtLineState extends State<_LatestThoughtLine> {
     });
   }
 
+  /// 拖动期间只暂停跟随，松手后停在尾部附近才恢复；
+  /// 若在拖动中途按 `_isNearTail` 恢复，贴尾会立刻把用户拖回最右。
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification && notification.dragDetails != null) {
+      _follow = false;
+    } else if (notification is ScrollEndNotification) {
+      _follow = _isNearTail;
+    }
+    final showLeftFade = _controller.hasClients && _controller.offset > 2;
+    if (showLeftFade != _showLeftFade) {
+      _showLeftFade = showLeftFade;
+      setState(() {}); // 刷新左侧渐隐的可见性
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 已滚离最左时左侧渐隐，提示前面还有更早的思考
-    final showLeftFade = _controller.hasClients && _controller.offset > 2;
     return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollUpdateNotification) {
-          if (notification.dragDetails != null) _follow = false;
-          if (_isNearTail) _follow = true;
-          setState(() {}); // 刷新左侧渐隐的可见性
-        }
-        return false;
-      },
+      onNotification: _handleScrollNotification,
       child: ShaderMask(
         shaderCallback: (rect) => LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: showLeftFade ? const [Colors.transparent, Colors.white] : const [Colors.white, Colors.white],
-          stops: showLeftFade ? const [0.0, 0.18] : null,
+          // 只在最左侧留一小段渐隐提示还有更早的内容：
+          // 以前 18% 的渐隐宽度会把开头半句完全吃掉，看起来像一大段空白
+          colors: _showLeftFade
+              ? [Colors.white.withValues(alpha: 0.15), Colors.white]
+              : const [Colors.white, Colors.white],
+          stops: _showLeftFade ? const [0.0, 0.05] : null,
         ).createShader(rect),
         blendMode: BlendMode.dstIn,
         child: SingleChildScrollView(
