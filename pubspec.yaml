@@ -1,7 +1,7 @@
 name: qnote_flutter
 description: "QNote - A personal knowledge management app"
 publish_to: 'none'
-version: 0.1.98+2098
+version: 0.1.99+2099
 
 environment:
   sdk: ^3.11.5
@@ -67,6 +67,8 @@ flutter:
     - assets/images/
     # 厂商图标：目录声明不递归包含子目录，必须单独列出
     - assets/images/vendors/
+    # 前端运行时（Mermaid 等）：本地内联注入 WebView，保证离线可用
+    - assets/js/
   fonts:
     - family: Inter
       fonts:

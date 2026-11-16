@@ -49,7 +49,7 @@ const String savedColorSchemeName = '我的搭配';
 /// 内置推荐搭配。
 ///
 /// 首套是 App 默认的经典蓝 + 浅色底，一键回到初始观感；其余深色底与浅色底
-/// 交错排列，除保留一套纯黑 + 正红外，都用有彩度画布配撞色强调色。
+/// 交错排列，画布与强调色多取自流行作品与经典品牌配色。
 const List<AppColorSchemePreset> recommendedColorSchemes = [
   // 经典蓝 + 浅色底：App 默认主题色落在近白画布上，干净通透，作为首选保底
   AppColorSchemePreset(
@@ -63,40 +63,40 @@ const List<AppColorSchemePreset> recommendedColorSchemes = [
     background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFF002FA7)),
     accentColor: Color(0xFFFF6B18),
   ),
+  // 暖黑 + 赛博黄：赛博朋克 2077「夜之城」同款黑黄撞色，列表里唯一的黄色系
+  AppColorSchemePreset(
+    name: '夜之城',
+    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFF15120B)),
+    accentColor: Color(0xFFFCEE21),
+  ),
+  // OLED 纯黑 + 代码绿：黑客帝国终端雨，纯黑画布最显荧光绿
+  AppColorSchemePreset(
+    name: '黑客帝国',
+    background: AppBackgroundSetting(preset: AppBackgroundPreset.oled),
+    accentColor: Color(0xFF00FF41),
+  ),
+  // 初号机紫 + 荧光黄绿：EVA 初号机同款撞色，深紫画布提饱和、强调色走荧光绿
+  AppColorSchemePreset(
+    name: '初号机',
+    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFF301B6A)),
+    accentColor: Color(0xFFA6FF4D),
+  ),
+  // 薄荷白 + 蒂芙尼蓝：经典品牌青蓝，浅色系的清爽担当
+  AppColorSchemePreset(
+    name: '蒂芙尼',
+    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFFF3FAF9)),
+    accentColor: Color(0xFF0ABAB5),
+  ),
+  // 淡粉 + 深玫红：蒸汽波粉紫霓虹的浅色版，甜而不腻
+  AppColorSchemePreset(
+    name: '蒸汽波',
+    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFFFAE7F2)),
+    accentColor: Color(0xFFA93A90),
+  ),
   // 纯黑 + 高饱和正红：暗色下红色最通透，也是用户实测认可的搭配
   AppColorSchemePreset(
     name: '赤焰黑',
     background: AppBackgroundSetting(preset: AppBackgroundPreset.oled),
     accentColor: Color(0xFFF80004),
-  ),
-  // 森林绿 + 珊瑚：冷绿底上放一块暖珊瑚，安静里带一点跳
-  AppColorSchemePreset(
-    name: '松林珊瑚',
-    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFF123B2E)),
-    accentColor: Color(0xFFFF7A6B),
-  ),
-  // 深紫 + 薄荷：紫绿互补，偏霓虹/赛博感
-  AppColorSchemePreset(
-    name: '紫夜薄荷',
-    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFF2B1B4A)),
-    accentColor: Color(0xFF3DDC97),
-  ),
-  // 雾霾蓝 + 深琥珀：冷蓝底压深暖色，清爽但不过分甜
-  AppColorSchemePreset(
-    name: '雾蓝琥珀',
-    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFFBCD7EE)),
-    accentColor: Color(0xFFB45309),
-  ),
-  // 香芋紫 + 葡萄紫：同色系深浅搭配，柔和但有层次
-  AppColorSchemePreset(
-    name: '香芋紫',
-    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFFDCCBF2)),
-    accentColor: Color(0xFF7B2CBF),
-  ),
-  // 奶茶 + 砖红：暖奶茶底配砖红，偏秋冬织物感
-  AppColorSchemePreset(
-    name: '奶茶砖红',
-    background: AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFFE0C6AE)),
-    accentColor: Color(0xFFB23A2E),
   ),
 ];

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:qnote_flutter/config/ai_vendors.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_personalities.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 import 'package:qnote_flutter/core/agent/services/quick_prompt_service.dart';
@@ -9,6 +10,8 @@ import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_path_utils.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_undo_entry.dart';
 import 'package:qnote_flutter/core/ai/api_key_pool.dart';
+import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
@@ -28,12 +31,14 @@ import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/utils/daily_score_adjust.dart';
+import 'package:qnote_flutter/core/utils/note_file_type.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/models/ai_model_ref.dart';
+import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -49,6 +54,7 @@ import 'package:qnote_flutter/models/weight_record.dart';
 import 'package:uuid/uuid.dart';
 
 part 'virtual_workspace_service_parts.dart';
+part 'virtual_workspace_service_settings_ai.dart';
 
 /// 虚拟文件系统 (VFS) 服务：将 QNote 的 SQLite 实体透明抽象为文件和目录
 class VirtualWorkspaceService {
@@ -332,10 +338,10 @@ class VirtualWorkspaceService {
     }
   }
 
-  /// 将笔记路径规范化为 `/notes/<id>.md`（单段路径写回时 folderId 为空会保留原分类），
+  /// 将笔记路径规范化为 `/notes/<id>.<ext>`（单段路径写回时 folderId 为空会保留原分类），
   /// 作为录制去重与恢复的统一键；实体不存在或路径不合规时返回 null（沿用原路径）
   Future<String?> _canonicalNotePath(String path) async {
-    if (!path.endsWith('.md')) return null;
+    if (!NoteFileTypeHelper.hasRecognizedExtension(path.split('/').last)) return null;
     final rawTitle = noteTitleFromPath(path);
     if (rawTitle.isEmpty) return null;
     try {
@@ -344,7 +350,9 @@ class VirtualWorkspaceService {
           allNotes.where((n) => n.id == rawTitle).firstOrNull ??
           allNotes.where((n) => n.title.trim() == rawTitle).firstOrNull;
       if (matched == null) return null;
-      return '/notes/${matched.id}.md';
+      // 沿用笔记自身后缀，保证 .mmd/.csv 等展示型笔记的规范路径与实际标题一致
+      final ext = NoteFileTypeHelper.extensionOf(matched.title) ?? 'md';
+      return '/notes/${matched.id}.$ext';
     } catch (_) {
       return null;
     }
@@ -361,7 +369,7 @@ class VirtualWorkspaceService {
 - `/memory/`: 小Q长期记忆（`user.md` 用户画像与习惯、`agent.md` 小Q手记；每次对话自动载入上下文，支持查看与增改）。
 - `/quick_prompts/`: 常用提示词库（`prompts.md`，每行一条以 "- " 开头的提示词，对应输入框快捷填充项；支持全量覆写与追加，删除即清空全部）。
 - `/todos/`: 待办事项库（目录名对应分类，如 `/todos/今日/`、`/todos/长期/`、`/todos/工作/`）。
-- `/notes/`: 笔记与知识库（目录名对应笔记本，如 `/notes/技术架构/`。除 Markdown 外还支持写入 `.html` 网页、`.svg` 矢量图、`.json` 数据文件及常见代码文件，App 内会按后缀自动渲染预览；生成展示型内容（卡片、海报、可视化页面）时优先使用带内联样式的单文件 HTML，网页设计规范详见 `frontend-design` 技能）。
+- `/notes/`: 笔记与知识库（目录名对应笔记本，如 `/notes/技术架构/`。除 Markdown 外还支持写入 `.html` 网页、`.svg` 矢量图、`.mmd` Mermaid 图（流程图/时序图/甘特图/时间线/思维导图等）、`.csv` 表格及常见代码文件，App 内会按后缀自动渲染预览；生成展示型内容时按形态选择后缀：图示用 `.mmd`、表格数据用 `.csv`、网页/海报/可视化页面用带内联样式的单文件 `.html`。格式规范详见 `mermaid-diagram`、`data-file`、`frontend-design` 技能）。
 - `/timeline/`: 时间线流水日志（按日期归档，如 `/timeline/2026-09-11.md`，支持单点打卡与时间段打卡）。
 - `/journal/`: 每日深度长篇日记与复盘（如 `/journal/2026-09-11.md`）。
 - `/folders/`: 分类与笔记本层级管理（`todos.json` 待办分类、`notes.json` 笔记本目录，支持增删改查与重命名）。
@@ -506,7 +514,7 @@ class VirtualWorkspaceService {
       }
       final rootNotes = notes.where((n) => n.folderId == null || n.folderId!.isEmpty).toList();
       for (final n in rootNotes) {
-        result.add('${n.title.trim().isEmpty ? "未命名笔记" : n.title}.md');
+        result.add(_noteListingName(n.title));
       }
       return result;
     }
@@ -519,7 +527,7 @@ class VirtualWorkspaceService {
 
       final notes = await _noteRepo.getAll();
       final folderNotes = notes.where((n) => n.folderId == matchedFolder.id).toList();
-      return folderNotes.map((n) => '${n.title.trim().isEmpty ? "未命名笔记" : n.title}.md').toList();
+      return folderNotes.map((n) => _noteListingName(n.title)).toList();
     }
 
     // 3. /timeline 目录
@@ -889,7 +897,7 @@ class VirtualWorkspaceService {
                 // 厂商级启停：小Q 需要知道「这条服务被用户临时下架了」，
                 // 否则会照着 models 列表推荐一个当前用不到的模型
                 'enabled': p.enabled,
-                // 只读快照：密钥一律掩码，避免明文 Key 进入对话上下文
+                // 密钥一律掩码，避免明文 Key 进入对话上下文；掩码串被回写时会被写端过滤
                 'apiKeys': p.apiKeys.map((k) => ApiKeyPool.maskKey(k)).toList(),
                 'models': p.models.map((m) => m.id).toList(),
               },
@@ -911,7 +919,11 @@ class VirtualWorkspaceService {
         'description':
             'roles.*.model 是「厂商id::模型名」，也可以是路由组（「组id::__route_group__」，'
             '见 routeGroups）；写 null 表示清空绑定（默认厂商的首个已启用模型生效）；'
-            'providers 为只读快照（密钥已掩码，增删与启用模型请引导用户去「小Q设置 → 模型」操作）；'
+            'providers 可写：传数组即可新增/更新厂商条目，必填 baseUrl（需 http(s) 前缀）；'
+            'apiKeys 传明文密钥，与现有密钥池合并去重（本快照里的掩码串回写会被忽略，'
+            'replaceKeys:true 表示全量替换）；models 传模型 id 数组即全部启用，'
+            '新建时未传 models 会自动扫描该服务全部模型并启用；不支持订阅账号型厂商与删除；'
+            '写入成功返回每个厂商的 id，可用于 roles.*.model 绑定；'
             'routeGroups 为只读快照（成员顺序/策略/权重请在设置页编辑）；'
             'temperatures 可直接修改，下轮对话生效',
       };
@@ -1456,8 +1468,8 @@ class VirtualWorkspaceService {
     }
 
     if (path.startsWith('/notes/')) {
-      // 1. 如果路径是笔记本分类目录（以 '/' 结尾或没有 .md 后缀）
-      if (!path.endsWith('.md')) {
+      // 1. 如果路径是笔记本分类目录（末段不带 App 认识的文件后缀）
+      if (!NoteFileTypeHelper.hasRecognizedExtension(path.split('/').last)) {
         final folderName = workspaceFolderNameFromPath(path, '/notes/');
         final folders = await _folderRepo.getByType('note');
         final matched = folders.where((f) => f.name == folderName || f.id == folderName).firstOrNull;
@@ -1728,6 +1740,13 @@ class VirtualWorkspaceService {
 
   /// 去掉待办标题的勾选前缀（`[ ] ` / `[x] `）
   static String _stripTodoTitlePrefix(String title) => stripTodoTitlePrefix(title);
+
+  /// 列出笔记时的文件名：标题已带 App 认识的后缀（.mmd/.csv/.html 等）就原样返回，
+  /// 否则补 `.md`——避免 `架构图.mmd` 被拼成 `架构图.mmd.md`，小Q 据此改写会落到错路径
+  static String _noteListingName(String title) {
+    final t = title.trim().isEmpty ? '未命名笔记' : title.trim();
+    return NoteFileTypeHelper.hasRecognizedExtension(t) ? t : '$t.md';
+  }
 
   // ==========================================
   // 6. grep: 全局检索（VFS 唯一检索实现，GrepTool 直接复用）

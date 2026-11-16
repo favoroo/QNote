@@ -24,6 +24,8 @@ void main() {
     'settings-manager',
     'stats-analyst',
     'frontend-design',
+    'mermaid-diagram',
+    'data-file',
     'life-decision-guide',
     'find-skills',
   ];
@@ -195,6 +197,51 @@ void main() {
       }
     });
 
+    test('mermaid-diagram 覆盖写入路径、图型选择与常见坑', () {
+      final doc = registry.getSkillContent('mermaid-diagram')!;
+      expect(doc.contains('/notes/<标题>.mmd'), isTrue, reason: '应说明 .mmd 写入路径');
+      expect(doc.contains('flowchart'), isTrue, reason: '应含流程图语法');
+      expect(doc.contains('sequenceDiagram'), isTrue);
+      expect(doc.contains('gantt'), isTrue);
+      expect(doc.contains('mindmap'), isTrue);
+      expect(doc.contains('dateFormat'), isTrue, reason: '应提示 gantt 必须写 dateFormat');
+      expect(doc.contains('不要'), isTrue, reason: '应明确不要包 HTML/围栏');
+      // ER 关系图已从输出类型下线：手册只保留「用户明确索要时才写」的约束说明
+      expect(doc.contains('erDiagram'), isTrue, reason: '应保留关系图下线说明与语法约束');
+      expect(doc.contains('不要主动产出'), isTrue, reason: '应明确不要主动产出 ER 图');
+      expect(doc.contains('英文'), isTrue, reason: '应明确 ER 实体名只支持英文/数字/下划线');
+    });
+
+    test('mermaid-diagram 支持别名与虚拟路径解析', () {
+      for (final key in ['mermaid', 'diagram', 'flowchart', 'mindmap', '/skills/mermaid-diagram.md']) {
+        expect(
+          registry.getSkillContent(key),
+          registry.getSkillContent('mermaid-diagram'),
+          reason: '别名 "$key" 应解析到同一份手册',
+        );
+      }
+      expect(registry.isReservedName('mermaid-diagram'), isTrue);
+      expect(registry.isReservedName('flowchart'), isTrue);
+    });
+
+    test('data-file 覆盖 CSV 转义与列头规范，不再提供 JSON 预览约定', () {
+      final doc = registry.getSkillContent('data-file')!;
+      expect(doc.contains('/notes/<标题>.csv'), isTrue, reason: '应说明 .csv 写入路径');
+      expect(doc.contains('列头'), isTrue, reason: '应规定首行为列头');
+      expect(doc.contains('双引号'), isTrue, reason: '应说明含逗号/引号需转义');
+      expect(doc.contains('YYYY-MM-DD'), isTrue, reason: '应统一日期格式');
+      // JSON 树视图已下线：手册不再引导产出 .json 展示文件（用户明确索要时才写）
+      expect(doc.contains('## 4. JSON 规范'), isFalse, reason: 'JSON 生成章节应已移除');
+    });
+
+    test('data-file 支持别名与虚拟路径解析', () {
+      for (final key in ['data', 'csv', 'table', '/skills/data-file.md']) {
+        expect(registry.getSkillContent(key), registry.getSkillContent('data-file'), reason: '别名 "$key" 应解析到同一份手册');
+      }
+      expect(registry.isReservedName('data-file'), isTrue);
+      expect(registry.isReservedName('csv'), isTrue);
+    });
+
     test('find-skills 覆盖市场搜索、安装、质量评估与安全边界', () {
       final doc = registry.getSkillContent('find-skills')!;
       expect(doc.contains('skill_market(search'), isTrue, reason: '应指引先用市场搜索');
@@ -344,6 +391,14 @@ void main() {
       expect(registry.resolveSkillName('/skills/stats-analyst.md'), 'stats-analyst');
       expect(registry.resolveSkillName('不存在的技能'), isNull);
       expect(registry.resolveSkillName(''), isNull);
+    });
+
+    test('resolveSkillDocs 批量解析：保序、别名归一、按主名去重、未知跳过', () {
+      final docs = registry.resolveSkillDocs(['todo', 'stats-analyst', '/skills/todo-manager.md', '不存在的技能', 'data']);
+
+      expect(docs.map((skill) => skill.name).toList(), ['todo-manager', 'stats-analyst', 'data-file']);
+      expect(docs.first.doc, registry.getSkillContent('todo-manager'));
+      expect(registry.resolveSkillDocs(const <String>[]), isEmpty);
     });
 
     test('归档后对索引、内容查询与目录列举不可见，恢复后回归', () async {

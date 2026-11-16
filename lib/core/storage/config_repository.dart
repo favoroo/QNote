@@ -517,7 +517,37 @@ class ConfigRepository {
       }
     }
 
+    await _ensureDietNutritionFields();
     await _ensureThoughtShortcut(existing);
+  }
+
+  /// 饮食营养字段一次性补齐标记（设备本地，避免用户删除后被反复加回）。
+  static const String _dietNutritionPrefsFlag = 'shortcut_diet_nutrition_v3';
+
+  /// 老用户平滑升级：为已有「饮食」标签增量补上「热量」字段。
+  ///
+  /// 只追加缺失字段、保留用户既有字段与顺序，不做整表替换；同时清理早期试跑
+  /// 版本写入的「份量 (克)」「食物」字段（吃了什么由 notes/正文承载，热量估算
+  /// 也不需要展示克数）。
+  Future<void> _ensureDietNutritionFields() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_dietNutritionPrefsFlag) == true) return;
+
+    // 重新读取：上面的 rating 升级可能已用新默认字段替换过 diet
+    final configs = await getAllShortcutConfigs();
+    final diet = configs.where((c) => c.id == 'diet').firstOrNull;
+    if (diet != null) {
+      final cleaned = diet.fields
+          .where((f) => !(f.id == 'amount' && f.label == '份量 (克)') && !(f.id == 'item' && f.label == '食物'))
+          .toList();
+      final existingIds = cleaned.map((f) => f.id).toSet();
+      final defaults = defaultShortcutConfigs.firstWhere((c) => c.id == 'diet').fields;
+      final additions = defaults.where((f) => !existingIds.contains(f.id)).toList();
+      if (additions.isNotEmpty || cleaned.length != diet.fields.length) {
+        await updateShortcutConfig(diet.copyWith(fields: [...cleaned, ...additions], updatedAt: DateTime.now()));
+      }
+    }
+    await prefs.setBool(_dietNutritionPrefsFlag, true);
   }
 
   /// 「随想」标签一次性补齐标记（设备本地，避免用户主动删除后被反复加回）

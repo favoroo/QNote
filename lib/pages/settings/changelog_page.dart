@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:qnote_flutter/config/app_changelog.dart';
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 
 class ChangelogPage extends StatelessWidget {
   const ChangelogPage({super.key});
@@ -15,6 +16,8 @@ class ChangelogPage extends StatelessWidget {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('更新日志'),
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,

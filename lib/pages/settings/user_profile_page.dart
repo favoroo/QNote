@@ -23,6 +23,7 @@ import 'package:qnote_flutter/models/weight_record.dart';
 import 'package:qnote_flutter/providers/image_repository_provider.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
 import 'package:qnote_flutter/widgets/birthday_picker.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 
 class UserProfilePage extends ConsumerStatefulWidget {
@@ -383,6 +384,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       appBar: AppBar(
         title: const Text('个人信息'),
         centerTitle: false,
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -394,7 +397,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 backgroundColor: _saveSuccess ? Colors.green.shade600 : theme.colorScheme.primary,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 minimumSize: const Size(0, 34),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                // 按钮统一胶囊形，与页面内的分段控件、标签保持一致
+                shape: const StadiumBorder(),
               ),
             ),
           ),
@@ -421,7 +425,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: _bmiColor(theme).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
+                        // 小标签用胶囊形，避免和卡片内的大圆角形成方角视觉
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
                         'BMI ${_bmi!.toStringAsFixed(1)} · $_bmiLabel',
@@ -689,7 +694,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(8),
+              // 外壳与内部选项都取半高的胶囊半径，选中态自然贴合边框
+              borderRadius: BorderRadius.circular(15),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -714,7 +720,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         decoration: BoxDecoration(
           color: isSelected ? theme.colorScheme.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(13),
           boxShadow: isSelected
               ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 3, offset: const Offset(0, 1))]
               : null,
@@ -748,7 +754,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           const Spacer(),
           InkWell(
             onTap: _showBirthdayPicker,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(999),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               child: Row(
@@ -863,7 +869,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 Expanded(
                   child: InkWell(
                     onTap: _focusWeightInput,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                       child: Row(
@@ -902,12 +908,17 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 // 斤 / kg 单位微切换
                 _buildUnitToggle(theme),
                 const SizedBox(width: 10),
-                // 展开/收起历史
+                // 展开/收起历史：与单位切换同款中性胶囊，按钮背景也走大圆角
                 InkWell(
                   onTap: () => setState(() => _showWeightHistory = !_showWeightHistory),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    height: 24,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -935,7 +946,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               height: 40,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(10),
+                // 录入条整体做成胶囊，和内部圆形加号按钮形成同心圆角
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: _weightInputFocusNode.hasFocus ? theme.accentInk.withValues(alpha: 0.8) : Colors.transparent,
                   width: 1,
@@ -947,7 +959,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                   // 日期选择
                   InkWell(
                     onTap: _selectWeightDate,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(999),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                       child: Row(
@@ -1014,7 +1026,8 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       foregroundColor: theme.colorScheme.onPrimary,
                       minimumSize: const Size(28, 28),
                       padding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      // 圆形记录按钮，和胶囊录入条区分层级
+                      shape: const CircleBorder(),
                     ),
                   ),
                 ],
@@ -1035,7 +1048,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1074,14 +1087,14 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   Widget _buildUnitToggle(ThemeData theme) {
     return InkWell(
       onTap: _toggleWeightUnit,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         height: 24,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         // 中性底色胶囊，与录入条背景一致，不与主色按钮抢视觉
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1107,7 +1120,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: isSelected ? theme.colorScheme.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: isSelected
               ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 2, offset: const Offset(0, 1))]
               : null,
@@ -1155,7 +1168,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 const SizedBox(width: 8),
                 InkWell(
                   onTap: () => _deleteWeightRecord(record.id),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(999),
                   child: Padding(
                     padding: const EdgeInsets.all(4),
                     child: Icon(Icons.close_rounded, size: 14, color: theme.colorScheme.error.withValues(alpha: 0.7)),
@@ -1177,9 +1190,15 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
       icon: Icons.notes_rounded,
       trailing: InkWell(
         onTap: _showAddCustomFieldDialog,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 24,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          // 主色淡底胶囊，让「添加字段」读起来是按钮而不是普通文字
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: theme.brightness == Brightness.dark ? 0.16 : 0.08),
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1234,7 +1253,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       ),
                       InkWell(
                         onTap: () => _showRenameCustomFieldDialog(key),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(999),
                         child: Padding(
                           padding: const EdgeInsets.all(4),
                           child: Icon(Icons.edit_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
@@ -1243,7 +1262,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       const SizedBox(width: 6),
                       InkWell(
                         onTap: () => _confirmDeleteCustomField(key),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(999),
                         child: Padding(
                           padding: const EdgeInsets.all(4),
                           child: Icon(Icons.delete_outline_rounded, size: 14, color: theme.colorScheme.error),
@@ -1269,13 +1288,13 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide.none,
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide(color: theme.accentInk.withValues(alpha: 0.5)),
                       ),
                     ),
@@ -1419,7 +1438,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
           height: 140,
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,

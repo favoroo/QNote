@@ -32,9 +32,19 @@ class _MockFolderListNotifier extends FolderListNotifier {
   _MockFolderListNotifier(this._initial);
 
   final List<Folder> saved = [];
+  final List<String> deleted = [];
 
   @override
   Future<List<Folder>> build() async => _initial;
+
+  @override
+  Future<void> deleteFolder(String id) async {
+    deleted.add(id);
+    state = AsyncData([
+      for (final folder in state.valueOrNull ?? _initial)
+        if (folder.id != id) folder,
+    ]);
+  }
 
   @override
   Future<void> reorderFolders(List<Folder> reordered) async {
@@ -145,6 +155,63 @@ void main() {
 
     expect(find.text('重命名文件夹'), findsOneWidget);
     expect(find.text('删除文件夹'), findsOneWidget);
+  });
+
+  testWidgets('删除非空文件夹前弹出确认，提示内容将一并删除', (tester) async {
+    final now = DateTime.now();
+    final folder = Folder(id: 'folder-1', name: '测试文件夹', type: 'note', createdAt: now, updatedAt: now);
+    final note = Note(id: 'note-1', title: '夹内笔记', folderId: 'folder-1', createdAt: now, updatedAt: now);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          noteListProvider.overrideWith(() => _MockNoteListNotifier([note])),
+          folderListProvider.overrideWith(() => _MockFolderListNotifier([folder])),
+        ],
+        child: const MaterialApp(home: Scaffold(body: NotesPage())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('测试文件夹'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除文件夹'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('删除「测试文件夹」？其中的 1 篇笔记将一并删除。'), findsOneWidget);
+
+    // 取消后文件夹保留
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('将一并删除'), findsNothing);
+    expect(find.text('测试文件夹'), findsOneWidget);
+  });
+
+  testWidgets('删除空文件夹不弹确认，直接删除', (tester) async {
+    final folderMock = _MockFolderListNotifier([
+      Folder(id: 'folder-empty', name: '空文件夹', type: 'note', createdAt: DateTime.now(), updatedAt: DateTime.now()),
+    ]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          noteListProvider.overrideWith(() => _MockNoteListNotifier([])),
+          folderListProvider.overrideWith(() => folderMock),
+        ],
+        child: const MaterialApp(home: Scaffold(body: NotesPage())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('空文件夹'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除文件夹'));
+    // 删除后页面进入空状态，空状态动画会一直循环，不能等 pumpAndSettle
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.textContaining('将一并删除'), findsNothing);
+    expect(folderMock.deleted, ['folder-empty']);
   });
 
   testWidgets('长按笔记拖到文件夹中部会移入文件夹并展开', (tester) async {

@@ -348,6 +348,15 @@ class MainActivity : FlutterActivity() {
                     result.success(pendingRoute)
                     pendingRoute = null
                 }
+                "moveTaskToBack" -> {
+                    // 小Q 运行中「退出」：只把任务挪到后台，不 finish Activity。
+                    // SystemNavigator.pop() 会 finish Activity 并连带销毁 Flutter 引擎，
+                    // 正在跑的 Agent 任务会直接断掉——与「后台继续执行」的承诺矛盾。
+                    // moveTaskToBack 让界面退出到桌面但进程/引擎/前台服务都留着，
+                    // 任务照常跑完，用户点桌面图标回来仍是原状态。
+                    moveTaskToBack(true)
+                    result.success(true)
+                }
                 else -> {
                     result.notImplemented()
                 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/providers/agent_skill_provider.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 
 /// 小Q技能编辑页
 ///
@@ -45,7 +46,12 @@ class _QSkillEditPageState extends ConsumerState<QSkillEditPage> {
     final isEditingExisting = widget.skill != null;
 
     return Scaffold(
-      appBar: AppBar(title: Text(isEditingExisting ? '编辑技能' : '新建技能'), centerTitle: false),
+      appBar: AppBar(
+        title: Text(isEditingExisting ? '编辑技能' : '新建技能'),
+        centerTitle: false,
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [

@@ -37,6 +37,18 @@ class NoUsefulInfoException implements Exception {
   String toString() => message != null ? 'NoUsefulInfoException: $message' : 'NoUsefulInfoException';
 }
 
+/// 提取响应不完整（截断、被内容过滤、拒答或只有思考内容）。
+///
+/// 这类响应不能当作「没提取到信息」处理：半截 JSON 可能被宽松解析成缺字段的
+/// 记录，调用方应提示用户重试或换模型，而不是默默落一条错误数据。
+class AiExtractIncompleteException implements Exception {
+  final String message;
+  const AiExtractIncompleteException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 /// 带工具流式对话的单个流片段。
 ///
 /// - [text] 非 null：模型正文增量，供打字机渲染
@@ -89,6 +101,12 @@ class AiService {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          // [_authOverride] 用「null 值 = 删除」表达清残留凭证的语义：IO 适配器
+          // 会跳过 null 头，但 Web 适配器会把 null `toString()` 成字面量 "null"
+          // 真发出去（实测发出 `x-api-key: null`），额外头不在网关 CORS 白名单
+          // 里会让预检失败，App 侧表现为 connection error。统一在此删除，
+          // 保证双端行为一致。
+          options.headers.removeWhere((_, value) => value == null);
           final config = _config;
           if (config != null && BuiltinProvider.isBuiltinId(config.providerId)) {
             options.headers.addAll(await BuiltinRequestSigner.headersForPath(options.uri.path));
@@ -2001,7 +2019,13 @@ class AiService {
 
     result['fields'] = simplified['f'] ?? simplified['fields'] ?? {};
 
-    result['notes'] = simplified['n'] ?? simplified['notes'] ?? '';
+    // 兼容旧模型/旧提示词：analysis 是主字段，notes 作为历史字段回退。
+    // 下游统一按 analysis 读取，不再把分析混进用户正文。
+    final rawAnalysis = simplified['a'] ?? simplified['analysis'] ?? simplified['n'] ?? simplified['notes'] ?? '';
+    result['analysis'] = rawAnalysis is List
+        ? rawAnalysis.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).join('\n')
+        : rawAnalysis;
+    result['notes'] = result['analysis'];
 
     if (simplified.containsKey('date')) {
       result['date'] = simplified['date'];
@@ -2035,24 +2059,47 @@ class AiService {
 
     LoggerService.instance.logAI('统一提取请求', details: '类型=$inputType, 有文本=$hasText, 有图片=$hasImage');
 
-    // 纯文本请求不注入图片/notes 规则，省去冗余指令并杜绝纯文本场景误输出 notes
-    const imageRulesText =
-        '4. 图片处理与 notes：截图提取核心数据与指标（如深睡1.5h、步数、心率）；食物图必须提取具体菜品名称及配料。\n'
-        '   - 必须且仅在 results[0] 输出一个 notes 字段汇总图片新识别到的关键信息（不要重复用户已有文字）；\n'
-        '   - notes 格式固定为 "图：" + 图片具体信息，多标签场景不要在后续元素重复输出 notes。';
+    // 纯文本请求不注入图片规则，但仍允许在确有价值时输出小Q分析
+    const imageAnalysisRulesText =
+        '4. 小Q分析（analysis，可选）：只写原文之外、值得用户知道的分析/评价/识别结果，不复述原文、不编造。\n'
+        '   - 有图片且能识别出有效信息时必须输出：先写 "图："，再写图中新识别到的关键信息（食物与份量/热量、睡眠/步数/心率等指标、包装营养成分表数值、画面中的重要文字等）；\n'
+        '   - 多标签场景只在 results[0] 输出一次 analysis，后续元素不要重复。\n'
+        '   - 无图片时仅在确有价值的判断时输出（如饮食营养/热量评估、症状轻重、消费是否合理、作息是否规律）；普通工作、通勤、社交、情绪记录省略 analysis。\n'
+        '   - 最多 2 句、平实中文；不要 Markdown 标题/列表；画面无法识别或没有值得补充的内容时不要输出 analysis 字段。';
+    const textAnalysisRulesText =
+        '4. 小Q分析（analysis，可选）：只写原文之外、值得用户知道的判断，不复述原文、不编造。\n'
+        '   - 仅当确有价值时输出（如饮食营养/热量评估、症状轻重、消费是否合理、作息是否规律）；普通工作、通勤、社交、情绪记录省略 analysis。\n'
+        '   - 最多 2 句、平实中文；不要 Markdown 标题/列表；没有值得补充的内容时不要输出 analysis 字段。';
+    // 图片有视觉线索，允许（并要求）逐道菜估重算热量
+    const imageCalorieRulesText =
+        '     - 逐道食物单独估重、单独算热量，最后求和写入 calories（整份餐总千卡），不得只对整盘拍一个总数。\n'
+        '     - 包装食品优先读包装上的营养成分表（每100g / 每份的能量），按其数值换算，不要凭印象估。\n'
+        '     - 有参照物（筷子、手、标准碗盘）时按其校准；无参照物时按常见餐具份量假设（一碗米饭≈200g、一盘家常炒菜≈300g、一杯奶茶≈500ml）。\n'
+        '     - 油炸、勾芡、加糖等烹饪方式要计入热量；混合菜品（如炒饭、汤面）拆分主要食材分别估重。\n'
+        '     - 完全无法判断（如空盘、看不清、无食物）时省略 calories，严禁凭空编造。\n'
+        '     - 必须在 analysis 里按「食物名 约Xg 约Ykcal」逐项列出每道食物的份量与热量再给出合计，'
+        '如「图：米饭 约200g 约250kcal、香菇滑鸡 约180g 约320kcal、白灼生菜 约120g 约50kcal，合计约620kcal」'
+        '（饮品用 ml）。\n'
+        '     - 把握较低时在 analysis 末尾用一句话说明主要不确定因素（如「份量按常见餐具估算」），不要输出宽泛免责声明。';
+    // 纯文本没有视觉线索：只有用户明确给了重量/份量时才换算，否则不猜
+    const textCalorieRulesText =
+        '     - 仅当原文明确给出重量、份量或数量（如「米饭200g」「一盒牛奶250ml」「两个鸡蛋」）时，才按该份量换算并输出 calories；只提食物名称、没有任何份量线索时一律省略 calories，不要按常见份量臆测。\n'
+        '     - 多种食物逐项换算后求和；明确提到包装食品营养成分时优先采用其标注数值。';
     const imageOutputFormat =
-        'JSON: {"results":[{"id":"标签id","time":"可选时间","fields":{},"notes":"图：..."}]}（无有用信息输出 {"results":[]}）';
+        'JSON: {"results":[{"id":"标签id","time":"可选时间","fields":{},"analysis":"图：..."}]}（analysis 可省略；无有用信息输出 {"results":[]}）';
     const textOutputFormat =
-        'JSON: {"results":[{"id":"标签id","time":"可选时间","fields":{}}]}（纯文本禁止输出 notes 字段；无有用信息输出 {"results":[]}）';
+        'JSON: {"results":[{"id":"标签id","time":"可选时间","fields":{},"analysis":"可选"}]}（没有值得补充的分析时省略 analysis；无有用信息输出 {"results":[]}）';
     const imageExamplesText =
-        '- [食物照片:米饭、香菇滑鸡和白灼生菜] → {"results":[{"id":"diet","fields":{"rating":"健康"},"notes":"图：香菇滑鸡、白灼生菜、一碗米饭"}]}\n'
-        '- [健康App截图:睡眠6h46min质量一般、步数5047/6000、卡路里294/300kcal、中高强度活动21min、心率84次/分] → {"results":[{"id":"sleep","fields":{"duration":6.77,"quality":"一般"},"notes":"图：睡眠6时46分质量一般，步数5047/6000步，卡路里294/300千卡，中高强度活动21分钟，心率84次/分"},{"id":"activity","fields":{"type":"运动","duration":0.35}}]}';
+        '- [食物照片:米饭、香菇滑鸡和白灼生菜] → {"results":[{"id":"diet","fields":{"rating":"健康","calories":620},"analysis":"图：米饭 约200g 约250kcal、香菇滑鸡 约180g 约320kcal、白灼生菜 约120g 约50kcal，合计约620kcal"}]}\n'
+        '- [包装食品照片:薯片，包装营养成分表标注每100g能量536千卡] → {"results":[{"id":"diet","fields":{"rating":"不健康","calories":375},"analysis":"图：薯片 约70g 约375kcal，按包装每100g 536千卡换算"}]}\n'
+        '- [健康App截图:睡眠6h46min质量一般、步数5047/6000、卡路里294/300kcal、中高强度活动21min、心率84次/分] → {"results":[{"id":"sleep","fields":{"duration":6.77,"quality":"一般"},"analysis":"图：睡眠6时46分质量一般，步数5047/6000步，卡路里294/300千卡，中高强度活动21分钟，心率84次/分"},{"id":"activity","fields":{"type":"运动","duration":0.35}}]}';
 
     var systemPrompt = defaultSystemPrompts['unified_extraction'] ?? '';
     systemPrompt = systemPrompt
         .replaceAll('{{contextStr}}', contextStr ?? '')
         .replaceAll('{{schema}}', schema)
-        .replaceAll('{{imageRules}}', hasImage ? imageRulesText : '')
+        .replaceAll('{{analysisRules}}', hasImage ? imageAnalysisRulesText : textAnalysisRulesText)
+        .replaceAll('{{calorieRules}}', hasImage ? imageCalorieRulesText : textCalorieRulesText)
         .replaceAll('{{outputFormat}}', hasImage ? imageOutputFormat : textOutputFormat)
         .replaceAll('{{imageExamples}}', hasImage ? imageExamplesText : '');
 
@@ -2067,7 +2114,7 @@ class AiService {
         inputType: inputType,
       );
     } else {
-      final userMessageText = '[用户输入] ($inputType)\n${text ?? ''}';
+      final userMessageText = _buildExtractUserMessage(inputType, text);
       if (_config!.provider == 'gemini') {
         requestBody = {
           'contents': [
@@ -2160,10 +2207,27 @@ class AiService {
             '⚠️ AI响应被截断 (finish_reason: length)，当前 max_tokens=$_maxTokens 可能不够推理模型使用',
             level: LogLevel.warning,
           );
+          throw const AiExtractIncompleteException('模型输出被截断，未生成完整记录；请减少照片中的食物数量或改用输出上限更大的模型后重试');
+        }
+        if (finishReason == 'content_filter') {
+          LoggerService.instance.logAI('⚠️ AI响应被内容过滤拦截', level: LogLevel.warning);
+          throw const AiExtractIncompleteException('模型服务拦截了这次提取，请更换图片或输入内容后重试');
+        }
+        if (finishReason == 'refusal') {
+          throw const AiExtractIncompleteException('模型拒绝了这次提取，请调整输入后重试');
         }
 
         final content = _extractTextFromResponse(response.data);
         LoggerService.instance.logAI('AI统一提取响应:\n${_formatJsonForLogging(response.data)}');
+        if (content.trim().isEmpty) {
+          final message = _hasRefusal(response.data)
+              ? '模型拒绝了这次提取，请调整输入后重试'
+              : _hasReasoningOnly(response.data)
+              ? '模型只返回了思考内容，没有给出提取结果；请关闭思考模式或更换模型后重试'
+              : '模型没有返回提取结果，请重试或更换模型';
+          LoggerService.instance.logAI('⚠️ AI统一提取响应为空', level: LogLevel.warning);
+          throw AiExtractIncompleteException(message);
+        }
 
         final jsonResult = _parseJsonFromAiContent(content);
         LoggerService.instance.logAI('统一提取完成', details: '结果数量=${jsonResult is List ? jsonResult.length : 1}');
@@ -2431,6 +2495,16 @@ class AiService {
     );
   }
 
+  /// 组装统一提取的用户消息。
+  ///
+  /// 用户输入是待提取的数据而不是指令：用显式边界包裹，配合系统提示词里的
+  /// 防注入规则，降低「忽略以上规则」类文本干扰结构化输出的概率。
+  String _buildExtractUserMessage(String inputType, String? text) {
+    final content = text?.trim() ?? '';
+    if (content.isEmpty) return '[用户输入] ($inputType)';
+    return '[用户输入] ($inputType)\n[用户数据开始]\n$content\n[用户数据结束]';
+  }
+
   Map<String, dynamic> _buildMultimodalRequestBody({
     required String systemPrompt,
     required String imageBase64,
@@ -2438,7 +2512,7 @@ class AiService {
     String? text,
     required String inputType,
   }) {
-    final userMessageText = '[用户输入] ($inputType)\n${text ?? ''}';
+    final userMessageText = _buildExtractUserMessage(inputType, text);
     if (_config!.provider == 'gemini') {
       return {
         'contents': [
@@ -2585,7 +2659,7 @@ class AiService {
     return '';
   }
 
-  /// 从响应数据中提取 finish_reason，用于检测 max_tokens 截断
+  /// 从响应数据中提取 finish_reason，用于检测截断与内容过滤
   String? _extractFinishReason(dynamic data) {
     if (data is! Map<String, dynamic>) return null;
     // Messages 用 stop_reason；`max_tokens` 与 OpenAI 的 `length` 同义，
@@ -2595,11 +2669,55 @@ class AiService {
       // 归一成 OpenAI 口径：截断判断只认 'length'
       return reason == 'max_tokens' ? 'length' : reason;
     }
+    // Gemini 把结束原因放在 candidates[0].finishReason，取值是 MAX_TOKENS /
+    // SAFETY 等大写枚举；统一归一成调用方认识的 'length' / 'content_filter'
+    if (_config?.provider == 'gemini') {
+      final candidates = data['candidates'];
+      if (candidates is List && candidates.isNotEmpty && candidates[0] is Map) {
+        final reason = candidates[0]['finishReason']?.toString();
+        if (reason == 'MAX_TOKENS') return 'length';
+        if (reason == 'SAFETY' || reason == 'RECITATION' || reason == 'BLOCKLIST' || reason == 'PROHIBITED_CONTENT') {
+          return 'content_filter';
+        }
+        return reason;
+      }
+      final feedback = data['promptFeedback'];
+      if (feedback is Map && feedback['blockReason'] != null) return 'content_filter';
+      return null;
+    }
     final choices = data['choices'];
-    if (choices is List && choices.isNotEmpty) {
-      return choices[0]?['finish_reason']?.toString();
+    if (choices is List && choices.isNotEmpty && choices[0] is Map) {
+      return choices[0]['finish_reason']?.toString();
     }
     return null;
+  }
+
+  /// OpenAI 兼容响应里模型明确拒答时 message.refusal 会给出原因
+  bool _hasRefusal(dynamic data) {
+    if (data is! Map) return false;
+    final choices = data['choices'];
+    if (choices is List && choices.isNotEmpty && choices[0] is Map) {
+      final message = choices[0]['message'];
+      if (message is Map) {
+        final refusal = message['refusal'];
+        return refusal is String && refusal.trim().isNotEmpty;
+      }
+    }
+    return false;
+  }
+
+  /// 推理模型只返回 reasoning_content、正文为空时，不能当空结果处理
+  bool _hasReasoningOnly(dynamic data) {
+    if (data is! Map) return false;
+    final choices = data['choices'];
+    if (choices is List && choices.isNotEmpty && choices[0] is Map) {
+      final message = choices[0]['message'];
+      if (message is Map) {
+        final reasoning = message['reasoning_content'];
+        return reasoning is String && reasoning.trim().isNotEmpty;
+      }
+    }
+    return false;
   }
 
   dynamic _parseJsonFromAiContent(String content) {
@@ -3021,6 +3139,18 @@ class AiService {
       }
       if (r.content.isNotEmpty) {
         recordsStr.writeln('- 内容: ${r.content}');
+      }
+      // 小Q 的图片解读/营养评估独立存储，评分时同样要提供，
+      // 否则图片里识别出的热量与指标会丢失
+      if (r.aiAnalysis.isNotEmpty) {
+        recordsStr.writeln('- 小Q分析: ${r.aiAnalysis}');
+      }
+      // 结构化字段（如饮食的食物/热量）不一定写进正文，单独给模型，
+      // 否则饮食维度的热量参考拿不到数据
+      final entryFields = r.tagEntries.where((e) => e.fields.isNotEmpty).toList();
+      if (entryFields.isNotEmpty) {
+        final parts = entryFields.map((e) => '${e.name}=${jsonEncode(e.fields)}').join('; ');
+        recordsStr.writeln('- 结构化字段: $parts');
       }
       if (r.bodyState != null && r.bodyState!.isNotEmpty) {
         recordsStr.writeln('- 身体状态: ${jsonEncode(r.bodyState)}');

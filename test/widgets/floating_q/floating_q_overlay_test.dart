@@ -347,6 +347,80 @@ void main() {
     });
   });
 
+  group('弹窗输入区', () {
+    testWidgets('不展示「常用提示词」入口，输入框仍在', (tester) async {
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+      await _openPanel(tester);
+
+      // 弹窗尺寸小，快捷提示词入口只保留在 /ai 全页面输入栏
+      expect(find.text('常用提示词'), findsNothing);
+      expect(find.byIcon(Icons.bolt_rounded), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+    });
+  });
+
+  group('转到完整对话', () {
+    testWidgets('展开后把面板挂起的引用移交给 /ai（引用不随会话关闭丢失）', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(path: '/', builder: (_, _) => const SizedBox.shrink()),
+          GoRoute(
+            path: '/ai',
+            builder: (_, _) => const Scaffold(body: Text('AI 会话页')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [routerProvider.overrideWithValue(router)],
+          child: MaterialApp.router(
+            routerConfig: router,
+            builder: (context, child) => Stack(
+              children: [
+                child!,
+                Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 挂起引用后展开：临时会话会被关闭（pendingQuote 一并清空），
+      // 引用必须改由交接单承载，否则用户得重新选一遍
+      _notifier(tester).openWithQuote(_quote);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('quote-card')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('floating-q-expand')));
+      await tester.pumpAndSettle();
+
+      final container = _container(tester);
+      expect(find.text('AI 会话页'), findsOneWidget);
+      expect(container.read(floatingQProvider).pendingQuote, isNull);
+      final handedOff = container.read(pendingChatQuoteProvider);
+      expect(handedOff, isNotNull);
+      final handedQuote = handedOff!.quote;
+      expect(handedQuote, isNotNull);
+      expect(handedQuote!.quotedText, _quote.quotedText);
+      expect(handedQuote.sourceTitle, _quote.sourceTitle);
+      expect(handedQuote.locationDesc, _quote.locationDesc);
+    });
+
+    testWidgets('展开按钮用对话图标而非全屏图标', (tester) async {
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+      await _openPanel(tester);
+
+      // 这个按钮的真实语义是「把临时对话转成持久会话」，
+      // 全屏放大图标会让人以为只是把弹窗撑大
+      expect(find.byIcon(Icons.forum_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.open_in_full_rounded), findsNothing);
+    });
+  });
+
   group('展开全页面', () {
     testWidgets('浮层在路由之外时仍能跳转到 /ai（不再抛 No GoRouter）', (tester) async {
       // 回归：曾用 context.push，而本浮层挂在 MaterialApp.builder 的 Stack 上、
@@ -390,6 +464,59 @@ void main() {
       // 断言页面真的渲染出来（GoRouter 的 currentConfiguration 在 push 后
       // 仍可能报基础位置，用它判断会误判）
       expect(find.textContaining('展开失败'), findsNothing);
+      expect(find.text('AI 会话页'), findsOneWidget);
+    });
+
+    testWidgets('展开用 go 切分支：底栏高亮跟到小Q，而不是压一层页面在时间线上', (tester) async {
+      // /ai 属于 StatefulShellRoute 的 ai 分支。用 push 只会把页面压在根 Navigator
+      // 上、分支索引不变，底栏继续高亮「时间线」（真机现象）。
+      final router = GoRouter(
+        initialLocation: '/diary',
+        routes: [
+          StatefulShellRoute(
+            builder: (context, state, shell) => Scaffold(
+              body: Column(
+                children: [
+                  Text('branch:${shell.currentIndex}'),
+                  Expanded(child: shell),
+                ],
+              ),
+            ),
+            navigatorContainerBuilder: (context, shell, children) =>
+                IndexedStack(index: shell.currentIndex, children: children),
+            branches: [
+              StatefulShellBranch(
+                routes: [GoRoute(path: '/diary', builder: (_, _) => const Text('时间线页'))],
+              ),
+              StatefulShellBranch(
+                routes: [GoRoute(path: '/ai', builder: (_, _) => const Text('AI 会话页'))],
+              ),
+            ],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [routerProvider.overrideWithValue(router)],
+          child: MaterialApp.router(
+            routerConfig: router,
+            builder: (context, child) => Stack(
+              children: [
+                child!,
+                Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('branch:0'), findsOneWidget);
+
+      await _openPanel(tester);
+      await tester.tap(find.byKey(const ValueKey('floating-q-expand')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('branch:1'), findsOneWidget);
       expect(find.text('AI 会话页'), findsOneWidget);
     });
   });

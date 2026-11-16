@@ -1,14 +1,45 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/notification/agent_work_notifications.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/todo.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-class NotificationService {
+/// 小Q 工作中/完成通知共用的 id：同一 id 互相替换，通知栏不会堆叠两条。
+const int kAgentWorkNotificationId = 9001;
+
+/// 「小Q 正在工作」通知样式：低优先级、静默、常驻、不可划掉。
+const AndroidNotificationDetails _kAgentWorkingAndroidDetails = AndroidNotificationDetails(
+  'qnote_agent_work',
+  '小Q 工作中',
+  channelDescription: '小Q 执行任务时的常驻通知',
+  importance: Importance.low,
+  priority: Priority.low,
+  playSound: false,
+  enableVibration: false,
+  ongoing: true,
+  autoCancel: false,
+  onlyAlertOnce: true,
+  showWhen: false,
+  silent: true,
+);
+
+/// 「小Q 已完成」通知样式：高优先级、带声音与横幅、可点击、可划掉。
+const AndroidNotificationDetails _kAgentDoneAndroidDetails = AndroidNotificationDetails(
+  'qnote_agent_done',
+  '小Q 完成提醒',
+  channelDescription: '小Q 任务完成后的提醒',
+  importance: Importance.high,
+  priority: Priority.high,
+  onlyAlertOnce: true,
+  autoCancel: true,
+);
+
+class NotificationService implements AgentNotificationSink {
   static final NotificationService instance = NotificationService._internal();
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   final TodoRepository _todoRepository = TodoRepository();
@@ -26,6 +57,9 @@ class NotificationService {
     const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
     await _plugin.initialize(settings);
     await requestPermission();
+    // 接入小Q 运行期通知调度，并清掉上一次运行残留的「工作中」通知/前台服务
+    AgentWorkNotifications.instance.attachSink(this);
+    AgentWorkNotifications.instance.resetOnLaunch();
   }
 
   void _setupLocalTimeZone() {
@@ -107,6 +141,24 @@ class NotificationService {
         importance: Importance.defaultImportance,
       );
       await androidPlugin?.createNotificationChannel(scheduledChannel);
+      // 小Q 工作中共用一条低优先级静默通知（不响铃不横幅，只做保活与状态展示）
+      const workChannel = AndroidNotificationChannel(
+        'qnote_agent_work',
+        '小Q 工作中',
+        description: '小Q 执行任务时的常驻通知',
+        importance: Importance.low,
+        playSound: false,
+        enableVibration: false,
+      );
+      await androidPlugin?.createNotificationChannel(workChannel);
+      // 完成提醒需要声音与横幅，单独一个高优先级渠道
+      const doneChannel = AndroidNotificationChannel(
+        'qnote_agent_done',
+        '小Q 完成提醒',
+        description: '小Q 任务完成后的提醒',
+        importance: Importance.high,
+      );
+      await androidPlugin?.createNotificationChannel(doneChannel);
     } catch (e) {
       // Android 通知权限/渠道创建失败会直接影响提醒送达，需留痕
       LoggerService.instance.warning('创建 Android 通知渠道或申请权限失败: $e', category: LogCategory.system);
@@ -271,6 +323,102 @@ class NotificationService {
       await cancelNotification(todo.id.hashCode);
     }
   }
+
+  // ==========================================
+  // 小Q 工作中/完成通知（AgentNotificationSink 实现）
+  // ==========================================
+
+  /// Android 有前台服务，可在任务一开始就挂常驻通知并保活；iOS 无前台服务，
+  /// 只在退到后台后才提示（由调度器决定）。
+  @override
+  bool get keepsAliveInBackground => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  @override
+  Future<void> showWorking({required String title, required String body}) async {
+    if (kIsWeb) return;
+    try {
+      if (keepsAliveInBackground) {
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.startForegroundService(
+          kAgentWorkNotificationId,
+          title,
+          body,
+          notificationDetails: _kAgentWorkingAndroidDetails,
+          // 不用 sticky：进程被杀后 Android 会用空 Intent 重启服务，
+          // 而插件实现直接解引用 Intent 会崩，且会留下不可划掉的「假工作中」通知
+          startType: AndroidServiceStartType.startNotSticky,
+          foregroundServiceTypes: {AndroidServiceForegroundType.foregroundServiceTypeDataSync},
+        );
+      } else {
+        await _plugin.show(
+          kAgentWorkNotificationId,
+          title,
+          body,
+          const NotificationDetails(
+            android: _kAgentWorkingAndroidDetails,
+            iOS: DarwinNotificationDetails(presentAlert: true, presentSound: false),
+          ),
+        );
+      }
+    } catch (e) {
+      // 前台服务启动失败不阻断小Q 任务（任务照跑，只是少了保活与通知），但需留痕
+      LoggerService.instance.warning('显示小Q 工作中通知失败: $e', category: LogCategory.system);
+    }
+  }
+
+  @override
+  Future<void> updateWorking({required String title, required String body}) async {
+    // 同一 id 再调一次即原地更新（前台服务通知同样支持更新）
+    await showWorking(title: title, body: body);
+  }
+
+  @override
+  Future<void> finishWorking({required String title, required String body, required bool notify}) async {
+    if (kIsWeb) return;
+    try {
+      if (keepsAliveInBackground) {
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.stopForegroundService();
+      } else {
+        // iOS：先撤下常驻的工作通知，需要提醒时下面再补一条完成通知
+        await _plugin.cancel(kAgentWorkNotificationId);
+      }
+      if (notify) {
+        await _plugin.show(
+          kAgentWorkNotificationId,
+          title,
+          body,
+          const NotificationDetails(
+            android: _kAgentDoneAndroidDetails,
+            iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
+          ),
+        );
+      }
+    } catch (e) {
+      // 收尾失败会让通知栏残留「工作中」，需留痕排查
+      LoggerService.instance.warning('结束小Q 工作通知失败: $e', category: LogCategory.system);
+    }
+  }
+
+  @override
+  Future<void> dismissWorking() async {
+    if (kIsWeb) return;
+    try {
+      if (keepsAliveInBackground) {
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.stopForegroundService();
+      } else {
+        await _plugin.cancel(kAgentWorkNotificationId);
+      }
+    } catch (e) {
+      // 撤下失败仅是通知残留，不影响业务，留痕即可
+      LoggerService.instance.warning('撤下小Q 工作通知失败: $e', category: LogCategory.system);
+    }
+  }
+
+  /// 启动时清理上一次进程可能遗留的「工作中」通知与前台服务。
+  @override
+  Future<void> resetOnLaunch() => dismissWorking();
 
   /// 解析提醒时间；兼容 `MM-DD HH:mm`、`YYYY-MM-DD HH:mm` 等写法。
   DateTime? _parseReminderTime(String timeStr) => ReminderUtils.parse(timeStr);

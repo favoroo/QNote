@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/pages/settings/changelog_page.dart';
 import 'package:qnote_flutter/widgets/debug_console.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/update_dialog.dart';
 
 class AboutPage extends StatefulWidget {
@@ -118,6 +119,8 @@ class _AboutPageState extends State<AboutPage> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('关于 QNote'),
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,

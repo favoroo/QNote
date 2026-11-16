@@ -30,6 +30,36 @@ class FinanceDailyData {
   FinanceDailyData({required this.date, required this.income, required this.expense});
 }
 
+/// 一笔记账明细，供统计页与二级页「逐笔」展示。
+class FinanceLedgerEntry {
+  /// 关联的日记记录 id，点击时据此定位并打开详情弹层。
+  final String recordId;
+
+  /// 记账时间。
+  final DateTime time;
+
+  /// 是否为收入（false 为支出）。
+  final bool isIncome;
+
+  /// 金额。
+  final double amount;
+
+  /// 分类（支出类型 / 收入类型），缺省「其他」。
+  final String category;
+
+  /// 备注预览，取自记录正文，可能为空。
+  final String? note;
+
+  FinanceLedgerEntry({
+    required this.recordId,
+    required this.time,
+    required this.isIncome,
+    required this.amount,
+    required this.category,
+    this.note,
+  });
+}
+
 class FinanceStatistics {
   final double totalIncome;
   final double totalExpense;
@@ -38,6 +68,10 @@ class FinanceStatistics {
   final Map<String, double> incomeByType;
   final Map<String, double> expenseByType;
   final List<FinanceDailyData> dailyData;
+
+  /// 逐笔明细，按时间倒序（最新在前）。
+  final List<FinanceLedgerEntry> ledger;
+
   FinanceStatistics({
     required this.totalIncome,
     required this.totalExpense,
@@ -46,6 +80,37 @@ class FinanceStatistics {
     required this.incomeByType,
     required this.expenseByType,
     required this.dailyData,
+    required this.ledger,
+  });
+}
+
+/// 一条饮食明细，供统计页与二级页「吃过什么」逐条展示。
+class DietMealEntry {
+  /// 关联的日记记录 id。
+  final String recordId;
+
+  /// 用餐时间。
+  final DateTime time;
+
+  /// 吃了什么（经 [_resolveDietItem] 归类后），可能为空。
+  final String? item;
+
+  /// 健康评价：健康 / 一般 / 不健康 / 过于放纵。
+  final String health;
+
+  /// 估算热量（千卡），AI 或用户填写后才有值。
+  final double? calories;
+
+  /// 备注预览，取自记录正文，可能为空。
+  final String? note;
+
+  DietMealEntry({
+    required this.recordId,
+    required this.time,
+    this.item,
+    required this.health,
+    this.calories,
+    this.note,
   });
 }
 
@@ -53,7 +118,24 @@ class DietStatistics {
   final int totalMeals;
   final Map<String, int> typeDistribution;
   final Map<String, int> healthDistribution;
-  DietStatistics({required this.totalMeals, required this.typeDistribution, required this.healthDistribution});
+
+  /// 区间内累计估算热量（千卡），仅统计填了热量的餐次。
+  final double totalCalories;
+
+  /// 填了热量的餐次数量，用于展示均值与「已估算 X 餐」。
+  final int calorieMealCount;
+
+  /// 逐条明细，按时间倒序（最新在前）。
+  final List<DietMealEntry> meals;
+
+  DietStatistics({
+    required this.totalMeals,
+    required this.typeDistribution,
+    required this.healthDistribution,
+    required this.meals,
+    this.totalCalories = 0,
+    this.calorieMealCount = 0,
+  });
 }
 
 class MoodStatistics {
@@ -147,6 +229,13 @@ double? _parseDouble(dynamic val) {
   return double.tryParse(val.toString());
 }
 
+/// 记录正文的备注预览：压成单行、去首尾空白，过长截断，空则返回 null。
+String? _contentPreview(String content) {
+  final flat = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (flat.isEmpty) return null;
+  return flat.length > 60 ? '${flat.substring(0, 60)}…' : flat;
+}
+
 /// 记录是否带某个标签。
 ///
 /// 不能只看 [DiaryRecord.displayTag]：一条记录可以同时挂多个标签（时间线卡片
@@ -155,6 +244,31 @@ double? _parseDouble(dynamic val) {
 bool _hasTag(DiaryRecord record, String name, {String? tagId}) {
   if (record.displayTag == name || record.tags.contains(name)) return true;
   return record.tagEntries.any((e) => e.name == name || (tagId != null && e.id == tagId));
+}
+
+/// 取区间内的记账记录（统计与页面共用，避免两处口径分叉）。
+List<DiaryRecord> financeRecords(List<DiaryRecord> records) =>
+    records.where((r) => _hasTag(r, '记账', tagId: 'consumption')).toList();
+
+/// 取区间内的饮食记录。
+List<DiaryRecord> dietRecords(List<DiaryRecord> records) =>
+    records.where((r) => _hasTag(r, '饮食', tagId: 'diet')).toList();
+
+/// 按统计 tab 取逐笔明细记录；非逐笔 tab 返回空列表。
+List<DiaryRecord> recordsForStatTab(List<DiaryRecord> records, StatTab tab) {
+  switch (tab) {
+    case StatTab.finance:
+      return financeRecords(records);
+    case StatTab.diet:
+      return dietRecords(records);
+    case StatTab.score:
+    case StatTab.healthDevice:
+    case StatTab.screenTime:
+    case StatTab.sleep:
+    case StatTab.mood:
+    case StatTab.activity:
+      return const [];
+  }
 }
 
 const _dietItemAliases = <String, String>{
@@ -242,6 +356,33 @@ String _resolveDietItem(String raw) {
   return _dietItemAliases[raw] ?? raw;
 }
 
+/// 从图片提取的分析（如「图：米饭 约200g 约250kcal、香菇滑鸡 约320kcal，合计约620kcal」）
+/// 兜底解析菜品名，供「吃了什么」归类。只认「菜名 [约份量] 约Nkcal」的逐项格式，
+/// 说明性文字一律跳过，不做模糊猜测。
+///
+/// 新版本把图片解读存在 `DiaryRecord.aiAnalysis`，旧数据混在正文里；
+/// 调用方把两者拼起来传入，这里按段剥掉「图：」前缀。
+String? _parseDietItemsFromNotes(String content) {
+  const exclude = {'合计', '总计', '共', '一共'};
+  // 份量段可选，兼容旧格式「米饭约250kcal」与新格式「米饭 约200g 约250kcal」
+  final itemPattern = RegExp(
+    r'^([\u4e00-\u9fa5A-Za-z]{1,12})\s*'
+    r'(?:约?\s*\d+(?:\.\d+)?\s*(?:g|克|ml|毫升|个|片|杯|碗|份)\s*)?'
+    r'约\s*\d+(?:\.\d+)?\s*(?:kcal|千卡)$',
+    caseSensitive: false,
+  );
+  final names = <String>[];
+  for (final rawSeg in content.split(RegExp(r'[、，,；;\n]'))) {
+    final seg = rawSeg.replaceFirst(RegExp(r'^\s*图[：:]\s*'), '').trim();
+    final m = itemPattern.firstMatch(seg);
+    if (m == null) continue;
+    final name = m.group(1)!;
+    if (exclude.contains(name)) continue;
+    names.add(name);
+  }
+  return names.isEmpty ? null : names.join('、');
+}
+
 String _resolveActivityItem(String raw) {
   return _activityItemAliases[raw] ?? raw;
 }
@@ -312,15 +453,16 @@ SleepStatistics calculateSleepStats(List<DiaryRecord> records, DateTime startDat
 
 FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
-  final financeRecords = records.where((r) => _hasTag(r, '记账', tagId: 'consumption')).toList();
+  final financeList = financeRecords(records);
 
   final expenseByType = <String, double>{};
   final incomeByType = <String, double>{};
   final dailyDataMap = <String, FinanceDailyData>{};
+  final ledger = <FinanceLedgerEntry>[];
   double totalIncome = 0;
   double totalExpense = 0;
 
-  for (final r in financeRecords) {
+  for (final r in financeList) {
     final date = _formatDate(r.time);
     double recordIncome = 0;
     double recordExpense = 0;
@@ -395,6 +537,16 @@ FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime star
         }
         expenseType ??= '其他';
         expenseByType[expenseType] = (expenseByType[expenseType] ?? 0) + amount;
+        ledger.add(
+          FinanceLedgerEntry(
+            recordId: r.id,
+            time: r.time,
+            isIncome: false,
+            amount: amount,
+            category: expenseType,
+            note: _contentPreview(r.content),
+          ),
+        );
       }
 
       if (isIncome == true) {
@@ -406,6 +558,16 @@ FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime star
         }
         incomeType ??= '其他';
         incomeByType[incomeType] = (incomeByType[incomeType] ?? 0) + amount;
+        ledger.add(
+          FinanceLedgerEntry(
+            recordId: r.id,
+            time: r.time,
+            isIncome: true,
+            amount: amount,
+            category: incomeType,
+            note: _contentPreview(r.content),
+          ),
+        );
       }
     }
 
@@ -422,39 +584,48 @@ FinanceStatistics calculateFinanceStats(List<DiaryRecord> records, DateTime star
   }
 
   final dailyData = dailyDataMap.values.toList()..sort((a, b) => a.date.compareTo(b.date));
+  ledger.sort((a, b) => b.time.compareTo(a.time));
 
   return FinanceStatistics(
     totalIncome: totalIncome,
     totalExpense: totalExpense,
     balance: totalIncome - totalExpense,
-    totalRecords: financeRecords.length,
+    totalRecords: financeList.length,
     incomeByType: incomeByType,
     expenseByType: expenseByType,
     dailyData: dailyData,
+    ledger: ledger,
   );
 }
 
 DietStatistics calculateDietStats(List<DiaryRecord> records, DateTime startDate, DateTime endDate) {
   // Repository 已通过 getEffectiveDate() 按日期范围过滤，无需再过滤
-  final dietRecords = records.where((r) => _hasTag(r, '饮食', tagId: 'diet')).toList();
+  final dietList = dietRecords(records);
 
   final typeDistribution = <String, int>{};
   final healthDistribution = <String, int>{'健康': 0, '一般': 0, '不健康': 0, '过于放纵': 0};
-  final totalMeals = dietRecords.length;
+  final meals = <DietMealEntry>[];
+  final totalMeals = dietList.length;
+  double totalCalories = 0;
+  int calorieMealCount = 0;
 
-  for (final r in dietRecords) {
+  for (final r in dietList) {
     String? item;
     String? health;
+    double? calories;
 
     for (final entry in r.tagEntries) {
       if (entry.name == '饮食' || entry.id == 'diet') {
         final fields = entry.fields;
-        final rawItem = _getValFromMap(fields, ['type', 'item', '种类', '类别'])?.toString();
+        // item 为新增的食物名，优先取；旧数据的种类/type 仍兼容
+        final rawItem = _getValFromMap(fields, ['item', 'type', '种类', '类别'])?.toString();
         if (rawItem != null) item = _resolveDietItem(rawItem);
         final rawHealth = _getValFromMap(fields, ['rating', 'health', '评价'])?.toString();
         if (rawHealth != null && healthDistribution.containsKey(rawHealth)) {
           health = rawHealth;
         }
+        final rawCalories = _getValFromMap(fields, ['calories', 'cal', '热量', '千卡', 'kcal']);
+        if (rawCalories != null) calories = _parseDouble(rawCalories);
         break;
       }
     }
@@ -465,6 +636,11 @@ DietStatistics calculateDietStats(List<DiaryRecord> records, DateTime startDate,
         item = _resolveDietItem(typeMatch.group(1)!.trim());
       }
     }
+    // 图片提取的记录没有 item 字段，从分析/正文的逐项热量明细里兜底解析菜品名
+    if (item == null) {
+      final fromNotes = _parseDietItemsFromNotes('${r.content}\n${r.aiAnalysis}');
+      if (fromNotes != null) item = _resolveDietItem(fromNotes);
+    }
     if (item != null) {
       typeDistribution[item] = (typeDistribution[item] ?? 0) + 1;
     }
@@ -474,12 +650,33 @@ DietStatistics calculateDietStats(List<DiaryRecord> records, DateTime startDate,
     } else {
       healthDistribution['一般'] = healthDistribution['一般']! + 1;
     }
+
+    meals.add(
+      DietMealEntry(
+        recordId: r.id,
+        time: r.time,
+        item: item,
+        health: health ?? '一般',
+        calories: calories,
+        note: _contentPreview(r.content),
+      ),
+    );
+
+    if (calories != null && calories > 0) {
+      totalCalories += calories;
+      calorieMealCount++;
+    }
   }
+
+  meals.sort((a, b) => b.time.compareTo(a.time));
 
   return DietStatistics(
     totalMeals: totalMeals,
     typeDistribution: typeDistribution,
     healthDistribution: healthDistribution,
+    meals: meals,
+    totalCalories: totalCalories,
+    calorieMealCount: calorieMealCount,
   );
 }
 

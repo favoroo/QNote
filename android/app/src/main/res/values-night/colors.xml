@@ -15,8 +15,10 @@
     <color name="widget_todo_icon_bg">#1AFFFFFF</color>
     <color name="widget_priority">#0A84FF</color>
     <!-- 「问小Q」组件深色 token，与 values/colors.xml 同名项成对维护 -->
-    <color name="widget_ai_circle">#0A84FF</color>
-    <color name="widget_ai_robot">#FFFFFFFF</color>
+    <color name="widget_ai_circle">#F2101013</color>
+    <color name="widget_ai_border">#26FFFFFF</color>
+    <color name="widget_ai_inner_disc">#1E2027</color>
+    <color name="widget_ai_glyph">#F4F4F6</color>
     <!-- 快捷记录组件深色 token，与 values/colors.xml 同名项成对维护 -->
     <color name="widget_qr_surface">#F2101013</color>
     <color name="widget_qr_border">#26FFFFFF</color>

@@ -26,16 +26,18 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/notification/agent_work_notifications.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
+import 'package:qnote_flutter/core/utils/chat_context.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 
 // 引用模型本体在 core 层（QTargetBridge 桥接钩子需要该类型），
 // 这里 re-export 保持既有 import 路径兼容
-export 'package:qnote_flutter/core/agent/services/q_text_quote.dart' show QQuoteSource, QTextQuote;
+export 'package:qnote_flutter/core/agent/services/q_text_quote.dart' show QQuoteSource, QTextQuote, QTextQuoteDisplay;
 
 // ==========================================
 // 全局悬浮小Q快捷入口
@@ -176,13 +178,30 @@ class _FloatingQSessionSnapshot {
   DateTime updatedAt;
 }
 
+/// 编辑页覆盖上下文条目：上下文本身 + 它压栈时所属的基础页面签名。
+///
+/// 为什么需要「所属页面」：编辑页可能挂在分支 Navigator 上随分支常驻
+/// （笔记/手账编辑器用 `Navigator.push` 打开，切到别的 tab 后分支只是被
+/// Offstage 隐藏、不会 dispose），只靠 dispose 里的 pop 无法出栈，它会把
+/// 上一个页面的上下文一直顶在栈顶——标题、引导语乃至注入给小Q的页面上下文
+/// 都会指向错页面。用所属页面做闸门后：离开所属页面自动失效，切回自动恢复。
+class QOverlayContext {
+  const QOverlayContext({required this.context, this.ownerPageSignature});
+
+  /// 编辑页上下文
+  final QPageContext context;
+
+  /// 压栈时所属的基础页面签名；null 表示未知（按始终生效处理，兼容深链直开编辑页）
+  final String? ownerPageSignature;
+}
+
 /// 悬浮小Q状态
 class FloatingQState {
   /// 路由推导的基础上下文
   final QPageContext? baseContext;
 
   /// 编辑页覆盖栈（后进先出，栈顶即当前编辑页）
-  final List<QPageContext> overlayStack;
+  final List<QOverlayContext> overlayEntries;
 
   /// 工作阶段
   final FloatingQPhase phase;
@@ -251,7 +270,7 @@ class FloatingQState {
 
   const FloatingQState({
     this.baseContext,
-    this.overlayStack = const [],
+    this.overlayEntries = const [],
     this.phase = FloatingQPhase.idle,
     this.panelMode = FloatingQPanelMode.hidden,
     this.contextSignature,
@@ -275,8 +294,24 @@ class FloatingQState {
     this.runActive = false,
   });
 
-  /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文
-  QPageContext? get effectiveContext => overlayStack.isNotEmpty ? overlayStack.last : baseContext;
+  /// 覆盖栈里的上下文（只读视图，供外部判空与断言）
+  List<QPageContext> get overlayStack => [for (final entry in overlayEntries) entry.context];
+
+  /// 生效上下文：编辑页覆盖栈顶优先，否则取基础上下文。
+  ///
+  /// 覆盖条目仅在其所属页面仍是当前基础页面时生效：编辑页可能随分支常驻
+  /// （切走不 dispose），这道闸门让它的上下文在离开所属页面后自动失效，
+  /// 回到该页面又自动恢复（见 [QOverlayContext]）。
+  QPageContext? get effectiveContext {
+    final base = baseContext;
+    for (final entry in overlayEntries.reversed) {
+      final owner = entry.ownerPageSignature;
+      if (owner == null || owner == base?.signature) {
+        return entry.context;
+      }
+    }
+    return base;
+  }
 
   /// 弹窗是否展开（兼容旧调用点）
   bool get panelOpen => panelMode == FloatingQPanelMode.panel;
@@ -295,7 +330,7 @@ class FloatingQState {
 
   FloatingQState copyWith({
     QPageContext? baseContext,
-    List<QPageContext>? overlayStack,
+    List<QOverlayContext>? overlayEntries,
     FloatingQPhase? phase,
     FloatingQPanelMode? panelMode,
     String? contextSignature,
@@ -330,7 +365,7 @@ class FloatingQState {
   }) {
     return FloatingQState(
       baseContext: baseContext ?? this.baseContext,
-      overlayStack: overlayStack ?? this.overlayStack,
+      overlayEntries: overlayEntries ?? this.overlayEntries,
       phase: phase ?? this.phase,
       panelMode: panelMode ?? this.panelMode,
       contextSignature: clearSignature ? null : (contextSignature ?? this.contextSignature),
@@ -360,6 +395,42 @@ class FloatingQState {
 
 final floatingQProvider = NotifierProvider<FloatingQNotifier, FloatingQState>(FloatingQNotifier.new);
 
+/// 悬浮面板「转到完整对话」时移交给 /ai 页面的待发送内容。
+///
+/// 面板展开会关闭临时会话，[FloatingQState.pendingQuote] 与草稿随之清空；
+/// 这里用独立的一次性交接单承载引用、未发送草稿与附件图片，/ai 页面挂载
+/// （或已挂载时监听到）后消费并立即置空，保证展开前后用户准备好的内容都跟着过去。
+class PendingChatQuote {
+  /// 面板挂起的「给小Q」引用；null 表示只是把草稿/图片带过去
+  final QTextQuote? quote;
+
+  /// 面板输入框里尚未发送的草稿文本
+  final String draft;
+
+  /// 面板附件区挂着的图片（本地路径），随交接单一起带到 /ai 输入框
+  final List<String> images;
+
+  /// 临时会话里没有任何真实消息时置 true：/ai 侧先新开一段对话再回填，
+  /// 否则展开后会落在上一次的旧会话里，看起来像「引用丢了、对话也没新建」
+  final bool startNewChat;
+
+  const PendingChatQuote({this.quote, this.draft = '', this.images = const [], this.startNewChat = false});
+
+  /// 从面板当前状态取交接内容：引用 + 未发送草稿 + 附件图片
+  factory PendingChatQuote.fromState(FloatingQState state) {
+    return PendingChatQuote(
+      quote: state.pendingQuote,
+      draft: state.draftText,
+      images: state.attachedImages,
+      startNewChat: state.messages.isEmpty,
+    );
+  }
+
+  bool get isEmpty => quote == null && draft.trim().isEmpty && images.isEmpty;
+}
+
+final pendingChatQuoteProvider = StateProvider<PendingChatQuote?>((ref) => null);
+
 class FloatingQNotifier extends Notifier<FloatingQState> {
   /// 每个页面最多保留的临时会话数（LRU 淘汰）
   static const int _kMaxParkedSessions = 5;
@@ -385,6 +456,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 按页面签名暂存的临时会话（切页留存，退出 App 清空）
   final Map<String, _FloatingQSessionSnapshot> _parkedSessions = {};
+
+  /// 路由刚变更、尚未写入 baseContext 的新页面（编辑页压栈时判定所属页面用）
+  QPageContext? _pendingRouteContext;
 
   /// 当前运行中的任务属于哪个会话（同一时刻最多一个）
   String? _runSignature;
@@ -433,22 +507,40 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 更新基础上下文（由路由 location 监听器调用）
   void setBaseContext(QPageContext context) {
+    _pendingRouteContext = context;
     state = state.copyWith(baseContext: context);
     _applyEffectiveContext();
   }
 
+  /// 路由变更时同步登记「即将生效的页面」，供 [pushOverlayContext] 判定编辑页归属。
+  ///
+  /// 路由通知发生在 build 之前、而 [setBaseContext] 要延后到帧末（通知可能
+  /// 发生在 build 期），编辑页 initState 又与新页面同一帧执行；只读
+  /// [FloatingQState.baseContext] 会把「从统计页打开流水编辑页」这类跨页入口
+  /// 判成上一页，导致编辑页上下文被闸门挡掉。
+  void noteRouteContext(QPageContext context) {
+    _pendingRouteContext = context;
+  }
+
   /// 编辑页压栈（initState 调用）
   void pushOverlayContext(QPageContext context) {
-    state = state.copyWith(overlayStack: [...state.overlayStack, context]);
+    // 记录所属页面：优先取刚登记的新路由页面，其次取当前基础页面
+    final owner = _pendingRouteContext?.signature ?? state.baseContext?.signature;
+    state = state.copyWith(
+      overlayEntries: [
+        ...state.overlayEntries,
+        QOverlayContext(context: context, ownerPageSignature: owner),
+      ],
+    );
     _applyEffectiveContext();
   }
 
   /// 编辑页出栈（dispose 调用，按值匹配移除最后压入的同类上下文）
   void popOverlayContext(QPageContext context) {
-    final stack = [...state.overlayStack];
-    final idx = stack.lastIndexWhere((c) => c == context);
-    if (idx >= 0) stack.removeAt(idx);
-    state = state.copyWith(overlayStack: stack);
+    final entries = [...state.overlayEntries];
+    final idx = entries.lastIndexWhere((entry) => entry.context == context);
+    if (idx >= 0) entries.removeAt(idx);
+    state = state.copyWith(overlayEntries: entries);
     _applyEffectiveContext();
   }
 
@@ -488,7 +580,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
     state = FloatingQState(
       baseContext: state.baseContext,
-      overlayStack: state.overlayStack,
+      overlayEntries: state.overlayEntries,
       phase: phase,
       panelMode: restored == null
           ? FloatingQPanelMode.hidden
@@ -779,6 +871,10 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
     _discardRun = false;
     _contextSwitchedDuringRun = false;
 
+    // 进入「工作中」：挂出常驻通知（Android 同时启动前台服务保活），
+    // 用户离开 App 时任务不会被回收，完成后据此提醒
+    AgentWorkNotifications.instance.onRunStarted(summary: userMessage.content, statusText: state.statusText);
+
     // 通知目标编辑页任务开始（暂停自动保存）并记录编辑器指纹
     QTargetBridge.instance.notifyTaskStart(ctx?.signature);
 
@@ -851,13 +947,14 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
   /// 把当前临时对话提升为正式会话，供「展开全页面」继续聊。
   ///
-  /// 返回 null 表示当前没有可迁移的内容（已清空临时会话）；
-  /// 任务执行中不可迁移，由调用方提示。
+  /// 只在临时会话里已有真实消息时落库：只有引用/草稿/图片时**不建空会话**，
+  /// 由 /ai 页面按交接单新开一段空白对话再回填（旧实现会直接复用上一次的
+  /// 历史会话，看起来像「引用没带过去、也没新建对话」）。
+  /// 返回 null 表示没有可迁移的对话内容（临时会话已收起）。
   Future<ChatSession?> promoteActiveSession() async {
     if (state.runActive) return null;
     final messages = List<ChatMessage>.of(state.messages);
-    final draft = state.draftText.trim();
-    if (messages.isEmpty && draft.isEmpty) {
+    if (messages.isEmpty) {
       dismissActiveSession();
       return null;
     }
@@ -869,7 +966,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         break;
       }
     }
-    var title = (firstUser?.content ?? draft).trim().replaceAll(RegExp(r'\s+'), ' ');
+    var title = (firstUser?.content ?? state.draftText).trim().replaceAll(RegExp(r'\s+'), ' ');
     if (title.isEmpty) title = '与小Q的对话';
     if (title.length > 20) title = '${title.substring(0, 20)}…';
 
@@ -907,6 +1004,9 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       keyPrefix: 'stream_floating_q',
     );
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
+
+    // 完成通知的结局：默认成功，异常置失败，被中止优先级最高（在 finally 里定夺）
+    var runOutcome = AgentRunOutcome.completed;
 
     try {
       // 读取当前激活个性（对话开始时取一次，本轮中途的修改下轮生效——对齐记忆的冻结快照语义）
@@ -964,7 +1064,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
 
       ChatMessage? finalResponse;
       await for (final event in agentLoop.run(
-        conversationHistory: List.of(_sessionMessages),
+        // 失败提示与中断后残留的工具链由 chat_context 统一清理，不进入模型上下文
+        conversationHistory: buildModelConversationHistory(_sessionMessages),
         systemPrompt: QSystemPrompt.buildSystemPrompt(
           personalityPrompt: personality.prompt,
           personalityName: personality.name,
@@ -1085,6 +1186,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         }
       }
     } catch (e, stackTrace) {
+      runOutcome = AgentRunOutcome.failed;
       // 报错路径下已开口的半句不再续播，避免错误提示和语音打架
       _speech?.onAbort();
       LoggerService.instance.logAI('悬浮小Q任务执行失败: $e', level: LogLevel.error, details: stackTrace.toString());
@@ -1107,6 +1209,12 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       await QTargetBridge.instance.notifyTaskEnd(ctx?.signature);
 
       _runActive = false;
+      // 通知收尾：结局 + 结果摘要交给全局调度器；仅当用户已离开 App 才响铃提醒。
+      // 必须放在下面清空 _sessionMessages 之前，摘要要从会话里取
+      AgentWorkNotifications.instance.onRunFinished(
+        outcome: token.isCancelled ? AgentRunOutcome.aborted : runOutcome,
+        resultSummary: _lastAssistantSnippet(),
+      );
       if (_discardRun) {
         // 面板已被 × 彻底关闭：本次任务的结果和撤回入口一并丢弃
         _discardRun = false;
@@ -1165,6 +1273,12 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       _sessionMessages = const [];
     }
   }
+
+  /// 供 /ai 全页面在发送引用时组装同一套来源说明块（含 VFS 路径与 id 提示）。
+  ///
+  /// 展开到全页面后引用改由主对话发送，语义必须和悬浮面板一致，
+  /// 否则小Q 在全页面里不知道引用来自哪个文件。
+  Future<String?> buildQuotePromptBlock(QTextQuote quote) => _quotePromptBlock(quote);
 
   /// 组装「给小Q」引用说明块：告诉小Q用户引用了哪条内容、位于哪个虚拟工作区
   /// 文件，让小Q无需猜测即可 read_file 定位。返回 null 表示无法解析来源
@@ -1233,6 +1347,7 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
       '"""',
       text,
       '"""',
+      ..._webElementContextLines(quote.webElement),
       if (isCursorLocation)
         '注意：用户当前定位在光标处（引用文本中以【光标】标记具体插入位置），指令通常要求在此处续写、补全或插入内容。请先 read_file 定位该行与上下文，使用 edit_file 在光标位置处插入续写内容；若指令与续写无关则按常规要求处理'
       else
@@ -1241,7 +1356,48 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   }
 
   @visibleForTesting
-  Future<String?> quotePromptBlockForTest(QTextQuote quote) => _quotePromptBlock(quote);
+  Future<String?> quotePromptBlockForTest(QTextQuote quote) => buildQuotePromptBlock(quote);
+
+  /// 网页预览元素信息的注入片段：选择器、DOM 结构、视口位置与源码候选行。
+  ///
+  /// 渲染后的 DOM 与 HTML 源码格式可能不同（浏览器会规范化空白与属性顺序），
+  /// 因此这里明确要求小Q先定位源码再 edit_file，并禁止整篇重写。
+  static List<String> _webElementContextLines(QWebElementRef? web) {
+    if (web == null) {
+      return const [];
+    }
+    final outerHtml = web.outerHtml?.trim() ?? '';
+    // 防止 HTML 内的三引号提前闭合提示词里的代码围栏
+    final fencedOuterHtml = outerHtml.replaceAll('"""', r'\"\"\"');
+    final className = web.classNames.join(' ');
+    final rect = web.rect;
+    final viewport = web.viewport;
+    return [
+      '',
+      '网页预览元素信息（用户在 HTML 笔记的渲染预览中选中，接下来的修改通常只针对这个元素）：',
+      'CSS 选择器：${web.selector}',
+      if (web.tagName.isNotEmpty) '标签：<${web.tagName}>',
+      if (web.elementId != null && web.elementId!.isNotEmpty) 'id：${web.elementId}',
+      if (className.isNotEmpty) 'class：$className',
+      if (web.ancestors != null && web.ancestors!.isNotEmpty) '父级路径：${web.ancestors}',
+      if (rect != null)
+        '渲染位置：距视口左 ${rect.x.round()}、上 ${rect.y.round()}，尺寸 ${rect.width.round()}×${rect.height.round()}'
+            '${viewport == null ? '' : '（采集时视口 ${viewport.width.round()}×${viewport.height.round()}）'}',
+      if (web.sourceLines.isNotEmpty)
+        '源码候选行：第 ${web.sourceLines.join('、')} 行（按标签/id/class 启发式匹配；多行时请结合选择器与文本确认）'
+      else
+        '源码候选行：未直接匹配到，请用 grep 搜索选择器、class 或选中文本定位',
+      if (web.textLines.isNotEmpty) '选中文本的源码候选行：第 ${web.textLines.join('、')} 行（文本可能经过渲染/转义，仅作线索）',
+      if (outerHtml.isNotEmpty) ...[
+        '渲染后的元素 HTML（DOM 序列化结果，空白与属性顺序可能与源码不同，不要直接当作 edit_file 的 old_text）：',
+        '"""',
+        fencedOuterHtml.length > 4000 ? '${fencedOuterHtml.substring(0, 4000)}…（已截断）' : fencedOuterHtml,
+        '"""',
+      ],
+      '处理要求：先用 read_file / grep 结合上述候选行定位源码中的对应元素，再用 edit_file 只替换该元素或其内部文案；'
+          '保留其余结构、样式与脚本，不要整篇重写 HTML。',
+    ];
+  }
 
   /// 组装外部分享内容的注入块：无应用内来源实体，直接注入文本本身，
   /// 并显式告知小Q不要尝试 read_file 定位。返回 null 表示无可注入内容
@@ -1291,6 +1447,8 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
   }
 
   void _setStatus(String text) {
+    // 状态行同步给通知调度器（后台时按节流刷新通知正文），面板是否可见都照走
+    AgentWorkNotifications.instance.onRunStatus(text);
     _flushTimer?.cancel();
     _flushTimer = null;
     if (_discardRun || _runSignature != state.contextSignature) return;
@@ -1311,5 +1469,16 @@ class FloatingQNotifier extends Notifier<FloatingQState> {
         state = state.copyWith(streamingThought: _thoughtBuffer.toString());
       }
     });
+  }
+
+  /// 最近一条 assistant 正文：作为完成通知的结果摘要；没有则返回 null。
+  String? _lastAssistantSnippet() {
+    for (var i = _sessionMessages.length - 1; i >= 0; i--) {
+      final message = _sessionMessages[i];
+      if (message.role == 'assistant' && message.content.trim().isNotEmpty) {
+        return message.content;
+      }
+    }
+    return null;
   }
 }

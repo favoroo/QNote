@@ -10,11 +10,13 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
+import 'package:qnote_flutter/core/utils/q_analysis.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/screen_usage_info.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/widgets/action_menu.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
+import 'package:qnote_flutter/widgets/diary/q_analysis_section.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/animated_gradient_border.dart';
 
@@ -125,6 +127,12 @@ class _DiaryItemState extends State<DiaryItem> {
   List<String>? _cachedDisplayLines;
   List<String>? _cachedRemarkLines;
 
+  /// 旧数据里以「图：」开头混在正文中的图片解读；展示时收进「小Q分析」区。
+  List<String>? _cachedLegacyAnalysisLines;
+
+  /// 「小Q分析」折叠状态：默认收起，用户展开后同一条记录重建仍保持。
+  bool _analysisExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -138,6 +146,10 @@ class _DiaryItemState extends State<DiaryItem> {
         oldWidget.record.bodyState?['screen_time_ms'] != widget.record.bodyState?['screen_time_ms']) {
       _hasFetchedLiveScreenUsage = false;
       _checkAndFetchLiveScreenUsage();
+    }
+    // 列表复用卡片时不同记录的分析展开态不应互相串台
+    if (oldWidget.record.id != widget.record.id && _analysisExpanded) {
+      _analysisExpanded = false;
     }
   }
 
@@ -220,7 +232,7 @@ class _DiaryItemState extends State<DiaryItem> {
   /// 正文与图片相对标签 pill 的左侧缩进，避免视觉上“凸出”在标签外
   static const _contentIndent = 4.0;
 
-  // 正文解析用的正则提到类静态：这几条过去写在 `_buildSingleTagContent` 的循环里，
+  // 正文解析用的正则提到类静态：这几条过去写在单标签正文渲染的循环里，
   // 等于每张卡片每次重建都重新编译一遍（时间线一屏十几张卡、滚动时反复重建），
   // 正则编译本身不便宜。内容和语义完全一致，只是不再重复构造。
   static final _keyNoisePattern = RegExp(r'[\s\(_\)（）\-:]+');
@@ -261,15 +273,33 @@ class _DiaryItemState extends State<DiaryItem> {
       // 不在卡片底部标签显示，已在顶部时间段中体现
       handledKeys.addAll(['fallAsleepTime', '入睡时间']);
     } else if (entry.name == '饮食') {
-      final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
-      if (typeVal != null && typeVal.toString().isNotEmpty) {
-        tags.add(typeVal.toString());
-      }
+      // 食物名不进卡片胶囊（多道菜罗列太长），明细在正文/notes 里；卡片只留评价与总热量
       final ratingVal = _getVal(bs, ['rating', 'health', '评价']);
       if (ratingVal != null && ratingVal.toString().isNotEmpty) {
         tags.add(ratingVal.toString());
       }
-      handledKeys.addAll(['type', 'item', '种类', '类别', 'rating', 'health', '评价']);
+      final calVal = _getVal(bs, ['calories', 'cal', '热量', '卡路里', '千卡']);
+      if (calVal != null && calVal.toString().isNotEmpty) {
+        final formatted = _formatDouble(calVal);
+        if (formatted.isNotEmpty) tags.add('${formatted}kcal');
+      }
+      handledKeys.addAll([
+        'type',
+        'item',
+        '种类',
+        '类别',
+        'rating',
+        'health',
+        '评价',
+        'amount',
+        '份量',
+        '重量',
+        'calories',
+        'cal',
+        '热量',
+        '卡路里',
+        '千卡',
+      ]);
     } else if (entry.name == '活动') {
       final typeVal = _getVal(bs, ['type', 'item', '项目', '类型']);
       final subTypeVal = _getVal(bs, ['sub_type', 'subtype', '子类型', 'sport_type', '运动项目']);
@@ -442,7 +472,7 @@ class _DiaryItemState extends State<DiaryItem> {
       case 'fallasleeptime':
         return '入睡时间';
       case 'item':
-        if (tagName == '饮食') return '种类';
+        if (tagName == '饮食') return '食物';
         if (tagName == '活动') return '类型';
         return '项目';
       case 'type':
@@ -461,6 +491,10 @@ class _DiaryItemState extends State<DiaryItem> {
       case 'amount':
         if (tagName == '记账') return '金额';
         return '数量';
+      case 'calories':
+      case 'cal':
+        if (tagName == '饮食') return '热量';
+        return '消耗';
       case 'incometype':
         if (tagName == '记账') return '收入类型';
         return '类型';
@@ -529,7 +563,6 @@ class _DiaryItemState extends State<DiaryItem> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tagColor = _tagColor(record.displayTag);
-    final hasMultipleTags = record.tagEntries.length > 1;
 
     // 轴线画在 Row 之外、由 Stack 拉满整卡高度，而不是给整张卡片套
     // IntrinsicHeight：后者会让每张卡多付一次完整的内在尺寸测量（时间线视口里
@@ -639,7 +672,9 @@ class _DiaryItemState extends State<DiaryItem> {
                           key: _effectiveCardKey,
                           duration: AppMotion.duration(context, AppDurations.fast),
                           curve: AppCurves.emphasized,
-                          padding: const EdgeInsets.all(12),
+                          // 内边距下沉到内容层：提取钮需要贴在卡片右下角，若放在
+                          // AnimatedContainer 的 padding 外面，点按区域才能覆盖整个圆钮。
+                          padding: EdgeInsets.zero,
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
@@ -672,164 +707,72 @@ class _DiaryItemState extends State<DiaryItem> {
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildHeader(
-                                    theme,
-                                    tagColor,
-                                    categoryTag: !hasMultipleTags && record.displayTag.isNotEmpty
-                                        ? record.displayTag
-                                        : null,
-                                  ),
-                                  if (_isHealthDailySummary)
-                                    _buildHealthDailySummaryCard(theme, tagColor)
-                                  else if (hasMultipleTags)
-                                    _buildMultiTagSections(theme)
-                                  else ...[
-                                    _buildTagAndFieldsRow(theme, tagColor),
-                                    _buildSingleTagContent(theme, tagColor),
-                                  ],
-                                  if (record.photos.isNotEmpty)
-                                    Builder(
-                                      builder: (context) {
-                                        final screenWidth = MediaQuery.of(context).size.width;
-                                        final maxWidth = screenWidth - 132 - _contentIndent;
-                                        const spacing = 6.0;
-                                        final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
-                                        return Padding(
-                                          padding: const EdgeInsets.only(left: _contentIndent, top: 4),
-                                          child: Wrap(
-                                            spacing: spacing,
-                                            runSpacing: spacing,
-                                            children: record.photos.asMap().entries.map((entry) {
-                                              final index = entry.key;
-                                              final photo = entry.value;
-                                              return GestureDetector(
-                                                behavior: HitTestBehavior.opaque,
-                                                onTap: () {
-                                                  Navigator.of(context).push(
-                                                    AppMotion.galleryRoute(
-                                                      FullScreenImageGallery(
-                                                        images: record.photos,
-                                                        initialIndex: index,
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                                child: UnifiedImage(
-                                                  imagePath: photo,
-                                                  width: itemWidth,
-                                                  height: itemWidth,
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                              );
-                                            }).toList(),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                ],
-                              ),
-                              if (onAiExtract != null && !_isHealthDailySummary)
-                                Positioned(
-                                  bottom: -22,
-                                  right: -24,
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: isUndoable ? onUndo : onAiExtract,
-                                    onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: AnimatedContainer(
-                                        width: 32,
-                                        height: 32,
-                                        // 光晕颜色随状态切换（撤回为错误色、待提取为标签色）必须走动画：
-                                        // 否则倒计时结束的瞬间色相硬切，观感就是又闪了一下。
-                                        duration: AppMotion.duration(context, AppDurations.fast),
-                                        curve: AppCurves.standard,
-                                        decoration: BoxDecoration(
-                                          color: theme.colorScheme.surface,
-                                          shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: (isUndoable ? theme.colorScheme.error : tagColor).withValues(
-                                                alpha: 0.2,
-                                              ),
-                                              blurRadius: 6,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        // 提取中 / 可撤回 / 待提取三种状态的图标形状不同：若用默认的等时
-                                        // 交叉淡入，新旧图标会在同一处叠成重影，观感就是「倒计时结束后闪一下」。
-                                        // 错开两个 Interval（旧的先淡出、新的后淡入）让它们基本不重叠地交接：
-                                        // 旧图标收缩淡出后，新图标才淡入，视觉上只有一次干净的状态切换。
-                                        child: AnimatedSwitcher(
-                                          duration: AppMotion.duration(context, AppDurations.fast),
-                                          switchInCurve: const Interval(0.5, 1.0, curve: AppCurves.emphasized),
-                                          switchOutCurve: const Interval(0.45, 1.0, curve: AppCurves.exit),
-                                          transitionBuilder: (child, animation) {
-                                            return FadeTransition(
-                                              opacity: animation,
-                                              child: ScaleTransition(
-                                                scale: Tween<double>(begin: 0.82, end: 1).animate(animation),
-                                                child: child,
-                                              ),
-                                            );
-                                          },
-                                          child: isUndoable
-                                              ? KeyedSubtree(
-                                                  key: const ValueKey('undo'),
-                                                  child: undoAnimation != null
-                                                      ? AnimatedBuilder(
-                                                          animation: undoAnimation!,
-                                                          builder: (context, child) {
-                                                            return Stack(
-                                                              alignment: Alignment.center,
-                                                              children: [
-                                                                SizedBox(
-                                                                  width: 28,
-                                                                  height: 28,
-                                                                  child: CustomPaint(
-                                                                    painter: _UndoCountdownPainter(
-                                                                      progress: undoAnimation!.value,
-                                                                      color: theme.colorScheme.error,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                                child!,
-                                                              ],
-                                                            );
-                                                          },
-                                                          child: Icon(
-                                                            Icons.undo,
-                                                            size: 14,
-                                                            color: theme.colorScheme.error,
-                                                          ),
-                                                        )
-                                                      : Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
-                                                )
-                                              : isExtracting
-                                              ? Center(
-                                                  key: const ValueKey('extracting'),
-                                                  child: SizedBox(
-                                                    width: 16,
-                                                    height: 16,
-                                                    child: CircularProgressIndicator(strokeWidth: 2.0, color: tagColor),
-                                                  ),
-                                                )
-                                              : Icon(
-                                                  Icons.auto_awesome,
-                                                  key: const ValueKey('idle'),
-                                                  size: 16,
-                                                  color: tagColor,
-                                                ),
-                                        ),
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (_isHealthDailySummary) ...[
+                                      _buildHeader(
+                                        theme,
+                                        tagColor,
+                                        categoryTag: record.displayTag.isNotEmpty ? record.displayTag : null,
                                       ),
-                                    ),
-                                  ),
+                                      _buildHealthDailySummaryCard(theme, tagColor),
+                                    ] else
+                                      _buildTagSections(theme),
+                                    if (record.photos.isNotEmpty)
+                                      Builder(
+                                        builder: (context) {
+                                          final screenWidth = MediaQuery.of(context).size.width;
+                                          final maxWidth = screenWidth - 132 - _contentIndent;
+                                          const spacing = 6.0;
+                                          final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
+                                          return Padding(
+                                            padding: const EdgeInsets.only(left: _contentIndent, top: 4),
+                                            child: Wrap(
+                                              spacing: spacing,
+                                              runSpacing: spacing,
+                                              children: record.photos.asMap().entries.map((entry) {
+                                                final index = entry.key;
+                                                final photo = entry.value;
+                                                return GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
+                                                  onTap: () {
+                                                    Navigator.of(context).push(
+                                                      AppMotion.galleryRoute(
+                                                        FullScreenImageGallery(
+                                                          images: record.photos,
+                                                          initialIndex: index,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: UnifiedImage(
+                                                    imagePath: photo,
+                                                    width: itemWidth,
+                                                    height: itemWidth,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                );
+                                              }).toList(),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    // 小Q分析：图片解读、营养/健康评估等补充信息，
+                                    // 默认折叠；旧数据里的「图：」行也归到这里。
+                                    if (!_isHealthDailySummary) _buildQAnalysisSection(theme),
+                                    // 日结卡无提取入口、也不展示时间标签；普通记录卡的时间标签
+                                    // 固定在内容底部，与右侧提取钮同一条水平线。
+                                    if (!_isHealthDailySummary) _buildFooter(theme),
+                                  ],
                                 ),
+                              ),
+                              // 提取钮画在内容内边距之外、卡片本体之内，可以贴住右下角；
+                              // right: 0 + 40 宽的触控盒让圆钮距卡片边缘仅 4。
+                              if (onAiExtract != null && !_isHealthDailySummary)
+                                Positioned(right: 0, bottom: 2, child: _buildAiExtractButton(theme, tagColor)),
                             ],
                           ),
                         ),
@@ -845,9 +788,37 @@ class _DiaryItemState extends State<DiaryItem> {
     );
   }
 
+  /// 撤回态的图标与倒计时环。
+  ///
+  /// 必须通过参数把 [animation] 捕获进 builder 闭包，不能在 builder 里再读
+  /// `widget.undoAnimation`：倒计时结束后页面会把它置空，而 AnimatedSwitcher 的
+  /// 退场旧子树仍可能在动画帧重建；此时解引用 null 会抛异常，release 包会短暂
+  /// 闪出 ErrorWidget 的 32×32 灰色方块，正好盖住按钮位置。
+  Widget _buildUndoButtonContent(ThemeData theme, Animation<double> animation) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CustomPaint(
+                painter: _UndoCountdownPainter(progress: animation.value, color: theme.colorScheme.error),
+              ),
+            ),
+            child!,
+          ],
+        );
+      },
+      child: Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
+    );
+  }
+
   Widget _buildHeader(ThemeData theme, Color primaryTagColor, {String? categoryTag}) {
     final hasCategory = categoryTag != null && categoryTag.isNotEmpty;
-    // 时间胶囊前景压深到可读：标签色里琥珀/翡翠绿贴淡底只有 2:1 左右
+    // 日结卡同步入口的前景压深到可读：标签色里琥珀/翡翠绿贴淡底只有 2:1 左右
     final pillInk = AppContrast.inkOnTint(primaryTagColor, theme.colorScheme.surface, 0.1);
     // 种类标签用淡彩底而非实心底：饱和实心块配黑字在亮色标签上显得沉重，
     // 淡底 + 同色系压深文字既保留色相识别，又和卡片内其它胶囊保持一致。
@@ -855,41 +826,9 @@ class _DiaryItemState extends State<DiaryItem> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 时间行保留横向滚动能力：窄屏下长时间文案可滑动，且不会压到右侧种类标签
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 时间胶囊
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                  decoration: BoxDecoration(
-                    color: primaryTagColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.access_time_filled, size: 13, color: pillInk),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatTimeRangeWithDate(),
-                        style: theme.textTheme.labelSmall?.copyWith(color: pillInk, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // 种类标签固定在卡片右上角，与左上角时间形成左右呼应的视觉锚点。
-        // 多标签卡片内部各分段已自带实心标签（_buildTagEntryPills），故此处不重复展示。
-        if (hasCategory) ...[
-          const SizedBox(width: 8),
+        // 种类标签放在原时间标签的位置：日结卡固定 23:00 生成，时间与
+        // 时间轴槽位重复，不再单独展示时间标签。
+        if (hasCategory)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
             decoration: BoxDecoration(
@@ -902,10 +841,9 @@ class _DiaryItemState extends State<DiaryItem> {
               style: theme.textTheme.labelSmall?.copyWith(color: categoryInk, fontWeight: FontWeight.bold),
             ),
           ),
-        ],
         // 今日日结卡支持原地刷新：步数/睡眠会随时间持续累积，用户不必再跳设置页
-        if (_isHealthDailySummary && onHealthSync != null) ...[
-          const SizedBox(width: 6),
+        const Spacer(),
+        if (_isHealthDailySummary && onHealthSync != null)
           Semantics(
             button: true,
             label: isHealthSyncing ? '正在更新今日健康数据' : '更新今日健康数据',
@@ -935,69 +873,114 @@ class _DiaryItemState extends State<DiaryItem> {
               ),
             ),
           ),
-        ],
       ],
     );
   }
 
-  Widget _buildTagAndFieldsRow(ThemeData theme, Color primaryTagColor) {
-    final rowItems = <Widget>[];
+  /// 卡片时间标签：只展示时间（或时间范围），不带日期与彩色底。
+  ///
+  /// 仅普通记录卡片使用，放在底部一行（见 [_buildFooter]）；运动健康日结卡
+  /// 不展示时间标签。中性前景让标签色只留给标签本身，避免整张卡片到处是彩色块。
+  Widget _buildTimePill(ThemeData theme) {
+    final ink = theme.colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.access_time_rounded, size: 13, color: ink.withValues(alpha: 0.7)),
+        const SizedBox(width: 4),
+        Text(
+          _formatTimeRange(),
+          style: theme.textTheme.labelSmall?.copyWith(color: ink, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
 
-    if (record.tagEntries.isNotEmpty) {
-      for (final entry in record.tagEntries) {
-        final color = _tagColor(entry.name);
-        // 属性胶囊文字用同色系可读前景：亮色标签直接取原色贴淡底只有 2~3:1
-        final ink = AppContrast.inkOnTint(color, theme.colorScheme.surface, 0.1);
-
-        // 仅添加属性字段胶囊（种类标签已固定展示在卡片右上角，单标签模式下无需在此重复显示）
-        final additionalTags = _buildAdditionalTags(entry);
-        for (final tagText in additionalTags) {
-          rowItems.add(
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-              child: Text(
-                tagText,
-                style: theme.textTheme.labelSmall?.copyWith(color: ink, fontWeight: FontWeight.w600),
-              ),
-            ),
-          );
-        }
-
-        final showTime = entry.displayTime ?? entry.time;
-        if (showTime != null && showTime.isNotEmpty && !_isTagTimeDuplicate(entry)) {
-          rowItems.add(
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Text(
-                showTime,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          );
-        }
-      }
-    }
-
-    // 若没有额外的属性标签与独立时间，整行直接收起，避免占用纵向空间
-    if (rowItems.isEmpty) return const SizedBox.shrink();
-
+  /// 卡片底部行：左侧时间标签，右侧预留 AI 提取按钮的位置。
+  ///
+  /// 提取钮要贴住卡片右下角，由卡片级 Stack 定位，不在本行布局里；
+  /// 这里按按钮宽度留白，避免长时间文案压到按钮上。窄屏下时间仍可横向滚动。
+  Widget _buildFooter(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: rowItems.map((item) {
-            final isLast = rowItems.last == item;
-            return Padding(
-              padding: EdgeInsets.only(right: isLast ? 0 : 6),
-              child: item,
-            );
-          }).toList(),
+      padding: EdgeInsets.only(top: 4, right: onAiExtract != null ? 44 : 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: _buildTimePill(theme),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 卡片右下角的 AI 提取按钮（提取中 / 可撤回 / 待提取三种状态）。
+  Widget _buildAiExtractButton(ThemeData theme, Color tagColor) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: isUndoable ? onUndo : onAiExtract,
+      onLongPress: isUndoable ? null : (isExtracting ? null : onAiExtractLongPress),
+      // 视觉圆钮 32，外面留 4 的触控余量：盒子 40 宽、贴住卡片右下角后
+      // 圆钮距卡片边缘仍只有 4，视觉上就是原来的悬浮角标位置。
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: AnimatedContainer(
+            width: 32,
+            height: 32,
+            // 光晕颜色随状态切换（撤回为错误色、待提取为标签色）必须走动画：
+            // 否则倒计时结束的瞬间色相硬切，观感就是又闪了一下。
+            duration: AppMotion.duration(context, AppDurations.fast),
+            curve: AppCurves.standard,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: (isUndoable ? theme.colorScheme.error : tagColor).withValues(alpha: 0.2),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            // 提取中 / 可撤回 / 待提取三种状态的图标形状不同：若用默认的等时
+            // 交叉淡入，新旧图标会在同一处叠成重影，观感就是「倒计时结束后闪一下」。
+            // 这里让旧图标先淡出、新图标稍后淡入，同时保留一小段重叠
+            // （退出区间 35%、进入区间 40%）：交接处不会出现整帧空白；
+            // 开始重叠时旧图标已经淡到 15% 以下，也不会形成明显重影。
+            child: AnimatedSwitcher(
+              duration: AppMotion.duration(context, AppDurations.fast),
+              switchInCurve: const Interval(0.4, 1.0, curve: AppCurves.emphasized),
+              switchOutCurve: const Interval(0.35, 1.0, curve: AppCurves.exit),
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(scale: Tween<double>(begin: 0.82, end: 1).animate(animation), child: child),
+                );
+              },
+              child: isUndoable
+                  ? KeyedSubtree(
+                      key: const ValueKey('undo'),
+                      child: undoAnimation != null
+                          ? _buildUndoButtonContent(theme, undoAnimation!)
+                          : Icon(Icons.undo, size: 14, color: theme.colorScheme.error),
+                    )
+                  : isExtracting
+                  ? Center(
+                      key: const ValueKey('extracting'),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2.0, color: tagColor),
+                      ),
+                    )
+                  : Icon(Icons.auto_awesome, key: const ValueKey('idle'), size: 16, color: tagColor),
+            ),
+          ),
         ),
       ),
     );
@@ -1068,11 +1051,17 @@ class _DiaryItemState extends State<DiaryItem> {
     return Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: rowItems);
   }
 
-  Widget _buildMultiTagSections(ThemeData theme) {
+  /// 标签区：单标签与多标签统一为「左侧胶囊」布局。
+  ///
+  /// 多标签之间用细分隔线分段，正文前同样以分隔线收口；单标签只占一行，
+  /// 不再把标签单独甩到卡片右上角。标签行现在承担卡片顶部的视觉锚点。
+  Widget _buildTagSections(ThemeData theme) {
+    final entries = record.tagEntries;
+    final isMultiTag = entries.length > 1;
     final sections = <Widget>[];
 
-    for (int i = 0; i < record.tagEntries.length; i++) {
-      final entry = record.tagEntries[i];
+    for (int i = 0; i < entries.length; i++) {
+      final entry = entries[i];
 
       if (i > 0) {
         sections.add(
@@ -1083,7 +1072,15 @@ class _DiaryItemState extends State<DiaryItem> {
         );
       }
 
-      sections.add(_buildTagEntryPills(theme, entry, showIcon: true, showTime: entry.displayTime ?? entry.time));
+      sections.add(
+        _buildTagEntryPills(
+          theme,
+          entry,
+          showIcon: true,
+          // 单标签时记录时间已完整展示在底部，标签旁的局部时间属于冗余
+          showTime: isMultiTag ? (entry.displayTime ?? entry.time) : null,
+        ),
+      );
     }
 
     final richContent = _buildRichContent(
@@ -1092,34 +1089,51 @@ class _DiaryItemState extends State<DiaryItem> {
       bodyState: record.bodyState,
       tag: record.displayTag,
       leftPadding: _contentIndent,
-      isMultiTag: true,
+      isMultiTag: isMultiTag,
     );
+
     if (richContent != null) {
-      sections.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-        ),
-      );
+      if (sections.isNotEmpty) {
+        sections.add(
+          isMultiTag
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                )
+              : const SizedBox(height: 8),
+        );
+      }
       sections.add(richContent);
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections),
-    );
+    if (sections.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections);
   }
 
-  Widget _buildSingleTagContent(ThemeData theme, Color tagColor) {
-    final richContent = _buildRichContent(
-      context: theme,
-      text: record.content,
-      bodyState: record.bodyState,
-      tag: record.displayTag,
-      leftPadding: _contentIndent,
+  /// 小Q 补充分析：图片解读、营养/健康评估等。
+  ///
+  /// 旧数据把「图：…」混在正文里，这里和显式 [DiaryRecord.aiAnalysis] 合并展示；
+  /// 两者可能内容相同，交给 [mergeQAnalysisLines] 去重。
+  Widget _buildQAnalysisSection(ThemeData theme) {
+    final legacyLines = identical(record, _richContentRecord)
+        ? (_cachedLegacyAnalysisLines ?? const <String>[])
+        : const <String>[];
+    final lines = mergeQAnalysisLines(analysis: record.aiAnalysis, legacyLines: legacyLines);
+    if (lines.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      // 右侧给右下角提取钮让位：分析条不能伸到按钮下面，
+      // 否则圆钮会压在折叠条的右端，看起来像两块叠在一起
+      padding: EdgeInsets.only(left: _contentIndent, top: 8, right: onAiExtract != null ? 44 : 0),
+      child: QAnalysisSection(
+        lines: lines,
+        expanded: _analysisExpanded,
+        onExpandedChanged: (expanded) {
+          if (!mounted) return;
+          setState(() => _analysisExpanded = expanded);
+        },
+      ),
     );
-    if (richContent == null) return const SizedBox.shrink();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 8), richContent]);
   }
 
   Widget? _buildRichContent({
@@ -1145,13 +1159,16 @@ class _DiaryItemState extends State<DiaryItem> {
     final canReuseParsed = identical(record, _richContentRecord) && _richContentMultiTag == isMultiTag;
     late final List<String> displayLines;
     late final List<String> remarkLines;
+    late final List<String> analysisLines;
     if (canReuseParsed) {
       displayLines = _cachedDisplayLines!;
       remarkLines = _cachedRemarkLines!;
+      analysisLines = _cachedLegacyAnalysisLines!;
     } else {
       final rawLines = cleanText.split('\n');
       displayLines = <String>[];
       remarkLines = <String>[];
+      analysisLines = <String>[];
       bool inRemarkSection = false;
 
       final keysToSkip = {
@@ -1203,6 +1220,14 @@ class _DiaryItemState extends State<DiaryItem> {
       for (final line in rawLines) {
         final trimmedLine = line.trim();
         if (trimmedLine.isEmpty) continue;
+
+        // 旧版 AI 图片解读以「图：」开头混在正文里：先于「备注：」区判断，
+        // 否则「备注：用户正文\n图：…」里的图片解读会跟着备注一起显示
+        final legacyAnalysis = extractLegacyQAnalysisLine(trimmedLine);
+        if (legacyAnalysis != null) {
+          analysisLines.add(legacyAnalysis);
+          continue;
+        }
 
         if (inRemarkSection) {
           remarkLines.add(trimmedLine);
@@ -1294,6 +1319,7 @@ class _DiaryItemState extends State<DiaryItem> {
       _richContentMultiTag = isMultiTag;
       _cachedDisplayLines = displayLines;
       _cachedRemarkLines = remarkLines;
+      _cachedLegacyAnalysisLines = analysisLines;
     }
 
     final elements = <Widget>[];
@@ -1340,30 +1366,19 @@ class _DiaryItemState extends State<DiaryItem> {
 
   /// 卡片内高频格式化：DateFormat 初始化要查 locale 符号表，复用实例避免每卡每次 build 重建。
   static final DateFormat _hourMinuteFormat = DateFormat.Hm();
-  static final DateFormat _monthDayFormat = DateFormat('MM-dd');
 
-  String _formatTimeRangeWithDate() {
+  /// 时间标签文案：只保留时间/时间范围，不再带日期。
+  ///
+  /// 起止相同时只展示起点；跨天范围用「次日」保留方向感，避免看起来像时间倒流。
+  String _formatTimeRange() {
     final start = record.startTime ?? record.time;
-    // 小米运动健康日结汇总卡片固定在每天 23:00，仅展示时间刻度，不重复展开冗长起止
-    if (_isHealthDailySummary) {
-      return _hourMinuteFormat.format(start);
-    }
-    final startDateStr = _monthDayFormat.format(start);
     final startStr = _hourMinuteFormat.format(start);
+    final end = record.endTime;
+    if (end == null || end.isAtSameMomentAs(start)) return startStr;
 
-    if (record.endTime != null) {
-      final end = record.endTime!;
-      final endStr = _hourMinuteFormat.format(end);
-
-      final isCrossDate = start.year != end.year || start.month != end.month || start.day != end.day;
-
-      if (isCrossDate) {
-        final endDateStr = _monthDayFormat.format(end);
-        return '$startDateStr $startStr → $endDateStr $endStr';
-      }
-      return '$startDateStr $startStr → $endStr';
-    }
-    return '$startDateStr $startStr';
+    final endStr = _hourMinuteFormat.format(end);
+    final isCrossDate = start.year != end.year || start.month != end.month || start.day != end.day;
+    return isCrossDate ? '$startStr → 次日 $endStr' : '$startStr → $endStr';
   }
 
   bool _isTagTimeDuplicate(TagEntry entry) {

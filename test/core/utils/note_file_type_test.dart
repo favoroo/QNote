@@ -14,6 +14,18 @@ void main() {
       expect(NoteFileTypeHelper.fromTitle('图表.SVG'), NoteFileType.svg);
     });
 
+    test('Mermaid 图（mmd / mermaid，含大小写）', () {
+      expect(NoteFileTypeHelper.fromTitle('架构图.mmd'), NoteFileType.mermaid);
+      expect(NoteFileTypeHelper.fromTitle('时序.MMD'), NoteFileType.mermaid);
+      expect(NoteFileTypeHelper.fromTitle('flow.mermaid'), NoteFileType.mermaid);
+    });
+
+    test('CSV/TSV 表格', () {
+      expect(NoteFileTypeHelper.fromTitle('账单.csv'), NoteFileType.csv);
+      expect(NoteFileTypeHelper.fromTitle('数据.CSV'), NoteFileType.csv);
+      expect(NoteFileTypeHelper.fromTitle('导出.tsv'), NoteFileType.csv);
+    });
+
     test('JSON 数据文件', () {
       expect(NoteFileTypeHelper.fromTitle('stats.json'), NoteFileType.json);
     });
@@ -45,8 +57,40 @@ void main() {
       expect(NoteFileTypeHelper.isCodeLike(NoteFileType.markdown), isFalse);
       expect(NoteFileTypeHelper.isCodeLike(NoteFileType.html), isTrue);
       expect(NoteFileTypeHelper.isCodeLike(NoteFileType.svg), isTrue);
+      expect(NoteFileTypeHelper.isCodeLike(NoteFileType.mermaid), isTrue);
+      expect(NoteFileTypeHelper.isCodeLike(NoteFileType.csv), isTrue);
       expect(NoteFileTypeHelper.isCodeLike(NoteFileType.json), isTrue);
       expect(NoteFileTypeHelper.isCodeLike(NoteFileType.code), isTrue);
+    });
+  });
+
+  group('NoteFileTypeHelper 扩展名辅助', () {
+    test('extensionOf 取小写后缀，无后缀返回 null', () {
+      expect(NoteFileTypeHelper.extensionOf('架构图.mmd'), 'mmd');
+      expect(NoteFileTypeHelper.extensionOf('账单.CSV'), 'csv');
+      expect(NoteFileTypeHelper.extensionOf('无后缀笔记'), isNull);
+      expect(NoteFileTypeHelper.extensionOf('结尾有点.'), isNull);
+    });
+
+    test('hasRecognizedExtension 覆盖文档与代码后缀', () {
+      expect(NoteFileTypeHelper.hasRecognizedExtension('架构图.mmd'), isTrue);
+      expect(NoteFileTypeHelper.hasRecognizedExtension('账单.csv'), isTrue);
+      expect(NoteFileTypeHelper.hasRecognizedExtension('页面.html'), isTrue);
+      expect(NoteFileTypeHelper.hasRecognizedExtension('main.py'), isTrue);
+      // 未识别后缀 / 无后缀：VFS 需要补 `.md`，不能误判为已带后缀
+      expect(NoteFileTypeHelper.hasRecognizedExtension('报告.docx'), isFalse);
+      expect(NoteFileTypeHelper.hasRecognizedExtension('会议纪要 2.0'), isFalse);
+    });
+
+    test('supportsPreview / prefersPreviewByDefault', () {
+      expect(NoteFileTypeHelper.supportsPreview(NoteFileType.mermaid), isTrue);
+      expect(NoteFileTypeHelper.supportsPreview(NoteFileType.csv), isTrue);
+      // `.json` 已不做专属预览：移动端树视图没有实际价值，打开即源码
+      expect(NoteFileTypeHelper.supportsPreview(NoteFileType.json), isFalse);
+      expect(NoteFileTypeHelper.supportsPreview(NoteFileType.code), isFalse);
+      expect(NoteFileTypeHelper.supportsPreview(NoteFileType.markdown), isFalse);
+      expect(NoteFileTypeHelper.prefersPreviewByDefault(NoteFileType.html), isTrue);
+      expect(NoteFileTypeHelper.prefersPreviewByDefault(NoteFileType.markdown), isFalse);
     });
   });
 }

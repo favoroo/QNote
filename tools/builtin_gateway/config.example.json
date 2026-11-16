@@ -22,12 +22,12 @@
   },
   "quotas": {
     "device": {
-      "perHour": 30,
+      "perHour": 120,
       "perDay": 300,
       "tokensPerDay": 3000000
     },
     "ip": {
-      "perHour": 60,
+      "perHour": 240,
       "perDay": 600
     },
     "global": {

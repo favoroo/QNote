@@ -18,6 +18,7 @@ class DiaryEditSnapshot {
   /// 创建一个编辑快照。
   const DiaryEditSnapshot({
     required this.content,
+    this.aiAnalysis = '',
     required this.time,
     this.startTime,
     this.endTime,
@@ -29,6 +30,9 @@ class DiaryEditSnapshot {
 
   /// 正文输入框的当前文本。
   final String content;
+
+  /// 小Q 分析文本；清空/重新提取都要参与「未保存」判断。
+  final String aiAnalysis;
 
   /// 记录时间（时间线锚点）。
   final DateTime time;
@@ -295,6 +299,7 @@ String formatDiaryExtraFieldValue(String key, dynamic value) {
 String diaryEditSignature(DiaryEditSnapshot snapshot) {
   final buffer = StringBuffer()
     ..writeln(snapshot.content)
+    ..writeln(snapshot.aiAnalysis)
     ..writeln(snapshot.time.microsecondsSinceEpoch)
     ..writeln(snapshot.startTime?.microsecondsSinceEpoch ?? 0)
     ..writeln(snapshot.endTime?.microsecondsSinceEpoch ?? 0)

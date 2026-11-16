@@ -217,6 +217,20 @@ class ImageRepository {
     });
   }
 
+  /// 读取用于多模态识别的 base64，仅在文件体积异常时二次压缩。
+  ///
+  /// 记录图片在落盘时已压到最长边 1080 / JPEG 80，正常直接读取即可；只有
+  /// 导入、迁移或旧数据里的原图才可能偏大，此时才压一次，避免每张已压缩图
+  /// 都重复解码编码拖慢提取。文件不存在时返回空字符串。
+  Future<String> getBase64ImageForVision(String path, {int maxBytes = 2 * 1024 * 1024}) async {
+    final resolved = await resolveLocalPath(path);
+    final file = File(resolved);
+    if (!await file.exists()) return '';
+    final bytes = await file.readAsBytes();
+    if (bytes.lengthInBytes <= maxBytes) return base64Encode(bytes);
+    return _enqueue(() async => base64Encode(await _compressBytes(bytes)));
+  }
+
   Future<String> saveBase64Image(String base64Data, {String? subfolder}) async {
     final appDir = await getApplicationDocumentsDirectory();
     final imagesDir = Directory(p.join(appDir.path, 'images', subfolder ?? ''));

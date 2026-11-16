@@ -164,22 +164,26 @@ void main() {
     expect(pressed, 1);
   });
 
-  group('与气泡的连体几何', () {
-    testWidgets('操作条与助手气泡同宽同左、间距收到 6', (tester) async {
+  group('操作条内嵌气泡卡片', () {
+    testWidgets('操作条是气泡卡片的底部一段：同宽贴底、左右随卡片描边内收', (tester) async {
       await tester.pumpWidget(_bubbleHarness(ChatBubble(message: _assistantReply(), onRegenerate: () {})));
       await tester.pump();
 
       // 量装饰盒而非 Container：Container 的 margin 会计入 getRect，
-      // 用 DecoratedBox 才能测出两段之间真实的视觉间距
+      // 用 DecoratedBox 才能测出卡片真实的视觉边界
       final bubble = find.ancestor(of: find.byType(MarkdownBody), matching: find.byType(DecoratedBox)).first;
       final bar = find.byType(BubbleActionBar);
       expect(bar, findsOneWidget);
 
       final bubbleRect = tester.getRect(bubble);
       final barRect = tester.getRect(bar);
-      expect(barRect.width, bubbleRect.width);
-      expect(barRect.left, bubbleRect.left);
-      expect(barRect.top - bubbleRect.bottom, closeTo(6, 0.01));
+      // 内嵌几何：操作条完全落在卡片内部，占满宽度（减去左右各 1px 描边）且贴住底边
+      expect(barRect.left, greaterThanOrEqualTo(bubbleRect.left));
+      expect(barRect.right, lessThanOrEqualTo(bubbleRect.right));
+      expect(barRect.top, greaterThan(bubbleRect.top));
+      expect(barRect.bottom, lessThanOrEqualTo(bubbleRect.bottom));
+      expect(barRect.width, closeTo(bubbleRect.width - 2, 0.5));
+      expect(bubbleRect.bottom - barRect.bottom, closeTo(1, 0.5));
     });
 
     testWidgets('用户气泡与错误气泡不挂操作条', (tester) async {

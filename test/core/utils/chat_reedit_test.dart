@@ -76,6 +76,44 @@ void main() {
     });
   });
 
+  group('skillNamesFromMessage', () {
+    test('从 uiDetails.skills 还原本轮附加技能', () {
+      final message = ChatMessage(
+        role: 'user',
+        content: '总结今天',
+        uiDetails: {
+          'attachedSkills': ['todo-manager', 'mermaid'],
+        },
+      );
+
+      expect(skillNamesFromMessage(message), ['todo-manager', 'mermaid']);
+    });
+
+    test('旧消息、空列表与非列表一律返回空列表', () {
+      expect(skillNamesFromMessage(ChatMessage(role: 'user', content: 'hi')), isEmpty);
+      expect(
+        skillNamesFromMessage(ChatMessage(role: 'user', content: 'hi', uiDetails: {'attachedSkills': <String>[]})),
+        isEmpty,
+      );
+      expect(
+        skillNamesFromMessage(ChatMessage(role: 'user', content: 'hi', uiDetails: {'attachedSkills': 'todo-manager'})),
+        isEmpty,
+      );
+    });
+
+    test('jsonDecode 出的 List<dynamic> 也能还原', () {
+      final message = ChatMessage(
+        role: 'user',
+        content: 'hi',
+        uiDetails: {
+          'attachedSkills': <dynamic>['todo-manager', 2],
+        },
+      );
+
+      expect(skillNamesFromMessage(message), ['todo-manager', '2']);
+    });
+  });
+
   group('附件 chip 展示名', () {
     test('日记带「日记」后缀，笔记与待办空标题走占位名', () {
       expect(journalChipTitle(_note('journal_note_2026-09-10', title: '2026-09-10')), '2026-09-10 日记');
@@ -307,6 +345,34 @@ void main() {
       expect(base.matches(const ReeditDraft(text: '记一条待办 ')), isTrue);
       expect(base.matches(const ReeditDraft(text: '记一条笔记')), isFalse);
       expect(base.matches(const ReeditDraft(text: '记一条待办', hasQuote: true)), isFalse);
+    });
+  });
+
+  group('shouldClearDraftOnRetract', () {
+    const refilled = ReeditDraft(text: '帮我写周报', images: ['/a.png'], noteIds: ['n1']);
+
+    test('不在编辑态（无快照）一律不清：输入框里是用户自己的草稿', () {
+      // 直接撤回可从长按菜单触发，此时输入框没被回填过；
+      // 撤的是对话轮，不能连用户写到一半的新草稿一起吞掉
+      expect(shouldClearDraftOnRetract(null, const ReeditDraft(text: '新草稿')), isFalse);
+      expect(shouldClearDraftOnRetract(null, const ReeditDraft()), isFalse);
+    });
+
+    test('草稿仍是回填原样：随撤回一并清空', () {
+      expect(shouldClearDraftOnRetract(refilled, refilled), isTrue);
+    });
+
+    test('改过正文或附件：保留为普通草稿', () {
+      expect(shouldClearDraftOnRetract(refilled, const ReeditDraft(text: '帮我写日报')), isFalse);
+      expect(shouldClearDraftOnRetract(refilled, const ReeditDraft(text: '帮我写周报', noteIds: ['n1', 'n2'])), isFalse);
+      expect(shouldClearDraftOnRetract(refilled, const ReeditDraft(text: '帮我写周报')), isFalse);
+    });
+
+    test('仅敲了首尾空白仍算原样：发送侧本就会 trim', () {
+      expect(
+        shouldClearDraftOnRetract(refilled, const ReeditDraft(text: '帮我写周报 ', images: ['/a.png'], noteIds: ['n1'])),
+        isTrue,
+      );
     });
   });
 }

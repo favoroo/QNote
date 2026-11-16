@@ -142,10 +142,11 @@ void main() {
     });
 
     test('撞色搭配（自定义深底 + 亮强调色）时强调色本身已可读，不再改写', () {
-      const accent = Color(0xFF3DDC97);
+      // 取「初号机」预设的画布与主题色
+      const accent = Color(0xFFA6FF4D);
       final theme = AppTheme.build(
         accentColor: accent,
-        background: const AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFF2B1B4A)),
+        background: const AppBackgroundSetting(preset: AppBackgroundPreset.custom, customColor: Color(0xFF301B6A)),
         platformBrightness: Brightness.light,
       );
       expect(theme.accentInk, theme.colorScheme.primary);

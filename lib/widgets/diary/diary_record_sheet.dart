@@ -15,10 +15,12 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/diary_record_sheet_logic.dart';
+import 'package:qnote_flutter/core/utils/q_analysis.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
+import 'package:qnote_flutter/widgets/diary/q_analysis_section.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/shortcut_field.dart';
@@ -30,6 +32,7 @@ import 'package:qnote_flutter/providers/fixed_event_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
+import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
@@ -246,6 +249,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
   bool _waitingForCompression = false;
   CancelToken? _cancelToken;
   _ExtractPhase _extractPhase = _ExtractPhase.idle;
+
+  /// 「小Q分析」折叠状态：默认收起，提取完成后用户可展开查看。
+  bool _analysisExpanded = false;
 
   late DiaryComposeDraft _draft;
   String? _activeFormTagId;
@@ -605,6 +611,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
       _preExtractText = null;
       _activeFormTagId = null;
       _selectedFixedEventIds.clear();
+      _analysisExpanded = false;
     });
   }
 
@@ -1235,7 +1242,11 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
       final bool shouldSendImage = extractImages && draft.selectedPhotos.isNotEmpty;
       String? base64;
       if (shouldSendImage) {
-        base64 = await ref.read(imageRepositoryProvider).getBase64Image(draft.selectedPhotos.first);
+        base64 = await ref.read(imageRepositoryProvider).getBase64ImageForVision(draft.selectedPhotos.first);
+        if (base64.isEmpty) {
+          // 图片文件丢失时按纯文本提取，避免把空 base64 塞给模型触发接口报错
+          LoggerService.instance.logAI('记录图片读取失败，本次按纯文本提取', level: LogLevel.warning);
+        }
       }
 
       results = await aiService.extractUnified(
@@ -1252,7 +1263,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         final savedText = _textController.text;
 
         final newTagEntries = <TagEntry>[];
-        String combinedNotes = '';
+        String combinedAnalysis = '';
         TimeOfDay? parsedStartTime;
         TimeOfDay? parsedEndTime;
         int? parsedStartOffset;
@@ -1452,31 +1463,21 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
             parsedEndOffset = itemEndOffset;
           }
 
-          final extractedNotes = result['notes']?.toString();
-          if (extractedNotes != null && extractedNotes.isNotEmpty && draft.selectedPhotos.isNotEmpty) {
-            if (combinedNotes.isEmpty) {
-              combinedNotes = extractedNotes;
-            } else if (!combinedNotes.contains(extractedNotes)) {
-              combinedNotes += '\n$extractedNotes';
-            }
+          // 小Q分析只取一条（多标签时提示词要求只写在 results[0]）：
+          // 它是整段输入的补充信息，不属于某个标签字段
+          if (combinedAnalysis.isEmpty) {
+            combinedAnalysis = cleanExtractedAnalysis(
+              (result['analysis'] ?? result['notes'] ?? '').toString(),
+              fields,
+              foundShortcut,
+            );
           }
-        }
-
-        if (combinedNotes.isNotEmpty && draft.inputText.isNotEmpty) {
-          if (combinedNotes.startsWith('图：') || combinedNotes.startsWith('图:')) {
-            combinedNotes = '${draft.inputText}\n$combinedNotes';
-          } else if (!draft.inputText.contains(combinedNotes)) {
-            combinedNotes = '${draft.inputText}\n$combinedNotes';
-          } else {
-            combinedNotes = draft.inputText;
-          }
-        } else if (combinedNotes.isEmpty) {
-          combinedNotes = draft.inputText;
         }
 
         final mergedDraft = DiaryComposeDraft(
           id: const Uuid().v4(),
-          inputText: combinedNotes,
+          inputText: draft.inputText,
+          aiAnalysis: combinedAnalysis.isNotEmpty ? combinedAnalysis : draft.aiAnalysis,
           selectedPhotos: draft.selectedPhotos,
           startTime: parsedStartTime ?? draft.startTime,
           endTime: parsedEndTime,
@@ -1548,6 +1549,9 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         }
       } else if (e is ArgumentError && e.message.toString().contains('apiKey')) {
         errorMessage = 'AI配置不完整，请完善密钥和地址';
+      } else if (e is AiExtractIncompleteException) {
+        // 截断/拦截/空内容：直接把真实原因告诉用户，避免误以为「没有可提取内容」
+        errorMessage = e.message;
       }
 
       LoggerService.instance.logAI('时间线提取失败: $e', level: LogLevel.error, details: stackTrace.toString());
@@ -1862,6 +1866,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
             tags: recordTags,
             displayTag: recordTags.isNotEmpty ? recordTags.first : template.name,
             content: recordContent,
+            aiAnalysis: draft.aiAnalysis,
             bodyState: recordBodyState,
             tagEntries: syncedTagEntries,
             photos: draft.selectedPhotos.isNotEmpty ? draft.selectedPhotos : [],
@@ -1872,6 +1877,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
           final saved = await notifier.addDiary(
             title: record.title,
             content: record.content,
+            aiAnalysis: record.aiAnalysis,
             tags: record.tags,
             time: record.time,
             startTime: record.startTime,
@@ -2067,6 +2073,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
       tags: tags,
       displayTag: tags.isNotEmpty ? tags.first : '记录',
       content: content,
+      aiAnalysis: draft.aiAnalysis,
       bodyState: bodyState,
       tagEntries: tagEntries,
       photos: draft.selectedPhotos.isNotEmpty ? draft.selectedPhotos : [],
@@ -2077,6 +2084,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
     final saved = await notifier.addDiary(
       title: record.title,
       content: record.content,
+      aiAnalysis: record.aiAnalysis,
       tags: record.tags,
       time: record.time,
       startTime: record.startTime,
@@ -2141,6 +2149,7 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
       _preExtractText = null;
       _activeFormTagId = null;
       _selectedFixedEventIds.clear();
+      _analysisExpanded = false;
     });
   }
 
@@ -2286,6 +2295,24 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
         if (_activeDraft.selectedPhotos.isNotEmpty)
           _Reveal(controller: _entryController, begin: 0.16, child: _buildPhotoPreview(theme)),
         _Reveal(controller: _entryController, begin: 0.24, child: _buildInputAndActions(theme)),
+        // 小Q分析放在输入区下方：提取完成后立刻可见，但默认收起不打断填写
+        if (_activeDraft.aiAnalysis.trim().isNotEmpty)
+          _Reveal(
+            controller: _entryController,
+            begin: 0.24,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 12, 12),
+              child: QAnalysisSection(
+                lines: splitQAnalysisLines(_activeDraft.aiAnalysis),
+                expanded: _analysisExpanded,
+                onExpandedChanged: (expanded) {
+                  if (!mounted) return;
+                  setState(() => _analysisExpanded = expanded);
+                },
+                compact: true,
+              ),
+            ),
+          ),
       ],
     );
   }

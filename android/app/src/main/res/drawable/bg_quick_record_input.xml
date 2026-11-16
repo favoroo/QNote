@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录弹窗输入区底板：默认细描边，聚焦时切换强调色描边。
+  容器开启 addStatesFromChildren，EditText 获得焦点时整块输入区一起高亮。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true" android:drawable="@drawable/bg_quick_record_input_focused" />
+    <item android:drawable="@drawable/bg_quick_record_input_normal" />
+</selector>

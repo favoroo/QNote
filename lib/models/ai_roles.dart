@@ -64,7 +64,8 @@ class AiRoleSettings {
   final bool extractImages;
 
   const AiRoleSettings({
-    this.temperature = 0.7,
+    // 小Q 对话默认温度 1.0：多步 ReAct + 工具调用场景下回答更自然（旧默认 0.7 偏保守）
+    this.temperature = 1.0,
     // 小Q多步 ReAct 循环 + 工具结果回传，预算太小容易 finish_reason: length 截断
     this.maxTokens = 64000,
     this.extractImages = false,
@@ -76,7 +77,7 @@ class AiRoleSettings {
 
   factory AiRoleSettings.fromMap(Map<String, dynamic> map) {
     return AiRoleSettings(
-      temperature: (map['temperature'] as num?)?.toDouble() ?? 0.7,
+      temperature: (map['temperature'] as num?)?.toDouble() ?? 1.0,
       maxTokens: map['maxTokens'] as int? ?? 64000,
       extractImages: map['extractImages'] as bool? ?? false,
     );
@@ -98,7 +99,9 @@ class AiTemperatures {
   const AiTemperatures({
     this.assistant = const AiRoleSettings(maxTokens: 64000),
     this.timelineOptimization = const AiRoleSettings(
-      temperature: 0.01,
+      // 智能提取要求结构化 JSON 输出，接近 0 的低温保证格式稳定，但仍留一点
+      // 随机性避免极端输入下反复采样同一错误（旧默认 0.01 过低）
+      temperature: 0.1,
       // 推理模型（带思维链的模型）需要足够 token 预算给思维链 + JSON 输出，
       // 预算太小会被 reasoning 耗尽导致 finish_reason: "length" 截断
       maxTokens: 12000,
@@ -129,7 +132,7 @@ class AiTemperatures {
 
     var timelineSettings = map['timelineOptimization'] != null
         ? AiRoleSettings.fromMap(map['timelineOptimization'] as Map<String, dynamic>)
-        : const AiRoleSettings(temperature: 0.01, maxTokens: 12000, extractImages: true);
+        : const AiRoleSettings(temperature: 0.1, maxTokens: 12000, extractImages: true);
     // 同上：老用户存的 2048 等低预算统一拉到 12000，保证推理模型思维链不被截断
     if (timelineSettings.maxTokens < 12000) {
       timelineSettings = timelineSettings.copyWith(maxTokens: 12000);

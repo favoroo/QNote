@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 弹窗主操作正圆底（发送）：强调色实心圆，是一行里唯一的彩色按钮。 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/widget_qr_ripple">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@color/widget_accent" />
+        </shape>
+    </item>
+</ripple>

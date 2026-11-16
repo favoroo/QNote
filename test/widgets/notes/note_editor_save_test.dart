@@ -123,6 +123,27 @@ void main() {
       await drainTimers(tester);
     });
 
+    testWidgets('空闲时保存徽标不占宽度，长标题能拿到更宽的输入区', (tester) async {
+      await openEditor(tester, note: _buildNote(title: '一个相当长的笔记标题-11-14'));
+
+      // 徽标只在真有状态时占宽度；空闲时若仍保留 52dp 占位，
+      // AppBar 标题会被硬截断（TextField 单行只裁剪、没有省略号）
+      expect(find.byKey(const ValueKey('note-save-status-slot')), findsNothing);
+
+      final idleField = tester.getSize(find.descendant(of: find.byType(AppBar), matching: find.byType(TextField)));
+
+      await editTitle(tester, '一个相当长的笔记标题-11-15');
+      expect(find.byKey(const ValueKey('note-save-status-slot')), findsOneWidget);
+      await tester.pumpAndSettle();
+      final dirtyField = tester.getSize(find.descendant(of: find.byType(AppBar), matching: find.byType(TextField)));
+
+      // 徽标出现后标题区必须让出宽度，而不是叠在标题上
+      expect(dirtyField.width, lessThan(idleField.width));
+      expect(idleField.width - dirtyField.width, greaterThanOrEqualTo(40));
+
+      await drainTimers(tester);
+    });
+
     testWidgets('自动保存成功后短暂显示「已保存」再淡出', (tester) async {
       await openEditor(tester, note: _buildNote());
 

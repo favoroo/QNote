@@ -21,31 +21,36 @@ import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
+import 'package:qnote_flutter/core/agent/output_types/output_type_registry.dart';
 import 'package:qnote_flutter/core/utils/chat_reedit.dart';
 import 'package:qnote_flutter/core/utils/chat_timeline.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
-import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/agent_working_badge.dart';
 import 'package:qnote_flutter/widgets/ai/assistant_model_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/auto_read_toggle_button.dart';
 import 'package:qnote_flutter/widgets/ai/bubble_action_bar.dart';
 import 'package:qnote_flutter/widgets/ai/chat_history_drawer.dart';
+import 'package:qnote_flutter/widgets/ai/chat_empty_state.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
+import 'package:qnote_flutter/widgets/ai/output_type_dialog.dart';
+import 'package:qnote_flutter/widgets/ai/output_type_icons.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
 import 'package:qnote_flutter/widgets/ai/workflow_process_view.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
-import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
 import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
@@ -53,7 +58,7 @@ import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thinking_process_view.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
-import 'package:qnote_flutter/core/agent/services/q_text_quote.dart';
+import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
@@ -91,10 +96,26 @@ class _AiPageState extends ConsumerState<AiPage> {
   bool _isTyping = false;
   AiModelRef? _activeModelId;
 
-  // 待发送的对话引用文本（用户通过消息框选「给小Q」或点击悬浮球挂起）
-  String? _quotedChatText;
+  /// 本次发送的输出类型（「+」面板选择）：仅对下一条消息生效，发送后清空
+  String? _outputTypeId;
+
+  /// 本轮附加技能（「常用提示词」弹窗内选择）：仅对下一条消息生效，发送后清空。
+  /// 与斜杠命令同源，发送时由 Provider 把技能手册注入本轮上下文。
+  final List<String> _pendingSkillNames = [];
+
+  // 待发送的引用（页面内框选「给小Q」，或悬浮面板「转到完整对话」移交过来）
+  QTextQuote? _quotedQuote;
   // 当前在聊天区域划选高亮的纯文本
   String? _currentSelectedText;
+
+  // 交接单在本页不可见（分支被 Offstage 隐藏）时暂存，等分支激活后回填
+  PendingChatQuote? _pendingHandoff;
+
+  /// 本页所属分支当前是否激活（由 [didChangeDependencies] 缓存）。
+  ///
+  /// 分支切走时只是 Offstage + TickerMode(false)，State 不 dispose，
+  /// 交接单可能在这种「看不见」的状态下到达；直接回填会拉起键盘。
+  bool _branchActive = true;
 
   // 豆包式附件状态（图片、分享给AI的日记、笔记与待办）
   final List<String> _attachedImages = [];
@@ -106,7 +127,8 @@ class _AiPageState extends ConsumerState<AiPage> {
   final Map<String, String> _todoTitles = {};
 
   // 再次编辑态：被点中的那条提问在会话态里的下标，null 表示不在编辑态。
-  // 进入编辑态只回填输入框，撤回（删除该轮并撤销数据修改）推迟到点发送才做。
+  // 进入编辑态只回填输入框；真正的撤回（删除该轮并撤销数据修改）发生在
+  // 点发送（改完重发）或点「撤回」胶囊 / 长按菜单（只删不发）时。
   int? _reeditIndex;
 
   // 进入编辑态时的消息对象引用：ChatMessage 无主键，只能靠 identical 认人，
@@ -153,7 +175,13 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 用户资料默认懒加载（仅在个人信息页打开时加载），聊天页需要主动拉一次才能显示头像/昵称
     Future.microtask(() => ref.read(userProfileNotifierProvider.notifier).load());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(currentChatProvider.notifier).initLastSession();
+      // 有待接管的交接单且需要新开对话时不恢复上次会话：两条异步路径
+      // （读上次会话 / 新建会话）若并行，可能互相覆盖，最终又落回旧会话
+      final handoff = ref.read(pendingChatQuoteProvider);
+      if (handoff == null || !handoff.startNewChat) {
+        ref.read(currentChatProvider.notifier).initLastSession();
+      }
+      _consumePendingChatQuote();
       _scrollToBottom();
     });
   }
@@ -168,9 +196,7 @@ class _AiPageState extends ConsumerState<AiPage> {
           if (text == null || text.isEmpty) return null;
           return QTextQuote(source: QQuoteSource.chat, sourceId: '', sourceTitle: '对话内容', quotedText: text);
         },
-        onApplyQuote: (quote) {
-          _applyQuote(quote.quotedText);
-        },
+        onApplyQuote: _applyQuote,
         onFocusInput: () {
           _inputFocusNode.requestFocus();
         },
@@ -178,21 +204,93 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
-  /// 将选中的文本作为引用挂载到下方输入框上方
-  void _applyQuote(String text) {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+  /// 将引用挂到下方输入框上方（页面内框选「给小Q」或悬浮面板移交）
+  void _applyQuote(QTextQuote quote) {
     setState(() {
-      _quotedChatText = trimmed;
+      _quotedQuote = quote;
     });
     _inputFocusNode.requestFocus();
     HapticFeedback.lightImpact();
+  }
+
+  /// 消费悬浮面板「转到完整对话」移交的引用与草稿。
+  ///
+  /// /ai 是常驻分支：可能随这次导航首次构建（initState 后调用一次），
+  /// 也可能早已挂载（由 build 里的 ref.listen 触发），两条路径共用这里。
+  /// 页面被切走时只 Offstage 隐藏、不会 dispose，所以交接单也可能在本页不可见
+  /// 时到达——那时先暂存，等分支重新激活再回填（见 [didChangeDependencies]），
+  /// 否则会在时间线页面上突然拉起键盘。
+  void _consumePendingChatQuote() {
+    final handoff = ref.read(pendingChatQuoteProvider);
+    if (handoff == null) return;
+    ref.read(pendingChatQuoteProvider.notifier).state = null;
+    if (!_branchActive) {
+      _pendingHandoff = handoff;
+      return;
+    }
+    _applyHandoff(handoff);
+  }
+
+  /// 把交接内容落到本页：必要时先新开一段对话，再回填引用 / 草稿 / 附件图片。
+  ///
+  /// 悬浮面板里只挂了一条引用（没有真实对话消息）就点「转到完整对话」时，
+  /// [PendingChatQuote.startNewChat] 为 true：这里主动新建会话，避免落进上一次
+  /// 的历史对话里——那会让人以为引用丢了、对话也没新建。
+  void _applyHandoff(PendingChatQuote handoff) {
+    // 等转场落定再回填，避免在页面切换过程中拉起键盘
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (handoff.startNewChat) {
+        // 先同步清空当前会话再建新的：createSession 要读库，若等它返回再切，
+        // 用户会先看到上一次的旧对话闪一下，正是「跳到之前的对话」那种观感
+        ref.read(currentChatProvider.notifier).setSession(null);
+        final session = await ref.read(chatSessionListProvider.notifier).createSession();
+        if (!mounted) return;
+        ref.read(currentChatProvider.notifier).setSession(session);
+      }
+      // 草稿只在输入框为空时回填：用户已经动手写了就别覆盖
+      final draft = handoff.draft;
+      if (draft.trim().isNotEmpty && _inputController.text.trim().isEmpty) {
+        _inputController.value = TextEditingValue(
+          text: draft,
+          selection: TextSelection.collapsed(offset: draft.length),
+        );
+      }
+      if (handoff.images.isNotEmpty) {
+        setState(() {
+          for (final path in handoff.images) {
+            if (!_attachedImages.contains(path)) {
+              _attachedImages.add(path);
+            }
+          }
+        });
+      }
+      final quote = handoff.quote;
+      if (quote != null) {
+        _applyQuote(quote);
+      } else if (draft.isNotEmpty || handoff.images.isNotEmpty) {
+        _inputFocusNode.requestFocus();
+      }
+    });
   }
 
   /// 小Q经 VFS 写入 /skills/ 时刷新斜杠命令候选（会话中新建的技能立即可用）
   void _onSkillsChanged(WorkspaceChangeEvent event) {
     if (event.path.startsWith('/skills/')) {
       _loadSlashSkills();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 分支被切回、TickerMode 恢复后才回填暂存的交接单：页面常驻不 dispose，
+    // 交接单可能在本页隐藏时到达，不能在那时拉起键盘。
+    _branchActive = TickerMode.valuesOf(context).enabled;
+    final handoff = _pendingHandoff;
+    if (handoff != null && _branchActive) {
+      _pendingHandoff = null;
+      _applyHandoff(handoff);
     }
   }
 
@@ -409,10 +507,15 @@ class _AiPageState extends ConsumerState<AiPage> {
     }
   }
 
+  /// 记录工作流/思考步骤的展开态
+  void _setWorkflowExpanded(String turnKey, bool expanded) {
+    setState(() => _workflowExpandedByTurn[turnKey] = expanded);
+  }
+
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
-    final quoteToSend = _quotedChatText;
-    final hasQuote = quoteToSend != null && quoteToSend.isNotEmpty;
+    final quoteToSend = _quotedQuote;
+    final hasQuote = quoteToSend != null;
     final hasImages = _attachedImages.isNotEmpty;
     final hasNotes = _attachedNoteIds.isNotEmpty;
     final hasTodos = _attachedTodoIds.isNotEmpty;
@@ -440,15 +543,16 @@ class _AiPageState extends ConsumerState<AiPage> {
     // 斜杠命令解析：消息以「/技能名」开头时显式激活该技能（手册由 Provider 注入上下文）
     final skillName = _parseSlashCommand(text);
 
-    final quotePrefix = hasQuote ? '【引用对话】：\n"""\n$quoteToSend\n"""\n\n' : '';
-    final content = text.isNotEmpty
-        ? '$quotePrefix$text'
-        : (hasQuote ? '请分析我引用的这段对话内容：\n$quoteToSend' : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析'));
+    // 引用说明块走 system 动态上下文（与悬浮面板同一套来源定位口径），
+    // 用户消息只保留自己写的指令；没写字时兜底一句说明本次要处理引用
+    final content = text.isNotEmpty ? text : (hasQuote ? '请分析我引用的这段内容' : (hasImages ? '请结合图片进行分析' : '请结合我分享的内容进行分析'));
 
     final imagesToSend = hasImages ? List<String>.from(_attachedImages) : null;
     final notesToSend = hasNotes ? List<String>.from(_attachedNoteIds) : null;
     final todosToSend = hasTodos ? List<String>.from(_attachedTodoIds) : null;
     final journalsToSend = hasJournals ? List<String>.from(_attachedJournalIds) : null;
+    // 附加技能同样只对下一条消息生效：先取快照，发送成功路径里连同输出类型一起清空
+    final skillsToSend = _pendingSkillNames.isEmpty ? null : List<String>.from(_pendingSkillNames);
 
     // 编辑态下点发送才是撤回时机：确认与回退全部发生在清空输入框之前，
     // 任何一步没过（用户取消、回退被拒）就原样退回，改过的字一个字都不会丢
@@ -457,14 +561,24 @@ class _AiPageState extends ConsumerState<AiPage> {
       if (!mounted) return;
     }
 
+    // 引用说明块要解析虚拟工作区路径；放在确认要发送之后算，取消/回退时不白跑
+    final quoteBlock = quoteToSend == null
+        ? null
+        : await ref.read(floatingQProvider.notifier).buildQuotePromptBlock(quoteToSend);
+    if (!mounted) return;
+
     HapticFeedback.lightImpact();
+    // 输出类型只对下一条消息生效：先取出再清空，避免影响后续发送
+    final outputTypeToSend = _outputTypeId;
     _inputController.clear();
     setState(() {
       _attachedImages.clear();
       _attachedNoteIds.clear();
       _attachedTodoIds.clear();
       _attachedJournalIds.clear();
-      _quotedChatText = null;
+      _outputTypeId = null;
+      _pendingSkillNames.clear();
+      _quotedQuote = null;
     });
     FocusScope.of(context).unfocus();
     setState(() => _isTyping = true);
@@ -489,6 +603,9 @@ class _AiPageState extends ConsumerState<AiPage> {
             todoIds: todosToSend,
             journalIds: journalsToSend,
             skillName: skillName,
+            skillNames: skillsToSend,
+            outputTypeId: outputTypeToSend,
+            quoteBlock: quoteBlock,
           );
     } catch (e) {
       debugPrint('发送消息失败: $e');
@@ -520,9 +637,9 @@ class _AiPageState extends ConsumerState<AiPage> {
 
   /// 点击我最后发的那条提问：把提问完整填回输入框进入编辑态，**对话一字不动**。
   ///
-  /// 撤回（删除该轮并撤销本轮数据修改）推迟到用户点发送时才做：点击本身不该是破坏性
-  /// 操作，点开看一眼又改主意是常态。生成中仍要拒——那会儿列表正在长，回填的内容与
-  /// 下标都会对不上。
+  /// 撤回（删除该轮并撤销数据修改）不随点击发生：点击本身不该是破坏性操作，点开看
+  /// 一眼又改主意是常态；要删只能走点发送（改完重发）或「撤回」入口（只删不发）。
+  /// 生成中仍要拒——那会儿列表正在长，回填的内容与下标都会对不上。
   Future<void> _beginReedit(int stateIndex) async {
     if (_reeditBusy) return;
     if (_isTyping || ref.read(aiStreamingMessageProvider) != null || ref.read(aiStreamingStatusProvider) != null) {
@@ -572,7 +689,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     noteIds: List.of(_attachedNoteIds),
     todoIds: List.of(_attachedTodoIds),
     journalIds: List.of(_attachedJournalIds),
-    hasQuote: _quotedChatText != null && _quotedChatText!.isNotEmpty,
+    hasQuote: _quotedQuote != null,
   );
 
   /// 输入框里是否躺着一份「不是本次回填」的草稿。
@@ -672,6 +789,154 @@ class _AiPageState extends ConsumerState<AiPage> {
         reeditableUserIndex(messages) != index) {
       _exitReeditMode();
     }
+  }
+
+  // ==========================================
+  // 直接撤回：删除我最后发的那轮提问，不重发
+  // ==========================================
+
+  /// 直接撤回我最后发的那条提问：删除本轮对话并撤销数据修改，**不发送任何新消息**。
+  ///
+  /// 与 `_consumeReeditBeforeSend` 共用同一套回退链路（确认弹窗、busy 窗口、rollback），
+  /// 区别只在撤回后到此为止：编辑态回填的原样草稿随撤回一并清空，用户改过的字保留为
+  /// 普通草稿（撤回提问不该连人写的字一起吞掉）。锚点失效时不撤回——失败方向是
+  /// 「没删成」而不是「删错轮」。
+  Future<void> _retractLastTurn() async {
+    if (_reeditBusy) return;
+    if (_isTyping || ref.read(aiStreamingMessageProvider) != null || ref.read(aiStreamingStatusProvider) != null) {
+      Toast.warning(context, '小Q正在生成，请稍候');
+      return;
+    }
+    final activeId = ref.read(currentChatProvider)?.id;
+    if (activeId != null && ref.read(agentRunningSessionsProvider).contains(activeId)) {
+      Toast.warning(context, '小Q正在处理对话，稍候或先中止');
+      return;
+    }
+
+    final messages = ref.read(currentChatProvider)?.messages ?? const <ChatMessage>[];
+    // 编辑态优先按锚定的下标撤；长按路径不在编辑态，直接取末轮提问（口径与可编辑入口一致）
+    final index = _reeditIndex ?? reeditableUserIndex(messages);
+    if (index == null) {
+      Toast.warning(context, '没有可撤回的提问');
+      return;
+    }
+    // 锚点只在编辑态需要认人：长按路径的下标取自当前消息列表，天然成立。
+    // 编辑态锚点已失效（切会话/提问被换掉）就不按它撤，退出编辑态兜底
+    final anchor = _reeditAnchor;
+    if (anchor != null &&
+        (!isReeditAnchorValid(messages: messages, index: index, anchor: anchor) ||
+            reeditableUserIndex(messages) != index)) {
+      _exitReeditMode();
+      Toast.warning(context, '原提问已不在末轮，无法撤回');
+      return;
+    }
+
+    // 只有真的要撤销数据修改时才拦一次确认，纯文字问答直接撤（与发送路径同一约定）
+    final changeCount = countTurnUndoChanges(messages, fromUserIndex: index);
+    if (changeCount > 0) {
+      final confirmed = await AppMotion.showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('撤回提问？'),
+          content: Text('本轮有 $changeCount 处数据修改，撤回会一并撤销。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(dialogCtx, true), child: const Text('撤回')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    if (!mounted) return;
+
+    // 清空决定要在退出编辑态之前做：退出会把快照置空，比对基准就没了
+    final clearDraft = shouldClearDraftOnRetract(_reeditDraftSnapshot, _currentDraft());
+
+    // 复用生成中状态禁用输入区，防止回退期间插入新消息
+    _reeditBusy = true;
+    setState(() => _isTyping = true);
+    try {
+      final result = await ref.read(currentChatProvider.notifier).rollbackToMessage(index);
+      if (!mounted) return;
+      if (result == null) {
+        Toast.error(context, '无法撤回');
+        return;
+      }
+      _exitReeditMode();
+      if (clearDraft) {
+        _inputController.clear();
+        setState(() {
+          _attachedImages.clear();
+          _attachedNoteIds.clear();
+          _attachedTodoIds.clear();
+          _attachedJournalIds.clear();
+          _pendingSkillNames.clear();
+        });
+      }
+      final (restored, failed) = result;
+      if (failed > 0) {
+        Toast.warning(context, '已撤回提问，$failed 处数据恢复失败，详见日志');
+      } else if (restored > 0) {
+        Toast.success(context, '已撤回提问，恢复 $restored 处数据');
+      } else {
+        Toast.success(context, '已撤回');
+      }
+      _scrollToBottom();
+    } finally {
+      _reeditBusy = false;
+      if (mounted) setState(() => _isTyping = false);
+    }
+  }
+
+  /// 长按我最后发的那条提问弹出的操作菜单：直接撤回（不重发）或回填再次编辑。
+  /// 与 `_showErrorAssistantActions` 同一套弹层样式；[stateIndex] 为该提问在会话态中的真实下标。
+  void _showUserMessageActions(int stateIndex) {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.undo_rounded, size: 22),
+                  title: const Text('撤回提问', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('删除本轮对话并撤销数据修改，不重新发送', style: TextStyle(fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _retractLastTurn();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit_rounded, size: 20),
+                  title: const Text('再次编辑', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('把提问回填到输入框，改完再发送', style: TextStyle(fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _beginReedit(stateIndex);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // ==========================================
@@ -794,6 +1059,8 @@ class _AiPageState extends ConsumerState<AiPage> {
             todoIds: refs.todoIds,
             journalIds: refs.journalIds,
             skillName: _parseSlashCommand(userMessage.content),
+            // 随常用提示词勾选的技能也存在 uiDetails 里，重试按原样一并恢复
+            skillNames: skillNamesFromMessage(userMessage),
           );
     } finally {
       if (mounted) {
@@ -829,9 +1096,13 @@ class _AiPageState extends ConsumerState<AiPage> {
       _attachedImages
         ..clear()
         ..addAll(message.images ?? const []);
-      // 引用文本整段留在正文里原样回填，不反解析回 _quotedChatText：反解析要靠文案模板
-      // 匹配，_sendMessage 的措辞一改就静默丢内容，整段回填才与用户当初发的逐字一致
-      _quotedChatText = null;
+      // 本轮附加技能与附件引用同一口径：回填后重新挂到输入区，发送时按原样带出
+      _pendingSkillNames
+        ..clear()
+        ..addAll(skillNamesFromMessage(message));
+      // 引用正文已作为动态上下文随消息带出、不写回正文：回填时不还原引用卡片，
+      // 避免把历史轮次的引用重新挂到这一次输入上
+      _quotedQuote = null;
       // 一次性写 value：连带把光标钉在文末，避免 .text 赋值保留旧 selection 造成瞬时越界
       _inputController.value = TextEditingValue(
         text: text,
@@ -958,128 +1229,32 @@ class _AiPageState extends ConsumerState<AiPage> {
     }
   }
 
-  void _showAttachmentMenu(BuildContext context, ThemeData theme) {
-    showModalBottomSheet(
-      context: context,
-      sheetAnimationStyle: AppTheme.sheetAnimationStyle,
-      backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildAttachmentOption(
-                        icon: Icons.camera_alt_rounded,
-                        label: '相机',
-                        iconColor: const Color(0xFF3F51B5),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _pickFromCamera();
-                        },
-                        theme: theme,
-                      ),
-                      const SizedBox(width: 18),
-                      _buildAttachmentOption(
-                        icon: Icons.photo_library_rounded,
-                        label: '相册',
-                        iconColor: const Color(0xFF009688),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _pickFromGallery();
-                        },
-                        theme: theme,
-                      ),
-                      const SizedBox(width: 18),
-                      _buildAttachmentOption(
-                        icon: Icons.auto_stories_rounded,
-                        label: '日记',
-                        iconColor: const Color(0xFFE91E63),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _pickJournals();
-                        },
-                        theme: theme,
-                      ),
-                      const SizedBox(width: 18),
-                      _buildAttachmentOption(
-                        icon: Icons.description_rounded,
-                        label: '笔记',
-                        iconColor: const Color(0xFFFF9800),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _pickNotes();
-                        },
-                        theme: theme,
-                      ),
-                      const SizedBox(width: 18),
-                      _buildAttachmentOption(
-                        icon: Icons.check_circle_outline_rounded,
-                        label: '待办',
-                        iconColor: const Color(0xFF4CAF50),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _pickTodos();
-                        },
-                        theme: theme,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildAttachmentOption({
-    required IconData icon,
-    required String label,
-    required Color iconColor,
-    required VoidCallback onTap,
-    required ThemeData theme,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 附件入口铺实心彩底，前景自动取黑/白；淡彩底配同色图标在荧光黄绿下看不清
-          AppIconBadge(
-            icon: icon,
-            size: 56,
-            iconSize: 28,
-            backgroundColor: iconColor,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: theme.colorScheme.onSurface),
-          ),
-        ],
-      ),
-    );
+  /// 「+」面板：添加内容（相机/相册/日记/笔记/待办）+ 输出类型选择。
+  /// 附件入口沿用既有选取流程；输出类型写入本次发送的临时状态（下一条消息生效）。
+  Future<void> _showAddPanel() async {
+    final result = await showAddAndOutputDialog(context, selectedOutputTypeId: _outputTypeId);
+    if (!mounted || result == null) return;
+    switch (result) {
+      case AttachmentPickResult(:final kind):
+        switch (kind) {
+          case AddAttachmentKind.camera:
+            _pickFromCamera();
+          case AddAttachmentKind.gallery:
+            _pickFromGallery();
+          case AddAttachmentKind.journal:
+            _pickJournals();
+          case AddAttachmentKind.note:
+            _pickNotes();
+          case AddAttachmentKind.todo:
+            _pickTodos();
+        }
+      case OutputTypePickResult(:final outputTypeId):
+        setState(() => _outputTypeId = outputTypeId);
+        final option = outputTypeById(outputTypeId);
+        if (option != null && mounted) {
+          Toast.info(context, '输出类型：${option.label}');
+        }
+    }
   }
 
   Future<void> _openModelSelector() async {
@@ -1114,6 +1289,11 @@ class _AiPageState extends ConsumerState<AiPage> {
       final groups = next.valueOrNull;
       if (groups == null) return;
       _syncActiveBindingIfStale(providersAsync.valueOrNull ?? const <AiProvider>[], groups);
+    });
+
+    // 悬浮面板「转到完整对话」移交的引用：页面已挂载时在这里接住
+    ref.listen<PendingChatQuote?>(pendingChatQuoteProvider, (prev, next) {
+      if (next != null) _consumePendingChatQuote();
     });
 
     ref.listen(currentChatProvider, (prev, next) {
@@ -1242,19 +1422,7 @@ class _AiPageState extends ConsumerState<AiPage> {
       _cachedReeditIndex = reeditableUserIndex(stateMessages);
     }
     final generatedImageKeys = _cachedImageKeys!;
-    final timeline = _cachedTimeline!;
-    final displayItems = timeline.isEmpty
-        ? [
-            // 空会话：虚拟一条小Q问候语，避免首屏空白
-            ChatTimelineEntry(
-              ChatMessage(
-                role: 'assistant',
-                content: defaultSystemPrompts['assistant_greeting'] ?? '嗨，我是小Q —— 记待办、写笔记、打卡时间线、看统计，说一句就行',
-                timestamp: DateTime.now(),
-              ),
-            ),
-          ]
-        : timeline;
+    final displayItems = _cachedTimeline!;
 
     var lastUserIdx = -1;
     for (var i = stateMessages.length - 1; i >= 0; i--) {
@@ -1273,6 +1441,8 @@ class _AiPageState extends ConsumerState<AiPage> {
     final showTyping =
         _isTyping && !hasStreaming && displayItems.isNotEmpty && displayItems.last.message.role == 'user';
     final showStreaming = hasStreaming;
+    // 真正的空会话（没有任何可见消息、也没有进行中的流式/等待气泡）：居中展示 Hi 空态
+    final showEmptyState = displayItems.isEmpty && !showTyping && !showStreaming;
 
     // 「再次编辑」入口只挂在我最后发的那条提问上：更早的轮次回退会连带撤销其后
     // 所有真实数据修改，误触代价不可接受
@@ -1299,7 +1469,9 @@ class _AiPageState extends ConsumerState<AiPage> {
                 label: '给小Q',
                 onPressed: () {
                   selectableRegionState.hideToolbar();
-                  _applyQuote(selectedText);
+                  _applyQuote(
+                    QTextQuote(source: QQuoteSource.chat, sourceId: '', sourceTitle: '对话内容', quotedText: selectedText),
+                  );
                 },
               ),
           ],
@@ -1311,121 +1483,130 @@ class _AiPageState extends ConsumerState<AiPage> {
           // 点击聊天区域空白背景收起软键盘
           _inputFocusNode.unfocus();
         },
-        child: ListView.builder(
-          controller: _scrollController,
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-          itemCount: totalCount,
-          itemBuilder: (context, index) {
-            // 隔离每条消息的重绘，流式输出时只重绘最后一条
-            if (index < displayItems.length) {
-              final entry = displayItems[index];
-              final currentMsg = entry.message;
-              final currentIsUser = isUserMsg(currentMsg);
+        child: showEmptyState
+            ? const ChatEmptyState()
+            : ListView.builder(
+                controller: _scrollController,
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                itemCount: totalCount,
+                itemBuilder: (context, index) {
+                  // 隔离每条消息的重绘，流式输出时只重绘最后一条
+                  if (index < displayItems.length) {
+                    final entry = displayItems[index];
+                    final currentMsg = entry.message;
+                    final currentIsUser = isUserMsg(currentMsg);
 
-              // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
-              var isFirstInGroup = true;
-              if (index > 0) {
-                final prevMsg = displayItems[index - 1].message;
-                final prevIsUser = isUserMsg(prevMsg);
-                if (prevIsUser == currentIsUser) {
-                  final prevTime = prevMsg.timestamp;
-                  final currTime = currentMsg.timestamp;
-                  if (prevTime == null || currTime == null || currTime.difference(prevTime).abs().inMinutes < 5) {
-                    isFirstInGroup = false;
+                    // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
+                    var isFirstInGroup = true;
+                    if (index > 0) {
+                      final prevMsg = displayItems[index - 1].message;
+                      final prevIsUser = isUserMsg(prevMsg);
+                      if (prevIsUser == currentIsUser) {
+                        final prevTime = prevMsg.timestamp;
+                        final currTime = currentMsg.timestamp;
+                        if (prevTime == null || currTime == null || currTime.difference(prevTime).abs().inMinutes < 5) {
+                          isFirstInGroup = false;
+                        }
+                      }
+                    }
+
+                    // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
+                    var isLastInGroup = true;
+                    if (index < displayItems.length - 1) {
+                      final nextMsg = displayItems[index + 1].message;
+                      final nextIsUser = isUserMsg(nextMsg);
+                      if (nextIsUser == currentIsUser) {
+                        final nextTime = nextMsg.timestamp;
+                        final currTime = currentMsg.timestamp;
+                        if (nextTime == null || currTime == null || nextTime.difference(currTime).abs().inMinutes < 5) {
+                          isLastInGroup = false;
+                        }
+                      }
+                    } else {
+                      // 当前是已存列表的最后一条，如果紧接着有 typing 或 streaming，且小Q是发送方，则不是最后一条
+                      if (!currentIsUser && (showTyping || showStreaming)) {
+                        isLastInGroup = false;
+                      }
+                    }
+
+                    // 重新生成只对会话最后一条回复开放：更早的轮次重发会连带撤销
+                    // 其后所有轮次的数据修改，误触代价太高
+                    final canRegenerate =
+                        !currentIsUser &&
+                        !hasStreaming &&
+                        entry.stateIndex != null &&
+                        entry.stateIndex == stateMessages.length - 1;
+
+                    // 失败错误折在工作流尾部：仅当它就是会话最后一条消息时才给重试入口，
+                    // 与旧错误气泡长按菜单的「只允许重试最后一轮」保持一致
+                    final workflow = currentMsg.role == 'workflow'
+                        ? (currentMsg.uiDetails?['workflow'] as WorkflowData?)
+                        : null;
+                    final canRetryWorkflowError =
+                        !hasStreaming && workflow?.errorStep?.stateIndex == stateMessages.length - 1;
+
+                    final bubble = ChatBubble(
+                      message: currentMsg,
+                      isFirstInGroup: isFirstInGroup,
+                      isLastInGroup: isLastInGroup,
+                      actionsEnabled: !hasStreaming,
+                      generatedImageKeys: generatedImageKeys,
+                      onSendToQ: _attachImageToInput,
+                      onRegenerate: canRegenerate ? () => _retryFailedTurn(entry.stateIndex!) : null,
+                      // 回退与重发期间置灰，避免连点触发两轮
+                      regenerateEnabled: !_isTyping,
+                      onContinue: () => ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
+                      onPause: () => ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
+                      isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
+                      onWorkflowExpandedChanged: _setWorkflowExpanded,
+                      onErrorActions: _showErrorAssistantActions,
+                      onRetryError: canRetryWorkflowError
+                          ? (errorIndex) => unawaited(_retryFailedTurn(errorIndex))
+                          : null,
+                    );
+                    // 我最后发的那条提问：点一下把提问填回输入框慢慢改，长按弹菜单可直接撤回（不重发）
+                    final canReedit = currentIsUser && reeditIndex != null && entry.stateIndex == reeditIndex;
+                    return RepaintBoundary(
+                      child: canReedit
+                          ? UserBubbleReeditTap(
+                              enabled: !_isTyping && !hasStreaming,
+                              active: _reeditIndex == entry.stateIndex,
+                              onTap: () => _beginReedit(entry.stateIndex!),
+                              onLongPress: () => _showUserMessageActions(entry.stateIndex!),
+                              child: bubble,
+                            )
+                          : bubble,
+                    );
                   }
-                }
-              }
 
-              // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
-              var isLastInGroup = true;
-              if (index < displayItems.length - 1) {
-                final nextMsg = displayItems[index + 1].message;
-                final nextIsUser = isUserMsg(nextMsg);
-                if (nextIsUser == currentIsUser) {
-                  final nextTime = nextMsg.timestamp;
-                  final currTime = currentMsg.timestamp;
-                  if (nextTime == null || currTime == null || nextTime.difference(currTime).abs().inMinutes < 5) {
-                    isLastInGroup = false;
+                  if (showTyping && index == displayItems.length) {
+                    // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
+                    final prevIsAssistant = displayItems.isNotEmpty && !isUserMsg(displayItems.last.message);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _TypingBubble(isFirstInGroup: !prevIsAssistant, isLastInGroup: !showStreaming),
+                    );
                   }
-                }
-              } else {
-                // 当前是已存列表的最后一条，如果紧接着有 typing 或 streaming，且小Q是发送方，则不是最后一条
-                if (!currentIsUser && (showTyping || showStreaming)) {
-                  isLastInGroup = false;
-                }
-              }
 
-              // 重新生成只对会话最后一条回复开放：更早的轮次重发会连带撤销
-              // 其后所有轮次的数据修改，误触代价太高
-              final canRegenerate =
-                  !currentIsUser &&
-                  !hasStreaming &&
-                  entry.stateIndex != null &&
-                  entry.stateIndex == stateMessages.length - 1;
-
-              final bubble = ChatBubble(
-                message: currentMsg,
-                isFirstInGroup: isFirstInGroup,
-                isLastInGroup: isLastInGroup,
-                actionsEnabled: !hasStreaming,
-                generatedImageKeys: generatedImageKeys,
-                onSendToQ: _attachImageToInput,
-                onRegenerate: canRegenerate ? () => _retryFailedTurn(entry.stateIndex!) : null,
-                // 回退与重发期间置灰，避免连点触发两轮
-                regenerateEnabled: !_isTyping,
-                onContinue: () => ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
-                onPause: () => ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
-                isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
-                onWorkflowExpandedChanged: (key, expanded) => setState(() => _workflowExpandedByTurn[key] = expanded),
-              );
-              // 我最后发的那条提问：点一下把提问填回输入框慢慢改，撤回留到点发送时；
-              // 失败气泡仍走长按弹重试菜单
-              final canReedit = currentIsUser && reeditIndex != null && entry.stateIndex == reeditIndex;
-              return RepaintBoundary(
-                child: canReedit
-                    ? UserBubbleReeditTap(
-                        enabled: !_isTyping && !hasStreaming,
-                        active: _reeditIndex == entry.stateIndex,
-                        onTap: () => _beginReedit(entry.stateIndex!),
-                        child: bubble,
-                      )
-                    : !currentIsUser && currentMsg.isError == true && entry.stateIndex != null
-                    ? GestureDetector(
-                        onLongPress: () => _showErrorAssistantActions(entry.stateIndex!, currentMsg),
-                        child: bubble,
-                      )
-                    : bubble,
-              );
-            }
-
-            if (showTyping && index == displayItems.length) {
-              // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
-              final prevIsAssistant = displayItems.isNotEmpty && !isUserMsg(displayItems.last.message);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _TypingBubble(isFirstInGroup: !prevIsAssistant, isLastInGroup: !showStreaming),
-              );
-            }
-
-            // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
-            final lastMsg = displayItems.isNotEmpty ? displayItems.last.message : null;
-            final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _StreamingBubble(
-                isFirstInGroup: !prevIsAssistant && !showTyping,
-                isLastInGroup: true,
-                generatedImageKeys: generatedImageKeys,
-                onSendToQ: _attachImageToInput,
-                hasLiveWorkflowInList: hasLiveWorkflowInList,
-                activeTurnKey: activeTurnKey,
-                isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
-                onWorkflowExpandedChanged: (key, expanded) => setState(() => _workflowExpandedByTurn[key] = expanded),
+                  // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
+                  final lastMsg = displayItems.isNotEmpty ? displayItems.last.message : null;
+                  final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _StreamingBubble(
+                      isFirstInGroup: !prevIsAssistant && !showTyping,
+                      isLastInGroup: true,
+                      generatedImageKeys: generatedImageKeys,
+                      onSendToQ: _attachImageToInput,
+                      hasLiveWorkflowInList: hasLiveWorkflowInList,
+                      activeTurnKey: activeTurnKey,
+                      isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
+                      onWorkflowExpandedChanged: _setWorkflowExpanded,
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
       ),
     );
   }
@@ -1461,6 +1642,8 @@ class _AiPageState extends ConsumerState<AiPage> {
         : effortState.mixed
         ? '混合'
         : effortState.capability.labelFor(effortState.effort);
+    // 输出类型来自本地临时状态；旧会话残留的 id 查不到时就不渲染胶囊
+    final selectedOutputType = outputTypeById(_outputTypeId);
 
     return Material(
       color: theme.colorScheme.surface,
@@ -1493,11 +1676,14 @@ class _AiPageState extends ConsumerState<AiPage> {
                       const SizedBox(height: 6),
                     ],
 
-                    // 0.5 框选对话引用卡片（框选「给小Q」或点击悬浮球挂起）
-                    if (_quotedChatText != null) ...[_buildQuotePreviewCard(theme), const SizedBox(height: 6)],
+                    // 0.5 引用卡片（页面内框选「给小Q」，或悬浮面板「转到完整对话」移交）
+                    if (_quotedQuote != null) ...[_buildQuotePreviewCard(theme), const SizedBox(height: 6)],
 
                     // 1. 豆包式附件挂载条（图片缩略图、分享的笔记、分享的待办）
                     if (hasAttachments) ...[_buildAttachmentBar(theme), const SizedBox(height: 6)],
+
+                    // 1.5 本轮附加技能条（来自「常用提示词」弹窗的技能勾选）
+                    if (_pendingSkillNames.isNotEmpty) ...[_buildPendingSkillsBar(theme), const SizedBox(height: 6)],
                   ],
                 ),
               ),
@@ -1507,15 +1693,51 @@ class _AiPageState extends ConsumerState<AiPage> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
-                    // 常用提示词（点击弹出列表，选中即覆盖输入框）
+                    // 已选输出类型：可点开面板更换，× 直接清除（仅对下一条消息生效）
+                    if (selectedOutputType != null) ...[
+                      _OutputTypeChip(
+                        option: selectedOutputType,
+                        onTap: () => _showAddPanel(),
+                        onClear: () => setState(() => _outputTypeId = null),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    // 编辑态专属撤回入口：直接删掉被编辑的那轮、不重发（与长按菜单同一动作）
+                    if (_reeditIndex != null) ...[
+                      _InputPill(icon: Icons.undo_rounded, label: '撤回', onTap: () => _retractLastTurn()),
+                      const SizedBox(width: 8),
+                    ],
+                    // 常用提示词（点击弹出列表，选中即覆盖输入框）；胶囊文案用「常用」保持短小。
+                    // 弹窗内可同时勾选本轮附加技能，选中后技能随提示词一起挂到输入区
                     _InputPill(
                       icon: Icons.bolt_rounded,
-                      label: '常用提示词',
-                      onTap: () => showQuickPromptDialog(context, ref, (text) {
-                        _inputController.text = text;
-                        _inputController.selection = TextSelection.fromPosition(TextPosition(offset: text.length));
-                        _inputFocusNode.requestFocus();
-                      }),
+                      label: '常用',
+                      onTap: () => showQuickPromptDialog(
+                        context,
+                        ref,
+                        (selection) {
+                          _inputController.text = selection.text;
+                          _inputController.selection = TextSelection.fromPosition(
+                            TextPosition(offset: selection.text.length),
+                          );
+                          setState(() {
+                            _pendingSkillNames
+                              ..clear()
+                              ..addAll(selection.skillNames);
+                          });
+                          _inputFocusNode.requestFocus();
+                        },
+                        initialSkillNames: _pendingSkillNames,
+                        // 技能勾选即时同步：不选提示词、直接关闭弹窗也能保留本轮选择
+                        onSkillsChanged: (names) {
+                          if (!mounted) return;
+                          setState(() {
+                            _pendingSkillNames
+                              ..clear()
+                              ..addAll(names);
+                          });
+                        },
+                      ),
                     ),
                     const SizedBox(width: 8),
                     // 右侧控制区：模型胶囊（带当前思考强度档位）。
@@ -1556,7 +1778,7 @@ class _AiPageState extends ConsumerState<AiPage> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 2, right: 6),
                     child: InkWell(
-                      onTap: () => _showAttachmentMenu(context, theme),
+                      onTap: () => _showAddPanel(),
                       borderRadius: BorderRadius.circular(22),
                       child: Container(
                         width: 42,
@@ -1575,7 +1797,8 @@ class _AiPageState extends ConsumerState<AiPage> {
                     valueListenable: _inputController,
                     builder: (context, value, _) {
                       final hasText = value.text.trim().isNotEmpty;
-                      final canSend = (hasText || hasAttachments) && !busy;
+                      // 引用卡片也是待发送内容：展开后常见「只有引用、还没写指令」的状态
+                      final canSend = (hasText || hasAttachments || _quotedQuote != null) && !busy;
 
                       // 小Q工作过程中：发送按钮变为中断/停止按钮，
                       // 外层环绕极简细线 LoadingRing 缺口圆环旋转动画，中央为精致圆角停止方块
@@ -1667,9 +1890,13 @@ class _AiPageState extends ConsumerState<AiPage> {
     );
   }
 
-  /// 引用卡片：展示框选「给小Q」或点击悬浮球引用的对话片段
+  /// 引用卡片：展示来源（笔记/流水记录/待办等）与引用正文。
+  /// 与悬浮面板的引用卡片同一套文案口径，展开前后看到的是同一张卡。
   Widget _buildQuotePreviewCard(ThemeData theme) {
+    final quote = _quotedQuote;
+    if (quote == null) return const SizedBox.shrink();
     return Container(
+      key: const ValueKey('ai-quote-card'),
       padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
@@ -1677,19 +1904,38 @@ class _AiPageState extends ConsumerState<AiPage> {
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.format_quote_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(Icons.format_quote_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
+          ),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              '引用：$_quotedChatText',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  quote.cardTitleLine,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  quote.cardBodyText,
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
           InkWell(
-            onTap: () => setState(() => _quotedChatText = null),
+            onTap: () => setState(() => _quotedQuote = null),
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(2),
@@ -1874,7 +2120,7 @@ class _AiPageState extends ConsumerState<AiPage> {
 
             // 继续添加小卡片按钮
             InkWell(
-              onTap: () => _showAttachmentMenu(context, theme),
+              onTap: () => _showAddPanel(),
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -1892,6 +2138,77 @@ class _AiPageState extends ConsumerState<AiPage> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 本轮附加技能条：主题色淡底胶囊 + × 移除，与附件条一样横向滚动
+  ///
+  /// 技能由「常用提示词」弹窗勾选产生，这里是发送前最后一道可见确认：
+  /// 用户能看到本轮到底带上了哪些手册，也能临时去掉某一个。
+  Widget _buildPendingSkillsBar(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 40),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome_rounded, size: 14, color: theme.accentInk),
+                  const SizedBox(width: 4),
+                  Text('本轮技能', style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            ..._pendingSkillNames.map((name) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: scheme.primary.withValues(alpha: 0.30)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, size: 13, color: theme.accentInk),
+                      const SizedBox(width: 4),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 140),
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.accentInk,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () => setState(() => _pendingSkillNames.remove(name)),
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.all(2),
+                          child: Icon(Icons.close, size: 14, color: theme.accentInk),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
           ],
         ),
       ),
@@ -1949,6 +2266,8 @@ class _AiPageState extends ConsumerState<AiPage> {
               valueListenable: _inputController,
               builder: (context, value, _) {
                 if (value.text.isEmpty) return const SizedBox.shrink();
+                // 暗色下 colorScheme.error 是为文字设计的浅粉红，实心填充会发灰，改用饱和红令牌。
+                final clearButtonColor = AppPalette.errorStrong(theme.brightness == Brightness.dark);
                 return MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: GestureDetector(
@@ -1962,11 +2281,11 @@ class _AiPageState extends ConsumerState<AiPage> {
                         width: 20,
                         height: 20,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.error.withValues(alpha: 0.85),
+                          color: clearButtonColor,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: theme.colorScheme.error.withValues(alpha: 0.25),
+                              color: clearButtonColor.withValues(alpha: 0.25),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),

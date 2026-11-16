@@ -47,14 +47,16 @@ class QuickPromptService {
 
   /// 追加一条
   Future<void> addPrompt(String text) async {
-    final prompts = await getPrompts();
+    // 有缓存时 getPrompts 返回只读视图，必须先拷贝再改，
+    // 否则第二次写入会抛 Cannot modify an unmodifiable list
+    final prompts = List<String>.from(await getPrompts());
     prompts.add(text);
     await setPrompts(prompts);
   }
 
   /// 替换指定索引
   Future<void> updatePrompt(int index, String text) async {
-    final prompts = await getPrompts();
+    final prompts = List<String>.from(await getPrompts());
     if (index < 0 || index >= prompts.length) return;
     prompts[index] = text;
     await setPrompts(prompts);
@@ -62,7 +64,7 @@ class QuickPromptService {
 
   /// 删除指定索引
   Future<void> deletePrompt(int index) async {
-    final prompts = await getPrompts();
+    final prompts = List<String>.from(await getPrompts());
     if (index < 0 || index >= prompts.length) return;
     prompts.removeAt(index);
     await setPrompts(prompts);

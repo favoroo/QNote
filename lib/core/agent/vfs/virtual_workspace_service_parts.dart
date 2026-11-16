@@ -840,6 +840,11 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       if (decoded is! Map<String, dynamic>) {
         throw Exception('ai.json 必须是 JSON 对象');
       }
+      // 0. 先处理 providers（校验最严格，先失败先报错，避免 roles/temps 已落库而 providers 报错）
+      final providerResults = decoded.containsKey('providers')
+          ? await _applyAiProvidersWrite(decoded)
+          : const <Map<String, dynamic>>[];
+
       // 1. 更新 roles（绑定值为「厂商id::模型名」，写 null 清空绑定）
       if (decoded.containsKey('roles') && decoded['roles'] is Map<String, dynamic>) {
         final rolesMap = decoded['roles'] as Map<String, dynamic>;
@@ -892,7 +897,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       }
 
       WorkspaceEventBus.instance.emit(path, WorkspaceChangeType.updated, decoded);
-      return {'status': 'updated', 'path': path};
+      return {'status': 'updated', 'path': path, if (providerResults.isNotEmpty) 'providers': providerResults};
     }
 
     if (name == 'personality.json') {

@@ -29,6 +29,7 @@ class _MorphDiaryList extends DiaryListNotifier {
   Future<DiaryRecord> addDiary({
     required String title,
     String content = '',
+    String aiAnalysis = '',
     int mood = 3,
     String weather = '',
     List<String> tags = const [],
@@ -46,6 +47,7 @@ class _MorphDiaryList extends DiaryListNotifier {
       id: 'saved-1',
       title: title,
       content: content,
+      aiAnalysis: aiAnalysis,
       time: time ?? now,
       startTime: startTime,
       endTime: endTime,
@@ -215,6 +217,20 @@ void main() {
     final button = tester.widget<FilledButton>(find.byKey(const ValueKey('record-send')));
     expect(button.onPressed, isNotNull);
     expect(find.text('喝了杯咖啡'), findsOneWidget, reason: '草稿要回填到输入框');
+  });
+
+  testWidgets('草稿带小Q分析时展示折叠区，默认收起', (tester) async {
+    await _pumpSheet(
+      tester,
+      draft: DiaryComposeDraft(id: 'd1', inputText: '午饭', aiAnalysis: '图：米饭约250kcal、香菇滑鸡约320kcal，合计约570kcal'),
+    );
+
+    expect(find.text('小Q分析'), findsOneWidget);
+    expect(find.text('图：米饭约250kcal、香菇滑鸡约320kcal，合计约570kcal'), findsNothing);
+
+    await tester.tap(find.text('小Q分析'));
+    await tester.pumpAndSettle();
+    expect(find.text('图：米饭约250kcal、香菇滑鸡约320kcal，合计约570kcal'), findsOneWidget);
   });
 
   testWidgets('打开面板时草稿时间跟随时间线上刚选中的时间', (tester) async {

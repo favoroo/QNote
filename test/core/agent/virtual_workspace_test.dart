@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
+import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/diary_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
@@ -63,6 +64,19 @@ void main() {
 
       final todoFolders = await vfs.listDir('/todos');
       expect(todoFolders, contains('今日/'));
+    });
+
+    test('2.1 展示型后缀笔记：list_dir 不重复拼 .md，可读可删', () async {
+      await vfs.writeFile('/notes/技术/架构图.mmd', 'flowchart TD\n  A[开始] --> B[结束]');
+      final listed = await vfs.listDir('/notes/技术');
+      expect(listed, contains('架构图.mmd'));
+      expect(listed.any((n) => n.endsWith('.mmd.md')), isFalse, reason: '不得把 .mmd 标题再拼成 .mmd.md');
+
+      final content = await vfs.readFile('/notes/技术/架构图.mmd');
+      expect(content, contains('flowchart TD'));
+
+      final del = await vfs.deleteFile('/notes/技术/架构图.mmd');
+      expect(del['status'], 'deleted');
     });
 
     test('3. write_file: 写入待办并自动创建分类', () async {
@@ -298,6 +312,80 @@ void main() {
       final aiReadAfter = await vfs.readFile('/settings/ai.json');
       expect(aiReadAfter, contains('provider-deepseek::deepseek-v4-flash'));
       expect(aiReadAfter, contains('0.35'));
+    });
+
+    test('10.5 settings: ai.json providers 厂商条目全自动增改', () async {
+      // 测试库跨运行持久化，先清理前次残留，保证用例幂等
+      await AiProviderRepository.instance.delete('provider-vfs-test');
+
+      // 1. 新增厂商：带 2 把明文密钥与 2 个模型（显式给 models，不触发网络扫描）
+      final createRes = await vfs.writeFile('/settings/ai.json', '''
+        {
+          "providers": [
+            {
+              "id": "provider-vfs-test",
+              "name": "VFS 测试中转",
+              "baseUrl": "https://api.vfstest.com/v1",
+              "apiKeys": ["sk-testkey1111", "sk-testkey2222"],
+              "models": ["gpt-test-a", "gpt-test-b"]
+            }
+          ]
+        }
+        ''');
+      expect(createRes['status'], 'updated');
+      final created = (createRes['providers'] as List).first as Map<String, dynamic>;
+      expect(created['id'], 'provider-vfs-test');
+      expect(created['status'], 'created');
+      expect(created['keyCount'], 2);
+      expect(created['usable'], true);
+      // 首个用户厂商自动设为默认（对齐设置页行为）
+      expect(created['isDefault'], true);
+
+      // 2. 重读快照：厂商已出现、密钥已掩码、模型已启用
+      final snapshot = _decodeEchoed(await vfs.readFile('/settings/ai.json')) as Map<String, dynamic>;
+      final providerInSnapshot =
+          (snapshot['providers'] as List).firstWhere((p) => p is Map<String, dynamic> && p['id'] == 'provider-vfs-test')
+              as Map<String, dynamic>;
+      expect(providerInSnapshot['keyCount'], 2);
+      expect(providerInSnapshot['enabled'], true);
+      final maskedKeys = providerInSnapshot['apiKeys'] as List;
+      expect(maskedKeys.length, 2);
+      expect(maskedKeys, everyElement(contains('...'))); // 掩码形态，明文不进上下文
+      expect((providerInSnapshot['models'] as List).contains('gpt-test-a'), true);
+
+      // 3. 回写「掩码串 + 新明文密钥」：掩码被过滤，新密钥合并进池（2 旧 + 1 新 = 3）
+      final addKeyRes = await vfs.writeFile('/settings/ai.json', '''
+        {
+          "providers": [
+            {"id": "provider-vfs-test", "apiKeys": ["${maskedKeys.first}", "sk-testkey3333"]}
+          ]
+        }
+        ''');
+      final afterAddKey = (addKeyRes['providers'] as List).first as Map<String, dynamic>;
+      expect(afterAddKey['status'], 'updated');
+      expect(afterAddKey['keyCount'], 3);
+
+      // 4. 更新启停：enabled: false 后快照同步
+      await vfs.writeFile('/settings/ai.json', '{"providers": [{"id": "provider-vfs-test", "enabled": false}]}');
+      final snapshotAfterDisable = _decodeEchoed(await vfs.readFile('/settings/ai.json')) as Map<String, dynamic>;
+      final disabled =
+          (snapshotAfterDisable['providers'] as List).firstWhere(
+                (p) => p is Map<String, dynamic> && p['id'] == 'provider-vfs-test',
+              )
+              as Map<String, dynamic>;
+      expect(disabled['enabled'], false);
+
+      // 5. 校验类错误：非法 baseUrl / providers 非数组 / 内置服务不可改
+      expect(
+        () => vfs.writeFile('/settings/ai.json', '{"providers": [{"baseUrl": "api.vfstest.com/v1"}]}'),
+        throwsA(isA<Exception>()),
+      );
+      expect(() => vfs.writeFile('/settings/ai.json', '{"providers": "not-a-list"}'), throwsA(isA<Exception>()));
+      expect(
+        () =>
+            vfs.writeFile('/settings/ai.json', '{"providers": [{"id": "qnote_builtin", "baseUrl": "https://x.com"}]}'),
+        throwsA(isA<Exception>()),
+      );
     });
 
     test('11. settings: shortcuts.json 快捷按键解锁写入与定制', () async {

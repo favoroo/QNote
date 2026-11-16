@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/core/agent/services/q_page_context.dart';
 import 'package:qnote_flutter/core/agent/services/q_target_bridge.dart';
+import 'package:qnote_flutter/core/agent/services/q_text_quote.dart' show QWebElementRef, QWebRect;
+import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 
 void main() {
@@ -53,6 +55,60 @@ void main() {
       expect(after.overlayStack, isEmpty);
       expect(after.effectiveContext, notes);
       expect(after.contextSignature, 'page:notes');
+    });
+
+    test('编辑页覆盖上下文离开所属页面后失效，切回恢复', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      const notes = QPageContext(type: QContextType.notesList, signature: 'page:notes', displayLabel: '笔记库');
+      const diary = QPageContext(type: QContextType.diaryList, signature: 'page:diary', displayLabel: '时间线');
+      const note = QPageContext(
+        type: QContextType.noteDetail,
+        targetId: 'n1',
+        signature: 'note:n1',
+        displayLabel: '笔记《A》',
+      );
+
+      // 笔记编辑器挂在笔记分支上：切到时间线 tab 时分支只被 Offstage 隐藏、不 dispose，
+      // 覆盖上下文不会被 pop，靠「所属页面」闸门让它失效
+      notifier.setBaseContext(notes);
+      notifier.pushOverlayContext(note);
+      expect(container.read(floatingQProvider).effectiveContext, note);
+
+      notifier.setBaseContext(diary);
+      expect(container.read(floatingQProvider).effectiveContext, diary);
+      expect(container.read(floatingQProvider).contextSignature, 'page:diary');
+
+      // 切回笔记 tab：编辑器仍在树上，覆盖上下文自动恢复
+      notifier.setBaseContext(notes);
+      expect(container.read(floatingQProvider).effectiveContext, note);
+      expect(container.read(floatingQProvider).contextSignature, 'note:n1');
+    });
+
+    test('跨页入口：路由先变更再压栈时按新页面归属', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      const statistics = QPageContext(type: QContextType.statistics, signature: 'page:statistics', displayLabel: '统计');
+      const diary = QPageContext(type: QContextType.diaryList, signature: 'page:diary', displayLabel: '时间线');
+      const record = QPageContext(
+        type: QContextType.diaryDetail,
+        targetId: 'r1',
+        signature: 'diary:r1',
+        displayLabel: '流水记录《午餐》',
+      );
+
+      // 从统计页打开流水编辑页：路由通知先到，baseContext 要帧末才更新
+      notifier.setBaseContext(statistics);
+      notifier.noteRouteContext(diary);
+      notifier.pushOverlayContext(record);
+      notifier.setBaseContext(diary);
+
+      expect(container.read(floatingQProvider).effectiveContext, record);
+      expect(container.read(floatingQProvider).contextSignature, 'diary:r1');
     });
 
     test('出栈按值匹配移除最后压入的同类上下文', () {
@@ -428,6 +484,23 @@ void main() {
       expect(session, isNull);
       expect(container.read(floatingQProvider).panelMode, FloatingQPanelMode.hidden);
     });
+
+    test('只有引用/草稿时也不建空会话（交给 /ai 新开对话回填）', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      notifier.openWithQuote(
+        const QTextQuote(source: QQuoteSource.diary, sourceId: 'd1', sourceTitle: '一条流水记录', quotedText: '鸡蛋还有小南瓜'),
+      );
+      notifier.updateDraft('把这条改成轻食');
+      final session = await notifier.promoteActiveSession();
+
+      // 没有任何真实消息时不该落一条空会话：旧实现只看「消息或草稿」，
+      // 结果是展开后复用上一次的历史对话，引用和新建动作都丢了
+      expect(session, isNull);
+      expect(container.read(floatingQProvider).pendingQuote, isNull);
+    });
   });
 
   group('外部分享内容注入块', () {
@@ -485,6 +558,130 @@ void main() {
       expect(block, contains('第 5 行光标处'));
       expect(block, contains('【光标】'));
       expect(block, contains('在光标位置处插入续写内容'));
+    });
+
+    test('网页预览元素引用注入选择器、源码行与修改约束', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(floatingQProvider.notifier);
+
+      const quote = QTextQuote(
+        source: QQuoteSource.note,
+        sourceId: 'note_123',
+        sourceTitle: '今日处方',
+        quotedText: '今天别再踩',
+        locationDesc: '网页预览 · section.card · 第 5 行',
+        webElement: QWebElementRef(
+          selector: 'main > section.card:nth-of-type(2)',
+          tagName: 'section',
+          elementId: 'today',
+          classNames: ['card'],
+          outerHtml: '<section class="card" id="today"><p>今天别再踩</p></section>',
+          ancestors: 'body > main',
+          rect: QWebRect(x: 16, y: 420, width: 343, height: 210),
+          viewport: QWebRect(x: 0, y: 0, width: 375, height: 812),
+          sourceLines: [5],
+          textLines: [7],
+        ),
+      );
+
+      final block = await notifier.quotePromptBlockForTest(quote);
+      expect(block, isNotNull);
+      expect(block, contains('网页预览元素信息'));
+      expect(block, contains('main > section.card:nth-of-type(2)'));
+      expect(block, contains('第 5 行'));
+      expect(block, contains('第 7 行'));
+      expect(block, contains('渲染后的元素 HTML'));
+      // DOM 序列化格式可能和源码不同，不能直接拿来当 edit_file 的 old_text
+      expect(block, contains('不要直接当作 edit_file 的 old_text'));
+      expect(block, contains('不要整篇重写 HTML'));
+      expect(block, contains('距视口左 16、上 420'));
+    });
+  });
+
+  group('转到完整对话的交接单', () {
+    test('带引用与未发送草稿时两者都进交接单', () {
+      const quote = QTextQuote(source: QQuoteSource.note, sourceId: 'n1', sourceTitle: '今日处方', quotedText: '今天别再踩');
+      final handoff = PendingChatQuote.fromState(const FloatingQState(pendingQuote: quote, draftText: '把这段改成更短的表达'));
+
+      expect(handoff.isEmpty, isFalse);
+      expect(handoff.quote?.quotedText, '今天别再踩');
+      expect(handoff.draft, '把这段改成更短的表达');
+      // 没有历史消息 → 需要在 /ai 侧新开一段对话，否则会落进上一次的旧会话
+      expect(handoff.startNewChat, isTrue);
+    });
+
+    test('只有草稿时也交接（不丢已打好的指令）', () {
+      final handoff = PendingChatQuote.fromState(const FloatingQState(draftText: '继续上次那个'));
+      expect(handoff.isEmpty, isFalse);
+      expect(handoff.quote, isNull);
+      expect(handoff.draft, '继续上次那个');
+    });
+
+    test('附件图片随交接单带到 /ai', () {
+      final handoff = PendingChatQuote.fromState(const FloatingQState(attachedImages: ['/cache/a.jpg']));
+      expect(handoff.isEmpty, isFalse);
+      expect(handoff.images, ['/cache/a.jpg']);
+    });
+
+    test('已有对话消息时不再新开会话（沿用刚提升的那条）', () {
+      final handoff = PendingChatQuote.fromState(
+        FloatingQState(
+          messages: [ChatMessage(role: 'user', content: '你好', timestamp: DateTime(2026, 11, 15))],
+        ),
+      );
+      expect(handoff.startNewChat, isFalse);
+    });
+
+    test('空会话不投放交接单', () {
+      final handoff = PendingChatQuote.fromState(const FloatingQState(draftText: '   '));
+      expect(handoff.isEmpty, isTrue);
+    });
+  });
+
+  group('引用卡片文案', () {
+    test('笔记来源拼「来源《标题》· 位置」', () {
+      const quote = QTextQuote(
+        source: QQuoteSource.note,
+        sourceId: 'n1',
+        sourceTitle: '今日处方-11-14',
+        quotedText: '今天别再踩',
+        locationDesc: '第 3 行附近',
+      );
+      expect(quote.cardTitleLine, '笔记《今日处方-11-14》 · 第 3 行附近');
+      expect(quote.cardBodyText, '今天别再踩');
+    });
+
+    test('流水记录不加书名号，外部分享只显示来源标签', () {
+      const diary = QTextQuote(
+        source: QQuoteSource.diary,
+        sourceId: 'd1',
+        sourceTitle: '2026-11-14',
+        quotedText: '十元吃了一碗螺蛳粉',
+      );
+      expect(diary.cardTitleLine, '流水记录《2026-11-14》');
+
+      const external = QTextQuote(
+        source: QQuoteSource.external,
+        sourceId: '',
+        sourceTitle: '系统分享',
+        quotedText: '一段外部文字',
+      );
+      expect(external.cardTitleLine, '外部分享');
+    });
+
+    test('空正文时区分光标处与整篇引用', () {
+      const cursor = QTextQuote(
+        source: QQuoteSource.note,
+        sourceId: 'n1',
+        sourceTitle: '标题',
+        quotedText: '',
+        locationDesc: '第 5 行光标处',
+      );
+      expect(cursor.cardBodyText, '（光标处，可让小Q续写或编辑）');
+
+      const whole = QTextQuote(source: QQuoteSource.note, sourceId: 'n1', sourceTitle: '标题', quotedText: '   ');
+      expect(whole.cardBodyText, '（引用完整内容）');
     });
   });
 

@@ -168,7 +168,7 @@ class _StreamingBubbleState extends ConsumerState<_StreamingBubble> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (widget.isFirstInGroup) const _AssistantSenderHeader(bottom: 2),
+            if (widget.isFirstInGroup) const _AssistantSenderHeader(bottom: 2, trailing: _LiveWorkingBadge()),
             Padding(
               padding: EdgeInsets.only(left: 4, right: 4, bottom: widget.isLastInGroup ? 12 : 2),
               child: WorkflowProcessView(
@@ -272,6 +272,12 @@ class ChatBubble extends ConsumerWidget {
   final bool Function(String turnKey)? isWorkflowExpanded;
   final void Function(String turnKey, bool expanded)? onWorkflowExpandedChanged;
 
+  /// 错误工作流的长按菜单回调（重试 / 复制错误详情）
+  final void Function(int stateIndex, ChatMessage errorMessage)? onErrorActions;
+
+  /// 展开区「重试本轮」回调；为 null 时不展示重试入口（错误已不是会话最后一条时）
+  final ValueChanged<int>? onRetryError;
+
   const ChatBubble({
     super.key,
     required this.message,
@@ -288,6 +294,8 @@ class ChatBubble extends ConsumerWidget {
     this.regenerateEnabled = true,
     this.isWorkflowExpanded,
     this.onWorkflowExpandedChanged,
+    this.onErrorActions,
+    this.onRetryError,
   });
 
   /// 是否为待处理的步数上限消息（渲染「继续/暂停」按钮）
@@ -386,6 +394,9 @@ class ChatBubble extends ConsumerWidget {
       final workflow = message.uiDetails?['workflow'] as WorkflowData?;
       if (workflow == null) return const SizedBox.shrink();
       final controlled = isWorkflowExpanded != null && onWorkflowExpandedChanged != null;
+      // 错误步骤折在工作流尾部：长按弹重试/复制菜单，展开区提供显式重试按钮
+      final errorStep = workflow.errorStep;
+      final errorIndex = errorStep?.stateIndex;
       return _OneShotBubbleEntrance(
         entranceKey: 'workflow|${workflow.turnKey}',
         beginOffsetY: 12,
@@ -393,7 +404,8 @@ class ChatBubble extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isFirstInGroup) const _AssistantSenderHeader(bottom: 2),
+            if (isFirstInGroup)
+              _AssistantSenderHeader(bottom: 2, trailing: workflow.isLive ? const _LiveWorkingBadge() : null),
             Padding(
               padding: EdgeInsets.only(left: 4, right: 4, bottom: isLastInGroup ? 12 : 2),
               child: workflow.isLive
@@ -408,6 +420,10 @@ class ChatBubble extends ConsumerWidget {
                       expanded: controlled ? isWorkflowExpanded!(workflow.turnKey) : null,
                       onExpandedChanged: controlled ? (v) => onWorkflowExpandedChanged!(workflow.turnKey, v) : null,
                       toolBuilder: (ctx, msg) => buildToolFeedback(ctx, msg, theme, onSendToQ: onSendToQ, flat: true),
+                      onRetry: (errorIndex != null && onRetryError != null) ? () => onRetryError!(errorIndex) : null,
+                      onErrorLongPress: (errorIndex != null && onErrorActions != null)
+                          ? () => onErrorActions!(errorIndex, errorStep!.message)
+                          : null,
                     ),
             ),
           ],
@@ -499,9 +515,12 @@ class ChatBubble extends ConsumerWidget {
               alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
                 width: isUser ? null : double.infinity,
-                // 下挂操作条时收紧间距，让两段读起来是同一张卡
-                margin: EdgeInsets.only(bottom: showActionBar ? 6 : (isLastInGroup ? 16 : 4)),
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: isUser ? 10 : 12),
+                margin: EdgeInsets.only(bottom: isLastInGroup ? 16 : 4),
+                // 操作条内嵌为卡片底部一段时由容器统一裁圆角，内容区边距移到内层
+                clipBehavior: showActionBar ? Clip.antiAlias : Clip.none,
+                padding: showActionBar
+                    ? EdgeInsets.zero
+                    : EdgeInsets.symmetric(horizontal: 16, vertical: isUser ? 10 : 12),
                 constraints: BoxConstraints(
                   maxWidth: isUser ? MediaQuery.of(context).size.width * 0.82 : double.infinity,
                 ),
@@ -536,68 +555,77 @@ class ChatBubble extends ConsumerWidget {
                             Text(message.content, style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 14)),
                         ],
                       )
-                    : AnimatedSwitcher(
-                        duration: AppMotion.duration(context, AppDurations.normal),
-                        switchInCurve: AppCurves.emphasized,
-                        switchOutCurve: AppCurves.exit,
-                        layoutBuilder: (currentChild, previousChildren) {
-                          return Stack(alignment: Alignment.topLeft, children: [...previousChildren, ?currentChild]);
-                        },
-                        child: statusText != null
-                            ? _StreamingStatusCard(
-                                key: const ValueKey('streaming_status'),
-                                statusText: statusText,
-                                startedAt: statusStartedAt,
-                              )
-                            : !hasRenderableBody
-                            ? const MorphingInfinity(key: ValueKey('streaming_loading'))
-                            : Column(
-                                key: const ValueKey('streaming_body'),
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
-                                  // 连续工具聚合卡片或单工具执行反馈卡片
-                                  if (message.role == 'tool_group')
-                                    ToolChainGroupWidget(
-                                      toolMessages: (message.uiDetails?['messages'] as List<ChatMessage>?) ?? const [],
-                                      theme: theme,
+                    // 操作条内嵌为卡片底部一段：正文区与底部操作区同属一张卡
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            // 操作条内嵌时容器自身 padding 为零，正文区边距移到这里；
+                            // 底部收紧 4，与操作条的发丝线衔接
+                            padding: showActionBar ? const EdgeInsets.fromLTRB(16, 12, 16, 8) : EdgeInsets.zero,
+                            child: AnimatedSwitcher(
+                              duration: AppMotion.duration(context, AppDurations.normal),
+                              switchInCurve: AppCurves.emphasized,
+                              switchOutCurve: AppCurves.exit,
+                              layoutBuilder: (currentChild, previousChildren) {
+                                return Stack(
+                                  alignment: Alignment.topLeft,
+                                  children: [...previousChildren, ?currentChild],
+                                );
+                              },
+                              child: statusText != null
+                                  ? _StreamingStatusCard(
+                                      key: const ValueKey('streaming_status'),
+                                      statusText: statusText,
+                                      startedAt: statusStartedAt,
                                     )
-                                  else if (message.role == 'tool')
-                                    buildToolFeedback(context, message, theme, onSendToQ: onSendToQ)
-                                  else ...[
-                                    MarkdownBody(
-                                      data: message.content,
-                                      selectable: false,
-                                      // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
-                                      // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
-                                      sizedImageBuilder: (config) => ChatBodyImage(
-                                        src: config.uri.toString(),
-                                        generatedImageKeys: generatedImageKeys,
-                                        onSendToQ: onSendToQ,
-                                      ),
-                                      styleSheet: _markdownStyleSheetFor(theme),
+                                  : !hasRenderableBody
+                                  ? const MorphingInfinity(key: ValueKey('streaming_loading'))
+                                  : Column(
+                                      key: const ValueKey('streaming_body'),
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // 思考过程展示（若有，折叠在单行流水中滚动展示，点击可展开完整内容）
+                                        // 连续工具聚合卡片或单工具执行反馈卡片
+                                        if (message.role == 'tool_group')
+                                          ToolChainGroupWidget(
+                                            toolMessages:
+                                                (message.uiDetails?['messages'] as List<ChatMessage>?) ?? const [],
+                                            theme: theme,
+                                          )
+                                        else if (message.role == 'tool')
+                                          buildToolFeedback(context, message, theme, onSendToQ: onSendToQ)
+                                        else ...[
+                                          MarkdownBody(
+                                            data: message.content,
+                                            selectable: false,
+                                            // 拦截正文内联图：生图卡片已展示过的不再重复渲染，
+                                            // 其余图片渲染为可点击放大/长按的统一视图而非默认裸 Image
+                                            sizedImageBuilder: (config) => ChatBodyImage(
+                                              src: config.uri.toString(),
+                                              generatedImageKeys: generatedImageKeys,
+                                              onSendToQ: onSendToQ,
+                                            ),
+                                            styleSheet: _markdownStyleSheetFor(theme),
+                                          ),
+                                        ],
+                                      ],
                                     ),
-                                  ],
-                                ],
-                              ),
+                            ),
+                          ),
+                          if (showActionBar)
+                            BubbleActionBar(
+                              message: message,
+                              onRegenerate: onRegenerate,
+                              regenerateEnabled: regenerateEnabled,
+                            ),
+                        ],
                       ),
               ),
             ),
           ),
-          // 助手正文气泡下方的连体操作条（复制/朗读/重新生成）
-          if (showActionBar)
-            Padding(
-              padding: EdgeInsets.only(bottom: isLastInGroup ? 10 : 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: BubbleActionBar(
-                  message: message,
-                  onRegenerate: onRegenerate,
-                  regenerateEnabled: regenerateEnabled,
-                ),
-              ),
-            ),
           // 步数上限提示：待处理时在气泡下方渲染「继续/暂停」按钮
           if (!isUser && _isTurnLimitPending)
             AgentTurnLimitActions(onContinue: onContinue, onPause: onPause, enabled: actionsEnabled),
@@ -1281,7 +1309,11 @@ class _AssistantSenderHeader extends StatelessWidget {
   /// 与下一条内容之间的间距
   final double bottom;
 
-  const _AssistantSenderHeader({this.bottom = 6});
+  /// 名字右侧的附加徽章（如活跃轮的「工作中 · N s」）；仅活跃轮入口传入，
+  /// 历史消息抬头保持纯静态，不额外订阅流式状态
+  final Widget? trailing;
+
+  const _AssistantSenderHeader({this.bottom = 6, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -1300,9 +1332,24 @@ class _AssistantSenderHeader extends StatelessWidget {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
         ],
       ),
     );
+  }
+}
+
+/// 活跃轮的「工作中 · N s」徽章宿主：订阅任务级计时起点、限流状态与正文起始，
+/// 传给共享徽章；正文开始流式或任务结束后自动隐藏
+class _LiveWorkingBadge extends ConsumerWidget {
+  const _LiveWorkingBadge();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final startedAt = ref.watch(aiStreamingStartedAtProvider);
+    final statusText = ref.watch(aiStreamingStatusProvider);
+    final hasStreamingOutput = ref.watch(aiStreamingMessageProvider.select((v) => v != null && v.trim().isNotEmpty));
+    return AgentWorkingBadge(startedAt: startedAt, statusText: statusText, active: !hasStreamingOutput);
   }
 }
 
@@ -1419,6 +1466,87 @@ class _InputPill extends StatelessWidget {
               if (trailing != null) ...[const SizedBox(width: 2), Icon(trailing, size: 14, color: color)],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 已选「输出类型」胶囊：类型图标 + 名称/后缀 + × 清除；点胶囊本体回到「+」面板更换。
+///
+/// 用主题色淡底区别于中性的「常用」胶囊，让用户一眼看到本次发送带了输出形态约束。
+class _OutputTypeChip extends StatelessWidget {
+  final OutputTypeOption option;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  const _OutputTypeChip({required this.option, required this.onTap, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final ink = theme.accentInk;
+    final radius = BorderRadius.circular(16);
+    final extension = option.extension;
+    return Material(
+      color: primary.withValues(alpha: 0.1),
+      borderRadius: radius,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: primary.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 胶囊本体：只负责重新打开面板，不在这里做清除
+            InkWell(
+              onTap: onTap,
+              borderRadius: radius,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 10, right: 4, top: 2, bottom: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(iconForOutputType(option.id), size: 14, color: ink),
+                    const SizedBox(width: 4),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 96),
+                      child: Text(
+                        option.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(color: ink, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    if (extension != null)
+                      Text(
+                        ' · $extension',
+                        maxLines: 1,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: AppTypography.caption,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 2),
+            // × 单独 24x24 点击区，避免和「重新打开面板」误触
+            InkResponse(
+              onTap: onClear,
+              radius: 12,
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: Icon(Icons.close_rounded, size: 14, color: ink.withValues(alpha: 0.8)),
+              ),
+            ),
+            const SizedBox(width: 2),
+          ],
         ),
       ),
     );

@@ -16,6 +16,7 @@ import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/diary_editor_logic.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/core/utils/q_analysis.dart';
 import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -30,6 +31,7 @@ import 'package:qnote_flutter/widgets/unsaved_changes_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/ai_extract_helper.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
+import 'package:qnote_flutter/widgets/diary/q_analysis_section.dart';
 import 'package:qnote_flutter/widgets/diary/edit_tag_time_sheet.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/time_picker.dart';
@@ -60,6 +62,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late List<String> _removedPaths;
   late List<TagEntry> _tagEntries;
   bool _isExtracting = false;
+
+  /// 小Q 补充分析（图片解读、营养/健康评估等）；与正文分开保存。
+  late String _aiAnalysis;
+
+  /// 小Q分析折叠状态：默认收起。
+  bool _analysisExpanded = false;
   // 保存重入保护：防止压缩完成瞬间双击重复提交
   bool _isSaving = false;
   // 进入编辑器时的内容指纹，用于判断有没有未保存改动（返回拦截与保存按钮灰态共用）
@@ -229,6 +237,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     _newlyUploadedPaths = [];
     _removedPaths = [];
     _tagEntries = List.from(r.tagEntries);
+    _aiAnalysis = r.aiAnalysis;
     _contentController = TextEditingController(text: _parseUserRemarks(r.content, _tagEntries));
     // 正文输入不触发本页重建，脏态文案靠它自己补一次 setState
     _contentController.addListener(_onContentChanged);
@@ -248,6 +257,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       QTargetHooks(
         fingerprint: () =>
             '${_contentController.text}\u0000'
+            '$_aiAnalysis\u0000'
             '${_formControllers.values.map((c) => c.text).join('\u0000')}',
         reload: _reloadFromRecord,
         // 框选状态下点悬浮球时捕获正文选中文本引用给小Q
@@ -268,6 +278,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
     return diaryEditSignature(
       DiaryEditSnapshot(
         content: _contentController.text,
+        aiAnalysis: _aiAnalysis,
         time: _time,
         startTime: _startTime,
         endTime: _endTime,
@@ -350,6 +361,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       _displayTag = fresh.displayTag;
       _photos = List.from(fresh.photos);
       _tagEntries = List.from(fresh.tagEntries);
+      _aiAnalysis = fresh.aiAnalysis;
       _contentController.text = _parseUserRemarks(fresh.content, _tagEntries);
       // 表单控制器由 build 懒创建，清空后随新数据重建
       _formControllers.clear();
@@ -971,6 +983,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       tags: _tags,
       displayTag: _displayTag,
       content: content,
+      aiAnalysis: _aiAnalysis,
       photos: _photos,
       bodyState: bodyState,
       tagEntries: _tagEntries,
@@ -1101,28 +1114,27 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       final foundShortcut = findShortcutById(extracted.shortcutId, shortcuts);
 
       _formControllers.clear();
+      // 小Q 的补充分析独立展示，不再拼进用户正文
+      final newAnalysis = extracted.analysis.trim().isNotEmpty ? extracted.analysis.trim() : _aiAnalysis;
 
       if (extracted.tagEntries.isNotEmpty) {
-        final newContent = _photos.isNotEmpty
-            ? mergeDiaryNotesWithContent(extracted.notes, _contentController.text)
-            : _contentController.text;
         setState(() {
           _tagEntries = extracted.tagEntries;
           _tags = extracted.tagEntries.map((e) => e.name).toList();
           _displayTag = extracted.tagEntries.first.name;
-          _contentController.text = newContent;
+          _aiAnalysis = newAnalysis;
         });
       } else if (foundShortcut != null) {
-        final newContent = _photos.isNotEmpty
-            ? mergeDiaryNotesWithContent(extracted.notes, _contentController.text)
-            : _contentController.text;
         setState(() {
           if (!_tags.contains(foundShortcut.name)) {
             _tags = [foundShortcut.name, ..._tags.where((t) => t != _displayTag)];
           }
           _displayTag = foundShortcut.name;
-          _contentController.text = newContent;
+          _aiAnalysis = newAnalysis;
         });
+      } else if (newAnalysis != _aiAnalysis) {
+        // 没有命中标签时也可能只有分析值得保留（例如纯图片补充信息）
+        setState(() => _aiAnalysis = newAnalysis);
       }
 
       if (extracted.time.isNotEmpty) {
@@ -1208,6 +1220,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
                     _buildTagSection(theme, colorScheme),
                     const SizedBox(height: 24),
                     _buildContentSection(theme, colorScheme),
+                    _buildQAnalysisSection(),
                     const SizedBox(height: 24),
                     _buildPhotosSection(theme, colorScheme),
                   ],
@@ -2082,6 +2095,27 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           },
         ),
       ],
+    );
+  }
+
+  /// 小Q补充分析：编辑器里只读展示，提供「清除分析」入口。
+  Widget _buildQAnalysisSection() {
+    final lines = splitQAnalysisLines(_aiAnalysis);
+    if (lines.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: QAnalysisSection(
+        lines: lines,
+        expanded: _analysisExpanded,
+        onExpandedChanged: (expanded) {
+          if (!mounted) return;
+          setState(() => _analysisExpanded = expanded);
+        },
+        onClear: () {
+          setState(() => _aiAnalysis = '');
+        },
+      ),
     );
   }
 

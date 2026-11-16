@@ -216,8 +216,8 @@ void main() {
     expect(find.text('保存当前'), findsOneWidget);
     expect(find.text('我的搭配'), findsNothing);
 
-    // 先选中「赤焰黑」，再把当前外观存进第 9 格
-    await tester.tap(find.text('赤焰黑'));
+    // 先选中「黑客帝国」，再把当前外观存进第 9 格
+    await tester.tap(find.text('黑客帝国'));
     await tester.pump();
     await tester.runAsync(_waitForPrefs);
 
@@ -226,16 +226,16 @@ void main() {
     expect(find.text('我的搭配'), findsOneWidget);
     expect(container.read(savedColorSchemeProvider), isNotNull);
 
-    // 换成另一套后，点「我的搭配」应恢复回 OLED + 正红
-    await tester.tap(find.text('雾蓝琥珀'));
+    // 换成另一套后，点「我的搭配」应恢复回 OLED + 代码绿
+    await tester.tap(find.text('蒂芙尼'));
     await tester.pump();
     expect(container.read(backgroundSettingProvider).preset, AppBackgroundPreset.custom);
-    expect(container.read(accentColorProvider).toARGB32(), 0xFFB45309);
+    expect(container.read(accentColorProvider).toARGB32(), 0xFF0ABAB5);
 
     await tester.tap(find.text('我的搭配'));
     await tester.pump();
     expect(container.read(backgroundSettingProvider).preset, AppBackgroundPreset.oled);
-    expect(container.read(accentColorProvider).toARGB32(), 0xFFF80004);
+    expect(container.read(accentColorProvider).toARGB32(), 0xFF00FF41);
 
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
@@ -263,8 +263,8 @@ void main() {
     await tester.pump();
     expect(container.read(savedColorSchemeProvider), isNotNull);
 
-    // 换成「赤焰黑」后再覆盖，槽位应记录新的外观
-    await tester.tap(find.text('赤焰黑'));
+    // 换成「黑客帝国」后再覆盖，槽位应记录新的外观
+    await tester.tap(find.text('黑客帝国'));
     await tester.pump();
     await tester.tap(find.byIcon(Icons.more_horiz_rounded));
     await tester.pumpAndSettle();
@@ -274,7 +274,7 @@ void main() {
     final saved = container.read(savedColorSchemeProvider);
     expect(saved, isNotNull);
     expect(saved!.background.preset, AppBackgroundPreset.oled);
-    expect(saved.accentColor.toARGB32(), 0xFFF80004);
+    expect(saved.accentColor.toARGB32(), 0xFF00FF41);
 
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();

@@ -4,19 +4,21 @@ import 'package:flutter/services.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 
-/// 最后一条用户提问的「点一下再次编辑」承载层：整行可点 + 按下高亮 + 轻震动。
+/// 最后一条用户提问的「点一下再次编辑 / 长按直接撤回」承载层：整行可点 + 按下高亮 + 轻震动。
 ///
 /// 做成气泡外层装饰而不是给 `ChatBubble` 加回调：`ChatBubble` 是无状态组件，按下态
 /// 需要局部状态；且用户气泡本体是不透明的 `colorScheme.primary` 底色，`InkWell` 的水波纹
 /// 画在祖先 Material 上会被整个遮掉，只能自绘一层行背景。
 ///
-/// 不再挂编辑图标：点击本身已不具破坏性（只把提问回填进输入框，撤回推迟到点发送），
-/// 常驻图标反而让人误以为那是一条独立的「撤回」按钮。
+/// 不再挂编辑图标：点击本身已不具破坏性（只把提问回填进输入框，不删对话），
+/// 常驻图标反而让人误以为那是一条独立的「撤回」按钮。长按则上抛给页面的操作
+/// 菜单（直接撤回 / 再次编辑），与微信式长按撤回的习惯一致。
 class UserBubbleReeditTap extends StatefulWidget {
   const UserBubbleReeditTap({
     super.key,
     required this.enabled,
     this.active = false,
+    this.onLongPress,
     required this.onTap,
     required this.child,
   });
@@ -26,6 +28,9 @@ class UserBubbleReeditTap extends StatefulWidget {
 
   /// 这条提问是否已在编辑态：常驻一层淡底色，让「输入框里那份就是这条提问」可见
   final bool active;
+
+  /// 长按上抛：页面据此弹操作菜单（直接撤回 / 再次编辑）；不传则无长按手势
+  final VoidCallback? onLongPress;
   final VoidCallback onTap;
   final Widget child;
 
@@ -50,6 +55,7 @@ class _UserBubbleReeditTapState extends State<UserBubbleReeditTap> {
       onTapCancel: () => setState(() => _pressed = false),
       // 震动放在抬手确认的 onTap 而非 onTapDown：列表里按下常常只是想滚动，
       // 放在 tapDown 会让用户翻聊天记录经过这条气泡时莫名震一下
+      onLongPress: widget.onLongPress,
       onTap: () {
         // 成功点按不会走 onTapCancel，高亮必须在这里自己收，否则抬手后一直亮着
         setState(() => _pressed = false);

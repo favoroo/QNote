@@ -348,11 +348,14 @@ class HtmlPersistenceHelper {
     }
     final ns = _sanitizeStorageNamespace(storageNamespace);
     final script = autoPersistScript.replaceAll("STORAGE_NS = '__QNOTE_STORAGE_NS__'", "STORAGE_NS = '$ns'");
-    if (htmlContent.contains('</body>')) {
-      return htmlContent.replaceFirst('</body>', '$script\n</body>');
+    // 用最后一个闭合标签，避免脚本字符串里的假 "</body>" 被当成注入点
+    final bodyClose = htmlContent.lastIndexOf('</body>');
+    if (bodyClose >= 0) {
+      return htmlContent.replaceRange(bodyClose, bodyClose, '$script\n');
     }
-    if (htmlContent.contains('</head>')) {
-      return htmlContent.replaceFirst('</head>', '$script\n</head>');
+    final headClose = htmlContent.lastIndexOf('</head>');
+    if (headClose >= 0) {
+      return htmlContent.replaceRange(headClose, headClose, '$script\n');
     }
     return '$htmlContent\n$script';
   }

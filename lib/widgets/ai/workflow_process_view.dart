@@ -7,10 +7,9 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/chat_timeline.dart';
+import 'package:qnote_flutter/core/utils/expand_reveal.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
-import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
-import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thinking_process_view.dart';
 
 /// 通用「单行折叠工作流」组件（对齐 ZCode 对话流交互）：
@@ -37,8 +36,15 @@ class WorkflowProcessView extends StatefulWidget {
   final String? liveStatusText;
   final DateTime? liveStartedAt;
 
-  /// 最终答复正文是否已开始流式输出；已开始时隐藏「工作中」副行
+  /// 最终答复正文是否已开始流式输出；已开始时收拢为汇总行，
+  /// 进行中信号由正文本身承载（「工作中」徽章挂在身份行，见 AgentWorkingBadge）
   final bool hasStreamingOutput;
+
+  /// 展开区错误步骤的「重试本轮」回调；为 null 时不展示重试入口
+  final VoidCallback? onRetry;
+
+  /// 长按折叠行时回调（宿主用于弹出错误操作菜单）；为 null 时长按不响应
+  final VoidCallback? onErrorLongPress;
 
   const WorkflowProcessView({
     super.key,
@@ -52,6 +58,8 @@ class WorkflowProcessView extends StatefulWidget {
     this.liveStatusText,
     this.liveStartedAt,
     this.hasStreamingOutput = false,
+    this.onRetry,
+    this.onErrorLongPress,
   });
 
   @override
@@ -61,10 +69,25 @@ class WorkflowProcessView extends StatefulWidget {
 class _WorkflowProcessViewState extends State<WorkflowProcessView> {
   bool _internalExpanded = false;
 
+  /// 折叠区根部（标题行 + 展开内容）：展开后据此把内容滚入视野（只需刚好完整露出）
+  final _revealKey = GlobalKey();
+  late final _revealer = ExpandRevealFollower(_revealKey);
+
   bool get _isExpanded => widget.expanded ?? _internalExpanded;
+
+  @override
+  void dispose() {
+    _revealer.cancel();
+    super.dispose();
+  }
 
   void _toggle() {
     final next = !_isExpanded;
+    if (next) {
+      _revealer.start();
+    } else {
+      _revealer.cancel();
+    }
     if (widget.onExpandedChanged != null) {
       widget.onExpandedChanged!(next);
       return;
@@ -112,11 +135,7 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
         liveStatus.isNotEmpty &&
         !_isThinkingOrPrepStatus(liveStatus) &&
         !_isRateLimitStatus(liveStatus);
-    final hasRateLimit = isLive && !widget.hasStreamingOutput && _isRateLimitStatus(liveStatus);
     final hasLiveThought = isLive && !widget.hasStreamingOutput && !hasActiveToolStatus && liveThought.isNotEmpty;
-
-    final showWorkingSubRow =
-        isLive && !widget.hasStreamingOutput && (workflow.steps.isNotEmpty || hasActiveToolStatus || hasRateLimit);
 
     final Widget headerContent = _buildHeaderContent(
       context: context,
@@ -132,6 +151,7 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
     final hasExpandableSteps = workflow.steps.isNotEmpty || (isLive && (liveThought.isNotEmpty || hasActiveToolStatus));
 
     return Column(
+      key: _revealKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -140,6 +160,7 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
           color: Colors.transparent,
           child: InkWell(
             onTap: hasExpandableSteps ? _toggle : null,
+            onLongPress: widget.onErrorLongPress,
             borderRadius: BorderRadius.circular(8),
             child: Semantics(
               button: hasExpandableSteps,
@@ -165,37 +186,6 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
               ),
             ),
           ),
-        ),
-        // 运行中状态副行（「工作中 · N 秒」），正文开始流式或纯首轮思考尚未调用工具时隐藏
-        AppCollapsible(
-          expanded: showWorkingSubRow,
-          rise: 0,
-          child: showWorkingSubRow
-              ? Padding(
-                  key: const ValueKey('workflow_working_row'),
-                  padding: EdgeInsets.only(left: widget.compact ? 2 : 4, top: 1, bottom: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      MorphingInfinity(size: 16, strokeWidth: 1.4, color: theme.accentInk),
-                      const SizedBox(width: 7),
-                      Flexible(
-                        child: Text(
-                          hasRateLimit ? liveStatus! : '工作中',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: AppTypography.bodySmall, color: colorScheme.onSurfaceVariant),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      StreamingElapsedText(
-                        startedAt: widget.liveStartedAt,
-                        style: TextStyle(fontSize: AppTypography.bodySmall, color: colorScheme.outline),
-                      ),
-                    ],
-                  ),
-                )
-              : const SizedBox.shrink(),
         ),
         // 展开态：左侧竖向时间引导线 + 全部步骤
         AppCollapsible(
@@ -229,6 +219,31 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
     final colorScheme = theme.colorScheme;
     final workflow = widget.workflow;
     final stepCount = workflow.steps.length;
+
+    // 0. 本轮以错误收尾：折叠行只留一行错误标题。
+    // 此前已完成的思考/工具步骤仍完整保留在展开区，用户可以先看清工作到哪一步再决定重试。
+    final errorStep = workflow.errorStep;
+    if (!expanded && errorStep != null) {
+      return Row(
+        key: ValueKey('wf_error_${workflow.turnKey}'),
+        children: [
+          Icon(Icons.error_outline_rounded, size: 15, color: colorScheme.error),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              workflowErrorTitle(errorStep.message.content),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: AppTypography.bodySmall,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.error,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     // 1. 正在执行/调用工具（运行中且折叠态，优先展示实时工具动作）
     if (!expanded && hasActiveToolStatus) {
@@ -323,9 +338,16 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
     // 5. 已完成 / 已展开 / 正在输出正文：展示汇总文案
     final summary = workflow.summary;
     final hasError = summary.hasError;
+    // 完成后对齐 ZCode 只显示「已工作 X 分 Y 秒」总耗时（异常数保留），动作计数收进展开区；
+    // 缺起止时间（旧数据 / 测试样例）时回退步骤汇总
+    final totalText = isLive ? null : workflow.totalWorkDurationText;
     final summaryText = isLive && summary.totalStepCount == 0
         ? '处理中'
-        : (isLive && !widget.hasStreamingOutput ? '进行中 · ${summary.formatText()}' : summary.formatText());
+        : isLive
+        ? (widget.hasStreamingOutput ? summary.formatText() : '进行中 · ${summary.formatText()}')
+        : (totalText != null
+              ? (hasError ? '$totalText · ${summary.errorCount} 项异常' : totalText)
+              : summary.formatText());
 
     return Row(
       key: ValueKey('wf_summary_${workflow.turnKey}_${isLive}_$stepCount'),
@@ -441,6 +463,22 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
             ),
           ],
         );
+      case WorkflowStepKind.error:
+        return Row(
+          key: key,
+          children: [
+            Icon(Icons.error_outline_rounded, size: 15, color: colorScheme.error),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                workflowErrorTitle(step.message.content),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: AppTypography.bodySmall, color: colorScheme.error),
+              ),
+            ),
+          ],
+        );
     }
   }
 
@@ -527,7 +565,78 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
         );
       case WorkflowStepKind.prose:
         return _IntermediateProseStep(text: step.message.content.trim(), theme: theme);
+      case WorkflowStepKind.error:
+        return _ErrorStep(text: step.message.content.trim(), compact: widget.compact, onRetry: widget.onRetry);
     }
+  }
+}
+
+/// 展开区里的错误详情步骤：完整错误正文 + 「重试本轮」入口。
+///
+/// 错误正文只在这里完整展示，折叠行仅保留一行标题，避免失败提示抢占整个屏幕。
+class _ErrorStep extends StatelessWidget {
+  final String text;
+  final bool compact;
+  final VoidCallback? onRetry;
+
+  const _ErrorStep({required this.text, required this.compact, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: compact ? 2 : 4),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: compact ? 6 : 8),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(Icons.error_outline_rounded, size: 14, color: colorScheme.error),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: AppTypography.bodySmall,
+                    height: 1.45,
+                    color: colorScheme.onSurface.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 2),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 15),
+                label: const Text('重试本轮'),
+                style: TextButton.styleFrom(
+                  foregroundColor: colorScheme.error,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

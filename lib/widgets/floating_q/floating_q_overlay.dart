@@ -25,10 +25,10 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
+import 'package:qnote_flutter/widgets/ai/agent_working_badge.dart';
 import 'package:qnote_flutter/widgets/ai/model_selector_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
-import 'package:qnote_flutter/widgets/ai/quick_prompt_dialog.dart';
 import 'package:qnote_flutter/widgets/ai/workflow_process_view.dart';
 import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
@@ -181,6 +181,10 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     _routeListener = () {
       final uri = _router!.routerDelegate.currentConfiguration.uri.toString();
       if (uri == _location || !mounted) return;
+      final nextContext = QPageContext.fromLocation(uri);
+      // 立即登记新页面归属：编辑页 initState 与新路由同一帧执行，需要它作为
+      // 覆盖上下文的「所属页面」；baseContext 仍延后到帧末更新（见下）
+      ref.read(floatingQProvider.notifier).noteRouteContext(nextContext);
       // 路由通知可能发生在 build 阶段（如 redirect），延后到帧末处理，
       // 避免 setState / 修改 Provider 在 build 期抛异常
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -191,7 +195,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
         // 路由变化同步基础上下文：签名变化驱动临时会话 park/restore；
         // 同时把新页面若有会话自动收成气泡（弹窗不跨页面跟随）
         ref.read(floatingQProvider.notifier)
-          ..setBaseContext(QPageContext.fromLocation(uri))
+          ..setBaseContext(nextContext)
           ..closePanel();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _navigationHiding = false;
@@ -327,13 +331,23 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     ref.read(floatingQProvider.notifier).dismissActiveSession();
   }
 
-  /// 展开全页面：把临时对话提升为正式会话，再进入 /ai 继续聊。
+  /// 转到完整对话：把临时对话提升为正式会话，再切到 /ai 继续聊。
+  ///
+  /// 面板挂起的引用、未发送草稿与附件图片会随临时会话关闭一起清空，所以必须
+  /// 先取出来，再通过 [pendingChatQuoteProvider] 交接给 /ai 页面：否则「给小Q」
+  /// 引用的内容和已经打了一半的指令在展开后就丢了，用户得重新来一遍。
+  ///
+  /// 临时会话里还没有真实消息时（只挂了一条引用就点展开），交接单标记
+  /// [PendingChatQuote.startNewChat]：/ai 侧新开一段空白对话再回填，避免落在
+  /// 上一次的历史会话里，看起来像「引用没带过去、对话也没新建」。
   Future<void> _handleExpand() async {
     final notifier = ref.read(floatingQProvider.notifier);
-    if (ref.read(floatingQProvider).runActive) {
+    final state = ref.read(floatingQProvider);
+    if (state.runActive) {
       Toast.info(context, '小Q正在处理任务，结束或中止后再展开');
       return;
     }
+    final handoff = PendingChatQuote.fromState(state);
     try {
       await notifier.promoteActiveSession();
       if (!mounted) return;
@@ -345,8 +359,24 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
         Toast.error(context, '展开失败：导航未就绪，请重试');
         return;
       }
-      router.push('/ai');
+      // 先投放再导航：/ai 是常驻分支，可能早已挂载（靠 ref.listen 接），
+      // 也可能随这次导航首次构建（initState 后取一次），两条路径都能拿到。
+      if (!handoff.isEmpty) {
+        ref.read(pendingChatQuoteProvider.notifier).state = handoff;
+      }
+      // 停在底栏分支页时必须用 go 切分支：/ai 属于 StatefulShellRoute 的 ai 分支，
+      // push 只会把页面压在根 Navigator 上、分支索引不变，底栏仍高亮「时间线」。
+      // 但停在编辑页/设置页这类压栈页面时不能 go——那会整栈替换，编辑页连同未保存
+      // 内容一起被丢掉；此时退回 push，把新对话叠在上面，返回仍回到原页面。
+      final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+      final onShellPage = const {'/diary', '/notes', '/todo', '/ai'}.contains(currentPath);
+      if (onShellPage) {
+        router.go('/ai');
+      } else {
+        router.push('/ai');
+      }
     } catch (e) {
+      ref.read(pendingChatQuoteProvider.notifier).state = null;
       if (mounted) {
         Toast.error(context, '展开失败：$e');
       }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
+import 'package:qnote_flutter/widgets/statistics/stat_detail.dart';
 
 /// 屏幕时长趋势柱的 Y 轴上限：日粒度再 clamp 到 24 小时
 double _axisCeiling(double maxHours) => niceHourCeiling(maxHours * 1.25).clamp(2.0, 24.0);
@@ -13,6 +14,7 @@ DiaryRecord _record({
   List<String> tags = const [],
   List<TagEntry> tagEntries = const [],
   String content = '',
+  String aiAnalysis = '',
   Map<String, dynamic>? bodyState,
   DateTime? time,
 }) {
@@ -24,6 +26,7 @@ DiaryRecord _record({
     tags: tags.isEmpty ? [displayTag] : tags,
     displayTag: displayTag,
     content: content,
+    aiAnalysis: aiAnalysis,
     bodyState: bodyState,
     tagEntries: tagEntries,
     createdAt: createdAt,
@@ -237,6 +240,266 @@ void main() {
       expect(stats.totalMeals, 1);
       expect(stats.typeDistribution, {'外卖': 1});
       expect(stats.healthDistribution['一般'], 1);
+    });
+  });
+
+  group('记账明细 ledger', () {
+    final start = DateTime(2026, 11, 1);
+    final end = DateTime(2026, 11, 30);
+
+    test('逐笔收集方向、金额、分类与记录 id', () {
+      final record = _record(
+        displayTag: '记账',
+        tagEntries: [
+          TagEntry(id: 'consumption', name: '记账', fields: {'_category': 'expense', 'type': '饮食', 'amount': 25}),
+        ],
+        content: '午饭',
+      );
+      final stats = calculateFinanceStats([record], start, end);
+
+      expect(stats.ledger.length, 1);
+      final entry = stats.ledger.first;
+      expect(entry.recordId, record.id);
+      expect(entry.isIncome, false);
+      expect(entry.amount, 25);
+      expect(entry.category, '饮食');
+      expect(entry.note, '午饭');
+    });
+
+    test('一条记录多笔收支拆成多条明细', () {
+      final stats = calculateFinanceStats(
+        [
+          _record(
+            displayTag: '记账',
+            tagEntries: [
+              TagEntry(
+                id: 'consumption',
+                name: '记账',
+                fields: {'_category': 'income', 'incomeType': '工资', 'amount': 8000},
+              ),
+              TagEntry(id: 'consumption', name: '记账', fields: {'_category': 'expense', 'type': '购物', 'amount': 200}),
+            ],
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.ledger.length, 2);
+      expect(stats.ledger.where((e) => e.isIncome).single.category, '工资');
+      expect(stats.ledger.where((e) => !e.isIncome).single.category, '购物');
+    });
+
+    test('明细按时间倒序（最新在前）', () {
+      final older = _record(
+        displayTag: '记账',
+        time: DateTime(2026, 11, 10, 9),
+        content: 'older',
+        tagEntries: [
+          TagEntry(id: 'consumption', name: '记账', fields: {'_category': 'expense', 'type': '交通', 'amount': 5}),
+        ],
+      );
+      final newer = _record(
+        displayTag: '记账',
+        time: DateTime(2026, 11, 12, 9),
+        content: 'newer',
+        tagEntries: [
+          TagEntry(id: 'consumption', name: '记账', fields: {'_category': 'expense', 'type': '交通', 'amount': 8}),
+        ],
+      );
+      final stats = calculateFinanceStats([older, newer], start, end);
+
+      expect(stats.ledger.first.amount, 8);
+      expect(stats.ledger.last.amount, 5);
+    });
+  });
+
+  group('饮食明细 meals', () {
+    final start = DateTime(2026, 11, 1);
+    final end = DateTime(2026, 11, 30);
+
+    test('逐条收集吃了什么、评价与备注', () {
+      final record = _record(
+        displayTag: '饮食',
+        tagEntries: [
+          TagEntry(id: 'diet', name: '饮食', fields: {'type': '外卖', 'rating': '一般'}),
+        ],
+        content: '午饭外卖',
+      );
+      final stats = calculateDietStats([record], start, end);
+
+      expect(stats.meals.length, 1);
+      final meal = stats.meals.first;
+      expect(meal.recordId, record.id);
+      expect(meal.item, '外卖');
+      expect(meal.health, '一般');
+      expect(meal.note, '午饭外卖');
+    });
+
+    test('缺少评价时 health 回落为「一般」', () {
+      final stats = calculateDietStats(
+        [
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'type': '水果'}),
+            ],
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.meals.single.health, '一般');
+      expect(stats.meals.single.item, '水果');
+    });
+
+    test('累计估算热量，仅统计填了热量的餐次', () {
+      final stats = calculateDietStats(
+        [
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'rating': '健康', 'item': '香菇滑鸡', 'calories': 620}),
+            ],
+          ),
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'rating': '一般', 'item': '牛肉面', 'calories': 480}),
+            ],
+          ),
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'rating': '一般', 'item': '西兰花炒虾仁'}),
+            ],
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.totalCalories, 1100);
+      expect(stats.calorieMealCount, 2);
+      expect(stats.meals.firstWhere((m) => m.item == '香菇滑鸡').calories, 620);
+      expect(stats.meals.firstWhere((m) => m.item == '西兰花炒虾仁').calories, isNull);
+    });
+
+    test('食物名优先取 item，旧数据回退 type', () {
+      final stats = calculateDietStats(
+        [
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'item': '香菇滑鸡', 'type': '外卖', 'rating': '健康'}),
+            ],
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.typeDistribution, {'香菇滑鸡': 1});
+      expect(stats.meals.single.item, '香菇滑鸡');
+    });
+
+    test('图片提取记录从 notes 逐项热量明细兜底解析菜名', () {
+      final stats = calculateDietStats(
+        [
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'rating': '健康', 'calories': 620}),
+            ],
+            content: '图：米饭约250kcal、香菇滑鸡约320kcal、白灼生菜约50kcal，合计约620kcal',
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.typeDistribution, {'米饭、香菇滑鸡、白灼生菜': 1});
+      expect(stats.meals.single.calories, 620);
+    });
+
+    test('新版记录从 aiAnalysis 逐项热量明细兜底解析菜名', () {
+      final stats = calculateDietStats(
+        [
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'rating': '健康', 'calories': 620}),
+            ],
+            content: '午饭',
+            aiAnalysis: '图：米饭约250kcal、香菇滑鸡约320kcal、白灼生菜约50kcal，合计约620kcal',
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.typeDistribution, {'米饭、香菇滑鸡、白灼生菜': 1});
+    });
+
+    test('新版分析带份量时也能解析菜名', () {
+      final stats = calculateDietStats(
+        [
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'rating': '健康', 'calories': 620}),
+            ],
+            content: '午饭',
+            aiAnalysis: '图：米饭 约200g 约250kcal、香菇滑鸡 约180g 约320kcal、白灼生菜 约120g 约50kcal，合计约620kcal（份量按常见餐具估算）',
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.typeDistribution, {'米饭、香菇滑鸡、白灼生菜': 1});
+    });
+
+    test('notes 不是逐项热量格式时不强行解析菜名', () {
+      final stats = calculateDietStats(
+        [
+          _record(
+            displayTag: '饮食',
+            tagEntries: [
+              TagEntry(id: 'diet', name: '饮食', fields: {'rating': '一般'}),
+            ],
+            content: '中午随便吃了点',
+          ),
+        ],
+        start,
+        end,
+      );
+
+      expect(stats.typeDistribution, isEmpty);
+    });
+  });
+
+  group('groupByDay', () {
+    test('按天倒序分组，天内保持输入顺序', () {
+      final b = DateTime(2026, 11, 13, 20);
+      final a = DateTime(2026, 11, 13, 9);
+      final c = DateTime(2026, 11, 12, 8);
+
+      final groups = groupByDay<DateTime>([b, a, c], (t) => t);
+
+      expect(groups.length, 2);
+      expect(groups.first.dateKey, '2026-11-13');
+      expect(groups.first.items, [b, a]);
+      expect(groups.last.dateKey, '2026-11-12');
+    });
+  });
+
+  group('formatAmount', () {
+    test('整数不带小数，非整数保留两位', () {
+      expect(formatAmount(25), '25');
+      expect(formatAmount(0), '0');
+      expect(formatAmount(12.5), '12.50');
     });
   });
 }

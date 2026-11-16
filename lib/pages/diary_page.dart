@@ -21,14 +21,12 @@ import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
-import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/health_timeline_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/utils/batch_review_navigation.dart';
-import 'package:qnote_flutter/core/utils/cheer_burst.dart';
 import 'package:qnote_flutter/core/utils/concurrent_batch.dart';
 import 'package:qnote_flutter/core/utils/diary_progress.dart';
 import 'package:qnote_flutter/core/utils/diary_timeline_layout.dart';
@@ -47,8 +45,6 @@ import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
 import 'package:qnote_flutter/widgets/diary/model_selection_dialog.dart';
 import 'package:qnote_flutter/widgets/diary/diary_record_fab.dart';
 import 'package:qnote_flutter/widgets/diary/diary_record_sheet.dart';
-import 'package:qnote_flutter/widgets/diary/cheer_burst_overlay.dart';
-import 'package:qnote_flutter/widgets/diary/record_cheer_toast.dart';
 import 'package:qnote_flutter/widgets/diary/journal_editor_view.dart';
 import 'package:qnote_flutter/widgets/diary/custom_date_picker.dart';
 import 'package:qnote_flutter/widgets/diary/sliver_day_collapsible.dart';
@@ -119,6 +115,21 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   final Map<String, DiaryRecord> _undoRecords = {};
   final Map<String, AnimationController> _undoControllers = {};
 
+  /// 已结束的倒计时控制器延后释放的集合。
+  ///
+  /// AnimatedSwitcher 的旧图标子树在退场动画期间仍会引用倒计时动画；立即 dispose
+  /// 会让旧子树拿到已释放的动画，部分设备会在交接帧闪一下。延迟到退场动画结束后
+  /// 再释放，页面销毁时统一兜底。
+  final Set<AnimationController> _pendingUndoControllerDisposals = {};
+
+  /// 倒计时结束后，等按钮退场动画播完再刷新时间线排序的定时器（按记录 id 索引）。
+  ///
+  /// 若在同一帧里既切按钮状态又让新时间生效，卡片会一边换图标一边跳位，观感很乱。
+  final Map<String, Timer> _pendingUndoSortTimers = {};
+
+  /// 撤回按钮退场动画的观察窗口：fast(150ms) 之后再留一点余量。
+  static const Duration _undoExitSettle = Duration(milliseconds: 220);
+
   /// 提取后可撤回的窗口时长。
   ///
   /// 窗口内卡片停留在提取前的时间位置，方便用户就地撤回；过期后新时间才生效。
@@ -156,10 +167,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 只播辉光、不播长高的记录（盖板落位后使用）。
   String? _glowOnlyRecordId;
   Timer? _glowClearTimer;
-
-  /// 面板打开期间产生的庆祝胶囊先入队，等路由彻底结束再播，避免在面板背后
-  /// 播完或彩带盖住飞行过程。
-  CheerEvent? _pendingCheer;
 
   /// 拖动吸附反馈节流：快速拖动时每帧都变档，避免连续震动糊成一片。
   int _lastDragHapticMs = 0;
@@ -235,20 +242,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 刚通过箭头跳转到的记录：短暂描边高亮，方便用户在列表里定位。
   String? _batchReviewHighlightId;
   Timer? _batchReviewHighlightTimer;
-
-  // 记完即时庆祝胶囊状态：todayCount 变大时才浮现，1s 内连记只展示最后一次
-  CheerEvent? _cheerEvent;
-  Timer? _cheerTimer;
-  int _cheerSeq = 0;
-
-  /// 停留到点后置 true，交给胶囊播退场动画，播完再真正移除。
-  bool _cheerLeaving = false;
-
-  /// 兜底移除：退场回调万一没送达（胶囊被父级抢先卸载等），胶囊会永久挂着。
-  Timer? _cheerExitTimer;
-
-  /// 彩带层。挂 OverlayEntry 而不是包进 body：见 [_showCheerBurst]。
-  OverlayEntry? _cheerBurstEntry;
 
   static String _dateKey(DateTime date) => diaryDateKey(date);
 
@@ -1060,11 +1053,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     _cardDrag = null;
     _recordHandleKeys.clear();
     _glowClearTimer?.cancel();
-    _cheerTimer?.cancel();
-    _cheerExitTimer?.cancel();
     _insertClearTimer?.cancel();
     _batchReviewHighlightTimer?.cancel();
-    _removeCheerBurst();
     _itemContexts.clear();
     _dividerContexts.clear();
     _itemHeights.clear();
@@ -1082,6 +1072,16 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       c.dispose();
     }
     _undoControllers.clear();
+    // 已进入延迟释放窗口的控制器同样在页面销毁时兜底释放；
+    // 置空集合后，延迟回调不会再对同一个控制器 dispose 第二次。
+    for (final c in _pendingUndoControllerDisposals) {
+      c.dispose();
+    }
+    _pendingUndoControllerDisposals.clear();
+    for (final t in _pendingUndoSortTimers.values) {
+      t.cancel();
+    }
+    _pendingUndoSortTimers.clear();
     _undoRecords.clear();
     super.dispose();
   }
@@ -1434,100 +1434,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     context.push('/diary/batch');
   }
 
-  /// 记完一条后的轻量庆祝：悬浮钮行上方浮现胶囊，短暂停留后播退场再移除。
-  ///
-  /// 满档与破纪录才配流光描边和彩带（分级规格见 [resolveCheerLevel]），平时保持极轻；
-  /// 1 秒内连记多条只展示最后一次，避免胶囊排队刷屏。
-  void _showCheer({required String title, String? sub, required CheerLevel level}) {
-    // 面板还开着（尤其正在播「弹窗变卡片」）时先压住：胶囊会被面板挡住，
-    // 彩带层又会盖住飞行。等路由彻底结束再由 _flushPendingCheer 播。
-    if (_recordSheetOpen) {
-      _cheerSeq++;
-      _pendingCheer = CheerEvent(id: _cheerSeq, title: title, sub: sub, level: level);
-      return;
-    }
-    _cheerTimer?.cancel();
-    _cheerExitTimer?.cancel();
-    _cheerSeq++;
-    setState(() {
-      _cheerEvent = CheerEvent(id: _cheerSeq, title: title, sub: sub, level: level);
-      _cheerLeaving = false;
-    });
-    if (level.isCheer) {
-      _showCheerBurst(_cheerEvent!);
-    }
-    _cheerTimer = Timer(Duration(milliseconds: level.dwellMs), () {
-      if (!mounted) {
-        return;
-      }
-      // 只置「该走了」，实际移除等胶囊自己把退场播完，避免动画被腰斩。
-      setState(() => _cheerLeaving = true);
-      _cheerExitTimer = Timer(const Duration(milliseconds: 400), _dismissCheer);
-    });
-  }
-
-  /// 面板关掉后把入队的庆祝补播出来；等一帧让落位/收尾动画先站稳。
-  void _flushPendingCheer() {
-    final cheer = _pendingCheer;
-    if (cheer == null) return;
-    _pendingCheer = null;
-    Future<void>.delayed(const Duration(milliseconds: 120), () {
-      if (!mounted) return;
-      _showCheer(title: cheer.title, sub: cheer.sub, level: cheer.level);
-    });
-  }
-
-  /// 退场播完的回调，兼作兜底超时的收口。
-  ///
-  /// 两条路径都进这里、谁先到谁生效：胶囊被父级抢先卸载时 onDismissed 送达不了，
-  /// 没有兜底那条，胶囊会永久挂在屏幕上。
-  void _dismissCheer() {
-    _cheerTimer?.cancel();
-    _cheerExitTimer?.cancel();
-    _removeCheerBurst();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _cheerEvent = null;
-      _cheerLeaving = false;
-    });
-  }
-
-  /// 彩带迸发层挂到 Overlay，而不是塞进 body。
-  ///
-  /// 两个原因：一是 body 是 Stack，彩带要压过左下角的记录按钮与右侧两个悬浮钮，
-  /// 而爆点恰好贴着它们；二是为了提层把这 600 行 body 再包一层会让本次改动淹没在
-  /// 重排 diff 里（本文件按 120 行宽手写排版，不能靠 dart format 兜底）。
-  /// Toast 在本项目里就是同一套 OverlayEntry。
-  ///
-  /// 播完由 [CheerBurstOverlay.onFinished] 自行摘除；连记多条时先摘再挂，
-  /// 保证每次爆发都是新的一组粒子。
-  void _showCheerBurst(CheerEvent event) {
-    _removeCheerBurst();
-    final entry = OverlayEntry(
-      // 这层铺满整屏，不吃手势就会把时间线滚动和两个 FAB 的点击全吞掉。
-      builder: (context) => IgnorePointer(
-        child: CheerBurstOverlay(level: event.level, seed: event.id, onFinished: _removeCheerBurst),
-      ),
-    );
-    Overlay.of(context).insert(entry);
-    _cheerBurstEntry = entry;
-  }
-
-  void _removeCheerBurst() {
-    final entry = _cheerBurstEntry;
-    if (entry == null) {
-      return;
-    }
-    _cheerBurstEntry = null;
-    try {
-      entry.remove();
-    } catch (_) {
-      // 页面被抢先销毁时宿主 Overlay 已不在，与 dispose 里 Toast.dismiss 同一处理方式。
-    }
-  }
-
   /// 正在播放退场动画的记录集合
   final Set<String> _deletingRecordIds = {};
 
@@ -1745,15 +1651,9 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     DateTime? newStartTime = record.startTime;
     DateTime? newEndTime = record.endTime;
     DateTime newTime = record.time;
-    String newContent = record.content;
-    if (result.notes.isNotEmpty && record.photos.isNotEmpty) {
-      final trimmedNotes = result.notes.trim();
-      if (newContent.isEmpty) {
-        newContent = trimmedNotes;
-      } else if (!newContent.contains(trimmedNotes)) {
-        newContent = '$newContent\n$trimmedNotes';
-      }
-    }
+    final String newContent = record.content;
+    // 小Q分析独立存储：本次没有补充内容时保留上一次的分析，避免重复提取把有用信息清掉
+    final newAnalysis = result.analysis.trim().isNotEmpty ? result.analysis.trim() : record.aiAnalysis;
     Map<String, dynamic>? newBodyState = record.bodyState != null
         ? Map.from(record.bodyState!)
         : null; // ignore: prefer_final_locals
@@ -1803,6 +1703,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       tags: newTags,
       displayTag: newDisplayTag,
       content: newContent,
+      aiAnalysis: newAnalysis,
       bodyState: newBodyState,
       tagEntries: newTagEntries,
       updatedAt: DateTime.now(),
@@ -1827,7 +1728,8 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     final removedIndex = _batchReviewOrderedIds.indexOf(recordId);
     final controller = _undoControllers.remove(recordId);
     controller?.stop();
-    controller?.dispose();
+    if (controller != null) _disposeUndoControllerLater(controller);
+    _pendingUndoSortTimers.remove(recordId)?.cancel();
     _undoRecords.remove(recordId);
     _bumpUndoRecordsVersion();
     _batchExtractedRecordIds.remove(recordId);
@@ -1853,13 +1755,18 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
 
   /// Create an undo countdown controller for a record
   void _createUndoController(String recordId) {
-    // Dispose existing if any
-    _undoControllers[recordId]?.dispose();
+    // Dispose existing if any（同样等退场动画结束再释放，避免旧子树引用已销毁动画）
+    final existing = _undoControllers.remove(recordId);
+    existing?.stop();
+    if (existing != null) _disposeUndoControllerLater(existing);
+    _pendingUndoSortTimers.remove(recordId)?.cancel();
 
     final controller = AnimationController(vsync: this, duration: _undoWindow);
     controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        final preRecord = _undoRecords[recordId];
+        // 先移除撤回状态让按钮平滑切回提取态，但暂不清空排序锚点：
+        // 时间线缓存仍按撤回前的位置分组，卡片不会在按钮退场动画的同一帧跳位。
+        final preRecord = _undoRecords.remove(recordId);
         final currentRecords = ref.read(diaryListProvider).valueOrNull;
         DiaryRecord? currentRecord;
         if (currentRecords != null) {
@@ -1868,19 +1775,43 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
           } catch (_) {}
         }
 
-        _undoControllers.remove(recordId)?.dispose();
-        _undoRecords.remove(recordId);
-        _bumpUndoRecordsVersion();
+        final finished = _undoControllers.remove(recordId);
+        if (finished != null) _disposeUndoControllerLater(finished);
 
         if (mounted) {
           setState(() {});
-          if (preRecord != null && currentRecord != null && currentRecord.time != preRecord.time) {
-            _scrollToTime(currentRecord.time, smooth: true);
-          }
+          _scheduleUndoSortRefresh(recordId, preRecord, currentRecord);
         }
       }
     });
     _undoControllers[recordId] = controller;
+  }
+
+  /// 延迟释放倒计时控制器：等 AnimatedSwitcher 的旧图标子树卸载后再 dispose。
+  void _disposeUndoControllerLater(AnimationController controller) {
+    if (!_pendingUndoControllerDisposals.add(controller)) {
+      return;
+    }
+    Future<void>.delayed(_undoExitSettle, () {
+      if (_pendingUndoControllerDisposals.remove(controller)) {
+        controller.dispose();
+      }
+    });
+  }
+
+  /// 按钮退场动画结束后，再让优化后的新时间进入时间线排序。
+  void _scheduleUndoSortRefresh(String recordId, DiaryRecord? preRecord, DiaryRecord? currentRecord) {
+    _pendingUndoSortTimers.remove(recordId)?.cancel();
+    final timer = Timer(_undoExitSettle, () {
+      _pendingUndoSortTimers.remove(recordId);
+      if (!mounted) return;
+      _bumpUndoRecordsVersion();
+      setState(() {});
+      if (preRecord != null && currentRecord != null && currentRecord.time != preRecord.time) {
+        _scrollToTime(currentRecord.time, smooth: true);
+      }
+    });
+    _pendingUndoSortTimers[recordId] = timer;
   }
 
   /// Handle smart extract button tap with triple-click detection
@@ -2294,7 +2225,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
           // 飞行被返回键/异常打断时，卡片不能永远藏着。
           _hiddenMorphRecordId = null;
         });
-        _flushPendingCheer();
       }
     }
   }
@@ -2557,9 +2487,10 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     setState(() {
       for (final id in _batchExtractedRecordIds) {
         _undoRecords.remove(id);
+        _pendingUndoSortTimers.remove(id)?.cancel();
         final controller = _undoControllers.remove(id);
         controller?.stop();
-        controller?.dispose();
+        if (controller != null) _disposeUndoControllerLater(controller);
       }
       _bumpUndoRecordsVersion();
       _batchExtractedRecordIds.clear();
@@ -2757,29 +2688,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
       }
       ref.read(diaryJustInsertedProvider.notifier).state = const [];
       _handleJustInserted(next);
-    });
-
-    // 今日完整度庆祝：该不该弹、弹哪一档都收在 resolveCheerLevel 里，
-    // 页面只管按档位取文案与强度 —— 冷启动误弹这类问题因此能在纯单测里锁住。
-    ref.listen(diaryProgressProvider, (prev, next) {
-      final level = resolveCheerLevel(prev, next);
-      if (level == null || next == null) {
-        return;
-      }
-      if (level.isCheer) {
-        HapticFeedback.mediumImpact();
-      }
-      final title = switch (level) {
-        CheerLevel.full => '今日完整！',
-        CheerLevel.record => '新纪录！第${next.todayCount}条',
-        CheerLevel.plain => '今日第${next.todayCount}条',
-      };
-      final sub = switch (level) {
-        CheerLevel.full => '共${next.todayCount}条，太棒了',
-        CheerLevel.record => null,
-        CheerLevel.plain => '再记${next.remaining}条就完整了',
-      };
-      _showCheer(title: title, sub: sub, level: level);
     });
 
     final theme = Theme.of(context);
@@ -2994,16 +2902,6 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                     ),
                   ),
                 ),
-                // 记完即时庆祝胶囊：按钮行上方居中浮现，不挡时间线主体。
-                if (_cheerEvent != null)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: _fabBottom + 56,
-                    child: Center(
-                      child: RecordCheerToast(event: _cheerEvent!, leaving: _cheerLeaving, onDismissed: _dismissCheer),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -3736,7 +3634,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     try {
       entry.remove();
     } catch (_) {
-      // 页面销毁时宿主 Overlay 可能已不可用，与彩带层的处理方式一致。
+      // 页面销毁时宿主 Overlay 可能已不可用，与 dispose 里 Toast.dismiss 同一处理方式。
     }
   }
 

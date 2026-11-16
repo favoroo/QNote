@@ -1,3 +1,4 @@
+import 'package:qnote_flutter/core/utils/diet_nutrition.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 
 /// 将 ShortcutConfig 列表格式化为紧凑的纯文本 Schema 表达形式，以减少 Token 消耗。
@@ -68,6 +69,8 @@ Map<String, dynamic> normalizeExtractedFields(Map<String, dynamic> rawFields, Sh
     'symptom': ['symptoms', 'illness', 'disease'],
     'rating': ['ratings', 'score', 'level'],
     'duration': ['time', 'minutes', 'hours', 'length'],
+    // 饮食营养：把 AI 可能输出的热量别名归一到 calories
+    'calories': ['calorie', 'kcal', 'energy', '热量', '卡路里', '千卡'],
   };
 
   // 2. 先保留原本就有效且存在于 Schema 中的字段
@@ -102,6 +105,17 @@ Map<String, dynamic> normalizeExtractedFields(Map<String, dynamic> rawFields, Sh
       if (!entry.key.startsWith('_')) {
         normalized[entry.key] = entry.value;
       }
+    }
+  }
+
+  // 饮食热量是 AI 估算值：统一做合理性校验，避免负数、单位串台或超限值
+  // 直接落库后被统计页原样累加
+  if (shortcut.id == 'diet' && normalized.containsKey('calories')) {
+    final calories = normalizeDietCalories(normalized['calories']);
+    if (calories == null) {
+      normalized.remove('calories');
+    } else {
+      normalized['calories'] = calories;
     }
   }
 

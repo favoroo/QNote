@@ -12,6 +12,7 @@ import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
+import 'package:qnote_flutter/widgets/agent_exit_guard.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
 import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
@@ -57,25 +58,27 @@ class _ScaffoldWithNavBarState extends State<ScaffoldWithNavBar> {
   Widget build(BuildContext context) {
     final currentIndex = widget.navigationShell.currentIndex;
 
-    return Scaffold(
-      key: rootScaffoldKey,
-      drawer: const SideDrawer(),
-      // 分支过渡由 ShellBranchContainer 负责，这里直接放 navigationShell。
-      body: widget.navigationShell,
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: currentIndex,
-        lastRecordsBranch: _lastRecordsBranch,
-        onTap: (index) {
-          widget.navigationShell.goBranch(index, initialLocation: index == widget.navigationShell.currentIndex);
-        },
-        onMenuTap: () => rootScaffoldKey.currentState?.openDrawer(),
-        onQTap: () {
-          // 单击中央按钮：面板打开时收起，否则进入 /ai 全页面
-          widget.navigationShell.goBranch(
-            ShellBranch.ai,
-            initialLocation: widget.navigationShell.currentIndex == ShellBranch.ai,
-          );
-        },
+    return AgentExitGuard(
+      child: Scaffold(
+        key: rootScaffoldKey,
+        drawer: const SideDrawer(),
+        // 分支过渡由 ShellBranchContainer 负责，这里直接放 navigationShell。
+        body: widget.navigationShell,
+        bottomNavigationBar: BottomNavBar(
+          currentIndex: currentIndex,
+          lastRecordsBranch: _lastRecordsBranch,
+          onTap: (index) {
+            widget.navigationShell.goBranch(index, initialLocation: index == widget.navigationShell.currentIndex);
+          },
+          onMenuTap: () => rootScaffoldKey.currentState?.openDrawer(),
+          onQTap: () {
+            // 单击中央按钮：面板打开时收起，否则进入 /ai 全页面
+            widget.navigationShell.goBranch(
+              ShellBranch.ai,
+              initialLocation: widget.navigationShell.currentIndex == ShellBranch.ai,
+            );
+          },
+        ),
       ),
     );
   }

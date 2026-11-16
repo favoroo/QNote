@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:qnote_flutter/config/app_version.dart';
@@ -17,6 +16,7 @@ import 'package:qnote_flutter/core/health/screen_usage_snapshot_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/update_service.dart';
+import 'package:qnote_flutter/core/notification/agent_work_notifications.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
@@ -28,7 +28,6 @@ import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/database_init.dart' if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
-import 'package:qnote_flutter/providers/diary_progress_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/health_timeline_provider.dart';
@@ -221,8 +220,17 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     super.dispose();
   }
 
+  // 根标签页的返回拦截不在这里做：`MaterialApp.builder` 的子树位于 Router 之上，
+  // `ModalRoute.of` 取不到路由，`PopScope` 注册不到任何路由（等于死代码）。
+  // 返回键与「小Q 运行中退出确认」统一由 shell 路由内的 `AgentExitGuard` 承担。
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 小Q 工作通知调度：只有真正离开前台（paused/hidden）才算背景，
+    // inactive（下拉通知栏、来电等短暂打断）仍视作前台，避免误发通知。
+    AgentWorkNotifications.instance.setAppForeground(
+      state == AppLifecycleState.resumed || state == AppLifecycleState.inactive,
+    );
     if (state == AppLifecycleState.paused) {
       _lastPausedTime = DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
@@ -243,12 +251,6 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         return;
       }
       final changes = await SyncLogRepository.instance.getChangesSince(baseline);
-      final now = DateTime.now();
-      // 完整度把 DateTime.now() 缓存在 Provider 里，列表不变就不重算：
-      // 跨零点回前台且期间无数据变更时不主动失效，圆环会一直显示昨天的条数。
-      if (now.year != baseline.year || now.month != baseline.month || now.day != baseline.day) {
-        ref.invalidate(diaryProgressProvider);
-      }
       if (changes.isEmpty) {
         return;
       }
@@ -433,47 +435,26 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-            child: PopScope(
-              canPop: false,
-              onPopInvokedWithResult: (didPop, result) {
-                if (didPop) return;
-                // 悬浮小Q弹窗打开时，返回键先最小化成气泡（会话保留）；
-                // 有模态弹窗时让模态自己处理，别把面板收走
-                if (floatingQModalCount.value == 0 &&
-                    ref.read(floatingQProvider).panelMode == FloatingQPanelMode.panel) {
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  ref.read(floatingQProvider.notifier).minimizePanel();
-                  return;
-                }
-                final router = GoRouter.of(context);
-                final location = router.routerDelegate.currentConfiguration.uri.toString();
-                final shellRoutes = ['/diary', '/notes', '/todo', '/ai'];
-                if (shellRoutes.contains(location)) {
-                  return;
-                }
-                router.pop();
-              },
-              // 记录全局点按位置：悬浮小Q打开时从手指/按钮处容器变形展开。
-              // Listener 不参与手势竞技场，不会影响子树的点击与滚动
-              child: Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerDown: (event) => ref.read(floatingQProvider.notifier).recordPointerDown(event.position),
-                child: Stack(
-                  children: [
-                    // 首帧交叉淡入：原生启动窗口 → Flutter 首帧的交接期让内容轻微浮现，
-                    // 淡入结束后这层会自行摘除，不影响后续渲染
-                    StartupFadeIn(
-                      // iOS 原生控件（键盘/系统菜单）明暗跟随 App 背景，而不是手机系统设置
-                      child: PlatformBrightnessSync(child: child ?? const SizedBox.shrink()),
-                    ),
-                    // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
-                    // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
-                    // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
-                    // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
-                    // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
-                    Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
-                  ],
-                ),
+            // 记录全局点按位置：悬浮小Q打开时从手指/按钮处容器变形展开。
+            // Listener 不参与手势竞技场，不会影响子树的点击与滚动
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) => ref.read(floatingQProvider.notifier).recordPointerDown(event.position),
+              child: Stack(
+                children: [
+                  // 首帧交叉淡入：原生启动窗口 → Flutter 首帧的交接期让内容轻微浮现，
+                  // 淡入结束后这层会自行摘除，不影响后续渲染
+                  StartupFadeIn(
+                    // iOS 原生控件（键盘/系统菜单）明暗跟随 App 背景，而不是手机系统设置
+                    child: PlatformBrightnessSync(child: child ?? const SizedBox.shrink()),
+                  ),
+                  // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
+                  // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
+                  // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
+                  // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
+                  // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
+                  Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
+                ],
               ),
             ),
           ),

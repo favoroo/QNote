@@ -411,11 +411,31 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       // 不在卡片底部标签显示，已在顶部时间段中体现
       handledKeys.addAll(['fallAsleepTime', '入睡时间']);
     } else if (entry.name == '饮食') {
-      final typeVal = _getVal(bs, ['type', 'item', '种类', '类别']);
-      if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
+      // 食物名不进卡片胶囊（多道菜罗列太长），明细在正文/notes 里；卡片只留评价与总热量
       final ratingVal = _getVal(bs, ['rating', 'health', '评价']);
       if (ratingVal != null && ratingVal.toString().isNotEmpty) tags.add(ratingVal.toString());
-      handledKeys.addAll(['type', 'item', '种类', '类别', 'rating', 'health', '评价']);
+      final calVal = _getVal(bs, ['calories', 'cal', '热量', '卡路里', '千卡']);
+      if (calVal != null && calVal.toString().isNotEmpty) {
+        final formatted = _formatDouble(calVal);
+        if (formatted.isNotEmpty) tags.add('${formatted}kcal');
+      }
+      handledKeys.addAll([
+        'type',
+        'item',
+        '种类',
+        '类别',
+        'rating',
+        'health',
+        '评价',
+        'amount',
+        '份量',
+        '重量',
+        'calories',
+        'cal',
+        '热量',
+        '卡路里',
+        '千卡',
+      ]);
     } else if (entry.name == '活动') {
       final typeVal = _getVal(bs, ['type', 'item', '项目', '类型']);
       if (typeVal != null && typeVal.toString().isNotEmpty) tags.add(typeVal.toString());
@@ -527,7 +547,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       case 'fallasleeptime':
         return '入睡时间';
       case 'item':
-        if (tagName == '饮食') return '种类';
+        if (tagName == '饮食') return '食物';
         if (tagName == '活动') return '类型';
         return '项目';
       case 'type':
@@ -546,6 +566,10 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       case 'amount':
         if (tagName == '记账') return '金额';
         return '数量';
+      case 'calories':
+      case 'cal':
+        if (tagName == '饮食') return '热量';
+        return '消耗';
       case 'incometype':
         if (tagName == '记账') return '收入类型';
         return '类型';
@@ -580,6 +604,11 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
     if (tagName == '记账' && lowerKey == 'amount') {
       if (!valStr.contains('元') && !valStr.contains('￥') && !valStr.contains(r'$')) {
         return '$valStr元';
+      }
+    }
+    if (lowerKey == 'calories' || lowerKey == 'cal') {
+      if (!valStr.toLowerCase().contains('kcal') && !valStr.contains('卡')) {
+        return '${valStr}kcal';
       }
     }
     return valStr;

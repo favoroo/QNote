@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
 import 'package:qnote_flutter/pages/settings/mi_fitness_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/screen_usage_page.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 
 /// 健康数据设置（运动健康 + 屏幕使用时间一体化页面）
@@ -70,6 +71,8 @@ class _HealthSettingsPageState extends ConsumerState<HealthSettingsPage> {
       appBar: AppBar(
         title: const Text('健康数据'),
         centerTitle: false,
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,

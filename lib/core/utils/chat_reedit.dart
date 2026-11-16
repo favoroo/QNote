@@ -36,6 +36,13 @@ class ChatAttachmentRefs {
   }
 }
 
+/// 从用户消息的 `uiDetails['attachedSkills']` 还原本轮显式附加的技能名。
+///
+/// 技能名与附件引用同存 uiDetails（不进入模型上下文），重试与「再次编辑」
+/// 据此恢复随常用提示词一起选中的技能；旧消息没有该字段时返回空列表。
+/// 键名不复用 `skills`：那个键已被 skill 工具结果用来渲染技能清单卡片。
+List<String> skillNamesFromMessage(ChatMessage message) => _readIds(message.uiDetails, 'attachedSkills') ?? const [];
+
 /// 取一类引用的 id 列表；缺失、非列表、空列表一律归一为 null。
 ///
 /// 元素用 `toString()` 而非直接 `cast<String>()`：messages 列经 `jsonDecode` 后
@@ -202,6 +209,17 @@ class ReeditDraft {
       _sameIds(noteIds, other.noteIds) &&
       _sameIds(todoIds, other.todoIds) &&
       _sameIds(journalIds, other.journalIds);
+}
+
+/// 直接撤回（不重发）后，输入框里的草稿是否应随之清空。
+///
+/// 输入框里躺着两种可能：当初回填的原样提问（撤回后理应一并清掉，不然撤完了
+/// 输入框还挂着那条已删的话），或用户自己改过的字 / 新写的草稿——那是用户的
+/// 内容，撤回提问不能连人写的字一起吞掉，保留为普通草稿。
+/// [snapshot] 为 null 表示不在编辑态（或快照未就绪），一律不清。
+bool shouldClearDraftOnRetract(ReeditDraft? snapshot, ReeditDraft current) {
+  if (snapshot == null) return false;
+  return current.matches(snapshot);
 }
 
 /// 两份 id 列表是否逐项同序相同。

@@ -4,12 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:qnote_flutter/core/storage/statistics_view_store.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
+import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/stats_provider.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
 import 'package:qnote_flutter/widgets/time_range_selector.dart';
 import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
@@ -20,17 +25,21 @@ import 'package:qnote_flutter/widgets/statistics/screen_usage_stats_view.dart';
 
 class _TabConfig {
   final StatTab tab;
+
+  /// 完整名称，仅用于无障碍朗读；胶囊内显示 [shortLabel] 以适配等宽排布。
   final String label;
+  final String shortLabel;
   final IconData icon;
-  const _TabConfig({required this.tab, required this.label, required this.icon});
+
+  const _TabConfig({required this.tab, required this.label, required this.shortLabel, required this.icon});
 }
 
 const _tabs = [
-  _TabConfig(tab: StatTab.score, label: '评分', icon: Icons.insights_rounded),
-  _TabConfig(tab: StatTab.healthDevice, label: '运动健康', icon: Icons.favorite_rounded),
-  _TabConfig(tab: StatTab.screenTime, label: '屏幕时长', icon: Icons.hourglass_top_rounded),
-  _TabConfig(tab: StatTab.diet, label: '饮食', icon: Icons.restaurant_rounded),
-  _TabConfig(tab: StatTab.finance, label: '记账', icon: Icons.account_balance_wallet_rounded),
+  _TabConfig(tab: StatTab.score, label: '评分', shortLabel: '评分', icon: Icons.insights_rounded),
+  _TabConfig(tab: StatTab.healthDevice, label: '运动健康', shortLabel: '运动', icon: Icons.favorite_rounded),
+  _TabConfig(tab: StatTab.screenTime, label: '屏幕时长', shortLabel: '屏幕', icon: Icons.hourglass_top_rounded),
+  _TabConfig(tab: StatTab.diet, label: '饮食', shortLabel: '饮食', icon: Icons.restaurant_rounded),
+  _TabConfig(tab: StatTab.finance, label: '记账', shortLabel: '记账', icon: Icons.account_balance_wallet_rounded),
 ];
 
 class StatisticsPage extends ConsumerStatefulWidget {
@@ -44,9 +53,33 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   StatTab _activeTab = StatTab.score;
   TimeRangeType _timeRange = TimeRangeType.week;
 
+  /// 分类是否已确定（异步恢复完成或用户主动切换过）。
+  ///
+  /// 防止 SharedPreferences 还没读完时用户已经点了别的分类，又被旧偏好覆盖。
+  bool _tabSettled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreLastTab();
+  }
+
+  /// 恢复上次停留的分类：下次进入（含重启 App）直接回到同一分类。
+  Future<void> _restoreLastTab() async {
+    final saved = await StatisticsViewStore.loadLastTab();
+    if (!mounted || _tabSettled) return;
+    _tabSettled = true;
+    if (saved == null || saved == _activeTab) return;
+    // 只恢复当前仍展示的分类；历史遗留的旧 tab 值直接回退到默认分类
+    if (!_tabs.any((config) => config.tab == saved)) return;
+    setState(() => _activeTab = saved);
+  }
+
   void _onTabChanged(StatTab tab) {
+    _tabSettled = true;
     if (tab == _activeTab) return;
     setState(() => _activeTab = tab);
+    StatisticsViewStore.saveLastTab(tab);
   }
 
   void _onTimeRangeChanged(TimeRangeType range) {
@@ -77,6 +110,12 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       default:
         return '';
     }
+  }
+
+  /// 打开统计明细二级页（记账 → 账单明细，饮食 → 饮食明细）。
+  void _openDetail(DateTime startDate, DateTime endDate) {
+    final path = _activeTab == StatTab.finance ? '/statistics/ledger' : '/statistics/meals';
+    context.push(path, extra: {'start': startDate, 'end': endDate});
   }
 
   Widget _buildViewDataButton(ThemeData theme) {
@@ -129,9 +168,12 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        // 统计已改为根路由全屏打开，返回按钮由 AppBar 自动提供
+        // 统计从抽屉一级菜单整页打开：左侧「←」退出并重新拉开抽屉回一级菜单，
+        // 「⌂」退出停在主界面，两个目的地并列（见 DrawerPageHomeLeading）
         title: const Text('数据统计'),
         centerTitle: true,
+        leading: const DrawerPageHomeLeading(),
+        leadingWidth: drawerPageHomeLeadingWidth(context),
       ),
       body: Column(
         children: [
@@ -234,12 +276,29 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             return const EmptyStateWidget(key: ValueKey('stats_empty'), icon: Icons.bar_chart, message: '暂无数据');
           }
 
+          // 明细弹层需要原始记录：按当前标签筛出记录列表（与统计同一口径），
+          // 供点击明细行时定位并左右滑动查看。
+          final records = recordsForStatTab(
+            ref.watch(diaryListByDateRangeProvider((start: startDate, end: endDate))).valueOrNull ?? const [],
+            _activeTab,
+          );
+
           Widget content;
           switch (_activeTab) {
             case StatTab.diet:
-              content = DietStatsWidget(stats: stats as DietStatistics);
+              content = DietStatsWidget(
+                stats: stats as DietStatistics,
+                records: records,
+                onViewAll: () => _openDetail(startDate, endDate),
+              );
             case StatTab.finance:
-              content = FinanceStatsWidget(stats: stats as FinanceStatistics);
+              content = FinanceStatsWidget(
+                stats: stats as FinanceStatistics,
+                records: records,
+                startDate: startDate,
+                endDate: endDate,
+                onViewAll: () => _openDetail(startDate, endDate),
+              );
             case StatTab.score:
             case StatTab.healthDevice:
             case StatTab.screenTime:
@@ -261,57 +320,15 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   }
 }
 
-class _TabSwitcher extends StatefulWidget {
+class _TabSwitcher extends StatelessWidget {
   final List<_TabConfig> tabs;
   final StatTab activeTab;
   final ValueChanged<StatTab> onTabChanged;
 
   const _TabSwitcher({required this.tabs, required this.activeTab, required this.onTabChanged});
 
-  @override
-  State<_TabSwitcher> createState() => _TabSwitcherState();
-}
-
-class _TabSwitcherState extends State<_TabSwitcher> {
-  final ScrollController _scrollController = ScrollController();
-  final Map<StatTab, GlobalKey> _tabKeys = {};
-
-  @override
-  void initState() {
-    super.initState();
-    for (final tab in widget.tabs) {
-      _tabKeys[tab.tab] = GlobalKey();
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _TabSwitcher oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.activeTab != widget.activeTab) {
-      _scrollToActiveTab();
-    }
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _scrollToActiveTab() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final key = _tabKeys[widget.activeTab];
-      if (key?.currentContext != null) {
-        Scrollable.ensureVisible(
-          key!.currentContext!,
-          duration: AppMotion.duration(context, AppDurations.normal),
-          curve: AppCurves.emphasized,
-          alignment: 0.5,
-        );
-      }
-    });
-  }
+  /// 单个胶囊低于此宽度时先隐藏图标（只留短标签），避免窄屏把文字压得过小。
+  static const double _minChipWidthForIcon = 56;
 
   @override
   Widget build(BuildContext context) {
@@ -322,84 +339,90 @@ class _TabSwitcherState extends State<_TabSwitcher> {
         color: colorScheme.surface,
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.2), width: 0.5)),
       ),
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < widget.tabs.length; i++) ...[
-              if (i > 0) const SizedBox(width: 8),
-              _buildTabChip(context, widget.tabs[i]),
+      // 改为 5 个等宽胶囊同排：常见手机宽度下无需横向滑动即可看全分类。
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 6.0;
+          final chipWidth = (constraints.maxWidth - gap * (tabs.length - 1)) / tabs.length;
+          final showIcon = chipWidth >= _minChipWidthForIcon;
+          return Row(
+            children: [
+              for (var i = 0; i < tabs.length; i++) ...[
+                if (i > 0) const SizedBox(width: gap),
+                Expanded(child: _buildTabChip(context, tabs[i], showIcon: showIcon)),
+              ],
             ],
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  /// 单个分类胶囊按钮：图文排版、平滑过渡、触感反馈、永不换行截断
-  Widget _buildTabChip(BuildContext context, _TabConfig config) {
+  /// 单个分类胶囊：等宽紧凑排布，保留图标 + 短标签与按压缩放反馈。
+  Widget _buildTabChip(BuildContext context, _TabConfig config, {required bool showIcon}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isActive = config.tab == widget.activeTab;
+    final isActive = config.tab == activeTab;
+    final foreground = isActive ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.9);
 
-    return GestureDetector(
-      key: _tabKeys[config.tab],
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        HapticFeedback.selectionClick();
-        widget.onTabChanged(config.tab);
-      },
-      child: AnimatedContainer(
-        duration: AppMotion.duration(context, AppDurations.normal),
-        curve: AppCurves.standard,
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(19),
-          border: Border.all(
-            color: isActive
-                ? (Theme.of(context).accentNeedsOutline ? colorScheme.outlineVariant : colorScheme.primary)
-                : colorScheme.outlineVariant.withValues(alpha: 0.45),
-            width: 1,
+    return Semantics(
+      button: true,
+      selected: isActive,
+      label: config.label,
+      excludeSemantics: true,
+      child: PressableScale(
+        pressedScale: 0.95,
+        onTap: () {
+          if (isActive) return;
+          HapticFeedback.selectionClick();
+          onTabChanged(config.tab);
+        },
+        child: AnimatedContainer(
+          duration: AppMotion.duration(context, AppDurations.normal),
+          curve: AppCurves.standard,
+          height: 36,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: isActive ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isActive
+                  ? (Theme.of(context).accentNeedsOutline ? colorScheme.outlineVariant : colorScheme.primary)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.45),
+            ),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: colorScheme.primary.withValues(alpha: 0.25),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: colorScheme.primary.withValues(alpha: 0.25),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+          // 极窄宽度（如 Web 半屏）下整体等比缩小，保证 5 个分类始终同排不溢出。
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (showIcon) ...[Icon(config.icon, size: 14, color: foreground), const SizedBox(width: 4)],
+                AnimatedDefaultTextStyle(
+                  duration: AppMotion.duration(context, AppDurations.normal),
+                  curve: AppCurves.standard,
+                  style: TextStyle(
+                    fontSize: AppTypography.bodySmall,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                    letterSpacing: 0.1,
+                    color: foreground,
                   ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Icon(
-              config.icon,
-              size: 15,
-              color: isActive ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                  child: Text(config.shortLabel, maxLines: 1, softWrap: false),
+                ),
+              ],
             ),
-            const SizedBox(width: 5),
-            Text(
-              config.label,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.visible,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
-                letterSpacing: 0.2,
-                color: isActive ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

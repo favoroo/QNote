@@ -6,10 +6,10 @@ import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 
-/// 助手气泡下方的连体操作条：复制 / 朗读 / 重新生成（纯图标）。
+/// 助手气泡内的底部操作条：复制 / 朗读 / 重新生成（纯图标）。
 ///
-/// 与气泡共用同一套描边与圆角语言，左上角收为 4 呼应气泡尾角，紧贴气泡下沿，
-/// 读起来像同一张卡片分两段，替代原先孤立的「朗读」药丸按钮。
+/// 直接内嵌在气泡卡片里作为底部一段（由气泡卡片统一裁圆角），顶部一条
+/// 发丝线 + 浅一档底色划分区域，替代原先挂在气泡下方的连体小卡。
 class BubbleActionBar extends ConsumerWidget {
   final ChatMessage message;
 
@@ -44,17 +44,12 @@ class BubbleActionBar extends ConsumerWidget {
     });
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        // 比气泡浅一档，配合描边形成「卡片接了一小节」的层次而非第二张卡
+        // 比气泡浅一档 + 发丝线分隔：在卡片内部划出底部操作区，不再自带描边圆角
+        // （外层气泡卡片统一裁圆角）
         color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(12),
-          bottomLeft: Radius.circular(12),
-          bottomRight: Radius.circular(12),
-        ),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1),
+        border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4), width: 0.8)),
       ),
       child: Row(
         children: [

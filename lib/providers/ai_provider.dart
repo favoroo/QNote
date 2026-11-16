@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:qnote_flutter/config/defaults.dart';
 import 'package:qnote_flutter/core/ai/account_auth_registry.dart';
 import 'package:qnote_flutter/core/ai/ai_error_explainer.dart';
 import 'package:qnote_flutter/core/ai/ai_service.dart';
@@ -13,6 +12,7 @@ import 'package:qnote_flutter/core/ai/builtin_service_config_service.dart';
 import 'package:qnote_flutter/core/ai/raccoon_account_router.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/notification/agent_work_notifications.dart';
 import 'package:qnote_flutter/core/refresh/refresh_failure_notice.dart';
 import 'package:qnote_flutter/core/storage/ai_provider_repository.dart';
 import 'package:qnote_flutter/core/storage/ai_route_group_repository.dart';
@@ -22,12 +22,14 @@ import 'package:qnote_flutter/core/agent/agent_tool_registry.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_cancellation_token.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_events.dart';
 import 'package:qnote_flutter/core/agent/engine/agent_loop.dart';
+import 'package:qnote_flutter/core/agent/output_types/output_type_registry.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/core/agent/services/agent_tool_config.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 import 'package:qnote_flutter/core/agent/services/q_voice_config.dart';
 import 'package:qnote_flutter/core/tts/streaming_speech_session.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
+import 'package:qnote_flutter/core/agent/skills/explicit_skill_context.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/agent/vfs/virtual_workspace_service.dart';
@@ -38,6 +40,8 @@ import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
 import 'package:qnote_flutter/core/storage/note_repository.dart';
 import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/core/utils/chat_context.dart';
+import 'package:qnote_flutter/core/utils/chat_session_utils.dart';
 import 'package:qnote_flutter/providers/agent_support.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/ai_route_group.dart';
@@ -275,12 +279,13 @@ Future<void> saveAiTemperatures(AiTemperatures temps) async {
   await repo.saveAiTemperatures(temps);
 }
 
-/// 是否为「空白新对话」：标题仍是默认值，且最多只有一条问候语
+/// 是否为「空白新对话」：标题仍是默认值，且没有任何真实消息
 ///
+/// 历史版本会预置一条小Q欢迎语，这里先剔除再判断，避免旧空会话被当成有内容。
 /// [ChatSessionListNotifier.createSession] 用它复用空白会话，新建按钮也用它判断
-/// 「点了其实没变化」是否需要给 Toast 反馈
+/// 「点了其实没变化」是否需要给 Toast 反馈。
 bool isBlankNewChatSession(ChatSession? session) =>
-    session != null && session.title == '新对话' && session.messages.length <= 1;
+    session != null && session.title == '新对话' && stripLegacyGreeting(session.messages).isEmpty;
 
 final chatSessionListProvider = AsyncNotifierProvider<ChatSessionListNotifier, List<ChatSession>>(() {
   return ChatSessionListNotifier();
@@ -321,8 +326,9 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
   }
 
   Future<ChatSession> createSession({String? aiConfigId}) async {
-    // 复用已有空白会话（标题仍为默认且最多只有一条问候语）：
-    // 避免连点「新建对话」堆积多个空会话，列表按 updatedAt 倒序，取最近一个
+    // 复用已有空白会话（标题仍为默认且没有任何真实消息）：
+    // 避免连点「新建对话」堆积多个空会话，列表按 updatedAt 倒序，取最近一个。
+    // 历史欢迎语在打开时由 setSession 统一剔除，这里直接复用原实例即可。
     for (final existing in state.valueOrNull ?? const <ChatSession>[]) {
       if (isBlankNewChatSession(existing)) {
         return existing;
@@ -330,12 +336,12 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
     }
     final repo = ConfigRepository.instance;
     final now = DateTime.now();
-    final greeting = defaultSystemPrompts['assistant_greeting'] ?? '';
     final session = ChatSession(
       id: const Uuid().v4(),
       title: '新对话',
       aiConfigId: aiConfigId,
-      messages: greeting.isNotEmpty ? [ChatMessage(role: 'assistant', content: greeting, timestamp: now)] : const [],
+      // 空会话不再预置欢迎语：首屏由对话页渲染居中的空态
+      messages: const [],
       createdAt: now,
       updatedAt: now,
     );
@@ -604,6 +610,17 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     return state?.id == run.sessionId;
   }
 
+  /// 该任务最近一条 assistant 正文：作为完成通知的结果摘要；没有则返回 null。
+  static String? _lastAssistantSnippet(_ActiveAgentRun run) {
+    for (var i = run.messages.length - 1; i >= 0; i--) {
+      final message = run.messages[i];
+      if (message.role == 'assistant' && message.content.trim().isNotEmpty) {
+        return message.content;
+      }
+    }
+    return null;
+  }
+
   /// 以约 60ms 的节奏批量刷新流式文本到 UI（人眼流畅且不逐 token 重建），
   /// 正文与思考缓冲共用本定时器；正文开始后思考仍留在正文上方
   /// （对齐 ZCode 的步骤时间线），由消息列表在轮末接管。
@@ -627,6 +644,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
   /// 同时取消待触发的正文 flush，避免旧缓冲在状态展示后被迟到刷出；
   /// 仅当任务会话仍是当前打开的会话时才写全局流式 Provider
   void _setRunStatus(_ActiveAgentRun run, String text) {
+    // 状态行同步给通知调度器（后台时按节流刷新通知正文）
+    AgentWorkNotifications.instance.onRunStatus(text);
     run.flushTimer?.cancel();
     run.flushTimer = null;
     run.statusText = text;
@@ -675,6 +694,10 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     }
     unawaited(_ref.read(ttsPlaybackProvider.notifier).stop());
 
+    // 历史版本的新会话会预置一条欢迎语：打开时统一剔除，保证空态展示与
+    // 消息下标（撤回/重试）都按真实对话内容计算
+    session = session == null ? null : stripLegacyGreetingSession(session);
+
     // 目标会话若有进行中的小Q任务：以任务内的消息累积为准恢复
     // （列表/库里的会话对象是过期快照，缺少任务中途产生的中间消息）
     final run = session == null ? null : _activeRuns[session.id];
@@ -718,7 +741,8 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     if (lastId == null) return;
     final session = await ConfigRepository.instance.getChatSession(lastId);
     if (session != null && !session.isDeleted) {
-      state = session;
+      // 冷启动直接赋值，不经过 setSession：这里同样要剔除历史欢迎语
+      state = stripLegacyGreetingSession(session);
     }
   }
 
@@ -840,6 +864,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     List<String>? todoIds,
     List<String>? journalIds,
     String? skillName,
+    List<String>? skillNames,
+    String? outputTypeId,
+    String? quoteBlock,
   }) async {
     if (state == null) return;
 
@@ -849,30 +876,36 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     // 1. Append user message with raw content and optional images to active display/save history immediately
     final hasRefAttachments =
         (noteIds?.isNotEmpty ?? false) || (todoIds?.isNotEmpty ?? false) || (journalIds?.isNotEmpty ?? false);
+    final hasSelectedSkills = skillNames?.isNotEmpty ?? false;
     final userMessage = ChatMessage(
       role: 'user',
       content: content,
       timestamp: now,
       images: images,
-      // 笔记/待办/日记引用存入 uiDetails，失败重试时据此完整还原提问；
-      // 构建模型请求时不会序列化该字段，不会泄漏进上下文
-      uiDetails: hasRefAttachments
+      // 笔记/待办/日记引用与「常用提示词」里勾选的技能存入 uiDetails，
+      // 失败重试/再次编辑时据此完整还原提问；构建模型请求时不会序列化该字段
+      uiDetails: (hasRefAttachments || hasSelectedSkills)
           ? {
-              'attachments': {
-                if (noteIds?.isNotEmpty ?? false) 'notes': noteIds,
-                if (todoIds?.isNotEmpty ?? false) 'todos': todoIds,
-                if (journalIds?.isNotEmpty ?? false) 'journals': journalIds,
-              },
+              if (hasRefAttachments)
+                'attachments': {
+                  if (noteIds?.isNotEmpty ?? false) 'notes': noteIds,
+                  if (todoIds?.isNotEmpty ?? false) 'todos': todoIds,
+                  if (journalIds?.isNotEmpty ?? false) 'journals': journalIds,
+                },
+              if (hasSelectedSkills) 'attachedSkills': skillNames,
             }
           : null,
     );
-    final updatedMessages = [...state!.messages, userMessage];
+    // 历史版本的新会话可能还带着欢迎语：发送前先剔除，避免它进入模型上下文，
+    // 也避免首条提问的标题判断受它影响
+    final baseMessages = stripLegacyGreeting(state!.messages);
+    final updatedMessages = [...baseMessages, userMessage];
 
     // Determine the updated session title if it is default
     String newTitle = state!.title;
     if (state!.title == '新对话' ||
-        state!.messages.isEmpty ||
-        (state!.messages.length == 1 && state!.messages.first.role == 'assistant')) {
+        baseMessages.isEmpty ||
+        (baseMessages.length == 1 && baseMessages.first.role == 'assistant')) {
       newTitle = content.substring(0, content.length > 20 ? 20 : content.length);
     }
 
@@ -894,10 +927,17 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     _activeRuns[startSessionId] = run;
     _publishRunningSessions();
 
+    // 进入「工作中」：挂出常驻通知（Android 同时启动前台服务保活），
+    // 用户离开 App 时任务不会被回收，完成后据此提醒
+    AgentWorkNotifications.instance.onRunStarted(summary: content, statusText: '小Q准备中');
+
     state = state!.copyWith(title: newTitle, messages: updatedMessages);
 
     // 开始录制本轮 VFS 变更（撤回/再次编辑功能的数据来源）；句柄制支持与悬浮小Q任务并发录制
     final recorderHandle = VirtualWorkspaceService.instance.startRecording();
+
+    // 完成通知的结局：默认成功，异常置失败，被中止优先级最高（在 finally 里定夺）
+    var runOutcome = AgentRunOutcome.completed;
 
     try {
       // 2. 仅注入用户手动分享的附件上下文，其余数据由小Q通过VFS工具自主探索
@@ -920,14 +960,35 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
       // 预加载用户技能缓存：斜杠命令解析与系统提示词技能索引都依赖它
       await SkillRegistry.instance.ensureLoaded();
 
-      // 斜杠命令显式激活的技能：手册直接注入上下文（省一次 read_file 往返），
-      // 并记一次使用统计；技能不存在时静默按普通消息处理
-      String? skillDoc;
-      if (skillName != null && skillName.isNotEmpty) {
-        skillDoc = SkillRegistry.instance.getSkillContent(skillName);
-        if (skillDoc != null) {
-          unawaited(SkillUsageTracker.instance.record(skillName));
+      // 斜杠命令与「常用提示词」弹窗中显式指定的技能：手册直接注入上下文
+      // （省一次 read_file 往返），并记一次使用统计；未知或已归档技能静默跳过
+      final explicitSkills = SkillRegistry.instance.resolveSkillDocs([
+        if (skillName != null && skillName.isNotEmpty) skillName,
+        ...?skillNames,
+      ]);
+      for (final skill in explicitSkills) {
+        unawaited(SkillUsageTracker.instance.record(skill.name));
+      }
+      final explicitSkillDoc = buildExplicitSkillContext(explicitSkills);
+
+      // 「+」面板选定的目标输出类型：注入该形态的技能手册与本次目标说明；
+      // 若与显式指定的技能命中同一个，则不再重复注入（手册已在上方装载）
+      final explicitSkillNames = {for (final skill in explicitSkills) skill.name};
+      final outputType = outputTypeById(outputTypeId);
+      String? outputTypeSection;
+      if (outputType != null) {
+        final typeSkillName = outputType.skillName;
+        final sameAsExplicitSkill = typeSkillName != null && explicitSkillNames.contains(typeSkillName);
+        final typeSkillDoc = (typeSkillName != null && !sameAsExplicitSkill)
+            ? SkillRegistry.instance.getSkillContent(typeSkillName)
+            : null;
+        if (typeSkillName != null && !sameAsExplicitSkill && typeSkillDoc != null) {
+          unawaited(SkillUsageTracker.instance.record(typeSkillName));
         }
+        final extLabel = outputType.extension == null ? '' : '（目标文件后缀 .${outputType.extension}）';
+        outputTypeSection =
+            '本次目标输出类型：${outputType.label}$extLabel。${outputType.hint}\n'
+            '请严格按该形态产出${typeSkillDoc != null ? '，遵循以下规范：\n$typeSkillDoc' : '。'}';
       }
 
       // 3. 构建动态环境上下文（时间/用户资料/关联数据），注入 system 尾部而非污染用户消息原文
@@ -942,7 +1003,11 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         personality: personality,
         extraSections: [
           if (dataContext != null && dataContext.isNotEmpty) '关联数据（用户引用的待办/笔记/日记等）:\n$dataContext',
-          if (skillDoc != null) '激活技能手册（用户以 /$skillName 命令显式调用，请严格遵循该手册的规范执行本次任务）:\n$skillDoc',
+          // 「给小Q」引用说明块：与悬浮面板同一套来源定位口径；
+          // 放在 system 尾部而不是拼进用户消息，气泡里只留用户自己写的指令
+          if (quoteBlock != null && quoteBlock.isNotEmpty) quoteBlock,
+          ?explicitSkillDoc,
+          ?outputTypeSection,
         ],
       );
 
@@ -990,8 +1055,9 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         },
       );
 
-      // 历史保持用户原文（时间/资料等环境信息已注入 system 尾部，每轮可见且不污染历史）
-      final List<ChatMessage> conversationHistory = List.from(updatedMessages);
+      // 历史保持用户原文（时间/资料等环境信息已注入 system 尾部，每轮可见且不污染历史）；
+      // 失败提示与中断后残留的工具链由 chat_context 统一清理，不进入模型上下文
+      final List<ChatMessage> conversationHistory = buildModelConversationHistory(updatedMessages);
 
       ChatMessage? finalResponse;
 
@@ -1136,6 +1202,7 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         }
       }
     } catch (e, stackTrace) {
+      runOutcome = AgentRunOutcome.failed;
       // 报错路径下已开口的半句不再续播，避免错误提示和语音打架
       run.speech.onAbort();
       LoggerService.instance.logAI('AI对话发送失败: $e', level: LogLevel.error, details: stackTrace.toString());
@@ -1144,21 +1211,25 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
         content:
             '本轮对话请求失败\n\n'
             '${AiErrorExplainer.describe(e)}\n\n'
-            '长按本条消息可重试。',
+            '长按折叠行可重试；展开可回看此前的工作过程。',
         timestamp: DateTime.now(),
         isError: true,
       );
-      // 错误消息替换中间消息的语义两条路径保持一致：会话未切走时同步到界面，
-      // 已切走时只改任务累积，最终随落库写回发起会话
-      run.messages
-        ..clear()
-        ..addAll([...updatedMessages, errorMessage]);
+      // 保留本轮已产生的思考、工具与中间消息：失败后用户仍能展开工作流，
+      // 看清小Q工作到哪一步，再决定是否重试（旧实现会用发送前快照覆盖，过程全部丢失）
+      run.messages.add(errorMessage);
       if (_bindsCurrentSession(run)) {
-        state = state!.copyWith(messages: [...updatedMessages, errorMessage]);
+        state = state!.copyWith(messages: List.of(run.messages));
       }
     } finally {
       _activeRuns.remove(startSessionId);
       _publishRunningSessions();
+
+      // 通知收尾：结局 + 结果摘要交给全局调度器；仅当用户已离开 App 才响铃提醒
+      AgentWorkNotifications.instance.onRunFinished(
+        outcome: run.token.isCancelled ? AgentRunOutcome.aborted : runOutcome,
+        resultSummary: _lastAssistantSnippet(run),
+      );
       run.flushTimer?.cancel();
       run.flushTimer = null;
 

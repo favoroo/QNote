@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/reorder_gesture.dart';
@@ -494,7 +495,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     FilledButton(
                       onPressed: _selectedTodoIds.isEmpty ? null : _handleBatchDelete,
                       style: FilledButton.styleFrom(
-                        backgroundColor: colorScheme.error,
+                        // 暗色下 colorScheme.error 偏浅粉，实心填充发灰，改用饱和红令牌。
+                        backgroundColor: AppPalette.errorStrong(theme.brightness == Brightness.dark),
                         foregroundColor: colorScheme.onError,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                       ),

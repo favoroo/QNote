@@ -6,6 +6,7 @@ import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
 import 'package:qnote_flutter/pages/settings/q_voice_page.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 
 /// 小Q设置（管理）一体化页面
@@ -63,6 +64,8 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
       appBar: AppBar(
         title: const Text('小Q设置'),
         centerTitle: false,
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,

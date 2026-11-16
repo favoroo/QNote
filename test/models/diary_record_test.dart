@@ -70,6 +70,7 @@ void main() {
       expect(restored.title, record.title);
       expect(restored.time, record.time);
       expect(restored.content, '');
+      expect(restored.aiAnalysis, '');
       expect(restored.mood, 3);
       expect(restored.weather, '');
       expect(restored.tags, isEmpty);
@@ -88,6 +89,7 @@ void main() {
         tags: ['tag1', 'tag2'],
         displayTag: 'tag1',
         content: '正文内容',
+        aiAnalysis: '图：米饭约250kcal，合计约620kcal',
         bodyState: {'key': 'value'},
         photos: ['photo1.jpg'],
         colorMark: '#FF0000',
@@ -109,6 +111,7 @@ void main() {
       expect(restored.tags, record.tags);
       expect(restored.displayTag, record.displayTag);
       expect(restored.content, record.content);
+      expect(restored.aiAnalysis, record.aiAnalysis);
       expect(restored.bodyState, record.bodyState);
       expect(restored.photos, record.photos);
       expect(restored.colorMark, record.colorMark);

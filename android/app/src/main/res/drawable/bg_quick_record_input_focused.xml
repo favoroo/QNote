@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 输入区聚焦态：不透明炭黑表面 + 1.5dp 强调色描边，明确当前正在输入的位置。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_qr_input_bg" />
+    <corners android:radius="18dp" />
+    <stroke
+        android:width="1.5dp"
+        android:color="@color/widget_accent" />
+</shape>

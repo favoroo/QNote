@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 
 class PersonalizationPage extends ConsumerWidget {
   const PersonalizationPage({super.key});
@@ -27,6 +28,8 @@ class PersonalizationPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('个性化设置'),
         centerTitle: false,
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),

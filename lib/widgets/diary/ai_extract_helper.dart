@@ -9,8 +9,9 @@ import 'package:qnote_flutter/core/ai/ai_service.dart';
 import 'package:qnote_flutter/core/ai/vision_capability_probe.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
-import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/core/utils/q_analysis.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
+import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
@@ -20,14 +21,16 @@ class AiExtractResult {
   final String? shortcutId;
   final Map<String, dynamic> time;
   final Map<String, dynamic> fields;
-  final String notes;
+
+  /// 小Q 补充的分析/评价（图片解读、营养评估等）；为空表示本次没有值得补充的内容。
+  final String analysis;
   final List<TagEntry> tagEntries;
 
   const AiExtractResult({
     this.shortcutId,
     required this.time,
     required this.fields,
-    required this.notes,
+    this.analysis = '',
     this.tagEntries = const [],
   });
 }
@@ -131,7 +134,11 @@ Future<AiExtractResult?> extractExistingRecord({
     String? imageBase64;
     if (shouldSendImage) {
       final imageRepo = ImageRepository();
-      imageBase64 = await imageRepo.getBase64Image(photos.first);
+      imageBase64 = await imageRepo.getBase64ImageForVision(photos.first);
+      if (imageBase64.isEmpty) {
+        // 图片文件丢失时按纯文本提取，避免把空 base64 塞给模型触发接口报错
+        LoggerService.instance.logAI('记录图片读取失败，本次按纯文本提取', level: LogLevel.warning);
+      }
     }
 
     final results = await aiService.extractUnified(
@@ -217,7 +224,12 @@ Future<AiExtractResult?> extractExistingRecord({
         shortcutId: firstShortcutId,
         time: Map<String, dynamic>.from(firstResult['time'] as Map? ?? {}),
         fields: firstFields,
-        notes: cleanExtractedNotes(firstResult['notes'] as String? ?? '', firstFields, firstShortcut),
+        // analysis 是主字段；notes 兼容旧模型/旧提示词的输出
+        analysis: cleanExtractedAnalysis(
+          (firstResult['analysis'] ?? firstResult['notes'] ?? '').toString(),
+          firstFields,
+          firstShortcut,
+        ),
         tagEntries: mergedTagEntries,
       );
     }
@@ -262,6 +274,16 @@ Future<AiExtractResult?> extractExistingRecord({
       onFailure?.call(errorMessage);
     }
     return null;
+  } on AiExtractIncompleteException catch (e) {
+    // 截断/拦截/空内容不能当「未提取到信息」：提示真实原因，避免用户反复重试
+    LoggerService.instance.logAI('记录智能优化响应不完整: ${e.message}', level: LogLevel.warning);
+    if (context.mounted) {
+      if (!silent) {
+        Toast.error(context, e.message);
+      }
+      onFailure?.call(e.message);
+    }
+    return null;
   } catch (e, stackTrace) {
     if (e is VisionUnsupportedException) rethrow;
     String errorMessage = '提取失败';
@@ -300,7 +322,16 @@ ShortcutConfig? findShortcutById(String? shortcutId, List<ShortcutConfig> shortc
   return null;
 }
 
-String cleanExtractedNotes(String rawNotes, Map<String, dynamic> fields, ShortcutConfig? shortcut) {
+/// 清洗小Q分析文本：去掉模型自带的「小Q分析：」标题、字段噪音与重复行。
+///
+/// 分析是给用户看的自然语言，不能把结构化字段原样再抄一遍；但「图：」是
+/// 图片解读的展示语义，必须保留。
+String cleanExtractedAnalysis(String rawAnalysis, Map<String, dynamic> fields, ShortcutConfig? shortcut) {
+  final cleaned = _cleanExtractedAnalysis(rawAnalysis, fields, shortcut);
+  return normalizeQAnalysisText(cleaned);
+}
+
+String _cleanExtractedAnalysis(String rawNotes, Map<String, dynamic> fields, ShortcutConfig? shortcut) {
   if (rawNotes.trim().isEmpty) return '';
 
   String normalizeKey(String key) {

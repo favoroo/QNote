@@ -76,4 +76,47 @@ void main() {
     expect(normalized['type'], '数码');
     expect(normalized['amount'], 10);
   });
+
+  test('normalizeExtractedFields 把饮食热量别名归一到 calories', () {
+    final diet = ShortcutConfig(
+      id: 'diet',
+      name: '饮食',
+      hasPopup: true,
+      fields: [
+        ShortcutField(id: 'rating', label: '评价', type: 'select', options: ['健康', '一般']),
+        ShortcutField(id: 'calories', label: '热量 (千卡)', type: 'number', options: []),
+      ],
+      sortOrder: 1,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    final normalized = normalizeExtractedFields({'热量': 620, 'rating': '健康'}, diet);
+
+    expect(normalized['calories'], 620);
+    expect(normalized['rating'], '健康');
+  });
+
+  test('normalizeExtractedFields 校验饮食热量，异常值按未填写处理', () {
+    final diet = ShortcutConfig(
+      id: 'diet',
+      name: '饮食',
+      hasPopup: true,
+      fields: [
+        ShortcutField(id: 'rating', label: '评价', type: 'select', options: ['健康', '一般']),
+        ShortcutField(id: 'calories', label: '热量 (千卡)', type: 'number', options: []),
+      ],
+      sortOrder: 1,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    // 0 视为未填写，负数和明显超限值直接丢弃，不阻塞其他字段
+    expect(normalizeExtractedFields({'calories': 0, 'rating': '健康'}, diet).containsKey('calories'), isFalse);
+    expect(normalizeExtractedFields({'calories': -5}, diet).containsKey('calories'), isFalse);
+    expect(normalizeExtractedFields({'calories': 99999}, diet).containsKey('calories'), isFalse);
+    // 带单位的字符串仍能归一并取整
+    expect(normalizeExtractedFields({'热量': '约620千卡'}, diet)['calories'], 620);
+    expect(normalizeExtractedFields({'calorie': '620kcal'}, diet)['calories'], 620);
+  });
 }

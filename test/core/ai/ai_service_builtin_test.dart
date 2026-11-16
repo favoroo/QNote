@@ -76,6 +76,23 @@ void main() {
     expect(adapter.authHeaders.length, 2);
     expect(adapter.authHeaders.last, isEmpty, reason: '切换厂商必须清掉上一家的全局 Authorization');
   });
+
+  test('null 值鉴权头出站前必须被删除（Web 适配器会把 null 发成字面量 "null"）', () async {
+    service.updateConfig(builtinConfig);
+    await send();
+
+    final headers = adapter.rawHeaders.single;
+    expect(
+      headers.values.any((v) => v == null),
+      isFalse,
+      reason:
+          'dio Web 适配器会把 null 头 toString() 成 "null" 真发出去，'
+          '不在网关 CORS 白名单内的 x-api-key: null 等头会导致预检失败',
+    );
+    for (final name in ['x-api-key', 'x-goog-api-key', 'anthropic-version']) {
+      expect(headers.keys.any((k) => k.toLowerCase() == name), isFalse, reason: '内置服务请求不应残留 $name 头');
+    }
+  });
 }
 
 class _BuiltinRecordingAdapter implements HttpClientAdapter {
@@ -84,6 +101,7 @@ class _BuiltinRecordingAdapter implements HttpClientAdapter {
   final List<String> signHeaders = [];
   final List<String> paths = [];
   final List<String> models = [];
+  final List<Map<String, dynamic>> rawHeaders = [];
 
   @override
   Future<ResponseBody> fetch(
@@ -95,6 +113,7 @@ class _BuiltinRecordingAdapter implements HttpClientAdapter {
     installHeaders.add(_header(options.headers, 'x-qnote-install'));
     signHeaders.add(_header(options.headers, 'x-qnote-sign'));
     paths.add(options.uri.path);
+    rawHeaders.add(Map<String, dynamic>.of(options.headers));
 
     final body = options.data;
     if (body is Map && body['model'] is String) {

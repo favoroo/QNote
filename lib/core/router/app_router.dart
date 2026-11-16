@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/pages/diary_page.dart';
 import 'package:qnote_flutter/pages/notes_page.dart';
 import 'package:qnote_flutter/pages/todo_page.dart';
 import 'package:qnote_flutter/pages/ai_page.dart';
 import 'package:qnote_flutter/pages/statistics_page.dart';
+import 'package:qnote_flutter/pages/stat_detail_page.dart';
 import 'package:qnote_flutter/pages/settings/user_profile_page.dart';
 import 'package:qnote_flutter/pages/settings/q_settings_page.dart';
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
@@ -119,6 +121,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/statistics',
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (context, state) => _fadeTransitionPage(const StatisticsPage()),
+        routes: [
+          // 记账 / 饮食 明细二级页：从统计 tab 的「查看全部」进入，
+          // 通过 extra 传入 {start, end} 复用同一统计口径
+          GoRoute(
+            path: 'ledger',
+            parentNavigatorKey: rootNavigatorKey,
+            pageBuilder: (context, state) => _fadeTransitionPage(_buildStatDetail(state, StatTab.finance)),
+          ),
+          GoRoute(
+            path: 'meals',
+            parentNavigatorKey: rootNavigatorKey,
+            pageBuilder: (context, state) => _fadeTransitionPage(_buildStatDetail(state, StatTab.diet)),
+          ),
+        ],
       ),
       GoRoute(
         path: '/settings/profile',
@@ -281,6 +297,19 @@ int _quickRecordTab(String? tab) => tab == 'fixed-events' ? 1 : 0;
 
 /// 健康数据页的分段：`?tab=screen` → 屏幕使用（1），其余为运动健康（0）
 int _healthTab(String? tab) => tab == 'screen' ? 1 : 0;
+
+/// 构造统计明细二级页：从 extra 读取 {start, end}，缺失时回退到近 30 天。
+StatDetailPage _buildStatDetail(GoRouterState state, StatTab tab) {
+  final extra = state.extra;
+  DateTime? start;
+  DateTime? end;
+  if (extra is Map) {
+    start = extra['start'] as DateTime?;
+    end = extra['end'] as DateTime?;
+  }
+  final now = DateTime.now();
+  return StatDetailPage(tab: tab, start: start ?? now.subtract(const Duration(days: 30)), end: end ?? now);
+}
 
 /// 设置页与二级路由的统一转场：淡入 + 轻微上移。
 ///

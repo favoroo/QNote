@@ -46,6 +46,9 @@ final diaryInputTimeProvider = StateProvider<TimelineTimeSelectEvent?>((ref) => 
 class DiaryComposeDraft {
   final String id;
   final String inputText;
+
+  /// 小Q 智能提取补充的分析/评价；保存时落到记录的 aiAnalysis，不混进正文。
+  final String aiAnalysis;
   final List<TagEntry> tagEntries;
   final List<String> selectedPhotos;
   final TimeOfDay startTime;
@@ -56,6 +59,7 @@ class DiaryComposeDraft {
   DiaryComposeDraft({
     required this.id,
     this.inputText = '',
+    this.aiAnalysis = '',
     this.tagEntries = const [],
     this.selectedPhotos = const [],
     TimeOfDay? startTime,
@@ -75,6 +79,7 @@ class DiaryComposeDraft {
   DiaryComposeDraft copyWith({
     String? id,
     String? inputText,
+    String? aiAnalysis,
     List<TagEntry>? tagEntries,
     List<String>? selectedPhotos,
     TimeOfDay? startTime,
@@ -88,6 +93,7 @@ class DiaryComposeDraft {
     return DiaryComposeDraft(
       id: id ?? this.id,
       inputText: inputText ?? this.inputText,
+      aiAnalysis: aiAnalysis ?? this.aiAnalysis,
       tagEntries: tagEntries ?? this.tagEntries,
       selectedPhotos: selectedPhotos ?? this.selectedPhotos,
       startTime: startTime ?? this.startTime,
@@ -188,6 +194,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
   Future<DiaryRecord> addDiary({
     required String title,
     String content = '',
+    String aiAnalysis = '',
     int mood = 3,
     String weather = '',
     List<String> tags = const [],
@@ -209,6 +216,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
       startTime: startTime,
       endTime: endTime,
       content: content,
+      aiAnalysis: aiAnalysis,
       mood: mood,
       weather: weather,
       tags: tags,

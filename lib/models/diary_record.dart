@@ -10,6 +10,12 @@ class DiaryRecord {
   final List<String> tags;
   final String displayTag;
   final String content;
+
+  /// 小Q 智能提取补充的分析/评价（如「图：…」的图片解读、营养评估等）。
+  ///
+  /// 与 [content] 分开存：正文只放用户自己的记录，小Q 的补充信息在时间线卡片上
+  /// 收进默认折叠的「小Q分析」区，不污染用户正文，也便于重新提取时整体替换。
+  final String aiAnalysis;
   final Map<String, dynamic>? bodyState;
   final List<TagEntry> tagEntries;
   final List<String> photos;
@@ -30,6 +36,7 @@ class DiaryRecord {
     this.tags = const [],
     this.displayTag = '',
     this.content = '',
+    this.aiAnalysis = '',
     this.bodyState,
     this.tagEntries = const [],
     this.photos = const [],
@@ -52,6 +59,7 @@ class DiaryRecord {
       'tags': jsonEncode(tags),
       'display_tag': displayTag,
       'content': content,
+      'ai_analysis': aiAnalysis,
       'body_state': bodyState != null ? jsonEncode(bodyState) : null,
       'tag_entries': tagEntries.isNotEmpty ? TagEntry.listToJson(tagEntries) : null,
       'photos': jsonEncode(photos),
@@ -96,6 +104,8 @@ class DiaryRecord {
       tags: tags,
       displayTag: displayTag,
       content: map['content'] as String? ?? '',
+      // 旧库/旧备份没有该列：统一退化为空串，读取方无需判空兼容
+      aiAnalysis: map['ai_analysis']?.toString() ?? '',
       bodyState: bodyState,
       tagEntries: tagEntries,
       photos: map['photos'] != null ? List<String>.from(jsonDecode(map['photos'] as String) as List) : [],
@@ -118,6 +128,7 @@ class DiaryRecord {
     List<String>? tags,
     String? displayTag,
     String? content,
+    String? aiAnalysis,
     Map<String, dynamic>? bodyState,
     List<TagEntry>? tagEntries,
     List<String>? photos,
@@ -138,6 +149,7 @@ class DiaryRecord {
       tags: tags ?? this.tags,
       displayTag: displayTag ?? this.displayTag,
       content: content ?? this.content,
+      aiAnalysis: aiAnalysis ?? this.aiAnalysis,
       bodyState: bodyState ?? this.bodyState,
       tagEntries: tagEntries ?? this.tagEntries,
       photos: photos ?? this.photos,

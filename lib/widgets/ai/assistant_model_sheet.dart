@@ -919,7 +919,8 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
         border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+      // 面板底部要尽量矮：标题、档位、说明与管理入口压成三段，说明和管理同排
+      padding: const EdgeInsets.fromLTRB(20, 8, 12, 10),
       child: SafeArea(
         top: false,
         child: Column(
@@ -928,49 +929,89 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
           children: [
             _buildEffortTitleRow(theme, state, showBinding: showBinding),
             if (state == null) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 _level == _SheetLevel.provider ? '选中模型后即可调整它的思考强度' : '当前没有可调整的模型',
                 style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ] else ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final option in options)
-                    ChoiceChip(
-                      label: Text(option.label),
-                      selected: !state.mixed && option.effort == state.effort,
-                      visualDensity: VisualDensity.compact,
-                      onSelected: _busy ? null : (_) => _applyEffort(targets, option.effort),
-                    ),
-                ],
+                spacing: 6,
+                runSpacing: 6,
+                children: [for (final option in options) _buildEffortChip(theme, state, option, targets)],
               ),
-              if (hint.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(hint, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
-              ],
-              // 对话里也能改这个模型的档位集合，不用退回设置页
-              if (widget.onLevelsChanged != null) ...[
-                const SizedBox(height: 2),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: _busy ? null : () => _manageLevels(targets),
-                    icon: const Icon(Icons.tune_rounded, size: 18),
-                    label: Text(targets.length > 1 ? '管理思考档位（${targets.length} 个模型）' : '管理思考档位'),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                  ),
-                ),
-              ],
+              _buildEffortFooter(theme, targets, hint),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// 单个档位胶囊
+  ///
+  /// 选中状态只靠底色和字色表达：勾号会额外撑宽胶囊，一排档位更占地方。
+  Widget _buildEffortChip(
+    ThemeData theme,
+    ReasoningEffortState state,
+    ReasoningEffortOption option,
+    List<ReasoningEffortTarget> targets,
+  ) {
+    final selected = !state.mixed && option.effort == state.effort;
+    return ChoiceChip(
+      label: Text(option.label),
+      selected: selected,
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      labelStyle: theme.textTheme.labelLarge?.copyWith(
+        color: selected ? theme.accentInk : theme.colorScheme.onSurfaceVariant,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+      ),
+      onSelected: _busy ? null : (_) => _applyEffort(targets, option.effort),
+    );
+  }
+
+  /// 档位说明与「管理思考档位」入口同排，省掉一整行高度
+  ///
+  /// 说明只在不一致/自定义时出现；没有说明时入口单独右对齐。
+  Widget _buildEffortFooter(ThemeData theme, List<ReasoningEffortTarget> targets, String hint) {
+    // 对话里也能改这个模型的档位集合，不用退回设置页
+    final manage = widget.onLevelsChanged == null
+        ? null
+        : TextButton.icon(
+            onPressed: _busy ? null : () => _manageLevels(targets),
+            icon: const Icon(Icons.tune_rounded, size: 16),
+            label: Text(targets.length > 1 ? '管理思考档位（${targets.length} 个模型）' : '管理思考档位'),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              textStyle: theme.textTheme.labelMedium,
+            ),
+          );
+    if (hint.isEmpty && manage == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: hint.isEmpty
+                ? const SizedBox.shrink()
+                : Text(
+                    hint,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.3),
+                  ),
+          ),
+          ?manage,
+        ],
       ),
     );
   }
@@ -987,10 +1028,10 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
       children: [
         Text(
           showBinding ? (isGroup ? '当前路由组' : '当前模型') : '思考强度',
-          style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600, color: colorScheme.onSurface),
         ),
         if (showBinding) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               bindingName ?? '未选择',
@@ -1004,7 +1045,7 @@ class _AssistantModelSheetState extends State<AssistantModelSheet> {
         if (state != null)
           Text(
             state.mixed ? '混合' : state.capability.labelFor(state.effort),
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.accentInk, fontWeight: FontWeight.w600),
+            style: theme.textTheme.labelMedium?.copyWith(color: theme.accentInk, fontWeight: FontWeight.w600),
           ),
       ],
     );

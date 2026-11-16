@@ -5,11 +5,11 @@ import 'package:qnote_flutter/core/agent/prompts/q_personalities.dart';
 import 'package:qnote_flutter/core/agent/prompts/q_system_prompt.dart';
 import 'package:qnote_flutter/core/agent/services/q_personality_service.dart';
 
-/// 小Q人格注入的结构护栏
+/// 人格注入的结构护栏
 ///
 /// 人格段只有一两句话，而 AGENTS.md 规范正文有数千字，历史上人格经常被淹成
-/// 统一的「公文腔」。这里锁住三件事：人格必须成节且在最前、必须带优先级声明、
-/// 回复风格条款必须显式为人格让路——避免后续改提示词时把权重结构改回去。
+/// 统一的「公文腔」。这里锁住三件事：人格必须成节且在最前、必须带最高优先级声明、
+/// 回复必须简短精炼易懂——避免后续改提示词时把权重结构改回去。
 void main() {
   group('QSystemPrompt 人格段结构', () {
     test('人格段独立成节并位于 AGENTS.md 规范之前', () {
@@ -33,23 +33,30 @@ void main() {
       expect(prompt, isNot(contains('当前个性：')));
     });
 
-    test('带优先级声明且明确不豁免执行铁律', () {
+    test('人格段带最高优先级声明且不豁免执行铁律', () {
       final prompt = QSystemPrompt.buildSystemPrompt();
-      expect(prompt, contains('人格管什么'));
-      expect(prompt, contains('人格不管什么'));
-      expect(prompt, contains('最高优先级，贯穿整场对话'));
+      expect(prompt, contains('最高优先级'));
+      expect(prompt, contains('语气、措辞、称呼与情绪服从人格'));
       // 语气可以变，铁律不能松动
+      expect(prompt, contains('不得改变事实、工具执行、确认流程与数据格式'));
       expect(prompt, contains('完成门禁'));
       expect(prompt, contains('ask_user'));
     });
 
-    test('回复风格条款服从人格小节，且不再使用绝对句数上限', () {
+    test('人格段确立简短精炼易懂的回复底线', () {
       final prompt = QSystemPrompt.buildSystemPrompt();
-      final styleRuleAt = prompt.indexOf('8. **回复风格**');
+      // 所有个性共用同一条篇幅底线，避免活泼/温柔型被理解为可以长篇大论
+      expect(prompt, contains('所有个性都保持**简短、精炼、易懂**'));
+      expect(prompt, contains('个性只加味道不加篇幅'));
+    });
+
+    test('回复风格条款保留关键事实与提醒时间，且不再使用绝对句数上限', () {
+      final prompt = QSystemPrompt.buildSystemPrompt();
+      final styleRuleAt = prompt.indexOf('7. **回复风格**');
       expect(styleRuleAt, greaterThan(0));
       final styleSection = prompt.substring(styleRuleAt);
-      expect(styleSection, contains('服从开头的「人格与身份」小节'));
-      expect(styleSection, contains('五种个性不该读出同一种腔调'));
+      expect(styleSection, contains('关键事实'));
+      expect(styleSection, contains('提醒时间'));
       // 「3 句以内」这类硬上限会把活泼/温柔型的情绪表达直接砍掉
       expect(styleSection, isNot(contains('3 句以内')));
     });

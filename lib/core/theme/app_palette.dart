@@ -29,6 +29,9 @@ abstract class AppPalette {
   static const Color _lightWarning = Color(0xFFF2B300);
   static const Color _darkWarning = Color(0xFFF7C948);
 
+  static const Color _lightErrorStrong = Color(0xFFBA1A1A);
+  static const Color _darkErrorStrong = Color(0xFFE5484D);
+
   /// 主要文字：卡片标题、关键数值。
   static Color textPrimary(bool isDark) => isDark ? _darkTextPrimary : _lightTextPrimary;
 
@@ -59,4 +62,11 @@ abstract class AppPalette {
   /// 与 [ColorScheme.error] 的破坏性红成对出现：黄色代表可恢复操作。
   /// 深浅色都取纯黄系，前景交给 `AppContrast.onColor` 自动取黑字保证对比度。
   static Color warning(bool isDark) => isDark ? _darkWarning : _lightWarning;
+
+  /// 实心错误色：以「填充」形态出现的破坏性按钮、徽标底色。
+  ///
+  /// [ColorScheme.error] 在暗色主题下是浅粉红（FFB4AB），为暗背景上的
+  /// 错误文字设计；拿来做实心按钮填充会发白发灰，看不出是红色。
+  /// 本令牌在暗色下取饱和红，浅色下与 `colorScheme.error` 一致。
+  static Color errorStrong(bool isDark) => isDark ? _darkErrorStrong : _lightErrorStrong;
 }

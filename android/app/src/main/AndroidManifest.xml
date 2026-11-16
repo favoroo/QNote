@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- 小Q 工作中的前台服务类型为 dataSync（Android 14+ 需按类型单独声明权限） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 屏幕与应用使用时长统计权限 -->
     <uses-permission
@@ -75,6 +77,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 小Q 工作中的前台服务（flutter_local_notifications 提供实现）。
+             stopWithTask=false：返回键退出（Activity finish）后服务与进程继续，
+             任务在后台跑完；foregroundServiceType 必须与运行时请求的类型一致 -->
+        <service
+            android:name="com.dexterous.flutterlocalnotifications.ForegroundService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
         
         <!-- Required receivers for local notifications scheduling -->
         <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />

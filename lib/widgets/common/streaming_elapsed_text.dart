@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 /// 流式已用时计时文本：状态行尾部的「· 12s」递增计数。
 ///
 /// 与 AnimatedEllipsis 搭配表达任务仍在进行；为运行级计时，
-/// 阶段状态切换（思考中→执行中）不清零。开始 3 秒内不显示，
-/// 避免快速完成的任务出现数字闪烁。AI 主页与小Q悬浮球共用。
+/// 阶段状态切换（思考中→执行中）不清零。默认开始 3 秒内不显示，
+/// 避免快速完成的任务出现数字闪烁；挂在身份行等「出现即代表任务已开始」
+/// 的位置可传 [gracePeriod] 为零立即显示。AI 主页与小Q悬浮球共用。
 class StreamingElapsedText extends StatefulWidget {
   /// 计时起点；为 null 时不渲染
   final DateTime? startedAt;
@@ -14,7 +15,10 @@ class StreamingElapsedText extends StatefulWidget {
   /// 文字样式，缺省取主题 onSurfaceVariant 弱化色
   final TextStyle? style;
 
-  const StreamingElapsedText({super.key, this.startedAt, this.style});
+  /// 起点后多少秒内不显示数字；默认 3 秒防快速任务闪烁
+  final Duration gracePeriod;
+
+  const StreamingElapsedText({super.key, this.startedAt, this.style, this.gracePeriod = const Duration(seconds: 3)});
 
   @override
   State<StreamingElapsedText> createState() => _StreamingElapsedTextState();
@@ -80,7 +84,7 @@ class _StreamingElapsedTextState extends State<StreamingElapsedText> {
     final startedAt = widget.startedAt;
     if (startedAt == null) return const SizedBox.shrink();
     final elapsed = DateTime.now().difference(startedAt);
-    if (elapsed.inSeconds < 3) return const SizedBox.shrink();
+    if (elapsed < widget.gracePeriod) return const SizedBox.shrink();
     final style = widget.style ?? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12);
     return Text('· ${_format(elapsed)}', style: style);
   }

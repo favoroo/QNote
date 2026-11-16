@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  「问小Q」桌面入口：整个组件就是一颗实心圆形按钮，内部是扁平线稿小Q，没有文字。
+  「问小Q」桌面入口：极简曜石黑双层正圆 + 负空间断口几何白色「Q」。
 
-  为什么整颗圆画进矢量而不是用 shape 背景：格子比例不一定是正方形（2×1 / 1×2 / 2×2），
-  shape 背景会被拉伸成椭圆；矢量配合 ImageView 的 centerInside，圆始终是正圆、
-  直径跟随格子短边等比放大，透明区域仍属于点击热区。
-
-  机器人几何沿用 lib/widgets/ai/q_avatar.dart 的线稿（QIcon outlined）母版：
-  天线球 + 圆角头盔 + 胶囊眼，描边外缘与母版机身对齐，保证桌面与 App 内是同一只小Q。
-  纯色平涂、无渐变无内高光，小尺寸下边缘更干净。
+  设计说明：
+  - 外层曜石黑正圆（r=47/54，占画布短边 ~87%）+ 1 单位发丝描边，
+    四周预留均匀呼吸边距：1×1 格下约 58~62dp（与系统图标及快捷记录 1×1 对齐），
+    2×2 格下等比放大且不顶死边缘；2×1 / 1×2 下依然稳居正中为正圆。
+  - 内部托起一层低调的深炭灰同心圆盘（不加刺眼白描边），
+    在深色壁纸与大尺寸下提供细腻的物理按键层级，远看仍保持纯粹黑色圆形。
+  - 居中柔白字母「Q」主体向左上微调 (-1.0, -1.2) 抵消右下角尾巴的视觉下坠，
+    右下采用 29° 呼吸断口配合圆头斜向胶囊尾，兼顾小尺寸清晰度与大尺寸设计感。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -16,46 +17,33 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 实心圆底：铺满画布，作为组件唯一底板 -->
+    <!-- 外层曜石黑实心圆底板 -->
     <path
         android:fillColor="@color/widget_ai_circle"
-        android:pathData="M54,0 A54,54 0 1 0 54,108 A54,54 0 1 0 54,0 Z" />
+        android:pathData="M54,7 A47,47 0 1 0 54,101 A47,47 0 1 0 54,7 Z" />
 
-    <!-- 小Q 线稿（母版 205×206，缩至圆的约 57% 并居中） -->
-    <group
-        android:scaleX="0.30"
-        android:scaleY="0.30"
-        android:translateX="23.25"
-        android:translateY="23.1">
+    <!-- 外缘发丝高光描边（中心 r=46.5、线宽 1，外缘恰好贴合底板，纯黑壁纸下轮廓清晰） -->
+    <path
+        android:pathData="M54,7.5 A46.5,46.5 0 1 0 54,100.5 A46.5,46.5 0 1 0 54,7.5 Z"
+        android:strokeWidth="1"
+        android:strokeColor="@color/widget_ai_border" />
 
-        <!-- 天线球 -->
-        <path
-            android:fillColor="@color/widget_ai_robot"
-            android:pathData="M101.5,0.5 A15.5,15.5 0 1 0 101.5,31.5 A15.5,15.5 0 1 0 101.5,0.5 Z" />
+    <!-- 内层深炭灰同心圆盘（无硬描边，靠微弱明度差承托中心 Q） -->
+    <path
+        android:fillColor="@color/widget_ai_inner_disc"
+        android:pathData="M54,19 A35,35 0 1 0 54,89 A35,35 0 1 0 54,19 Z" />
 
-        <!-- 天线杆：宽度与描边一致，上端被天线球盖住 -->
-        <path
-            android:fillColor="@color/widget_ai_robot"
-            android:pathData="M91.5,16 L111.5,16 L111.5,68 L91.5,68 Z" />
+    <!-- 白色字母 Q 主环（中心 (53.0, 52.8)，半径 16.6，顺时针 74° -> 16°，右下留出 58° 负空间断口） -->
+    <path
+        android:pathData="M57.58,68.76 A16.6,16.6 0 1 1 68.96,57.38"
+        android:strokeWidth="6.4"
+        android:strokeColor="@color/widget_ai_glyph"
+        android:strokeLineCap="round" />
 
-        <!--
-          圆角头盔：用 evenOdd 填充「外缘圆角矩形 + 内缘圆角矩形」直接画出描边效果。
-          vector 不支持 strokeJoin（那是 shape 的属性），stroke 默认 miter 会在圆角处留尖角；
-          内缘圆角取 38-20=18，与 20 宽的描边内缩后完全一致。
-        -->
-        <path
-            android:fillColor="@color/widget_ai_robot"
-            android:fillType="evenOdd"
-            android:pathData="M38,58 L165,58 A38,38 0 0 1 203,96 L203,167 A38,38 0 0 1 165,205 L38,205 A38,38 0 0 1 0,167 L0,96 A38,38 0 0 1 38,58 Z M38,78 L165,78 A18,18 0 0 1 183,96 L183,167 A18,18 0 0 1 165,185 L38,185 A18,18 0 0 1 20,167 L20,96 A18,18 0 0 1 38,78 Z" />
-
-        <!-- 左眼（竖向胶囊） -->
-        <path
-            android:fillColor="@color/widget_ai_robot"
-            android:pathData="M60.5,126.5 A10,10 0 0 1 80.5,126.5 L80.5,136.5 A10,10 0 0 1 60.5,136.5 Z" />
-
-        <!-- 右眼（竖向胶囊） -->
-        <path
-            android:fillColor="@color/widget_ai_robot"
-            android:pathData="M122.5,126.5 A10,10 0 0 1 142.5,126.5 L142.5,136.5 A10,10 0 0 1 122.5,136.5 Z" />
-    </group>
+    <!-- 白色字母 Q 右下斜向胶囊尾（沿 45° 穿过断口，视觉重心与主环平衡） -->
+    <path
+        android:pathData="M58.16,57.96 L69.40,69.20"
+        android:strokeWidth="6.4"
+        android:strokeColor="@color/widget_ai_glyph"
+        android:strokeLineCap="round" />
 </vector>

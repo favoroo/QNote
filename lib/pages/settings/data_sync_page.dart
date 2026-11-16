@@ -28,6 +28,7 @@ import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/providers/sync_provider.dart';
 import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/providers/user_profile_provider.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/log_viewer_page.dart';
 import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 
@@ -97,6 +98,8 @@ class _DataSyncPageState extends ConsumerState<DataSyncPage> {
         appBar: AppBar(
           title: const Text('数据与同步'),
           centerTitle: false,
+          leading: const DrawerNavLeading(),
+          leadingWidth: drawerNavLeadingWidth(context),
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,

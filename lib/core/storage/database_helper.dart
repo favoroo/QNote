@@ -153,7 +153,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 32,
+      version: 33,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -200,6 +200,11 @@ class DatabaseHelper {
     if (!columnNames.contains('body_state')) {
       try {
         await db.execute('ALTER TABLE diary_records ADD COLUMN body_state TEXT');
+      } catch (_) {}
+    }
+    if (!columnNames.contains('ai_analysis')) {
+      try {
+        await db.execute('ALTER TABLE diary_records ADD COLUMN ai_analysis TEXT DEFAULT ""');
       } catch (_) {}
     }
 
@@ -413,6 +418,7 @@ class DatabaseHelper {
         end_time TEXT,
         display_tag TEXT DEFAULT '',
         body_state TEXT,
+        ai_analysis TEXT DEFAULT '',
         tag_entries TEXT,
         photos TEXT DEFAULT '[]',
         color_mark TEXT DEFAULT '',
@@ -1084,6 +1090,17 @@ class DatabaseHelper {
         final names = columns.map((c) => c['name'] as String).toSet();
         if (names.isNotEmpty && !names.contains('enabled')) {
           await db.execute('ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+        }
+      } catch (_) {}
+    }
+    if (oldVersion < 33) {
+      // 小Q 分析独立成列：旧版本把图片解读混在 content 的「图：」行里，
+      // 新版本写入 ai_analysis，由时间线卡片的「小Q分析」折叠区统一展示。
+      try {
+        final columns = await db.rawQuery('PRAGMA table_info(diary_records)');
+        final names = columns.map((c) => c['name'] as String).toSet();
+        if (names.isNotEmpty && !names.contains('ai_analysis')) {
+          await db.execute('ALTER TABLE diary_records ADD COLUMN ai_analysis TEXT DEFAULT ""');
         }
       } catch (_) {}
     }

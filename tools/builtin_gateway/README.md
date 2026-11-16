@@ -66,8 +66,8 @@ bash tools/builtin_gateway/stop.sh
     }
   },
   "quotas": {
-    "device": { "perHour": 30, "perDay": 300, "tokensPerDay": 3000000 },
-    "ip": { "perHour": 60, "perDay": 600 },
+    "device": { "perHour": 120, "perDay": 300, "tokensPerDay": 3000000 },
+    "ip": { "perHour": 240, "perDay": 600 },
     "global": { "perDay": 0, "tokensPerDay": 0 },
     "imageDevice": { "perDay": 3 },
     "maxTokensPerRequest": 4096,

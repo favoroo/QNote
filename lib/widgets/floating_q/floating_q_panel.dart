@@ -48,13 +48,6 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 精确订阅上下文徽章文案：流式刷新（约 60ms 一次）不重建面板外壳，
-    // 输入行 TextField 因此保持稳定（Web 端中文 IME 组合态不被打断）
-    final contextLabel = ref.watch(
-      floatingQProvider.select((s) => s.contextLabel ?? s.effectiveContext?.displayLabel ?? '当前页面'),
-    );
-    // 外部分享场景：内容来自第三方应用，与当前页面无关，不展示位置徽章
-    final externalShareMode = ref.watch(floatingQProvider.select((s) => s.externalShareMode));
     // 草稿只在面板挂载时读一次：输入过程不能反向触发整块面板重建
     final draftText = ref.read(floatingQProvider).draftText;
 
@@ -81,7 +74,9 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
               _PanelReveal(
                 controller: widget.entrance,
                 begin: 0,
-                child: _buildHeader(theme, externalShareMode ? '小Q' : '小Q · $contextLabel'),
+                // 标题固定为「小Q」：当前页面/目标已由引导语、输入占位与注入块说明，
+                // 头部再挂页面徽章既冗余，又会在会话切换时显示成上一个页面的名字
+                child: _buildHeader(theme, '小Q'),
               ),
               Divider(height: 1, color: theme.colorScheme.outlineVariant),
               Expanded(
@@ -126,18 +121,29 @@ class _FloatingQPanelState extends ConsumerState<_FloatingQPanel> {
           const QAvatar(size: 24, withBackground: true),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            // 标题右侧挂「工作中 · N s」徽章（与主对话组抬头同源），空闲时自动收起
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const _PanelWorkingBadge(),
+              ],
             ),
           ),
-          // 展开到 /ai 全页面：把当前临时对话迁移成正式会话再继续
+          // 转到完整对话：把当前临时会话迁成正式会话，再到 /ai 里继续聊。
+          // 图标用对话气泡而不是「全屏放大」，避免被误读成只是把弹窗撑大
           _headerButton(
             key: const ValueKey('floating-q-expand'),
-            icon: Icons.open_in_full_rounded,
-            tooltip: '展开全页面',
+            icon: Icons.forum_rounded,
+            tooltip: '转到完整对话',
             backgroundColor: theme.colorScheme.primaryContainer,
             foregroundColor: theme.colorScheme.onPrimaryContainer,
             onPressed: () => widget.onExpand(),
@@ -717,6 +723,22 @@ class _PanelLiveWorkflowRow extends ConsumerWidget {
   }
 }
 
+/// 面板标题栏的「工作中 · N s」徽章宿主：订阅悬浮小Q运行态，
+/// 正文开始流式或任务结束后自动隐藏
+class _PanelWorkingBadge extends ConsumerWidget {
+  const _PanelWorkingBadge();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final startedAt = ref.watch(floatingQProvider.select((s) => s.streamingStartedAt));
+    final statusText = ref.watch(floatingQProvider.select((s) => s.statusText));
+    final hasStreamingOutput = ref.watch(
+      floatingQProvider.select((s) => s.streamingText != null && s.streamingText!.isNotEmpty),
+    );
+    return AgentWorkingBadge(startedAt: startedAt, statusText: statusText, active: !hasStreamingOutput);
+  }
+}
+
 /// 面板工作流展开后的单个工具步骤行：单行摘要，点击可展开文本详情（异常项默认展开）
 class _PanelCompactToolStep extends StatefulWidget {
   final ChatMessage message;
@@ -1001,28 +1023,6 @@ class _PanelQuoteCard extends ConsumerWidget {
     QQuoteSource.chat => Icons.chat_bubble_outline_rounded,
   };
 
-  String _sourceLabel(QQuoteSource source) => switch (source) {
-    QQuoteSource.note => '笔记',
-    QQuoteSource.diary => '流水记录',
-    QQuoteSource.journal => '每日日记',
-    QQuoteSource.todo => '待办',
-    QQuoteSource.external => '外部分享',
-    QQuoteSource.chat => '对话内容',
-  };
-
-  /// 标题行：日记来源为日期字符串不加书名号，其余《标题》+ 位置；
-  /// 外部分享无实体标题，只展示来源标签
-  String _titleLine(QTextQuote quote) {
-    final label = _sourceLabel(quote.source);
-    // 外部分享与对话内容无实体标题，只展示来源标签
-    if (quote.source == QQuoteSource.external || quote.source == QQuoteSource.chat) {
-      return label;
-    }
-    final title = quote.source == QQuoteSource.journal ? '$label ${quote.sourceTitle}' : '$label《${quote.sourceTitle}》';
-    final location = quote.locationDesc;
-    return location == null ? title : '$title · $location';
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final quote = ref.watch(floatingQProvider.select((s) => s.pendingQuote));
@@ -1051,7 +1051,7 @@ class _PanelQuoteCard extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _titleLine(quote),
+                  quote.cardTitleLine,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.bold,
@@ -1061,9 +1061,7 @@ class _PanelQuoteCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  quote.quotedText.isEmpty
-                      ? (quote.locationDesc?.contains('光标') == true ? '（光标处，可让小Q续写或编辑）' : '（引用完整内容）')
-                      : quote.quotedText,
+                  quote.cardBodyText,
                   style: theme.textTheme.bodySmall,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -1297,37 +1295,8 @@ class _PanelInputRowState extends ConsumerState<_PanelInputRow> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 常用提示词按钮（点击弹出列表，选中即覆盖输入框）
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () => showQuickPromptDialog(context, ref, (text) {
-                _inputController.text = text;
-                _inputController.selection = TextSelection.fromPosition(TextPosition(offset: text.length));
-                ref.read(floatingQProvider.notifier).updateDraft(text);
-                _focusNode.requestFocus();
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bolt_rounded, size: 15, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Text(
-                      '常用提示词',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
+          // 悬浮弹窗不展示常用提示词入口（保留在小Q 主页面输入栏），
+          // 弹窗尺寸小、以当前页面上下文快捷指令为主，避免入口拥挤
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

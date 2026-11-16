@@ -126,6 +126,7 @@ class AiRoleService {
   /// 回落逻辑自然选中；这里刻意不写死绑定，避免覆盖用户已有的模型选择。
   Future<void> initAndEnsureDefaults() async {
     await _migrateExtractImagesDefault();
+    await _migrateTemperatureDefaults();
   }
 
   /// 迁移旧版用户的 extractImages 设置：默认开启图片提取
@@ -153,6 +154,41 @@ class AiRoleService {
         timelineOptimization: existingTemps.timelineOptimization.copyWith(extractImages: true),
       );
       await _repo.saveAiTemperatures(updated);
+    }
+
+    await prefs.setInt(_aiTempsMigrationVersionKey, currentVersion);
+  }
+
+  /// 迁移 v2：温度默认值调整（assistant 0.7 → 1.0，timelineOptimization 0.01 → 0.1）
+  ///
+  /// 调参 UI 已下线、参数由 App 托管：存量用户库里已落了旧默认值，只改代码默认值
+  /// 对他们不生效。这里把**恰好等于旧默认**的温度拉到新默认，用户或小Q自定义过的
+  /// 其他值不动；一次性迁移，之后小Q再写回 0.7 也不会被拉走。
+  Future<void> _migrateTemperatureDefaults() async {
+    const currentVersion = 2;
+    final prefs = await SharedPreferences.getInstance();
+    final lastVersion = prefs.getInt(_aiTempsMigrationVersionKey) ?? 0;
+
+    if (lastVersion >= currentVersion) return;
+
+    final existingTemps = await _repo.getAiTemperatures();
+    if (existingTemps != null) {
+      final needsUpdate =
+          existingTemps.assistant.temperature == 0.7 || existingTemps.timelineOptimization.temperature == 0.01;
+      if (needsUpdate) {
+        await _repo.saveAiTemperatures(
+          existingTemps.copyWith(
+            assistant: existingTemps.assistant.copyWith(
+              temperature: existingTemps.assistant.temperature == 0.7 ? 1.0 : existingTemps.assistant.temperature,
+            ),
+            timelineOptimization: existingTemps.timelineOptimization.copyWith(
+              temperature: existingTemps.timelineOptimization.temperature == 0.01
+                  ? 0.1
+                  : existingTemps.timelineOptimization.temperature,
+            ),
+          ),
+        );
+      }
     }
 
     await prefs.setInt(_aiTempsMigrationVersionKey, currentVersion);

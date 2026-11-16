@@ -24,10 +24,12 @@
     <color name="widget_badge_text">#FFFFFFFF</color>
     <!--
       「问小Q」组件专属 token（深色版见 values-night/colors.xml）。
-      整个组件是一颗纯色圆，只留圆底色与机器人色两个 token，矢量里不出现裸 hex。
+      沿用极简曜石黑家族语言，深浅色桌面壁纸下均保持统一黑色质感与清晰轮廓。
     -->
-    <color name="widget_ai_circle">#007AFF</color>
-    <color name="widget_ai_robot">#FFFFFFFF</color>
+    <color name="widget_ai_circle">#F2101013</color>
+    <color name="widget_ai_border">#26FFFFFF</color>
+    <color name="widget_ai_inner_disc">#1E2027</color>
+    <color name="widget_ai_glyph">#F4F4F6</color>
     <!--
       快捷记录组件专属 token：极简曜石黑便当盒体系（深浅色主题下均保持统一黑色质感）。
     -->
@@ -38,6 +40,17 @@
     <color name="widget_qr_icon">#F0F0F3</color>
     <color name="widget_qr_tile_bg">#EB23252B</color>
     <color name="widget_qr_tile_border">#1EFFFFFF</color>
+    <!--
+      快捷记录弹窗（桌面组件点按后的原生浮层）：沿用组件同一套曜石黑 + 正圆语言。
+      弹窗在深浅色下都保持黑色质感，因此这组 token 只放 values，不另做 night 变体。
+      表面色全部不透明：壁纸或组件透出会直接压低正文对比度。
+    -->
+    <color name="widget_qr_dialog_surface">#101013</color>
+    <color name="widget_qr_input_bg">#1A1B20</color>
+    <color name="widget_qr_dialog_tool_bg">#23252B</color>
+    <color name="widget_qr_input_border">#1FFFFFFF</color>
+    <color name="widget_qr_ripple">#33FFFFFF</color>
+    <color name="dialog_on_accent">#FFFFFFFF</color>
     <color name="dialog_bg">#FFFFFF</color>
     <color name="dialog_text">#1C1C1E</color>
     <color name="dialog_input_bg">#F2F2F7</color>

@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/chat_timeline.dart';
+import 'package:qnote_flutter/core/utils/expand_reveal.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 
@@ -80,6 +81,10 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
   /// 用户手动展开/收起过：流式结束时保留用户的选择
   bool _userToggled = false;
 
+  /// 折叠区根部（标题行 + 展开内容）：展开后据此把内容滚入视野（只需刚好完整露出）
+  final _revealKey = GlobalKey();
+  late final _revealer = ExpandRevealFollower(_revealKey);
+
   bool get _isExpanded => widget.expanded ?? _internalExpanded;
 
   @override
@@ -91,8 +96,19 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
     }
   }
 
+  @override
+  void dispose() {
+    _revealer.cancel();
+    super.dispose();
+  }
+
   void _toggle() {
     final next = !_isExpanded;
+    if (next) {
+      _revealer.start();
+    } else {
+      _revealer.cancel();
+    }
     if (widget.onExpandedChanged != null) {
       widget.onExpandedChanged!(next);
       return;
@@ -114,6 +130,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
     // 外层直接用普通 Column，主体交给 AppCollapsible 与标题箭头同频（normal 档），
     // 收起时能保留完整思考区播放退场而不会只剩一块白底在缩高度。
     return Column(
+      key: _revealKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [

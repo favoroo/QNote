@@ -48,10 +48,14 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   bool _obscurePassword = true;
   bool _webdavEnabled = false;
   bool _syncOnLaunch = true;
-  bool _syncImages = true;
+  // 默认关闭：与 SyncScheduler 读取 webdav_sync_images 时的 `== 'true'` 语义保持一致，
+  // 否则首帧先按 true 渲染开关、异步加载后再跳回 false，会出现「开了又关」的闪动
+  bool _syncImages = false;
   int _syncInterval = 15;
   bool _testing = false;
   bool _showAdvancedPath = false;
+  // 配置异步加载完成标记：加载完成前不渲染开关的真实状态，避免默认值先闪一下
+  bool _configLoaded = false;
   StreamSubscription<SyncStatus>? _statusSubscription;
 
   // 记录初始配置值，用于判断是否有未保存的更改
@@ -61,7 +65,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
   String _initialRemotePath = '';
   bool _initialWebdavEnabled = false;
   bool _initialSyncOnLaunch = true;
-  bool _initialSyncImages = true;
+  bool _initialSyncImages = false;
   int _initialSyncInterval = 15;
 
   // 上一次已通知宿主的脏状态，避免重复回调
@@ -155,14 +159,17 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       final syncOnLaunchStr = await ConfigRepository.instance.getAppConfig('webdav_sync_on_launch');
       final syncOnLaunch = syncOnLaunchStr == null ? true : syncOnLaunchStr == 'true';
       final syncImagesStr = await ConfigRepository.instance.getAppConfig('webdav_sync_images');
-      final syncImages = syncImagesStr == null ? true : syncImagesStr == 'true';
+      // 未写入过视为关闭，与 SyncScheduler 的读取语义保持一致
+      final syncImages = syncImagesStr == 'true';
 
+      if (!mounted) return;
       if (config != null) {
         _serverUrlController.text = config.serverUrl;
         _usernameController.text = config.username;
         _passwordController.text = config.password;
         _remotePathController.text = config.remotePath;
         setState(() {
+          _configLoaded = true;
           _webdavEnabled = config.autoSync;
           _syncOnLaunch = syncOnLaunch;
           _syncImages = syncImages;
@@ -171,6 +178,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       } else {
         _remotePathController.text = 'QNote';
         setState(() {
+          _configLoaded = true;
           _webdavEnabled = false;
           _syncOnLaunch = syncOnLaunch;
           _syncImages = syncImages;
@@ -179,7 +187,9 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
       }
       _updateInitialValues();
     } catch (_) {
+      if (!mounted) return;
       _remotePathController.text = 'QNote';
+      setState(() => _configLoaded = true);
       _updateInitialValues();
     }
   }
@@ -502,7 +512,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             icon: Icons.autorenew_rounded,
             iconColor: theme.accentInk,
             title: '自动同步',
-            trailing: Switch(
+            trailing: _buildConfigSwitch(
               value: _webdavEnabled,
               onChanged: (val) {
                 setState(() {
@@ -568,7 +578,7 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
             icon: Icons.photo_library_outlined,
             iconColor: theme.accentInk,
             title: '同步附件图片',
-            trailing: Switch(
+            trailing: _buildConfigSwitch(
               value: _syncImages,
               onChanged: (val) {
                 setState(() => _syncImages = val);
@@ -692,6 +702,17 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
         ],
       ),
     );
+  }
+
+  /// 配置加载完成前不渲染开关，先用等尺寸占位。
+  ///
+  /// 开关状态来自异步数据库读取，若先用默认值渲染，等配置回来再 setState，
+  /// 用户会看到开关「自己打开又关掉」。
+  Widget _buildConfigSwitch({required bool value, required ValueChanged<bool> onChanged}) {
+    if (!_configLoaded) {
+      return const SizedBox(width: 52, height: 48);
+    }
+    return Switch(value: value, onChanged: onChanged);
   }
 
   Widget _buildSettingRow({

@@ -79,8 +79,8 @@ function loadConfig() {
   const dir = path.dirname(CONFIG_PATH);
   const rawQuotas = raw.quotas || {};
   const quotas = {
-    device: { perHour: 30, perDay: 300, tokensPerDay: 3000000, ...(rawQuotas.device || {}) },
-    ip: { perHour: 60, perDay: 600, ...(rawQuotas.ip || {}) },
+    device: { perHour: 120, perDay: 300, tokensPerDay: 3000000, ...(rawQuotas.device || {}) },
+    ip: { perHour: 240, perDay: 600, ...(rawQuotas.ip || {}) },
     global: { perDay: 0, tokensPerDay: 0, ...(rawQuotas.global || {}) },
     imageDevice: { perDay: 3, ...(rawQuotas.imageDevice || {}) },
     maxTokensPerRequest: rawQuotas.maxTokensPerRequest ?? 4096,
@@ -433,8 +433,11 @@ function readJsonBody(req, res) {
       size += chunk.length;
       if (size > cfg.quotas.maxBodyBytes) {
         done = true;
-        apiError(res, 413, 'qnote_body_too_large', '请求体过大');
-        req.destroy();
+        // 413 必须带 CORS 头，并先排空剩余请求体再断开：否则浏览器拿不到
+        // 响应，只能看到 onerror（连接层错误），和真正的网络故障无法区分
+        apiError(res, 413, 'qnote_body_too_large', '请求体过大', corsHeaders(req.headers.origin));
+        req.resume();
+        res.on('close', () => req.destroy());
         resolve(null);
         return;
       }

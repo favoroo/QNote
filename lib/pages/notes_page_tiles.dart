@@ -155,6 +155,10 @@ class _FlattenedTileState extends ConsumerState<_FlattenedTile> {
         return Icons.language;
       case NoteFileType.svg:
         return Icons.palette_outlined;
+      case NoteFileType.mermaid:
+        return Icons.account_tree_outlined;
+      case NoteFileType.csv:
+        return Icons.table_chart_outlined;
       case NoteFileType.json:
         return Icons.data_object;
       case NoteFileType.code:

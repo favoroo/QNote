@@ -50,6 +50,14 @@ void main() {
       expect(invalid.contains("STORAGE_NS = '';"), isTrue);
     });
 
+    test('prepareHtml 不把脚本字符串里的假 </body> 当作注入点', () {
+      const source = '<html><body><script>var s = "</body>";</script></body></html>';
+      final result = HtmlPersistenceHelper.prepareHtml(source);
+      // 注入点应位于页面脚本之后、真正的 </body> 之前，不能插进脚本字符串里
+      expect(result.indexOf('__qnote_auto_persist_script'), greaterThan(result.indexOf('var s')));
+      expect(result.endsWith('</body></html>'), isTrue);
+    });
+
     test('auto persist script contains scroll persistence logic', () {
       const source = '<html><body><h1>Hello</h1></body></html>';
       final result = HtmlPersistenceHelper.prepareHtml(source);

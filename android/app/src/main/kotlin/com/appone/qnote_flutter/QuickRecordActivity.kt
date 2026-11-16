@@ -21,7 +21,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.inputmethod.InputMethodManager
-import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -44,8 +43,8 @@ class QuickRecordActivity : Activity() {
     private lateinit var scrollPhotos: HorizontalScrollView
     private lateinit var btnPhoto: ImageButton
     private lateinit var btnCamera: ImageButton
-    private lateinit var btnCancel: Button
-    private lateinit var btnSend: Button
+    private lateinit var btnCancel: ImageButton
+    private lateinit var btnSend: ImageButton
 
     private val selectedPhotos = ArrayList<String>()
     private var tempCameraFile: File? = null

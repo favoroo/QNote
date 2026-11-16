@@ -17,12 +17,16 @@ import 'package:qnote_flutter/providers/image_repository_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
+import 'package:qnote_flutter/core/utils/csv_parser.dart';
 import 'package:qnote_flutter/core/utils/delta_markdown.dart';
 import 'package:qnote_flutter/core/utils/gallery_helper.dart';
+import 'package:qnote_flutter/core/utils/html_selection_quote.dart';
 import 'package:qnote_flutter/core/utils/note_file_type.dart';
 import 'package:qnote_flutter/core/utils/note_segments.dart';
 import 'package:qnote_flutter/core/utils/q_cursor_context.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
+import 'package:qnote_flutter/widgets/notes/file_preview/csv_table_view.dart';
+import 'package:qnote_flutter/widgets/notes/file_preview/mermaid_or_gantt_preview.dart';
 import 'package:qnote_flutter/widgets/notes/html_preview/html_preview_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
@@ -125,14 +129,17 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   // 渲染预览模式：HTML/SVG 笔记默认开启，AppBar 可切换回源码编辑
   bool _previewMode = false;
 
+  /// 本次 App 会话是否已提示过网页选择入口（每篇 HTML 都弹一次会打扰）
+  static bool _htmlSelectionHintShown = false;
+
   /// 按标题后缀实时识别的文件类型（标题改名时跟随变化）
   NoteFileType get _fileType => NoteFileTypeHelper.fromTitle(_titleController.text);
 
   /// 是否按源码类内容处理：等宽字体、不做 Markdown 行内渲染与 URL 自动拆分
   bool get _isCodeLikeFile => NoteFileTypeHelper.isCodeLike(_fileType);
 
-  /// 当前是否处于渲染预览状态（仅 html/svg 生效，json/code 始终为源码模式）
-  bool get _isPreviewActive => _previewMode && (_fileType == NoteFileType.html || _fileType == NoteFileType.svg);
+  /// 当前是否处于渲染预览状态（html/svg/mermaid/csv 支持预览，code/json 始终为源码模式）
+  bool get _isPreviewActive => _previewMode && NoteFileTypeHelper.supportsPreview(_fileType);
 
   // Track which text segment is currently focused
   int _focusedSegmentIndex = 0;
@@ -195,9 +202,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     _lastSavedContent = rawContent;
     _parseContentIntoSegments(rawContent);
 
-    // HTML/SVG 笔记默认进入渲染预览模式，源码可通过 AppBar 一键切换
+    // 展示型笔记（html/svg/mermaid/csv）默认进入渲染预览模式，源码可通过 AppBar 一键切换
     final initialType = NoteFileTypeHelper.fromTitle(widget.note.title);
-    _previewMode = initialType == NoteFileType.html || initialType == NoteFileType.svg;
+    _previewMode = NoteFileTypeHelper.prefersPreviewByDefault(initialType);
+    _maybeShowHtmlSelectionHint();
 
     _titleController.addListener(_triggerAutoSave);
 
@@ -506,27 +514,35 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
   /// AppBar 右侧的保存状态徽标（保存中… / 未保存 / 已保存）。
   ///
   /// 原先常驻占 AppBar 底下整整一行，标题区被压低，而且「已保存」在绝大多数
-  /// 时候都没有信息量。现在挪到标题右侧并固定占位宽度：出现/消失不会把标题
-  /// 挤来挤去；空闲且提示已淡出时只是一块空白。
+  /// 时候都没有信息量。现在挪到标题右侧，且只在真有状态可显示时才占宽度：
+  /// 常驻空白会把标题可用宽度压掉 52dp，稍长的标题就被硬截断。
   Widget _buildSaveStatusBadge(ThemeData theme) {
     final label = _saveStatusLabel;
     // 记下本帧真正渲染出来的文案，供 _notifyDirtyVisible 判断要不要补一次重建
     _renderedSaveStatusLabel = label;
 
-    return SizedBox(
-      width: 52,
-      child: Center(
-        // 状态文字切换统一走全局「淡入 + 轻微放大」过渡：比默认纯交叉淡化
-        // 更有层次，也不会出现两段文字糊在一起的重影感
-        child: AppMotion.switcher(
-          context: context,
-          baseDuration: AppDurations.normal,
-          child: label == null
-              ? const SizedBox.shrink(key: ValueKey('note-save-status-idle'))
-              : Text(
+    // 空闲时宽度归零：标题可用宽度 = 栏宽 − 返回键 − 右侧按钮 − 徽标，
+    // 常驻 52dp 的空白会把中屏手机的标题压到 160dp 以内，稍长的标题直接被裁掉。
+    // 有状态时按文字自适应（三种文案长度不同），出现/消失走宽度动画，避免标题横向硬跳。
+    return AnimatedSize(
+      duration: AppMotion.duration(context, AppDurations.fast),
+      curve: AppCurves.emphasized,
+      alignment: Alignment.centerRight,
+      child: label == null
+          ? const SizedBox.shrink(key: ValueKey('note-save-status-idle'))
+          : Padding(
+              key: const ValueKey('note-save-status-slot'),
+              padding: const EdgeInsets.only(right: 8),
+              // 状态文字切换统一走全局「淡入 + 轻微放大」过渡：比默认纯交叉淡化
+              // 更有层次，也不会出现两段文字糊在一起的重影感
+              child: AppMotion.switcher(
+                context: context,
+                baseDuration: AppDurations.normal,
+                child: Text(
                   label,
                   key: ValueKey('note-save-status-$label'),
                   maxLines: 1,
+                  softWrap: false,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: _isSaving || _isDirty
@@ -534,8 +550,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                         : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                   ),
                 ),
-        ),
-      ),
+              ),
+            ),
     );
   }
 
@@ -1243,6 +1259,36 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     }
   }
 
+  /// CSV 预览内编辑单元格后写回：整段替换承载表格源码的文本分段。
+  ///
+  /// 预览模式下分段没有焦点，不能走 [_focusedTextSeg]；按内容匹配当前预览
+  /// 源码找到目标分段（纯数据笔记整篇就是单个文本段）。设置 controller 后
+  /// 由既有监听链触发自动保存，预览随后按新源码重渲染。
+  void _updateCsvSource(String newSource) {
+    final segments = _segments.whereType<_TextSegment>().toList();
+    final current = _serializeToMarkdown();
+    _TextSegment? target;
+    for (final seg in segments) {
+      if (seg.controller.text == current) {
+        target = seg;
+        break;
+      }
+    }
+    if (target == null && segments.length == 1) {
+      target = segments.first;
+    }
+    if (target == null || target.controller.text == newSource) {
+      return;
+    }
+    _historyTimer?.cancel();
+    _saveHistoryState();
+    target.controller.value = TextEditingValue(
+      text: newSource,
+      selection: TextSelection.collapsed(offset: newSource.length),
+    );
+    Toast.success(context, '已保存', duration: const Duration(seconds: 1));
+  }
+
   // ---------------------------------------------------------------------------
   // Toolbar actions on focused segment
   // ---------------------------------------------------------------------------
@@ -1373,6 +1419,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
           scrolledUnderElevation: 0,
           // 标题按整条工具栏居中：保存状态固定在右侧后，不能让它把标题往左挤
           centerTitle: true,
+          // 默认 16dp 的两侧间距在这条窄栏里很贵（要扣两次），
+          // 收到 8dp 后标题多出 16dp，长标题才不至于在中间被裁掉
+          titleSpacing: 8,
           leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack),
           title: TextField(
             controller: _titleController,
@@ -1384,6 +1433,9 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               focusedBorder: InputBorder.none,
               hintText: '无标题',
               filled: false,
+              // 主题的 14dp 横向内边距在这条窄栏里纯属浪费：去掉后同一宽度
+              // 能多放两三个字；纵向保留，输入框的可点高度不变
+              contentPadding: EdgeInsets.symmetric(vertical: 12),
             ),
           ),
           actions: [
@@ -1392,8 +1444,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
             // JSON 笔记：一键格式化缩进
             if (_fileType == NoteFileType.json)
               IconButton(icon: const Icon(Icons.data_object), onPressed: _formatJson, tooltip: '格式化 JSON'),
-            // HTML/SVG 笔记：渲染预览与源码编辑切换
-            if (_fileType == NoteFileType.html || _fileType == NoteFileType.svg)
+            // 展示型笔记：渲染预览与源码编辑切换
+            if (NoteFileTypeHelper.supportsPreview(_fileType))
               IconButton(
                 icon: AppMotion.switcher(
                   context: context,
@@ -1402,7 +1454,10 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
                     key: ValueKey(_isPreviewActive),
                   ),
                 ),
-                onPressed: () => setState(() => _previewMode = !_previewMode),
+                onPressed: () {
+                  setState(() => _previewMode = !_previewMode);
+                  _maybeShowHtmlSelectionHint();
+                },
                 tooltip: _isPreviewActive ? '查看源码' : '渲染预览',
               ),
             IconButton(
@@ -1476,7 +1531,8 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     );
   }
 
-  /// 渲染预览主体：html 走 WebView/iframe 真实渲染，svg 走矢量渲染
+  /// 渲染预览主体：html 走 WebView/iframe 真实渲染，svg 走矢量渲染，
+  /// mermaid 包成 HTML 交给网页容器渲染，csv 走原生表格视图
   Widget _buildPreviewBody(ThemeData theme) {
     final source = _serializeToMarkdown();
     if (source.trim().isEmpty) {
@@ -1501,7 +1557,48 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
         ),
       );
     }
-    return HtmlPreviewView(htmlContent: source, noteId: widget.note.id.toString());
+    // Mermaid 图：甘特走原生视图，其余图型包成 HTML（内联本地运行库）渲染
+    if (_fileType == NoteFileType.mermaid) {
+      return MermaidOrGanttPreview(source: source, noteId: widget.note.id.toString());
+    }
+    // CSV/TSV：原生表格预览（.tsv 用制表符分隔），单元格可直接编辑写回源码
+    if (_fileType == NoteFileType.csv) {
+      return CsvTableView(
+        source: source,
+        delimiter: delimiterForExtension(NoteFileTypeHelper.extensionOf(_titleController.text)),
+        onSourceChanged: _updateCsvSource,
+      );
+    }
+    return HtmlPreviewView(htmlContent: source, noteId: widget.note.id.toString(), onSelection: _sendHtmlSelectionToQ);
+  }
+
+  /// 首次进入 HTML 渲染预览时提示网页选择入口；每次 App 会话只提示一次
+  void _maybeShowHtmlSelectionHint() {
+    if (_htmlSelectionHintShown || !_isPreviewActive || _fileType != NoteFileType.html) {
+      return;
+    }
+    _htmlSelectionHintShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      Toast.info(context, '网页内选中文字或长按元素空白处，可直接发给小Q 修改', duration: const Duration(seconds: 4));
+    });
+  }
+
+  /// 网页预览内选中文字/元素后「给小Q」：把渲染后的 DOM 信息与源码行号候选
+  /// 一起引用给悬浮小Q，便于它用 read_file / edit_file 精确修改这个元素
+  void _sendHtmlSelectionToQ(HtmlSelectionPayload payload) {
+    final title = _titleController.text.isEmpty ? '无标题' : _titleController.text;
+    final quote = buildHtmlSelectionQuote(
+      payload: payload,
+      noteId: widget.note.id,
+      noteTitle: title,
+      sourceHtml: _serializeToMarkdown(),
+    );
+    // 收起网页内的选择与键盘，把输入焦点让给小Q面板
+    FocusManager.instance.primaryFocus?.unfocus();
+    ref.read(floatingQProvider.notifier).openWithQuote(quote);
   }
 
   List<Widget> _buildSegmentWidgets(ThemeData theme) {

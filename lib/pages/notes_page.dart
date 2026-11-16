@@ -145,6 +145,47 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     });
   }
 
+  /// 递归删除文件夹及其所有子文件夹与笔记。
+  ///
+  /// 单条删除与批量删除共用；`deletedIds` 用于批量场景下父、子文件夹同时被选中时去重。
+  Future<void> _deleteFolderAndContents(String folderId, [Set<String>? deletedIds]) async {
+    final deleted = deletedIds ?? <String>{};
+    // 日记文件夹不允许被删除（选择入口已屏蔽，此处防御性兜底）
+    if (folderId == JournalService.rootFolderId || !deleted.add(folderId)) return;
+
+    final allNotes = ref.read(noteListProvider).value ?? [];
+    final allFolders = ref.read(folderListProvider).value ?? [];
+
+    for (final child in allFolders.where((f) => f.parentId == folderId).toList()) {
+      await _deleteFolderAndContents(child.id, deleted);
+    }
+    for (final note in allNotes.where((n) => n.folderId == folderId).toList()) {
+      await ref.read(noteListProvider.notifier).deleteNote(note.id);
+    }
+    await ref.read(folderListProvider.notifier).deleteFolder(folderId);
+  }
+
+  /// 统计文件夹子树内的笔记与子文件夹数量，用于删除前的确认文案。
+  ({int notes, int folders}) _countFolderContents(String folderId) {
+    final allNotes = ref.read(noteListProvider).value ?? [];
+    final allFolders = ref.read(folderListProvider).value ?? [];
+    final visited = <String>{};
+    var notes = 0;
+    var folders = 0;
+
+    void visit(String id) {
+      if (!visited.add(id)) return;
+      notes += allNotes.where((n) => n.folderId == id).length;
+      for (final child in allFolders.where((f) => f.parentId == id)) {
+        folders++;
+        visit(child.id);
+      }
+    }
+
+    visit(folderId);
+    return (notes: notes, folders: folders);
+  }
+
   void _handleBatchDelete() async {
     if (_selectedNoteIds.isEmpty && _selectedFolderIds.isEmpty) return;
 
@@ -163,33 +204,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       return;
     }
 
-    final Set<String> deletedFolderIds = {};
-
-    Future<void> deleteFolderAndContents(String folderId) async {
-      if (deletedFolderIds.contains(folderId)) return;
-      // 日记文件夹不允许被删除（选择入口已屏蔽，此处防御性兜底）
-      if (folderId == JournalService.rootFolderId) return;
-      deletedFolderIds.add(folderId);
-
-      final allNotes = ref.read(noteListProvider).value ?? [];
-      final allFolders = ref.read(folderListProvider).value ?? [];
-
-      final childFolders = allFolders.where((f) => f.parentId == folderId).toList();
-      for (final child in childFolders) {
-        await deleteFolderAndContents(child.id);
-      }
-
-      final notesInFolder = allNotes.where((n) => n.folderId == folderId).toList();
-      for (final note in notesInFolder) {
-        await ref.read(noteListProvider.notifier).deleteNote(note.id);
-      }
-
-      await ref.read(folderListProvider.notifier).deleteFolder(folderId);
-    }
+    final deletedFolderIds = <String>{};
 
     // 1. Delete selected folders recursively
     for (final folderId in _selectedFolderIds) {
-      await deleteFolderAndContents(folderId);
+      await _deleteFolderAndContents(folderId, deletedFolderIds);
     }
 
     // 2. Delete selected notes (if not already deleted recursively)
@@ -1350,14 +1369,39 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           label: '删除文件夹',
           isDestructive: true,
           onTap: () async {
+            // 空文件夹直接删除；有内容时先简短确认，避免连同笔记一起删掉却无提示
+            final counts = _countFolderContents(folder.id);
+            if (counts.notes > 0 || counts.folders > 0) {
+              final detail = [
+                if (counts.notes > 0) '${counts.notes} 篇笔记',
+                if (counts.folders > 0) '${counts.folders} 个子文件夹',
+              ].join('、');
+              final confirmed = await AppMotion.showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('删除文件夹'),
+                  content: Text('删除「${folder.name}」？其中的 $detail将一并删除。'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                    TextButton(
+                      style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('删除'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true || !mounted) return;
+            }
+
             // 整个文件夹子树先收起再删除，避免整块内容瞬间消失
             final collapse = AppMotion.duration(context, AppDurations.normal);
-            final notifier = ref.read(folderListProvider.notifier);
             setState(() => _deletingFolderIds.add(folder.id));
             if (collapse > Duration.zero) {
               await Future.delayed(collapse);
             }
-            await notifier.deleteFolder(folder.id);
+            if (!mounted) return;
+            await _deleteFolderAndContents(folder.id);
             if (mounted) _deletingFolderIds.remove(folder.id);
           },
         ),

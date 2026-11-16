@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/pages/settings/fixed_events_page.dart';
 import 'package:qnote_flutter/pages/settings/shortcuts_page.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 
 /// 快捷记录设置（快捷按钮 + 固定事件一体化页面）
@@ -58,6 +59,8 @@ class _QuickRecordSettingsPageState extends ConsumerState<QuickRecordSettingsPag
       appBar: AppBar(
         title: const Text('快捷记录'),
         centerTitle: false,
+        leading: const DrawerNavLeading(),
+        leadingWidth: drawerNavLeadingWidth(context),
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,

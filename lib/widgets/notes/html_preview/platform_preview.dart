@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 class PlatformPreview extends StatelessWidget {
   final String htmlContent;
   final String? noteId;
+  final ValueChanged<String>? onSelectionMessage;
 
-  const PlatformPreview({super.key, required this.htmlContent, this.noteId});
+  const PlatformPreview({super.key, required this.htmlContent, this.noteId, this.onSelectionMessage});
 
   @override
   Widget build(BuildContext context) {

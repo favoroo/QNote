@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  「问小Q」桌面入口：整格就是一颗实心圆形按钮，无文字。
+  「问小Q」桌面入口：整格就是一颗极简曜石黑正圆按钮（内嵌白色 Q），无文字。
 
-  圆本身画在 ic_widget_ai_circle 矢量里，ImageView 用 centerInside 等比缩放：
-  2×1 / 1×2 / 2×2 等非正方格子下圆不会被拉成椭圆，直径始终跟随格子短边。
-  透明四周也属于点击热区（root 设置 PendingIntent），比只点圆面更好按。
-
-  刻意不加任何 TextView：1×1 只有 56dp 左右，塞文字会把圆压小；
-  组件名称在启动器的选择器里已有展示。
+  圆画在 ic_widget_ai_circle 矢量里，ImageView 用 fitCenter 等比缩放：
+  无论是 1×1、2×1、1×2 还是放大到 2×2，都会按格子短边等比缩放并居中，
+  圆始终是正圆（unlike centerInside 在大于 108dp 时不会放大），透明四周同属点击热区。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_ai_entry_root"
@@ -21,6 +18,6 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:importantForAccessibility="no"
-        android:scaleType="centerInside"
+        android:scaleType="fitCenter"
         android:src="@drawable/ic_widget_ai_circle" />
 </FrameLayout>

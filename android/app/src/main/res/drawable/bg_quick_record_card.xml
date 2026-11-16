@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录弹窗底板：不透明曜石黑 + 1dp 发丝描边，28dp 圆角与桌面组件一致。
+  不使用半透明表面，避免壁纸透出后正文对比度下降。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_qr_dialog_surface" />
+    <corners android:radius="28dp" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/widget_qr_border" />
+</shape>

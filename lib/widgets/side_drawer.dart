@@ -16,8 +16,13 @@ import 'package:qnote_flutter/providers/drawer_nav_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
+import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 
 /// 侧边栏（抽屉）。
+///
+/// 窄屏（手机）满屏铺开、直角收边；宽屏（Web / 平板）保持 360 宽浮层 + 右侧圆角，
+/// 用点空白收起。满屏后没有空白可点，退出统一由顶部的「返回主界面」按钮承担，
+/// 一级菜单头部与各内嵌页面顶栏都挂了它（见 [DrawerNavLeading]）。
 ///
 /// 间距按 6 / 14 / 16 / 24 四档刻度收口：6 用于卡片内边距与分隔线留白，
 /// 14 用于行内横向缩进与图标到文字的间距，16 用于卡片外边距，24 用于头部与
@@ -73,15 +78,24 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    // 窄屏（手机）抽屉占满整屏：原来的右侧留白本是「点空白回主界面」的入口，但它同时
+    // 压窄了内容区，长标题/长列表都被迫折行；现在退出交给顶部的「返回主界面」按钮。
+    // 宽屏（Web / 平板）保留 360 宽 + 右侧圆角，仍可用点空白收起抽屉。
+    final Size screenSize = MediaQuery.sizeOf(context);
+    final bool fullBleed = screenSize.width < _kFullBleedBreakpoint;
+    const BorderRadius endRounded = BorderRadius.only(topRight: Radius.circular(24), bottomRight: Radius.circular(24));
+    final BorderRadius radius = fullBleed ? BorderRadius.zero : endRounded;
+    final ShapeBorder shape = fullBleed
+        ? const RoundedRectangleBorder()
+        : const RoundedRectangleBorder(borderRadius: endRounded);
+
     return Drawer(
-      width: 360, // Slightly wider sidebar for better display of nested pages
+      width: fullBleed ? screenSize.width : 360,
       backgroundColor: colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(topRight: Radius.circular(24), bottomRight: Radius.circular(24)),
-      ),
+      shape: shape,
       child: ScaffoldMessenger(
         child: ClipRRect(
-          borderRadius: const BorderRadius.only(topRight: Radius.circular(24), bottomRight: Radius.circular(24)),
+          borderRadius: radius,
           child: PopScope(
             canPop: false,
             onPopInvokedWithResult: (didPop, result) {
@@ -92,21 +106,25 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                 Navigator.of(context).pop();
               }
             },
-            child: Navigator(
-              key: _navigatorKey,
-              observers: [_routeTracker],
-              // 抽屉每次打开都是全新子树，初始栈只能在这里生成：
-              // 一级菜单 +（可选）上次停留的入口
-              onGenerateInitialRoutes: (navigator, initialRoute) {
-                return [_menuRoute(), if (_resumeEntry != null) _entryRoute(_resumeEntry!)];
-              },
-              onGenerateRoute: (settings) {
-                if (settings.name == _menuRouteName) return _menuRoute();
-                final id = settings.name!.substring(_entryRoutePrefix.length);
-                final entry = _entryById(id);
-                // 入口清单已变（版本升级删过条目）时退回菜单，不把用户丢在空路由上
-                return entry == null ? _menuRoute() : _entryRoute(entry);
-              },
+            // 内嵌 Navigator 之上挂作用域标记：页面据此判断「自己是否在侧边栏里」，
+            // 决定顶栏是否显示「返回主界面」按钮
+            child: DrawerNavScope(
+              child: Navigator(
+                key: _navigatorKey,
+                observers: [_routeTracker],
+                // 抽屉每次打开都是全新子树，初始栈只能在这里生成：
+                // 一级菜单 +（可选）上次停留的入口
+                onGenerateInitialRoutes: (navigator, initialRoute) {
+                  return [_menuRoute(), if (_resumeEntry != null) _entryRoute(_resumeEntry!)];
+                },
+                onGenerateRoute: (settings) {
+                  if (settings.name == _menuRouteName) return _menuRoute();
+                  final id = settings.name!.substring(_entryRoutePrefix.length);
+                  final entry = _entryById(id);
+                  // 入口清单已变（版本升级删过条目）时退回菜单，不把用户丢在空路由上
+                  return entry == null ? _menuRoute() : _entryRoute(entry);
+                },
+              ),
             ),
           ),
         ),
@@ -144,11 +162,9 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
                       letterSpacing: -0.5,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  // 顶右上角只留「返回主界面」：它和原来的 ✕ 行为相同（收起抽屉回主界面），
+                  // 换成房子图标语义更明确，也不再和「侧边栏内的返回」混淆
+                  DrawerHomeButton(color: colorScheme.onSurfaceVariant),
                 ],
               ),
             ),
@@ -266,6 +282,12 @@ class _SideDrawerState extends ConsumerState<SideDrawer> {
 /// 内嵌导航的路由命名：一级菜单固定 `/`，各入口为 `/entry/<id>`。
 const String _menuRouteName = '/';
 const String _entryRoutePrefix = '/entry/';
+
+/// 抽屉满屏的屏幕宽度上限（逻辑像素）。
+///
+/// 取 Material 的 compact/medium 分界：手机及其竖屏宽度以下满屏铺开，平板 / Web 仍按
+/// 360 宽浮层展示，保留「点空白收起抽屉」的宽屏习惯。
+const double _kFullBleedBreakpoint = 600;
 
 /// 抽屉内嵌 Navigator 的观察者：把「当前停在哪个入口」同步给 [SideDrawer]。
 ///

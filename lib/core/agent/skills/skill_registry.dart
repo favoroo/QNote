@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:qnote_flutter/core/agent/skills/frontend_design/frontend_design_doc.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
@@ -115,7 +116,7 @@ pinned: false           # 是否置顶
 - **移动/换笔记本/改名**：使用 `move_file(from: "/notes/临时/方案.md", to: "/notes/技术/方案.md")` 一步完成；写到 `/notes/<标题>.md`（不带笔记本段）表示移出到根目录。
 
 ## 4. 多文件类型支持
-- 除 `.md` 外，`/notes/` 下还支持写入 `.html` 网页、`.svg` 矢量图、`.json` 数据文件及常见代码文件，App 内会按后缀自动渲染预览。
+- 除 `.md` 外，`/notes/` 下还支持写入 `.html` 网页、`.svg` 矢量图及常见代码文件，App 内会按后缀自动渲染预览；`.json` 等数据文件按源码打开（无专属预览）。
 - 生成展示型内容（卡片、海报、可视化页面）时，优先写入**带内联样式的单文件 HTML**，美学与移动端适配规范详见 `frontend-design` 技能。
 - 非 `.md` 文件的扩展名会保留在笔记标题中（`.md` 后缀会被自动去掉）。
 
@@ -323,9 +324,9 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
 - 用户：“背景换成雾霾蓝 #6B7C93” → 写入 `{"backgroundStyle": "custom", "customBackgroundColor": "#6B7C93"}`
 - 用户：“把界面主题色换成粉色” → 写入 `{"accentColor": "#E91E8C"}`
 
-### 1.2 `/settings/ai.json`（AI 模型、角色与参数）
-管理小Q自身及时间线提纯所绑定的模型、温度与 Token 预算。模型由用户在「小Q设置 → 模型」中添加
-（一个厂商条目 = 一个地址 + 一组密钥 + 一组已启用模型）；App 另提供免费的「小Q 内置服务」，
+### 1.2 `/settings/ai.json`（AI 模型服务、角色与参数）
+管理小Q自身及时间线提纯所绑定的模型、温度与 Token 预算，以及**模型服务厂商条目的增改**
+（一个厂商条目 = 一个地址 + 一组密钥 + 一组已启用模型）。App 另提供免费的「小Q 内置服务」，
 未配置任何厂商时自动兜底，也支持用户自行添加自己的模型：
 
 ```json
@@ -336,29 +337,34 @@ description: 系统偏好与配置技能：个性化外观、AI模型分配与�
     "imageGeneration": {"model": "<厂商id>::<模型名>"}
   },
   "temperatures": {
-    "assistant": {
-      "temperature": 0.7,
-      "maxTokens": 64000
-    },
-    "timelineOptimization": {
-      "temperature": 0.01,
-      "maxTokens": 12000,
-      "extractImages": true
-    }
+    "assistant": {"temperature": 1.0, "maxTokens": 64000},
+    "timelineOptimization": {"temperature": 0.1, "maxTokens": 12000, "extractImages": true}
   },
   "providers": [
-    {"id": "厂商id", "name": "厂商名", "baseUrl": "https://...", "models": ["模型A", "模型B"], "keyCount": 2, "apiKeys": ["sk-***"]}
+    {"id": "厂商id", "name": "厂商名", "baseUrl": "https://...", "keyCount": 2, "apiKeys": ["sk-***已掩码"], "models": ["模型A", "模型B"]}
   ]
 }
 ```
 
 字段约定：
 - `roles.*.model` 可写，格式为 `厂商id::模型名`；写 `null` 表示清空绑定（回落到默认厂商的首个已启用模型）。
-- `providers` 是**只读快照**：密钥已掩码；增删厂商、添加密钥、启用/停用模型都必须引导用户去「小Q设置 → 模型」操作，
-  不要尝试通过写本文件修改（写入会被忽略）。
+- `providers` 可写：传数组即可**新增/更新厂商条目**（按 `id` 判定，返回结果含新厂商 id 与可用状态）。
+  - 必填 `baseUrl`（需 http(s) 前缀）；`apiKeys` 传**明文**密钥，与现有密钥池合并去重，
+    本快照里的掩码串回写会被自动忽略（`replaceKeys: true` 才全量替换）。
+  - `models` 传模型 id 数组即全部启用；**新建时不传 `models` 会自动扫描该服务的全部模型并启用**，
+    所以用户只给「URL + Key」也能全自动配好。`scan: false` 可跳过扫描。
+  - 可选字段：`name`、`vendorId`（厂商模板 id，未知按自定义处理）、`providerType`（`openai`/`anthropic`/`gemini`）、
+    `enabled`（默认 true）、`isDefault`（首个厂商自动设为默认）。
+  - 不支持：删除厂商（引导用户去「小Q设置 → 模型」）、订阅账号型厂商（需登录授权，同样引导）。
 - `temperatures` 可写，下轮对话生效。
 
 **场景示例**：
+- 用户：“用这个中转站：https://api.xxx.com/v1，key 是 sk-abc123，模型 gpt-4o 和 claude-sonnet-4-5” →
+  写入 `{"providers": [{"name": "xxx中转", "baseUrl": "https://api.xxx.com/v1", "apiKeys": ["sk-abc123"], "models": ["gpt-4o", "claude-sonnet-4-5"]}]}`，
+  再按返回的厂商 id 写 `{"roles": {"assistant": {"model": "<厂商id>::gpt-4o"}}}` 绑定为对话模型（用户没提绑定则不必绑）。
+- 用户：“加这个服务：地址 https://api.yyy.com key sk-def456” → 不传 `models` 直接写入，条目会自动扫描并启用全部模型。
+- 用户：“给我的 xx 厂商再加一把 key” → 先读 `providers` 找到厂商 id，写入
+  `{"providers": [{"id": "<厂商id>", "apiKeys": ["sk-新key"]}]}`（掩码项会被忽略，不用担心覆盖旧密钥）。
 - 用户：“把你的温度降低点，回答更严谨” → 写入 `{"temperatures": {"assistant": {"temperature": 0.2}}}`
 - 用户：“把小Q切换到某个模型” → 先从 `providers` 里找到该模型与其厂商 id，再写入
   `{"roles": {"assistant": {"model": "<厂商id>::<模型名>"}}}`
@@ -573,97 +579,123 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 - 健康类分析建议结合 `/settings/profile.json`（身高、生活目标等画像）与 `/settings/weight.json`（体重趋势、BMI）交叉解读，给出贴合用户个人情况的建议。
 ''';
 
-  static const String frontendDesignDoc = '''---
-name: frontend-design
-description: 网页设计技能：精美单文件 HTML 网页/落地页/H5/待办打卡工具/海报/邀请函/贺卡/简历页/数据可视化页面等展示与交互型内容的生成规范，涵盖美学方向、移动端适配、动效细节与 LocalStorage 交互状态持久化
+  static final String frontendDesignDoc = buildFrontendDesignDoc();
+
+  static const String mermaidDiagramDoc = '''---
+name: mermaid-diagram
+description: 图示技能：用 Mermaid 把流程/时序/甘特/思维导图写成 .mmd 笔记；App 对甘特使用原生视图，其余图型使用可缩放的主题化预览，涵盖图型选择、手机可读性、语法与常见坑
 ---
 
-# 网页设计技能 (Frontend Design)
+# 图示技能 (Mermaid Diagram)
 
-用户让你「做个网页/页面/待办清单/打卡工具/记账页/海报/邀请函/贺卡/简历页/可视化大屏」时按本手册执行，产出**有设计感、适配手机屏幕、交互状态自留存**的单文件 HTML，避免千篇一律的「AI 生成感」。
+用户要「画个图 / 流程图 / 时序图 / 甘特图 / 脑图」，或让你把一段文字整理成结构化图示时，按本手册执行：产出**纯 Mermaid 源码**，写入 `.mmd` 笔记；App 打开即见渲染图，右上角可切源码。
 
 ## 1. 交付规范（QNote 环境）
-- **输出方式**：一次 `write_file(path: "/notes/<标题>.html", content: ...)` 写入**完整单文件 HTML**（以 `<!DOCTYPE html>` 开头），App 会自动渲染网页预览；写完告知用户「已写入 /notes/xx.html，在笔记中点开即可预览」。
-- **必备骨架**：`<head>` 中必须有 `<meta name="viewport" content="width=device-width, initial-scale=1.0">` 与 `<title>`；CSS 统一内联在 `<style>` 中。
-- **外链资源**：预览支持 Tailwind CDN、Chart.js、Google Fonts 等外链；但字体必须写系统回退栈（如 `font-family: 'Noto Serif SC', 'Songti SC', serif`），关键内容不得依赖外链成功加载。图片优先用 CSS 图形或内联 SVG，外链图床仅作补充。
-- **页内导航**：跳转一律用锚点（`href="#section"`）或 JS；**严禁依赖 `<a href="http://...">` 在预览内跳转**——外链点击会被交给系统浏览器打开、脱离笔记预览。
-- **局部修改**：用户要求调整时用 `edit_file` 精准替换对应片段，不要整篇推倒重写。
+- **输出方式**：一次 `write_file(path: "/notes/<标题>.mmd", content: ...)` 写入**纯 Mermaid 源码**。
+- **不要**在文件里包 `<!DOCTYPE html>`、`<script>`，也**不要**写 ` ```mermaid ` 代码围栏（那是 Markdown 正文里的写法）——`.mmd` 文件的第一行就是图类型声明（如 `flowchart TD`）。
+- 写完告知用户「已写入 /notes/xx.mmd，点开笔记即见渲染图，右上角可切源码」。
+- 局部调整用 `edit_file` 精准替换节点/连线，不要整篇推倒重写。
 
-## 2. 设计思考（动笔前先定三件事）
-- **用途与受众**：这个页面解决什么问题？给谁看？在什么场合被打开？
-- **基调方向**：选定一个极端且自洽的美学方向执行到底，例如：极简留白、极繁铺陈、复古未来、自然有机、奢华精致、玩趣玩具感、编辑杂志风、粗野主义、装饰艺术几何、柔和粉彩、工业实用等。极简与极繁都可以精彩，关键是**有意图**，而非强度堆砌。
-- **记忆点**：用户看完能记住的一个东西——一个字体、一种构图、一处动效或一块色彩。先想清楚它，再动笔。
+## 2. 图型选择（App 输出类型只推荐这 4 种）
+- 流程、步骤、判断：`flowchart TD`（手机优先自上而下）；
+- 多方交互的先后顺序：`sequenceDiagram`；
+- 有明确日期的任务排期：`gantt`（App 会切成原生甘特视图）；
+- 层级、大纲、知识结构、脑图：`mindmap`。
+- 只有先后顺序、没有日期：用 `flowchart LR` 表达，不要硬造 gantt 日期。
+- `pie` / `stateDiagram-v2` / `quadrantChart` 等手动写 `.mmd` 仍能渲染，但不要主动把它们当成默认输出类型推荐。
+- **关系图（erDiagram）已下线**：不要主动产出 ER 图；实体/表关系优先用 `mindmap`（层级）或 `flowchart`（关联）表达，中文更自然。仅当用户明确索要 ER 时才写 `.mmd` erDiagram，且 Mermaid 语法限制不变：**实体名、字段类型、字段名只能英文/数字/下划线**（中文实体名、中文类型、中文字段名都会直接语法报错），中文只能放进**引号包裹的关系标签**或**字段注释**，例如 `USER ||--o{ ORDER : "下单"`、`string nickname "昵称"`。
+- 不确定时优先 `flowchart`；表达信息层级用 `mindmap`。
 
-## 3. 美学准则
-- **字体**：展示字体（标题）+ 正文字体成对配置形成对比；严禁 Inter/Roboto/Arial/system-ui 充当标识字体。中文可用 Noto Serif SC（宋体感）、LXGW WenKai（楷体手写感）、Noto Sans SC 多字重等，经 Google Fonts CDN 引入。
-- **色彩**：用 CSS variables 定义色板；主色主导大面积，强调色只点在 5%-10% 的关键处（按钮、数字、下划线），忌平均分配；明确选 light 或 dark 其一执行到底。
-- **动效**：CSS-only 优先。一次编排好的页面入场（`animation-delay` 逐级错峰的 staggered reveals）胜过零碎微交互；`transition` 只写具体属性（如 `transition: transform .3s, opacity .3s`），严禁 `transition: all`。
-- **空间构图**：敢于不对称、重叠、斜向流动、破格元素；要么慷慨留白，要么受控的高密度排版，忌不痛不痒的中间态。
-- **背景与氛围**：不要默认纯色平铺，用渐变网格、噪点纹理、几何图案、层叠半透明、细网格线等营造层次；装饰必须服务于既定基调。
+## 3. 手机可读性（先定预算再画）
+- 流程图：节点 **≤12 个**、层级 **≤4 层**；节点文案 ≤12 个汉字；长解释放节点外的正文，不要塞进节点。
+- 时序图：参与者 **≤5 个**；消息文案 ≤20 个汉字；能用 3 个参与者就别用 6 个。
+- 甘特图：任务 **≤8 个**、分组 **≤4 个**、日期范围 **≤60 天**；任务名 ≤10 个汉字；让日/周视图能一眼看清。
+- 思维导图：层级 **≤3 层**、节点 **≤12 个**；根节点 ≤8 个汉字；每个节点只写关键词。
+- App 预览支持横向滚动、双指缩放和适应宽度，但不要以「能滚动」为借口把图塞满；手机上第一眼读不完的图，实际使用率很低。
 
-## 4. 移动端硬性规范（预览容器是手机 WebView，375px 是第一画布）
-- 布局先在 375px 宽下校准，再用 `media query` 向平板/宽屏扩展；
-- 触控目标 ≥ 44×44px，元素间距防误触；
-- `<input>`/`<textarea>` 字号 ≥ 16px（更小会触发 iOS 聚焦自动放大）；
-- 交互元素加 `touch-action: manipulation` 消除双击缩放延迟；
-- 用 `env(safe-area-inset-*)` 或 `viewport-fit=cover` 适配刘海屏与底部安全区；
-- 触屏没有 hover：关键信息与操作入口不能只靠 hover 呈现；
-- 只动画 `transform` 与 `opacity`（避免回流重绘），并提供 `@media (prefers-reduced-motion: reduce)` 降级；
-- 图片与视频给显式宽高或 `aspect-ratio`，防止加载时布局跳动。
+## 4. 语法要点
+- 节点：`id[文案]`（矩形）、`id(文案)`（圆角）、`id{文案}`（判定）、`id[(文案)]`（数据库）。
+- 文案含 `(`、`)`、`[`、`]`、`{}`、`"`、`:`、`|` 等特殊字符时用双引号包裹：`A["含(括号)的文案"]`。
+- 换行用 `<br/>`：`A[第一行<br/>第二行]`。
+- 连线：`A --> B`、`A -->|是| B`（带标注）、`A -.-> B`（虚线）、`A ==> B`（加粗）。
+- 分组：`subgraph 分组名 ... end`；手机上子图不要超过 2 层。
+- `sequenceDiagram`：`participant 甲 as 用户`，消息 `甲->>乙: 内容`、返回 `乙-->>甲: 内容`。
+- `mindmap`：用缩进表达层级（每层两空格以上），根节点单独一行，节点文本直接写、**不要方括号**。
+- `gantt`（App 原生视图只解析以下子集，写对了才有固定任务列 + 日/周/月缩放）：
+  - 必写 `dateFormat YYYY-MM-DD`（也支持 `YYYY/MM/DD`）；
+  - `title` 可选；`section` 分组；
+  - 任务行：`任务名 :状态, id, 开始, 结束/持续`；
+  - 状态：`done` / `active` / `crit` / `milestone`，可省略；
+  - 开始：`YYYY-MM-DD` 或 `after 前置任务id`；
+  - 结束：日期（Mermaid 语义为包含当天）或持续时间 `5d` / `2w` / `6h`；
+  - **不要**写 `excludes`、`inclusiveEndDates`、自定义 dateFormat 或 `%%{init}%%`：这些语义原生视图不猜，会自动回退到通用 Mermaid；
+  - 示例：
+    ```mermaid
+    gantt
+        title 上线计划
+        dateFormat YYYY-MM-DD
+        section 开发
+        接口开发 :done, dev1, 2026-11-02, 5d
+        前端联调 :active, dev2, after dev1, 4d
+        section 发布
+        上线 :milestone, m1, after dev2, 0d
+    ```
 
-## 5. 工艺细节
-- 阴影至少两层：一层大而淡模拟环境光，一层小而实模拟直射光；
-- 半透明边框 + 阴影组合能让卡片边缘更锐利；
-- 嵌套圆角同心：子元素圆角 ≤ 父元素，且视觉上同心（约等于父圆角减内边距）；
-- 非中性色背景上，边框、阴影、文字色调向背景同色相微微偏移更协调；
-- 数字对齐比较场景用 `font-variant-numeric: tabular-nums`；
-- 语义化标签（header/main/section/footer）；可交互元素给 `:focus-visible` 焦点环；纯图标按钮加 `aria-label`；
-- 文案用规范排版字符：弯引号（“ ”）、省略号（…）、间隔号（·）；
-- 深色页面设 `color-scheme: dark` 并配 `<meta name="theme-color">`。
+## 5. 常见坑（出现即返工）
+- 把 HTML/Markdown 围栏一起写进 `.mmd` → 渲染失败；
+- 文案里的半角括号未加引号 → 解析报错；
+- `mindmap` 误用 `[方括号]` 节点语法 → 报错（直接写文本）；
+- `gantt` 缺 `dateFormat` → 解析报错；
+- ER 用中文实体名、中文字段名/类型或 `USER["用户"]` → 语法报错（中文放引号注释，见第 2 节）；
+- 一次塞几十个节点 → 手机上小到看不清；
+- 把「只有顺序」的内容硬写成 gantt，编造日期 → 信息失真。
 
-## 6. 反模式清单（出现即不合格）
-- 紫色渐变 + 白底 + 等宽圆角卡片阵列 = 一眼 AI 生成，严禁；
-- Inter/Roboto/system-ui 当标题字体；
-- 所有模块同宽同高的均质卡片阵列；
-- emoji 满天飞充当图标与装饰；
-- 重阴影、大色块等过度装饰抢内容的风头；
-- 每次产出长得一样：明暗、字体、构图、风格应随内容轮换，两次产出不应雷同；
-- **交互型页面写成纯静态死页面（刷新即丢状态）**。
+## 6. 典型工作流
+- 「把这段会议记录/需求整理成流程图」→ 提炼主干与分支 → `flowchart TD` 一次写入 → 告知预览位置；
+- 「做个项目计划」→ 有明确日期用 `gantt`，任务控制在 8 个以内；只有顺序用 `flowchart LR`；
+- 「把这篇文章整理成脑图」→ 用 `mindmap`，层级忠实于原文结构，节点只留关键词；
+- 「画个多方交互流程」→ `sequenceDiagram`，参与者控制在 5 个以内。
+''';
 
-## 7. 典型工作流
-- 用户「帮我做个 XX 网页/海报」→ 心里定下基调与记忆点（不必长篇复述给用户）→ 一次 `write_file` 产出完整单文件 HTML → 告知预览位置；
-- 简单小卡片可省略完整流程，但第 6 章反模式清单始终生效；
-- **数据可视化**：优先纯 CSS/内联 SVG（不依赖网络，最稳）；需要交互图表时用 Chart.js CDN，并确保断网时页面仍有可读的内容降级；
-- 大段数据（表格、榜单）用低饱和底 + 高对比文字，密度可以高，但层级必须清楚。
+  static const String dataFileDoc = '''---
+name: data-file
+description: 数据表格技能：把结构化数据写成 .csv 表格；App 表格支持列宽拖拽、自动换行、卡片视图与单元格详情，涵盖列头设计、CSV 转义、数值日期约定
+---
 
-## 8. 交互与状态持久化规范 (State Persistence)
-QNote 预览环境原生开启了 DOM Storage 与独立 Origin 存储沙箱，**全面支持标准 `localStorage` 持久化**。当用户要求制作具有交互实用价值的工具（如待办清单 TodoList、打卡签到、计数器、记账、习惯追踪、问卷、设置、折叠备忘等）时，**必须实现状态本地持久留存**，确保用户退出重新打开后，之前的勾选、输入和操作依然完好保存：
-- **数据驱动模式**：定义清晰的数据模型（Array/Object），界面渲染由数据驱动，而非单纯零散修改 DOM；
-- **专属存储 Key**：在 `<script>` 开头声明业务唯一 Key，例如 `const STORAGE_KEY = 'qnote_app_todo_v1';`；
-- **启动自动读取恢复**：
-  ```javascript
-  let state = [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) state = JSON.parse(raw);
-  } catch (e) {
-    console.warn('读取本地数据失败', e);
-  }
-  ```
-  页面加载后调用 `render()` 将 `state` 渲染到 DOM 中；
-- **交互实时持久化**：用户勾选 Checkbox、编辑文本、新增或删除列表项时，先更新 `state`，再执行：
-  ```javascript
-  function saveState() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.warn('保存数据失败', e);
-    }
-    render();
-  }
-  ```
-- **贴心配套清空/重置能力**：在页面次要位置（如标题右侧或底部小字）提供小巧的「清空 / 重置数据」操作（带简单确认），执行 `localStorage.removeItem(STORAGE_KEY)` 并重置为默认初始数据；
-- **异常保护**：涉及 `localStorage` 的读写必须使用 `try...catch` 包裹，保障极端情况或受限环境下页面基础展示不崩溃。
+# 数据表格技能 (Data File)
+
+用户要「整理成表格 / 列个清单 / 记录这些数据 / 导出成数据文件」时按本手册执行：产出**结构规整的 `.csv` 表格**。App 预览会渲染成可拖列宽、可换行、可切卡片视图、可排序搜索的原生表格。
+
+## 1. 交付规范（QNote 环境）
+- **表格** → `write_file(path: "/notes/<标题>.csv", content: ...)`；
+- 写完告知用户「已写入 /notes/xx.csv，点开笔记即见表格；可拖列宽、切换行/卡片视图、点单元格看全文」。
+- **少量数据且要跟正文混排**时，直接用 Markdown 表格写在普通笔记里即可，不必单开 `.csv`；只有成规模、要排序/筛选/复制到 Excel 的数据才用 `.csv`。
+- 层级嵌套的配置类数据不建议单开 `.json`（移动端打开只能看源码）：优先用 `.csv` 表达明细，或直接写进 `.md` 笔记；用户明确索要 `.json` 文件时才写，且必须是合法 JSON。
+
+## 2. 手机表格设计（先想清楚再写）
+- 列数 **≤6 列**（最多 8 列）；列头用简短中文，**≤6 个汉字**。
+- 首列放名称、日期、编号这类能识别一行的字段——卡片视图会拿它当标题。
+- 单元格尽量控制在 30 个汉字以内；长备注放最后一列，用户可点开看全文；整段文章请用 `.md`，不要塞进表格。
+- 一行一条记录，列数与列头严格一致；**不要合并单元格、不要多行表头**（CSV 不支持）。
+- 数值列不带单位与千分位（写 `1234.5`，不要 `1,234.5 元`），单位写进列名：`金额(元)`。
+- 日期统一 `YYYY-MM-DD`，时间 `YYYY-MM-DD HH:MM`。
+- 空值留空（相邻两个逗号），不要写 `null` / `-` / `无`。
+- 列顺序按阅读习惯排（如 日期→项目→金额→备注），不要随机。
+
+## 3. CSV 转义
+- 字段含**逗号、双引号或换行**时，用双引号包裹整个字段，内部双引号写成两个：`"他说""你好"", 然后走了"`。
+- 字段本身有换行时也可以保留在引号内，但手机表格里行高会变高；能用短文本就尽量短。
+
+## 4. 常见坑
+- CSV 字段含逗号却没加引号 → 列错位；
+- 列头与数据列数不一致 → 表格错列；
+- 列太多、列名太长 → 手机上一屏看不全（即使支持拖列宽）；
+- 把一整段文字塞进一格 → 表格里显示不完整（长文本应放 `.md` 笔记）；
+- 日期格式混用（`2026/1/1`、`1月1日`）→ 无法排序/比较。
+
+## 5. 典型工作流
+- 「把这几笔开销记成表格」→ 列头 `日期,项目,分类,金额(元),备注`（5 列）→ 一次写入 `.csv`；
+- 「列个书单/片单」→ 数据少就 Markdown 表格，成规模用 `.csv`。
 ''';
 
   /// 生活决策备选单：本 skill 仅作索引，正文每次用 fetch_url 现拉对应章节，
@@ -861,6 +893,18 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
         'origin': AgentSkillOrigin.builtin,
       },
       {
+        'name': 'mermaid-diagram',
+        'path': '/skills/mermaid-diagram.md',
+        'description': '图示：把流程/时序/甘特/时间线/思维导图/关系等用 Mermaid 写成 .mmd 笔记，App 自动渲染成矢量图',
+        'origin': AgentSkillOrigin.builtin,
+      },
+      {
+        'name': 'data-file',
+        'path': '/skills/data-file.md',
+        'description': '数据表格：把结构化数据写成 .csv（可排序搜索、拖列宽、卡片视图），含列头设计与转义规范',
+        'origin': AgentSkillOrigin.builtin,
+      },
+      {
         'name': 'life-decision-guide',
         'path': '/skills/life-decision-guide.md',
         'description':
@@ -936,6 +980,17 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
       case 'design':
       case 'ui':
         return 'frontend-design';
+      case 'mermaid-diagram':
+      case 'mermaid':
+      case 'diagram':
+      case 'flowchart':
+      case 'mindmap':
+        return 'mermaid-diagram';
+      case 'data-file':
+      case 'data':
+      case 'csv':
+      case 'table':
+        return 'data-file';
       case 'life-decision-guide':
       case 'life':
       case 'live-better':
@@ -954,6 +1009,24 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
       if (skill.name == key && !skill.archived) return skill.name;
     }
     return null;
+  }
+
+  /// 批量解析一组技能名（兼容别名与 `/skills/<名称>.md` 路径）为「主名 + 手册」
+  ///
+  /// 保持传入顺序、按解析后的主名去重、未知或已归档技能直接跳过。
+  /// 斜杠命令与「常用提示词」弹窗选中的技能共用这一份解析口径，
+  /// 避免两处各写一套别名/去重逻辑后逐渐走偏。
+  List<({String name, String doc})> resolveSkillDocs(Iterable<String> namesOrPaths) {
+    final seen = <String>{};
+    final resolved = <({String name, String doc})>[];
+    for (final raw in namesOrPaths) {
+      final name = resolveSkillName(raw);
+      if (name == null || !seen.add(name)) continue;
+      final doc = getSkillContent(name);
+      if (doc == null) continue;
+      resolved.add((name: name, doc: doc));
+    }
+    return resolved;
   }
 
   /// 获取指定技能的手册内容（已归档的用户技能视为不存在）
@@ -978,6 +1051,10 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
         return statsAnalystDoc;
       case 'frontend-design':
         return frontendDesignDoc;
+      case 'mermaid-diagram':
+        return mermaidDiagramDoc;
+      case 'data-file':
+        return dataFileDoc;
       case 'life-decision-guide':
         return lifeDecisionGuideDoc;
       case 'find-skills':
@@ -1028,6 +1105,8 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
     'settings-manager',
     'stats-analyst',
     'frontend-design',
+    'mermaid-diagram',
+    'data-file',
     'life-decision-guide',
     'find-skills',
   };
@@ -1051,6 +1130,13 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
     'web',
     'design',
     'ui',
+    'mermaid',
+    'diagram',
+    'flowchart',
+    'mindmap',
+    'data',
+    'csv',
+    'table',
     'life',
     'live-better',
     'how-to-live',

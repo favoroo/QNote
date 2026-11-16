@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  快捷记录弹窗：与桌面快捷记录组件共用同一套「曜石黑 + 正圆」语言。
+  底部一排四颗正圆：左侧相册 / 相机（次级操作），右侧取消 / 发送；
+  发送用强调色实心圆做唯一彩色主操作，图标承担语义，不再出现文字按钮。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/layout_root"
     android:layout_width="match_parent"
@@ -10,21 +15,25 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@drawable/bg_dialog_card"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:elevation="8dp"
+        android:background="@drawable/bg_quick_record_card"
         android:clickable="true"
-        android:focusable="true">
+        android:elevation="8dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:padding="16dp">
 
-        <!-- Unified Input Area: Container with bg_dialog_input (Fixed height ensures dialog size stays stable when photos are attached) -->
+        <!--
+          统一输入区：固定高度，附着照片时弹窗尺寸不跳动。
+          addStatesFromChildren 让容器跟随 EditText 的焦点态，整块输入区一起高亮。
+        -->
         <LinearLayout
             android:id="@+id/layout_input_container"
             android:layout_width="match_parent"
-            android:layout_height="168dp"
-            android:background="@drawable/bg_dialog_input"
+            android:layout_height="144dp"
+            android:addStatesFromChildren="true"
+            android:background="@drawable/bg_quick_record_input"
             android:orientation="vertical"
-            android:padding="10dp">
+            android:padding="12dp">
 
             <!-- Input Box -->
             <EditText
@@ -34,16 +43,16 @@
                 android:layout_weight="1"
                 android:background="@null"
                 android:gravity="top|left"
-                android:hint="记录些什么呢..."
-                android:textColor="@color/dialog_text"
-                android:textColorHint="@color/widget_text_secondary"
-                android:textSize="14sp"
-                android:padding="2dp"
-                android:inputType="textMultiLine"
+                android:hint="记录一下"
                 android:imeOptions="actionDone"
-                android:scrollbars="vertical" />
+                android:inputType="textMultiLine"
+                android:padding="2dp"
+                android:scrollbars="vertical"
+                android:textColor="@color/widget_qr_on_surface"
+                android:textColorHint="@color/widget_text_secondary"
+                android:textSize="15sp" />
 
-            <!-- Attached Photos Preview Container (inside input box, at bottom) -->
+            <!-- 已附照片预览（位于输入区底部） -->
             <HorizontalScrollView
                 android:id="@+id/scroll_photos_preview"
                 android:layout_width="match_parent"
@@ -57,86 +66,71 @@
                     android:id="@+id/container_photos_preview"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal" />
             </HorizontalScrollView>
         </LinearLayout>
 
-        <!-- Tools & Actions Panel -->
-        <RelativeLayout
+        <!-- 底部操作栏：左侧选图工具，右侧取消 / 发送，中间弹性留白 -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <!-- Left tool buttons -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_alignParentLeft="true"
-                android:layout_centerVertical="true">
+            <ImageButton
+                android:id="@+id/btn_dialog_photo"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_quick_record_tool_circle"
+                android:contentDescription="选择相册图片"
+                android:padding="12dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_gallery_white" />
 
-                <ImageButton
-                    android:id="@+id/btn_dialog_photo"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_gallery"
-                    android:contentDescription="选择相册图片"
-                    android:scaleType="centerInside" />
+            <Space
+                android:layout_width="8dp"
+                android:layout_height="wrap_content" />
 
-                <Space
-                    android:layout_width="8dp"
-                    android:layout_height="wrap_content" />
+            <ImageButton
+                android:id="@+id/btn_dialog_camera"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_quick_record_tool_circle"
+                android:contentDescription="启动相机拍照"
+                android:padding="12dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_widget_camera_white" />
 
-                <ImageButton
-                    android:id="@+id/btn_dialog_camera"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_camera"
-                    android:contentDescription="启动相机拍照"
-                    android:scaleType="centerInside" />
-            </LinearLayout>
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
 
-            <!-- Right action buttons -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_alignParentRight="true"
-                android:layout_centerVertical="true">
+            <ImageButton
+                android:id="@+id/btn_dialog_cancel"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_quick_record_tool_circle"
+                android:contentDescription="取消"
+                android:padding="13dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_quick_record_close" />
 
-                <Button
-                    android:id="@+id/btn_dialog_cancel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="38dp"
-                    android:minHeight="0dp"
-                    android:minWidth="0dp"
-                    android:background="@drawable/bg_dialog_btn_secondary"
-                    android:paddingLeft="18dp"
-                    android:paddingRight="18dp"
-                    android:text="取消"
-                    android:textColor="@color/widget_text_secondary"
-                    android:textSize="14sp" />
+            <Space
+                android:layout_width="10dp"
+                android:layout_height="wrap_content" />
 
-                <Space
-                    android:layout_width="8dp"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/btn_dialog_send"
-                    android:layout_width="wrap_content"
-                    android:layout_height="38dp"
-                    android:minHeight="0dp"
-                    android:minWidth="0dp"
-                    android:background="@drawable/bg_dialog_btn_primary"
-                    android:paddingLeft="20dp"
-                    android:paddingRight="20dp"
-                    android:text="发送"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp" />
-            </LinearLayout>
-        </RelativeLayout>
+            <ImageButton
+                android:id="@+id/btn_dialog_send"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_quick_record_send_circle"
+                android:contentDescription="发送记录"
+                android:padding="11dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_quick_record_send" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>
