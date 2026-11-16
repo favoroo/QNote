@@ -58,6 +58,18 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   late List<String> _tags;
   late String _displayTag;
   late List<String> _photos;
+  final List<Object> _photoHeroTags = <Object>[];
+
+  List<Object> _syncPhotoHeroTags() {
+    while (_photoHeroTags.length < _photos.length) {
+      _photoHeroTags.add(Object());
+    }
+    if (_photoHeroTags.length > _photos.length) {
+      _photoHeroTags.removeRange(_photos.length, _photoHeroTags.length);
+    }
+    return _photoHeroTags;
+  }
+
   late List<String> _newlyUploadedPaths;
   late List<String> _removedPaths;
   late List<TagEntry> _tagEntries;
@@ -805,6 +817,9 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
 
   void _removePhoto(int index) {
     final removed = _photos.removeAt(index);
+    if (index < _photoHeroTags.length) {
+      _photoHeroTags.removeAt(index);
+    }
     if (_newlyUploadedPaths.contains(removed)) {
       _newlyUploadedPaths.remove(removed);
       ref.read(imageRepositoryProvider).deleteImage(removed);
@@ -815,7 +830,12 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   }
 
   void _previewPhoto(int index) {
-    Navigator.of(context).push(AppMotion.galleryRoute(FullScreenImageGallery(images: _photos, initialIndex: index)));
+    final tags = _syncPhotoHeroTags();
+    Navigator.of(context).push(
+      AppMotion.galleryRoute(
+        FullScreenImageGallery(images: _photos, initialIndex: index, heroTags: List<Object?>.from(tags)),
+      ),
+    );
   }
 
   Future<void> _waitForCompressing() async {
@@ -2165,6 +2185,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
   Widget _buildPhotoItem(int index, ColorScheme colorScheme) {
     final path = _photos[index];
     final isCompressing = _compressingTasks.containsKey(path);
+    final heroTag = _syncPhotoHeroTags()[index];
     return GestureDetector(
       onTap: () => _previewPhoto(index),
       child: Stack(
@@ -2180,7 +2201,18 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
               borderRadius: BorderRadius.circular(12),
               child: Stack(
                 children: [
-                  UnifiedImage(imagePath: path, width: 80, height: 80, borderRadius: BorderRadius.circular(12)),
+                  HeroMode(
+                    enabled: !AppMotion.reduce(context),
+                    child: Hero(
+                      tag: heroTag,
+                      child: UnifiedImage(
+                        imagePath: path,
+                        width: 80,
+                        height: 80,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                   if (isCompressing)
                     Container(
                       color: Colors.black.withValues(alpha: 0.4),

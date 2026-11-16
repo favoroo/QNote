@@ -38,7 +38,7 @@ Future<void> showQuickPromptDialog(
   List<String> initialSkillNames = const [],
   void Function(List<String> skillNames)? onSkillsChanged,
 }) async {
-  await showDialog<void>(
+  await AppMotion.showDialog<void>(
     context: context,
     builder: (dialogContext) => _QuickPromptDialog(
       onSelected: onSelected,
@@ -760,7 +760,7 @@ class _QuickPromptDialogState extends ConsumerState<_QuickPromptDialog> {
 
   /// 删除提示词（二次确认）
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref, int index, String text) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除提示词'),

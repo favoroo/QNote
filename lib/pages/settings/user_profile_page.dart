@@ -348,7 +348,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   Future<void> _deleteWeightRecord(String id) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除体重记录'),
@@ -1310,7 +1310,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
 
   void _showAddCustomFieldDialog() {
     final controller = TextEditingController();
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -1346,7 +1346,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
 
   void _showRenameCustomFieldDialog(String oldName) {
     final controller = TextEditingController(text: oldName);
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -1386,7 +1386,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
   }
 
   void _confirmDeleteCustomField(String name) {
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(

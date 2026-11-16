@@ -219,6 +219,38 @@ void main() {
       expect((await diaryRepo.getByDate(DateTime.parse(testDateStr))).isEmpty, isTrue);
     });
 
+    test('8.1 timeline: 小Q分析随 read_file 输出，写回不会变成自定义字段', () async {
+      const testDateStr = '2026-09-21';
+      const testPath = '/timeline/$testDateStr.md';
+      const analysis = '图：米饭约250kcal、牛奶约150kcal，合计约400kcal';
+
+      await vfs.writeFile(testPath, '''# $testDateStr 时间线
+## [12:30] 午饭
+- 分类: 饮食
+- 评价: 健康
+- 小Q分析: $analysis
+- 详情: 250ml牛奶、两个鸡蛋、两碗200g的米饭
+''');
+
+      // 小Q对话读取时间线时必须能看到分析，才能避免重复查看图片
+      final readContent = await vfs.readFile(testPath);
+      expect(readContent, contains('- 小Q分析: $analysis'));
+
+      var record = (await DiaryRepository().getByDate(DateTime.parse(testDateStr))).firstWhere((r) => r.title == '午饭');
+      expect(record.aiAnalysis, analysis);
+      expect(record.tagEntries.expand((e) => e.fields.keys), isNot(contains('小Q分析')));
+
+      // 模拟小Q整篇重写（read_file 回显去掉行号后写回）：分析必须保留
+      await vfs.writeFile(testPath, VirtualWorkspaceService.stripLineNumbers(readContent));
+      record = (await DiaryRepository().getByDate(DateTime.parse(testDateStr))).firstWhere((r) => r.title == '午饭');
+      expect(record.aiAnalysis, analysis);
+      expect(record.tagEntries.expand((e) => e.fields.keys), isNot(contains('小Q分析')));
+
+      // 只存在于分析里的关键词也能被 grep 命中
+      final grepRes = await vfs.grep('400kcal');
+      expect(grepRes.any((r) => r['type'] == 'timeline' && r['id'] == record.id), isTrue);
+    });
+
     test('9. settings: appearance.json 读写与个性化外观切换', () async {
       // 1. 验证 list_dir /settings
       final settingsList = await vfs.listDir('/settings');

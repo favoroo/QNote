@@ -184,11 +184,15 @@ class _ScoreHeatmapState extends State<ScoreHeatmap> {
                           height: _cellSize,
                           child: Align(
                             alignment: Alignment.centerRight,
-                            child: Text(
-                              weekdayLabels.firstWhere((e) => e.$1 == (row + 1), orElse: () => (row + 1, '')).$2,
-                              style: TextStyle(
-                                fontSize: AppTypography.micro,
-                                color: theme.colorScheme.onSurfaceVariant,
+                            // 单元格高度仅 12px：显示大小放大时连同刻度字一起收缩，避免裁切
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                weekdayLabels.firstWhere((e) => e.$1 == (row + 1), orElse: () => (row + 1, '')).$2,
+                                style: TextStyle(
+                                  fontSize: AppTypography.micro,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ),

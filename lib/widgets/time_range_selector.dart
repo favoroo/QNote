@@ -105,9 +105,13 @@ class TimeRangeSelector extends StatelessWidget {
           width: _segmentWidth,
           height: _segmentHeight,
           child: Center(
-            child: Text(
-              _label(range),
-              style: TextStyle(color: textColor, fontSize: 14, fontWeight: fontWeight),
+            // 分段高度固定 36：显示大小放大时用 FittedBox 收缩，避免文字被裁切
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _label(range),
+                style: TextStyle(color: textColor, fontSize: 14, fontWeight: fontWeight),
+              ),
             ),
           ),
         ),

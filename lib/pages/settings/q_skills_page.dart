@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import 'package:qnote_flutter/core/agent/skills/skill_registry.dart';
 import 'package:qnote_flutter/core/agent/skills/skill_usage_tracker.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/pages/settings/q_skill_edit_page.dart';
@@ -310,7 +311,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
   }
 
   Future<void> _openEditor(BuildContext context, AgentSkill? skill) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => QSkillEditPage(skill: skill)));
+    await Navigator.of(context).push(AppMotion.fadeRoute<void>(QSkillEditPage(skill: skill)));
     // 返回后刷新一次，拾取编辑页可能的变更（事件总线通常已触发，这里兜底）
     if (mounted) {
       ref.invalidate(agentSkillListProvider);
@@ -319,7 +320,7 @@ class QSkillsPageState extends ConsumerState<QSkillsPage> {
   }
 
   Future<void> _confirmDeleteSkill(String name) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除技能'),

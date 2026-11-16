@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:qnote_flutter/core/network/update_service.dart';
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/app_installer.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
@@ -19,7 +20,7 @@ Future<bool> showUpdateDialog({
   required UpdateInfo updateInfo,
   required String currentVersion,
 }) {
-  return showDialog<bool>(
+  return AppMotion.showDialog<bool>(
     context: context,
     barrierDismissible: false,
     builder: (dialogContext) => _UpdateDialog(updateInfo: updateInfo, currentVersion: currentVersion),

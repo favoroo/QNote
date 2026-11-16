@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 
@@ -319,7 +320,7 @@ class _QPersonalityPageState extends State<QPersonalityPage> {
                               child: Text(
                                 '使用中',
                                 style: TextStyle(
-                                  fontSize: 10.5,
+                                  fontSize: AppTypography.label,
                                   fontWeight: FontWeight.w600,
                                   color: theme.accentInk,
                                   height: 1.2,

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/floating_q_provider.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
@@ -61,7 +62,7 @@ class AgentExitGuard extends ConsumerWidget {
   /// 有前台服务保活，退出只是把任务挪到后台继续跑、不会中断，因此这里主要是
   /// 「告知 + 给一个明确出口」；真要中断需回对话点「停止」。
   Future<void> _confirmExitWhileAgentRunning(BuildContext context) async {
-    final leave = await showDialog<bool>(
+    final leave = await AppMotion.showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('小Q 正在工作中'),

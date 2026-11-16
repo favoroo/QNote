@@ -121,9 +121,13 @@ class RecordsSectionSwitcher extends StatelessWidget {
           width: _segmentWidth,
           height: _segmentHeight,
           child: Center(
-            child: Text(
-              label,
-              style: theme.textTheme.labelLarge?.copyWith(fontSize: 13, fontWeight: fontWeight, color: textColor),
+            // 分段高度固定 30：显示大小放大时用 FittedBox 收缩，避免文字被裁切
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(fontSize: 13, fontWeight: fontWeight, color: textColor),
+              ),
             ),
           ),
         ),

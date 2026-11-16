@@ -6,6 +6,7 @@ import 'package:qnote_flutter/models/shortcut_field.dart';
 import 'package:qnote_flutter/models/shortcut_category.dart';
 import 'package:qnote_flutter/providers/shortcut_provider.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
 class ShortcutsPage extends ConsumerStatefulWidget {
@@ -109,7 +110,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
   }
 
   Future<void> _confirmAndRestoreDefaults(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('恢复默认设置'),
@@ -193,7 +194,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
 
     int activeCategoryIdx = 0;
 
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -353,7 +354,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
                     if (isEditing)
                       TextButton(
                         onPressed: () async {
-                          final confirmed = await showDialog<bool>(
+                          final confirmed = await AppMotion.showDialog<bool>(
                             context: context,
                             builder: (ctx2) => AlertDialog(
                               title: const Text('确认删除'),
@@ -606,7 +607,7 @@ class ShortcutsPageState extends ConsumerState<ShortcutsPage> {
 
   Future<String?> _showAddOptionDialog(BuildContext context) {
     final ctl = TextEditingController();
-    return showDialog<String>(
+    return AppMotion.showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('添加选项'),

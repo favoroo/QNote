@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
@@ -159,7 +160,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     // 提前获取 root navigator，避免 async 后 widget 已卸载时 context 失效
     final rootNav = showProgress ? Navigator.of(context, rootNavigator: true) : null;
     if (showProgress) {
-      showDialog(
+      AppMotion.showDialog(
         context: context,
         barrierDismissible: false,
         builder: (ctx) => _SyncProgressDialog(notifier: _progressNotifier),
@@ -317,7 +318,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   }
 
   Future<void> _handleUnbind() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('解除小米健康绑定'),
@@ -347,7 +348,9 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   }
 
   void _showQrLoginDialog() {
-    showDialog(context: context, barrierDismissible: false, builder: (ctx) => const _MiQrLoginDialog()).then((_) {
+    AppMotion.showDialog(context: context, barrierDismissible: false, builder: (ctx) => const _MiQrLoginDialog()).then((
+      _,
+    ) {
       // 扫码成功/取消都可能改变绑定态，回到时间线前后都要重新校验
       ref.invalidate(healthBindingStatusProvider);
       _loadState();

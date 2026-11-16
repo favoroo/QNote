@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 
 /// 存在未保存改动时的统一离开确认；返回 true 表示可以继续离开。
@@ -22,7 +23,7 @@ Future<bool> promptUnsavedChanges(
 }) async {
   final colorScheme = Theme.of(context).colorScheme;
 
-  final result = await showDialog<String>(
+  final result = await AppMotion.showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(title),

@@ -215,7 +215,11 @@ class FullScreenImageGallery extends StatefulWidget {
   /// 保证日记/笔记等既有调用点行为不变。
   final void Function(String path)? onSave;
 
-  const FullScreenImageGallery({super.key, required this.images, this.initialIndex = 0, this.onSave});
+  /// 与 [images] 等长的可选 Hero 标签，用于缩略图到大图之间的连续共享元素过渡。
+  /// 由调用方保证每缩略图实例唯一（如 `Object()`），避免多分支 Offstage / 同图多处出现时 tag 碰撞。
+  final List<Object?>? heroTags;
+
+  const FullScreenImageGallery({super.key, required this.images, this.initialIndex = 0, this.onSave, this.heroTags});
 
   @override
   State<FullScreenImageGallery> createState() => _FullScreenImageGalleryState();
@@ -281,13 +285,15 @@ class _FullScreenImageGalleryState extends State<FullScreenImageGallery> {
           });
         },
         itemBuilder: (context, index) {
-          return Center(
-            child: InteractiveViewer(
-              minScale: 1.0,
-              maxScale: 4.0,
-              child: UnifiedImage(imagePath: widget.images[index], fit: BoxFit.contain),
-            ),
-          );
+          final heroTag = widget.heroTags != null && index < widget.heroTags!.length ? widget.heroTags![index] : null;
+          Widget image = UnifiedImage(imagePath: widget.images[index], fit: BoxFit.contain);
+          if (heroTag != null) {
+            image = HeroMode(
+              enabled: !MediaQuery.disableAnimationsOf(context),
+              child: Hero(tag: heroTag, child: image),
+            );
+          }
+          return Center(child: InteractiveViewer(minScale: 1.0, maxScale: 4.0, child: image));
         },
       ),
     );

@@ -17,6 +17,7 @@ class GrepTool extends AgentTool {
     'memory': '记忆',
     'settings': '配置',
     'chats': '会话',
+    'graph': '图谱',
   };
 
   @override

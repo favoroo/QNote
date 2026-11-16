@@ -10,7 +10,7 @@ import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
-import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
+import 'package:qnote_flutter/widgets/common/sliding_pill_bar.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_detail.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_record_detail_sheet.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
@@ -200,7 +200,7 @@ class _FinanceTrendChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
+                    style: const TextStyle(fontSize: AppTypography.caption, color: AppPalette.textMuted),
                   ),
                 );
               },
@@ -210,8 +210,10 @@ class _FinanceTrendChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 38,
-              getTitlesWidget: (value, meta) =>
-                  Text('¥${value.toInt()}', style: const TextStyle(fontSize: 9, color: AppPalette.textMuted)),
+              getTitlesWidget: (value, meta) => Text(
+                '¥${value.toInt()}',
+                style: const TextStyle(fontSize: AppTypography.micro, color: AppPalette.textMuted),
+              ),
             ),
           ),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -286,62 +288,48 @@ class _CategoryBreakdownState extends State<_CategoryBreakdown> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (hasExpense && hasIncome) ...[_toggle(widget.isDark), const SizedBox(height: 12)],
-        for (var i = 0; i < shown.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10),
-          _CategoryRow(
-            category: shown[i].key,
-            amount: shown[i].value,
-            pct: maxVal > 0 ? shown[i].value / maxVal : 0,
-            color: color,
-            isIncome: effectiveIncome,
-            isDark: widget.isDark,
+        if (hasExpense && hasIncome) ...[_toggle(context, widget.isDark), const SizedBox(height: 12)],
+        AppMotion.switcher(
+          context: context,
+          baseDuration: AppDurations.fast,
+          scale: false,
+          child: Column(
+            key: ValueKey<bool>(effectiveIncome),
+            children: [
+              for (var i = 0; i < shown.length; i++) ...[
+                if (i > 0) const SizedBox(height: 10),
+                _CategoryRow(
+                  category: shown[i].key,
+                  amount: shown[i].value,
+                  pct: maxVal > 0 ? shown[i].value / maxVal : 0,
+                  color: color,
+                  isIncome: effectiveIncome,
+                  isDark: widget.isDark,
+                ),
+              ],
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
 
-  Widget _toggle(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(color: AppPalette.chipBackground(isDark), borderRadius: BorderRadius.circular(10)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _toggleChip('支出', !_showIncome, statExpenseColor, isDark),
-          _toggleChip('收入', _showIncome, statIncomeColor, isDark),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggleChip(String label, bool active, Color color, bool isDark) {
-    return PressableScale(
-      pressedScale: 0.94,
-      onTap: () {
-        final wantIncome = label == '收入';
-        if (wantIncome == _showIncome) return;
-        HapticFeedback.selectionClick();
-        setState(() => _showIncome = wantIncome);
-      },
-      child: AnimatedContainer(
-        duration: AppMotion.duration(context, AppDurations.fast),
-        curve: AppCurves.standard,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-        decoration: BoxDecoration(
-          color: active ? Theme.of(context).colorScheme.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: AppTypography.bodySmall,
-            fontWeight: FontWeight.w600,
-            color: active ? color : AppPalette.textMuted,
-          ),
-        ),
-      ),
+  Widget _toggle(BuildContext context, bool isDark) {
+    return SlidingPillBar(
+      labels: const ['支出', '收入'],
+      selectedIndex: _showIncome ? 1 : 0,
+      onSelected: (index) => setState(() => _showIncome = index == 1),
+      height: 32,
+      padding: 2,
+      fixedSegmentWidth: 54,
+      outerRadius: 10,
+      pillRadius: 8,
+      trackColor: AppPalette.chipBackground(isDark),
+      pillColor: Theme.of(context).colorScheme.surface,
+      selectedColorOf: (index) => index == 1 ? statIncomeColor : statExpenseColor,
+      unselectedColor: AppPalette.textMuted,
+      fontSize: AppTypography.bodySmall,
+      showPillShadow: true,
     );
   }
 }

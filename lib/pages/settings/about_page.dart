@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:qnote_flutter/config/app_version.dart';
 import 'package:qnote_flutter/core/network/update_service.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/pages/settings/changelog_page.dart';
@@ -83,7 +84,7 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   void _showPrivacyPolicy() {
-    showDialog(
+    AppMotion.showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('隐私协议'),
@@ -187,7 +188,7 @@ class _AboutPageState extends State<AboutPage> {
                     ),
                     trailing: Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
                     onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChangelogPage()));
+                      Navigator.of(context).push(AppMotion.fadeRoute(const ChangelogPage()));
                     },
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),

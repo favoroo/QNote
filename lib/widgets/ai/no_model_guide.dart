@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/router/app_router.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 
 /// 未配置模型时的统一引导弹窗
@@ -17,7 +18,7 @@ Future<void> showNoModelConfiguredDialog(BuildContext context, {String scene = '
   final hostContext = rootNavigatorKey.currentContext ?? context;
   if (!hostContext.mounted) return;
 
-  final goAdd = await showDialog<bool>(
+  final goAdd = await AppMotion.showDialog<bool>(
     context: hostContext,
     builder: (ctx) {
       final theme = Theme.of(ctx);
@@ -62,7 +63,7 @@ Future<void> showVisionUnsupportedDialog(
   final hostContext = rootNavigatorKey.currentContext ?? context;
   if (!hostContext.mounted) return;
 
-  final goSettings = await showDialog<bool>(
+  final goSettings = await AppMotion.showDialog<bool>(
     context: hostContext,
     builder: (ctx) {
       final theme = Theme.of(ctx);

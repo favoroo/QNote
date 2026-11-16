@@ -26,6 +26,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/display_scale.dart';
 import 'package:qnote_flutter/database_init.dart' if (dart.library.io) 'package:qnote_flutter/database_init_io.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
@@ -398,6 +399,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final background = ref.watch(backgroundSettingProvider);
     final accentColor = ref.watch(accentColorProvider);
+    final displayScale = ref.watch(displayScaleProvider);
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
@@ -411,7 +413,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       // 换背景/主题色时整页颜色平滑过渡：默认 kThemeAnimationDuration 是 200ms 线性，
       // 大面积画布色线性推进会显得生硬；改用强调曲线，起手快、收尾柔和。
       themeAnimationDuration: AppDurations.normal,
-      themeAnimationCurve: AppCurves.standard,
+      themeAnimationCurve: AppCurves.emphasized,
       routerConfig: router,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -430,31 +432,37 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
           systemNavigationBarIconBrightness: theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
         );
 
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: style,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-            // 记录全局点按位置：悬浮小Q打开时从手指/按钮处容器变形展开。
-            // Listener 不参与手势竞技场，不会影响子树的点击与滚动
-            child: Listener(
+        // 全局显示大小：在 Router 与局部 Overlay 之上包一层 textScaler，一次覆盖所有
+        // 路由页、对话框与悬浮小Q；中档（倍率 1.0）时原样返回，不改动系统无障碍缩放。
+        return AppTextScale.wrap(
+          context: context,
+          factor: displayScale.factor,
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: style,
+            child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onPointerDown: (event) => ref.read(floatingQProvider.notifier).recordPointerDown(event.position),
-              child: Stack(
-                children: [
-                  // 首帧交叉淡入：原生启动窗口 → Flutter 首帧的交接期让内容轻微浮现，
-                  // 淡入结束后这层会自行摘除，不影响后续渲染
-                  StartupFadeIn(
-                    // iOS 原生控件（键盘/系统菜单）明暗跟随 App 背景，而不是手机系统设置
-                    child: PlatformBrightnessSync(child: child ?? const SizedBox.shrink()),
-                  ),
-                  // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
-                  // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
-                  // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
-                  // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
-                  // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
-                  Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
-                ],
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              // 记录全局点按位置：悬浮小Q打开时从手指/按钮处容器变形展开。
+              // Listener 不参与手势竞技场，不会影响子树的点击与滚动
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (event) => ref.read(floatingQProvider.notifier).recordPointerDown(event.position),
+                child: Stack(
+                  children: [
+                    // 首帧交叉淡入：原生启动窗口 → Flutter 首帧的交接期让内容轻微浮现，
+                    // 淡入结束后这层会自行摘除，不影响后续渲染
+                    StartupFadeIn(
+                      // iOS 原生控件（键盘/系统菜单）明暗跟随 App 背景，而不是手机系统设置
+                      child: PlatformBrightnessSync(child: child ?? const SizedBox.shrink()),
+                    ),
+                    // 全局悬浮小Q入口：覆盖所有路由页面（含编辑器），内部自带隐藏规则。
+                    // 面板内 Tooltip 需要 Overlay 祖先，而 builder 子树位于路由 Navigator
+                    // 之外、无法找到路由内的 Overlay（否则 Tooltip 构建/展示时报错），
+                    // 故包一层局部 Overlay 作挂载根；小Q 自身经 Riverpod/InheritedWidget
+                    // 自更新，entry 闭包捕获 const 实例，应用重建不会导致其重挂载
+                    Overlay(initialEntries: [OverlayEntry(builder: (_) => const FloatingQOverlay())]),
+                  ],
+                ),
               ),
             ),
           ),

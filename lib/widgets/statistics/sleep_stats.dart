@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
@@ -109,7 +110,7 @@ class _SleepDurationChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
+                    style: const TextStyle(fontSize: AppTypography.caption, color: AppPalette.textMuted),
                   ),
                 );
               },
@@ -119,8 +120,10 @@ class _SleepDurationChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 30,
-              getTitlesWidget: (value, meta) =>
-                  Text('${value.toInt()}h', style: const TextStyle(fontSize: 10, color: AppPalette.textMuted)),
+              getTitlesWidget: (value, meta) => Text(
+                '${value.toInt()}h',
+                style: const TextStyle(fontSize: AppTypography.caption, color: AppPalette.textMuted),
+              ),
             ),
           ),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -187,7 +190,11 @@ class _QualityDistribution extends StatelessWidget {
                 width: 24,
                 child: Text(
                   '${item.count}',
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppPalette.textMuted),
+                  style: const TextStyle(
+                    fontSize: AppTypography.caption,
+                    fontWeight: FontWeight.bold,
+                    color: AppPalette.textMuted,
+                  ),
                   textAlign: TextAlign.end,
                 ),
               ),

@@ -41,6 +41,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    DatabaseHelper.overrideDatabasePath(inMemoryDatabasePath);
     await DatabaseHelper.instance.database;
     // 预置一条模型服务：有数据时「模型服务」区块标题与右侧圆形「+」才会渲染，
     // 否则走的是 NoModelGuideCard 空态（另有整卡「去添加模型」入口）
@@ -58,15 +59,16 @@ void main() {
     );
   });
 
-  testWidgets('五个分段齐全，默认停在模型分段并可来回切换', (tester) async {
+  testWidgets('六个分段齐全，默认停在模型分段并可来回切换', (tester) async {
     await _pumpQSettings(tester);
 
-    // 默认展示「小Q设置」AppBar 以及五个分段标签
+    // 默认展示「小Q设置」AppBar 以及六个分段标签
     expect(find.text('小Q设置'), findsOneWidget);
     expect(find.text('模型'), findsOneWidget);
     expect(find.text('个性'), findsOneWidget);
     expect(find.text('技能'), findsOneWidget);
     expect(find.text('记忆'), findsOneWidget);
+    expect(find.text('图谱'), findsOneWidget);
     expect(find.text('语音'), findsOneWidget);
 
     // 默认停在「模型」分段：原 AI 模型配置整页已嵌入，添加入口在「模型服务」标题右侧

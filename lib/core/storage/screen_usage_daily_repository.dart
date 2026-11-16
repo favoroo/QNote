@@ -113,6 +113,19 @@ class ScreenUsageDailyRepository {
     return rows.map((r) => ScreenUsageDaily.fromMap(Map<String, dynamic>.from(r))).toList();
   }
 
+  /// 增量索引：只取指定时间之后更新过的快照
+  Future<List<ScreenUsageDaily>> getUpdatedSince(DateTime since, {int limit = 400}) async {
+    final db = await _db;
+    final rows = await db.query(
+      table,
+      where: 'updated_at > ?',
+      whereArgs: [since.toIso8601String()],
+      orderBy: 'updated_at ASC',
+      limit: limit,
+    );
+    return rows.map((r) => ScreenUsageDaily.fromMap(Map<String, dynamic>.from(r))).toList();
+  }
+
   /// 最早已采集日期，空表返回 null；UI 用它区分「没用手机」与「还没开始记录」
   Future<DateTime?> earliestDate() async {
     final db = await _db;

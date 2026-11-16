@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/display_scale.dart';
 
 /// 外观偏好的持久化键。
 ///
@@ -13,6 +14,9 @@ abstract final class AppearanceKeys {
   static const String backgroundCustomColor = 'background_custom_color';
   static const String accentColor = 'accent_color';
   static const String legacyThemeMode = 'theme_mode';
+
+  /// 全局显示大小档位（[DisplayScale] 的索引）。
+  static const String displayScale = 'display_scale';
 
   /// 原生启动窗口使用的画布色（浅色 / 深色两个槽位）。
   ///
@@ -75,12 +79,16 @@ AppBackgroundSetting resolveBackgroundSetting({
 abstract final class AppearanceBootstrap {
   static AppBackgroundSetting? _background;
   static Color? _accentColor;
+  static DisplayScale? _displayScale;
 
   /// 首帧前读到的背景设置；未预热时为 null。
   static AppBackgroundSetting? get background => _background;
 
   /// 首帧前读到的强调色；未预热时为 null。
   static Color? get accentColor => _accentColor;
+
+  /// 首帧前读到的显示大小；未预热时为 null。
+  static DisplayScale? get displayScale => _displayScale;
 
   /// 预热外观快照。必须在 `runApp` 之前 await。
   ///
@@ -95,6 +103,8 @@ abstract final class AppearanceBootstrap {
     );
     final accent = prefs.getInt(AppearanceKeys.accentColor);
     _accentColor = accent == null ? AppTheme.primaryDefault : Color(accent);
+    // 显示大小与背景/强调色同理：首帧就用用户档位，避免先用中档渲染再切档跳字
+    _displayScale = DisplayScale.fromIndex(prefs.getInt(AppearanceKeys.displayScale));
     // 历史安装可能还没写过启动色，首次启动时补一份，下次冷启动就能用上
     await persistLaunchCanvas(prefs, background: _background!, accentColor: _accentColor!);
   }
@@ -136,5 +146,6 @@ abstract final class AppearanceBootstrap {
   static void resetForTest() {
     _background = null;
     _accentColor = null;
+    _displayScale = null;
   }
 }

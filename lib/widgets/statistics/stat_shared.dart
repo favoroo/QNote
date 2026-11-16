@@ -255,13 +255,21 @@ class StatProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final target = value.clamp(0.0, 1.0);
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
-      child: LinearProgressIndicator(
-        value: value,
-        backgroundColor: AppPalette.progressTrack(isDark),
-        valueColor: AlwaysStoppedAnimation(color),
-        minHeight: minHeight,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.0, end: target),
+        duration: AppMotion.duration(context, AppDurations.medium),
+        curve: AppCurves.emphasized,
+        builder: (context, animatedValue, _) {
+          return LinearProgressIndicator(
+            value: animatedValue,
+            backgroundColor: AppPalette.progressTrack(isDark),
+            valueColor: AlwaysStoppedAnimation(color),
+            minHeight: minHeight,
+          );
+        },
       ),
     );
   }

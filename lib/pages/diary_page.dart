@@ -1557,7 +1557,11 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
   /// 记录 id 与当天文件路径在发送时由引用块注入，这里只带摘录与时间展示
   void _quoteRecordToQ(DiaryRecord record) {
     HapticFeedback.lightImpact();
-    final excerpt = record.content.trim().isNotEmpty ? record.content.trim() : record.title.trim();
+    // 小Q分析一并带上：对话里的小Q不必再重复查看图片才能拿到图片解读/热量评估
+    final content = record.content.trim();
+    final analysis = record.aiAnalysis.trim();
+    final excerpt = [if (content.isNotEmpty) content, if (analysis.isNotEmpty) '小Q分析：$analysis'].join('\n');
+    final quoteText = excerpt.isNotEmpty ? excerpt : record.title.trim();
     ref
         .read(floatingQProvider.notifier)
         .openWithQuote(
@@ -1565,7 +1569,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
             source: QQuoteSource.diary,
             sourceId: record.id,
             sourceTitle: record.title.trim().isNotEmpty ? record.title.trim() : '一条流水记录',
-            quotedText: excerpt.length > 500 ? '${excerpt.substring(0, 500)}…' : excerpt,
+            quotedText: quoteText.length > 500 ? '${quoteText.substring(0, 500)}…' : quoteText,
             locationDesc: DateFormat('MM-dd HH:mm').format(record.startTime ?? record.time),
           ),
         );
@@ -2766,18 +2770,25 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
                                   FittedBox(
                                     key: _topBarDateKey,
                                     fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      _formatDateTitle(selectedDate),
-                                      textAlign: TextAlign.center,
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.5,
+                                    child: AppMotion.switcher(
+                                      context: context,
+                                      scale: false,
+                                      child: Text(
+                                        _formatDateTitle(selectedDate),
+                                        key: ValueKey('${selectedDate.year}-${selectedDate.month}-${selectedDate.day}'),
+                                        textAlign: TextAlign.center,
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  Container(
-                                    width: 24,
+                                  AnimatedContainer(
+                                    duration: AppMotion.duration(context, AppDurations.fast),
+                                    curve: AppCurves.emphasized,
+                                    width: currentColorMark != null ? 24 : 0,
                                     height: 3,
                                     decoration: BoxDecoration(
                                       color: currentColorMark != null

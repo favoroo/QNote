@@ -2,7 +2,7 @@ part of 'todo_page.dart';
 // 从 todo_page.dart 拆分：待办分类标签栏与待办条目展示组件。
 
 /// 动态横向分类标签栏
-class _TodoFolderTabBar extends StatelessWidget {
+class _TodoFolderTabBar extends StatefulWidget {
   final List<Folder> folders;
   final String selectedFolderId;
 
@@ -19,6 +19,45 @@ class _TodoFolderTabBar extends StatelessWidget {
   });
 
   @override
+  State<_TodoFolderTabBar> createState() => _TodoFolderTabBarState();
+}
+
+class _TodoFolderTabBarState extends State<_TodoFolderTabBar> {
+  final Map<String, GlobalKey> _tabKeys = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleScrollToSelected();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TodoFolderTabBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedFolderId != widget.selectedFolderId) {
+      _scheduleScrollToSelected();
+    }
+  }
+
+  void _scheduleScrollToSelected() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = _tabKeys[widget.selectedFolderId];
+      final ctx = key?.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: AppMotion.duration(context, AppDurations.normal),
+        curve: AppCurves.emphasized,
+        alignment: 0.5,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+    });
+  }
+
+  GlobalKey _keyFor(String folderId) => _tabKeys.putIfAbsent(folderId, () => GlobalKey());
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -30,62 +69,76 @@ class _TodoFolderTabBar extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        itemCount: folders.length,
+        itemCount: widget.folders.length,
         separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final folder = folders[index];
-          final isSelected = folder.id == selectedFolderId;
+          final folder = widget.folders[index];
+          final isSelected = folder.id == widget.selectedFolderId;
           // 未完成数量由页面统一缓存，这里直接取对应下标，避免重复全量扫描。
-          final count = pendingCounts[index];
+          final count = widget.pendingCounts[index];
 
-          return PressableScale(
-            pressedScale: 0.96,
-            onTap: () => onSelect(folder.id),
-            child: AnimatedContainer(
-              // 分类 Chip 的选中反馈属于「小范围状态切换」，用 fast 档更跟手；
-              // 原来固定 normal + easeInOut，点下去会有约 200ms 的黏滞感
-              duration: AppMotion.duration(context, AppDurations.fast),
-              curve: AppCurves.standard,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(AppRadius.large),
-                border: Border.all(
-                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    folder.name,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      fontSize: 13.5,
-                      color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                    ),
+          return KeyedSubtree(
+            key: _keyFor(folder.id),
+            child: PressableScale(
+              pressedScale: 0.96,
+              onTap: () => widget.onSelect(folder.id),
+              child: AnimatedContainer(
+                // 分类 Chip 的选中反馈属于「小范围状态切换」，用 fast 档更跟手；
+                // 原来固定 normal + easeInOut，点下去会有约 200ms 的黏滞感
+                duration: AppMotion.duration(context, AppDurations.fast),
+                curve: AppCurves.standard,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(AppRadius.large),
+                  border: Border.all(
+                    color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.3),
                   ),
-                  if (count > 0) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? colorScheme.onPrimary.withValues(alpha: 0.2)
-                            : colorScheme.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      folder.name,
+                      style: TextStyle(
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        fontSize: AppTypography.bodyLarge,
+                        color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                       ),
-                      child: Text(
-                        '$count',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isSelected ? colorScheme.onPrimary : colorScheme.primary,
-                        ),
+                    ),
+                    AnimatedSize(
+                      duration: AppMotion.duration(context, AppDurations.fast),
+                      curve: AppCurves.emphasized,
+                      alignment: Alignment.centerLeft,
+                      child: AppMotion.switcher(
+                        context: context,
+                        child: count > 0
+                            ? Padding(
+                                key: ValueKey('count_${folder.id}_$count'),
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? colorScheme.onPrimary.withValues(alpha: 0.2)
+                                        : colorScheme.primary.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '$count',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected ? colorScheme.onPrimary : colorScheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink(key: ValueKey('no_count')),
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
             ),
           );
@@ -566,14 +619,18 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      todo.title.isEmpty ? '待办事项' : todo.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    AnimatedDefaultTextStyle(
+                      duration: AppMotion.duration(context, AppDurations.fast),
+                      curve: AppCurves.emphasized,
                       style: TextStyle(
                         fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
-                        fontSize: 15.5,
+                        fontSize: AppTypography.title,
                         color: isDone ? colorScheme.onSurfaceVariant.withValues(alpha: 0.5) : colorScheme.onSurface,
+                      ),
+                      child: Text(
+                        todo.title.isEmpty ? '待办事项' : todo.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (todo.isRecurring || todo.reminderTime != null || todo.description.isNotEmpty) ...[
@@ -596,7 +653,7 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                                   Text(
                                     todo.repeatRuleLabel,
                                     style: TextStyle(
-                                      fontSize: 10.5,
+                                      fontSize: AppTypography.label,
                                       fontWeight: FontWeight.bold,
                                       color: colorScheme.onSurfaceVariant,
                                     ),

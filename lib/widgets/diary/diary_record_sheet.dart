@@ -14,6 +14,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/diary_record_sheet_logic.dart';
 import 'package:qnote_flutter/core/utils/q_analysis.dart';
 import 'package:qnote_flutter/core/utils/schema_formatter.dart';
@@ -3392,7 +3393,12 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                   ),
                   child: Text(
                     '$badge',
-                    style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: scheme.onSurface),
+                    // 徽标字号收敛到令牌下限，避免低于全 App 最小可读字号
+                    style: TextStyle(
+                      fontSize: AppTypography.micro,
+                      fontWeight: FontWeight.bold,
+                      color: scheme.onSurface,
+                    ),
                   ),
                 ),
               ),

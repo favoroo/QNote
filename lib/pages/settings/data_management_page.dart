@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:qnote_flutter/core/export/export_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/database_helper.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/note_provider.dart';
@@ -50,7 +51,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
   }
 
   Future<void> _handleImport() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('导入数据'),
@@ -119,11 +120,11 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
   }
 
   void _showLogViewer() {
-    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _LogViewerPage()));
+    Navigator.of(context).push(AppMotion.fadeRoute(const _LogViewerPage(), fullscreenDialog: true));
   }
 
   Future<void> _handleClearData() async {
-    final firstConfirm = await showDialog<bool>(
+    final firstConfirm = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清除数据'),
@@ -141,7 +142,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
     if (firstConfirm != true) return;
 
     if (!mounted) return;
-    final secondConfirm = await showDialog<bool>(
+    final secondConfirm = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('再次确认'),

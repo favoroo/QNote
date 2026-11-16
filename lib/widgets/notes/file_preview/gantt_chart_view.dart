@@ -14,6 +14,9 @@ import 'package:qnote_flutter/core/utils/toast_utils.dart';
 /// Mermaid 自带的 gantt SVG 在手机上会把任务名和时间轴绑在一起滚走，日期轴也
 /// 容易压得看不清。这里改用 Flutter 原生绘制：左侧任务列固定，右侧时间轴独立
 /// 横向滚动，任务条按分组着色，今天有一条标记线，点任务条可看完整日期。
+///
+/// 注意：本文件刻意使用 11.5 / 10.5 等非令牌字号——任务列与时间轴列宽按最窄
+/// 手机屏压到极限，收敛到 AppTypography 的整数字号会把文字挤出列宽，故保留微调。
 class GanttChartView extends StatefulWidget {
   final GanttPlan plan;
 

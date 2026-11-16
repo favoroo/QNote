@@ -25,6 +25,7 @@ class HealthStatsView extends ConsumerStatefulWidget {
 
 class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
   bool _isLoading = true;
+  bool _hasLoadedOnce = false;
   List<HealthDailyMetrics> _metricsList = [];
   List<HealthSportRecord> _sportRecords = [];
   bool _isAuthed = false;
@@ -45,7 +46,11 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    // 切换「周/月/年」时保持图表实例在位，仅在首次加载时展示转圈，
+    // 这样 StepsTrendChart 的柱状图能够平滑过渡到新时间跨度。
+    if (!_hasLoadedOnce) {
+      setState(() => _isLoading = true);
+    }
     final healthRepo = ref.read(healthMetricRepositoryProvider);
     final syncService = ref.read(healthSyncServiceProvider);
 
@@ -64,6 +69,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
         _metricsList = metrics;
         _sportRecords = sports;
         _isLoading = false;
+        _hasLoadedOnce = true;
       });
     }
   }
@@ -74,7 +80,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading && !_hasLoadedOnce) {
       return const Center(child: CircularProgressIndicator());
     }
 

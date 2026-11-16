@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/utils/chat_image_refs.dart';
 import 'package:qnote_flutter/core/utils/chat_time_group.dart';
@@ -156,7 +157,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
   /// 重命名：只弹输入框，落库交给 Notifier（它会回填 currentChat 的副本）。
   Future<void> _renameSession(ChatSession session) async {
     final controller = TextEditingController(text: session.title);
-    final title = await showDialog<String>(
+    final title = await AppMotion.showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('重命名对话'),
@@ -210,7 +211,7 @@ class _ChatHistoryDrawerState extends ConsumerState<ChatHistoryDrawer> {
     detail.writeln('小Q创建的笔记、日记、待办和工作区文件不受影响。');
     detail.write('不可恢复，会同步到其它设备。');
 
-    final ok = await showDialog<bool>(
+    final ok = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除对话'),

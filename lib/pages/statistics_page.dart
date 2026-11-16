@@ -11,8 +11,10 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
+import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/providers/diary_provider.dart';
 import 'package:qnote_flutter/providers/stats_provider.dart';
+import 'package:qnote_flutter/widgets/common/motion_reveal.dart';
 import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 import 'package:qnote_flutter/widgets/empty_state.dart';
@@ -21,6 +23,7 @@ import 'package:qnote_flutter/widgets/statistics/diet_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/finance_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/daily_score_stats.dart';
 import 'package:qnote_flutter/widgets/statistics/health_stats_view.dart';
+import 'package:qnote_flutter/widgets/statistics/insight_card.dart';
 import 'package:qnote_flutter/widgets/statistics/screen_usage_stats_view.dart';
 
 class _TabConfig {
@@ -58,6 +61,11 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   /// 防止 SharedPreferences 还没读完时用户已经点了别的分类，又被旧偏好覆盖。
   bool _tabSettled = false;
 
+  /// 同板块切换「周/月/年」时暂存上一份统计结果，避免短暂 loading 卸载图表导致变形动画中断。
+  StatTab? _cachedTab;
+  dynamic _cachedStats;
+  List<DiaryRecord> _cachedRecords = const [];
+
   @override
   void initState() {
     super.initState();
@@ -72,13 +80,23 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     if (saved == null || saved == _activeTab) return;
     // 只恢复当前仍展示的分类；历史遗留的旧 tab 值直接回退到默认分类
     if (!_tabs.any((config) => config.tab == saved)) return;
-    setState(() => _activeTab = saved);
+    setState(() {
+      _activeTab = saved;
+      _cachedTab = null;
+      _cachedStats = null;
+      _cachedRecords = const [];
+    });
   }
 
   void _onTabChanged(StatTab tab) {
     _tabSettled = true;
     if (tab == _activeTab) return;
-    setState(() => _activeTab = tab);
+    setState(() {
+      _activeTab = tab;
+      _cachedTab = null;
+      _cachedStats = null;
+      _cachedRecords = const [];
+    });
     StatisticsViewStore.saveLastTab(tab);
   }
 
@@ -201,13 +219,13 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
             ),
           ),
           Expanded(
-            // 图表区不再包 AnimatedSwitcher：它会让新旧两份重图表同时挂载并
-            // 交叉淡入（StackFit.expand 还会强制双份布局），切 tab / 时间范围时
-            // 明显掉帧。这里按 key 直接替换子树，状态间的轻量淡入交给
-            // _buildContent 内那层只监听 AsyncValue 的 AnimatedSwitcher。
-            child: KeyedSubtree(
-              key: ValueKey('${_activeTab.name}_${_timeRange.name}'),
-              child: _buildContent(startDate, endDate),
+            // 同板块切换「周/月/年」时保留图表实例，让 fl_chart 平滑形变；
+            // 跨板块切换用单子树显现过渡，不双份挂载重图表。
+            child: MotionReveal(
+              triggerKey: _activeTab,
+              beginOpacity: 0.4,
+              beginOffsetY: 0.012,
+              child: KeyedSubtree(key: ValueKey(_activeTab.name), child: _buildContent(startDate, endDate)),
             ),
           ),
         ],
@@ -220,7 +238,14 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     if (_activeTab == StatTab.score) {
       return const SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: RepaintBoundary(child: DailyScoreStats()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            RepaintBoundary(child: DailyScoreStats()),
+            // 空态整卡隐藏：没有足够关联时不会多出一块占位
+            InsightCard(),
+          ],
+        ),
       );
     }
     // healthDevice tab 呈现小米运动健康全量体征监测仪表盘
@@ -236,6 +261,64 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
     final query = StatsQuery(start: startDate, end: endDate, tab: _activeTab);
     final statsAsync = ref.watch(statsProvider(query));
+    final hasCachedSameTab = _cachedTab == _activeTab && _cachedStats != null;
+    final liveRecords = recordsForStatTab(
+      ref.watch(diaryListByDateRangeProvider((start: startDate, end: endDate))).valueOrNull ?? const [],
+      _activeTab,
+    );
+
+    Widget buildDataChild(dynamic stats, List<DiaryRecord> records) {
+      // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
+      final bool isEmpty;
+      switch (_activeTab) {
+        case StatTab.diet:
+          isEmpty = (stats as DietStatistics).totalMeals == 0;
+        case StatTab.finance:
+          isEmpty = (stats as FinanceStatistics).totalRecords == 0;
+        case StatTab.score:
+        case StatTab.healthDevice:
+        case StatTab.screenTime:
+        case StatTab.sleep:
+        case StatTab.mood:
+        case StatTab.activity:
+          isEmpty = true; // 不会执行到这里
+      }
+      if (isEmpty) {
+        return const EmptyStateWidget(key: ValueKey('stats_empty'), icon: Icons.bar_chart, message: '暂无数据');
+      }
+
+      Widget content;
+      switch (_activeTab) {
+        case StatTab.diet:
+          content = DietStatsWidget(
+            stats: stats as DietStatistics,
+            records: records,
+            onViewAll: () => _openDetail(startDate, endDate),
+          );
+        case StatTab.finance:
+          content = FinanceStatsWidget(
+            stats: stats as FinanceStatistics,
+            records: records,
+            startDate: startDate,
+            endDate: endDate,
+            onViewAll: () => _openDetail(startDate, endDate),
+          );
+        case StatTab.score:
+        case StatTab.healthDevice:
+        case StatTab.screenTime:
+        case StatTab.sleep:
+        case StatTab.mood:
+        case StatTab.activity:
+          content = const SizedBox.shrink(); // 不会执行到这里
+      }
+
+      // 隔离统计卡片的重绘，fl_chart 动画跑动时不影响外部
+      return SingleChildScrollView(
+        key: const ValueKey('stats_data'),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: RepaintBoundary(child: content),
+      );
+    }
 
     // 图表区唯一的淡入层：只在 loading / error / empty / data 之间切换时使用，
     // 此时对侧要么是轻量占位、要么只有一张图表，不会出现两张重图表同时布局。
@@ -254,66 +337,15 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         );
       },
       child: statsAsync.when(
-        loading: () => const Center(key: ValueKey('stats_loading'), child: CircularProgressIndicator()),
+        loading: () => hasCachedSameTab
+            ? buildDataChild(_cachedStats, _cachedRecords)
+            : const Center(key: ValueKey('stats_loading'), child: CircularProgressIndicator()),
         error: (err, stack) => Center(key: const ValueKey('stats_error'), child: Text('统计失败：$err')),
         data: (stats) {
-          // 数据为空时返回 EmptyState（依赖 stats 内部 totalRecords 判断）
-          final bool isEmpty;
-          switch (_activeTab) {
-            case StatTab.diet:
-              isEmpty = (stats as DietStatistics).totalMeals == 0;
-            case StatTab.finance:
-              isEmpty = (stats as FinanceStatistics).totalRecords == 0;
-            case StatTab.score:
-            case StatTab.healthDevice:
-            case StatTab.screenTime:
-            case StatTab.sleep:
-            case StatTab.mood:
-            case StatTab.activity:
-              isEmpty = true; // 不会执行到这里
-          }
-          if (isEmpty) {
-            return const EmptyStateWidget(key: ValueKey('stats_empty'), icon: Icons.bar_chart, message: '暂无数据');
-          }
-
-          // 明细弹层需要原始记录：按当前标签筛出记录列表（与统计同一口径），
-          // 供点击明细行时定位并左右滑动查看。
-          final records = recordsForStatTab(
-            ref.watch(diaryListByDateRangeProvider((start: startDate, end: endDate))).valueOrNull ?? const [],
-            _activeTab,
-          );
-
-          Widget content;
-          switch (_activeTab) {
-            case StatTab.diet:
-              content = DietStatsWidget(
-                stats: stats as DietStatistics,
-                records: records,
-                onViewAll: () => _openDetail(startDate, endDate),
-              );
-            case StatTab.finance:
-              content = FinanceStatsWidget(
-                stats: stats as FinanceStatistics,
-                records: records,
-                startDate: startDate,
-                endDate: endDate,
-                onViewAll: () => _openDetail(startDate, endDate),
-              );
-            case StatTab.score:
-            case StatTab.healthDevice:
-            case StatTab.screenTime:
-            case StatTab.sleep:
-            case StatTab.mood:
-            case StatTab.activity:
-              content = const SizedBox.shrink(); // 不会执行到这里
-          }
-
-          // 隔离统计卡片的重绘，fl_chart 动画跑动时不影响外部
-          return SingleChildScrollView(
-            key: const ValueKey('stats_data'),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: RepaintBoundary(child: content),
-          );
+          _cachedTab = _activeTab;
+          _cachedStats = stats;
+          _cachedRecords = liveRecords;
+          return buildDataChild(stats, liveRecords);
         },
       ),
     );

@@ -550,11 +550,20 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
 
   /// 卡片主数字：独占一行，长时长文案（如「42小时35分钟」）不必和旁边元素争宽度
   Widget _buildHeroValue(ThemeData theme, String value) {
-    return Text(
-      value,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, fontSize: 26, letterSpacing: -0.5),
+    return AnimatedSwitcher(
+      duration: AppMotion.duration(context, AppDurations.fast),
+      switchInCurve: AppCurves.emphasized,
+      switchOutCurve: AppCurves.exit,
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(alignment: Alignment.centerLeft, children: [...previousChildren, ?currentChild]);
+      },
+      child: Text(
+        value,
+        key: ValueKey(value),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, fontSize: 26, letterSpacing: -0.5),
+      ),
     );
   }
 
@@ -799,26 +808,33 @@ class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with
     final ratio = share.clamp(0.0, 1.0);
     return LayoutBuilder(
       builder: (context, constraints) {
-        return Stack(
-          children: [
-            Container(
-              height: 4,
-              width: constraints.maxWidth,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            if (ratio > 0)
-              Container(
-                height: 4,
-                width: constraints.maxWidth * ratio,
-                decoration: BoxDecoration(
-                  color: _accent.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(2),
+        return TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.0, end: ratio),
+          duration: AppMotion.duration(context, AppDurations.medium),
+          curve: AppCurves.emphasized,
+          builder: (context, animatedRatio, _) {
+            return Stack(
+              children: [
+                Container(
+                  height: 4,
+                  width: constraints.maxWidth,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-          ],
+                if (animatedRatio > 0)
+                  Container(
+                    height: 4,
+                    width: constraints.maxWidth * animatedRatio,
+                    decoration: BoxDecoration(
+                      color: _accent.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+              ],
+            );
+          },
         );
       },
     );

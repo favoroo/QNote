@@ -14,32 +14,36 @@ class ChatEmptyState extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            'Hi',
-            style: theme.textTheme.displayLarge?.copyWith(
-              fontSize: 72,
-              fontWeight: FontWeight.w700,
-              height: 1,
-              letterSpacing: -2.5,
-              color: scheme.onSurface,
+      // 显示大小放大时整体收缩，避免大号「Hi」在窄屏横向溢出
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              'Hi',
+              style: theme.textTheme.displayLarge?.copyWith(
+                fontSize: 72,
+                fontWeight: FontWeight.w700,
+                height: 1,
+                letterSpacing: -2.5,
+                color: scheme.onSurface,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          // 圆点压到接近基线的位置，读起来像句号，但保留主题色作为视觉落点
-          Transform.translate(
-            offset: const Offset(0, 16),
-            child: Container(
-              key: const ValueKey('chat_empty_dot'),
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
+            const SizedBox(width: 8),
+            // 圆点压到接近基线的位置，读起来像句号，但保留主题色作为视觉落点
+            Transform.translate(
+              offset: const Offset(0, 16),
+              child: Container(
+                key: const ValueKey('chat_empty_dot'),
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

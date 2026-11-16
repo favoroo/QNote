@@ -3,11 +3,24 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, visibleForTesting;
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
   static Database? _database;
+
+  /// 测试专用数据库路径覆盖（如 `inMemoryDatabasePath`）。
+  ///
+  /// Flutter test 会并行跑多个测试文件，它们共享同一个 `qnote.db` 时，
+  /// 各自的 `setUp` 清表会互相删数据。覆盖成独立内存库即可隔离；
+  /// 生产环境该字段始终为 null。
+  static String? _databasePathOverride;
+
+  @visibleForTesting
+  static void overrideDatabasePath(String? path) {
+    _databasePathOverride = path;
+    _database = null;
+  }
 
   DatabaseHelper._internal();
 
@@ -44,6 +57,154 @@ class DatabaseHelper {
       PRIMARY KEY (key, date)
     )
   ''';
+
+  /// 个人知识图谱 DDL：全部为派生数据，不写 sync_log、不参与备份导出。
+  ///
+  /// 节点/边/提及三张表对应「实体—关系—证据」：`kg_nodes` 同时承载实体、规则状态、
+  /// 源记录与日期节点；`kg_mentions` 记录某实体出现在哪条源记录，是洞察统计与
+  /// 证据回溯的底座；`kg_documents` 以内容 hash 做增量索引，避免每次全量重跑。
+  /// 冷装、升级与 Web/热重载兜底三处共用这一份，避免字段漂移。
+  static const List<String> _knowledgeGraphDdls = [
+    '''
+    CREATE TABLE IF NOT EXISTS kg_nodes (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      normalized_name TEXT NOT NULL,
+      aliases TEXT NOT NULL DEFAULT '[]',
+      summary TEXT NOT NULL DEFAULT '',
+      source_type TEXT,
+      source_id TEXT,
+      occurred_at TEXT,
+      occurred_date TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      mention_count INTEGER NOT NULL DEFAULT 0,
+      importance REAL NOT NULL DEFAULT 0,
+      community_id INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_deleted INTEGER NOT NULL DEFAULT 0
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS kg_aliases (
+      id TEXT PRIMARY KEY,
+      entity_id TEXT NOT NULL,
+      alias TEXT NOT NULL,
+      normalized_alias TEXT NOT NULL,
+      origin TEXT NOT NULL DEFAULT 'auto',
+      created_at TEXT NOT NULL
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS kg_edges (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      confidence TEXT NOT NULL,
+      confidence_score REAL NOT NULL DEFAULT 1.0,
+      weight REAL NOT NULL DEFAULT 1.0,
+      evidence TEXT NOT NULL DEFAULT '[]',
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_deleted INTEGER NOT NULL DEFAULT 0
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS kg_mentions (
+      id TEXT PRIMARY KEY,
+      node_id TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      path TEXT NOT NULL DEFAULT '',
+      field TEXT NOT NULL DEFAULT '',
+      snippet TEXT NOT NULL DEFAULT '',
+      occurred_at TEXT,
+      occurred_date TEXT,
+      confidence TEXT NOT NULL,
+      confidence_score REAL NOT NULL DEFAULT 1.0,
+      created_at TEXT NOT NULL
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS kg_documents (
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      extractor_version INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'ok',
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      error TEXT,
+      indexed_at TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (source_type, source_id)
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS kg_insights (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      score REAL NOT NULL DEFAULT 0,
+      support INTEGER NOT NULL DEFAULT 0,
+      confidence REAL NOT NULL DEFAULT 0,
+      lift REAL NOT NULL DEFAULT 0,
+      node_ids TEXT NOT NULL DEFAULT '[]',
+      evidence TEXT NOT NULL DEFAULT '[]',
+      period_start TEXT,
+      period_end TEXT,
+      status TEXT NOT NULL DEFAULT 'new',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+    ''',
+    '''
+    CREATE TABLE IF NOT EXISTS kg_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_kg_nodes_kind_type ON kg_nodes(kind, type)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_nodes_norm ON kg_nodes(normalized_name)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_nodes_date ON kg_nodes(occurred_date)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_nodes_community ON kg_nodes(community_id)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_nodes_source ON kg_nodes(source_type, source_id)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_aliases_entity ON kg_aliases(entity_id)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_aliases_norm ON kg_aliases(normalized_alias, entity_id)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_edges_source ON kg_edges(source_id)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_edges(target_id)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_edges_relation ON kg_edges(relation)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_edges_unique ON kg_edges(source_id, target_id, relation)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_mentions_node_date ON kg_mentions(node_id, occurred_date)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_mentions_source ON kg_mentions(source_type, source_id)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_mentions_date ON kg_mentions(occurred_date)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_kg_mentions_unique '
+        'ON kg_mentions(node_id, source_type, source_id, field)',
+    'CREATE INDEX IF NOT EXISTS idx_kg_insights_status_score ON kg_insights(status, score)',
+    // 待办增量索引需要按 updated_at 过滤；老库没有这个索引，顺手补齐
+    'CREATE INDEX IF NOT EXISTS idx_todos_updated_at ON todos(updated_at)',
+  ];
+
+  /// 幂等创建知识图谱表与索引。
+  ///
+  /// Web 与开发期热重载不会走 `_onUpgrade`，必须由 `onOpen` 的 schema 兜底也调用
+  /// 这里；全部语句都是 `IF NOT EXISTS`，重复执行无副作用。
+  static Future<void> ensureKnowledgeGraphSchema(Database db) async {
+    for (final sql in _knowledgeGraphDdls) {
+      try {
+        await db.execute(sql);
+      } catch (e) {
+        if (kDebugMode) {
+          print('创建知识图谱 schema 失败: $sql, 错误: $e');
+        }
+      }
+    }
+  }
 
   /// 厂商条目表 DDL：一个 URL + 一组 API Key + 一组已启用模型
   ///
@@ -144,7 +305,9 @@ class DatabaseHelper {
 
   Future<Database> _initDatabase() async {
     String path;
-    if (kIsWeb) {
+    if (_databasePathOverride != null) {
+      path = _databasePathOverride!;
+    } else if (kIsWeb) {
       path = 'qnote.db';
     } else {
       final dbPath = await getDatabasesPath();
@@ -153,7 +316,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 33,
+      version: 34,
       onConfigure: (db) async {
         // 遇到写锁时等待重试（默认立即抛 database is locked），提升并发访问健壮性
         try {
@@ -398,6 +561,10 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE chat_sessions ADD COLUMN is_pinned INTEGER DEFAULT 0');
       }
     } catch (_) {}
+
+    // 知识图谱是派生表：冷装/升级/热重载任一路径漏建都会让索引器静默失败，
+    // 这里统一用幂等 DDL 兜底
+    await ensureKnowledgeGraphSchema(db);
 
     // 标记本次检查已完成，后续启动直接跳过 PRAGMA 检查
     await prefs.setBool(checkedKey, true);
@@ -693,6 +860,9 @@ class DatabaseHelper {
     await db.execute(_aiTokenUsageDdl);
     await db.execute(_aiRouteGroupsDdl);
     await db.execute(_aiAccountsDdl);
+
+    // 知识图谱派生表（v34）
+    await ensureKnowledgeGraphSchema(db);
 
     // Performance indexes
     await _createIndexes(db);
@@ -1103,6 +1273,11 @@ class DatabaseHelper {
           await db.execute('ALTER TABLE diary_records ADD COLUMN ai_analysis TEXT DEFAULT ""');
         }
       } catch (_) {}
+    }
+    if (oldVersion < 34) {
+      // 个人知识图谱：实体/关系/提及/增量状态/洞察全部是派生数据，
+      // 不写 sync_log、不参与备份导出，恢复后由索引器重建
+      await ensureKnowledgeGraphSchema(db);
     }
   }
 

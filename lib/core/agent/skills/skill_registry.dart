@@ -176,6 +176,7 @@ description: 时间线流水记录技能：每日流水记事、时间戳打卡�
 ```
 
 > **支持时间段与结构化打卡**：标题行支持 `## [HH:MM] 标题` 或 `## [HH:MM - HH:MM] 标题`。块内支持任意自定义指标行（如 `- 饮水: 500ml`、`- 消费金额: 35.0`、`- 天气: 晴`），系统会自动解析为结构化指标供首页图表识别。
+> **小Q分析**：`read_file` 输出的事件块可能带 `- 小Q分析:` 行，里面是小Q 已提取的图片解读、营养/健康评估等补充信息。回答图片、热量、指标相关问题时优先使用它，**不要重复调用 `view_image` / `describe_image`**；只有分析缺失或用户要求更细画面时才看图。修改事件时保留该行（用户明确要求删除分析除外）。
 > **严禁使用 YAML Frontmatter 描述时间事件**。时间事件只有「二级时间标题 + 字段行」这一种合法格式。
 
 ## 2. 核心操作规范
@@ -579,6 +580,65 @@ description: 数据洞察与生活评分分析技能：调阅待办完成率、�
 - 健康类分析建议结合 `/settings/profile.json`（身高、生活目标等画像）与 `/settings/weight.json`（体重趋势、BMI）交叉解读，给出贴合用户个人情况的建议。
 ''';
 
+  static const String graphAnalystDoc = '''---
+name: graph-analyst
+description: 个人知识图谱分析：实体检索、邻居关联、路径、时间线、关联发现与主题，按证据回答「为什么/有什么规律/给点建议或灵感」
+---
+
+# 知识图谱分析技能 (Graph Analyst)
+
+QNote 会把时间线、笔记、日记、待办、健康与长期记忆增量建成一张本地知识图谱。图谱不是替代原文，而是**关系索引**：先查图拿到相关实体与证据路径，再 `read_file` 核实原文。
+
+## 1. 图谱入口
+- 工具 `graph(op: ...)`：首选，按 op 返回预算内子图；
+- 虚拟文件（只读，不能写入/删除）：
+  - `/graph/summary.json`：图谱规模、最近索引时间、高频实体；
+  - `/graph/insights.json`：近期关联发现；
+  - `/graph/topics.json`：主题社区与成员；
+  - `/graph/entities/<id>.md`：实体详情、邻居、最近出现；
+  - `/graph/days/YYYY-MM-DD.json`：某天的实体与来源记录。
+- `grep(scope: "graph", query: "...")`：按实体名/别名找图谱节点。
+
+> 图谱只在用户手动触发时更新，不会在后台自动索引。查询结果里若带「另有 N 条新记录尚未整理」，
+> 回答时提醒用户到「设置 → 小Q → 图谱」点「更新图谱」；图谱为空时也给出同样入口，不要说「正在后台建立」。
+
+## 2. op 怎么选
+| 用户问题 | 先调用 |
+|---|---|
+| 「头痛和什么有关」「睡眠影响什么」 | `graph(op:"search", query:"头痛")` → `graph(op:"neighbors", node:"<id>")` |
+| 「A 和 B 有什么关系」 | `graph(op:"path", from:"A", to:"B")` |
+| 「最近为什么总头痛」「最近有什么规律」 | `graph(op:"timeline", node:"头痛")` + `graph(op:"insights")` |
+| 「给我一些生活上的建议/灵感」 | `graph(op:"stats")` + `graph(op:"insights")` + `graph(op:"neighbors")` |
+| 「我最近都在忙什么」 | `graph(op:"stats")`，再看 top 实体的 neighbors |
+| 图谱没有结果 | 回退 `grep` 找原文；如实说明图谱尚未建立、需要用户手动更新，或数据还不够 |
+
+## 3. 证据与置信度（必须遵守）
+- 每条边都有置信度：
+  - `EXTRACTED`：结构化字段、wikilink、标题、日期、规则状态，可直接引用；
+  - `INFERRED`：词典匹配、LLM 语义、共现统计，只能作为线索；
+  - `AMBIGUOUS`：弱关系，基本不要下结论。
+- 路径整体置信度取**最弱一跳**；低置信度路径不要说成「确定有关」。
+- 回答前按证据路径读原文（至少读 1–2 条），引用时写清日期与来源，例如「11-10 的时间线记录里提到……」。
+- **相关性不等于因果**。可以说「同时出现的概率更高」，不要直接说「A 导致 B」；只有 `caused_by` 且证据明确时才用「可能源于」。
+
+## 4. 回答模板
+1. **先结论**：一句话说清发现了什么（含支持天数/概率）。
+2. **列证据**：2–3 个日期 + 来源路径 + 原文短句。
+3. **给建议**：基于证据的可执行小建议；健康类保持谨慎，不做诊断。
+4. **说明边界**：数据不足或只是相关时，明确说「目前只能看到相关，不能确定因果」。
+
+示例：
+> 过去 30 天里，有「睡眠不足」的 9 天中，有 6 天第二天出现「头痛」，平时只有 21%。证据：11-03、11-07、11-12 的时间线记录。可以先把入睡时间提前 30 分钟观察两周；如果头痛持续或加重，建议就医。这是相关性，不是因果结论。
+
+## 5. 常见错误
+- 把 `INFERRED/AMBIGUOUS` 边当成事实；
+- 只看图谱不读原文，编造不存在的日期/片段；
+- 图谱没数据时硬编关联；
+- 把「同一天出现」说成「导致」；
+- 图谱为空时说「正在后台首次索引」——现在只有用户手动更新才会建图，应提示具体入口；
+- 忽略图谱的截止时间/待整理提示，把旧数据当成最新结论。
+''';
+
   static final String frontendDesignDoc = buildFrontendDesignDoc();
 
   static const String mermaidDiagramDoc = '''---
@@ -887,6 +947,12 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
         'origin': AgentSkillOrigin.builtin,
       },
       {
+        'name': 'graph-analyst',
+        'path': '/skills/graph-analyst.md',
+        'description': '个人知识图谱分析：实体检索、邻居关联、路径、时间线、关联发现与主题，按证据回答原因/规律/建议/灵感',
+        'origin': AgentSkillOrigin.builtin,
+      },
+      {
         'name': 'frontend-design',
         'path': '/skills/frontend-design.md',
         'description': '网页设计：精美单文件 HTML 网页/待办打卡工具/海报/邀请函/简历/数据可视化，美学方向、移动端适配、动效细节与状态本地持久化规范',
@@ -973,6 +1039,11 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
       case 'stats':
       case 'statistics':
         return 'stats-analyst';
+      case 'graph-analyst':
+      case 'graph':
+      case 'knowledge-graph':
+      case 'kg':
+        return 'graph-analyst';
       case 'frontend-design':
       case 'frontend':
       case 'web-design':
@@ -1049,6 +1120,8 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
         return settingsManagerDoc;
       case 'stats-analyst':
         return statsAnalystDoc;
+      case 'graph-analyst':
+        return graphAnalystDoc;
       case 'frontend-design':
         return frontendDesignDoc;
       case 'mermaid-diagram':
@@ -1104,6 +1177,7 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
     'folder-manager',
     'settings-manager',
     'stats-analyst',
+    'graph-analyst',
     'frontend-design',
     'mermaid-diagram',
     'data-file',
@@ -1125,6 +1199,9 @@ description: 技能发现与安装：在 skills.sh 开放市场按关键词搜�
     'config',
     'stats',
     'statistics',
+    'graph',
+    'knowledge-graph',
+    'kg',
     'frontend',
     'web-design',
     'web',

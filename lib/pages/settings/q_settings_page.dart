@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/pages/settings/ai_config_page.dart';
+import 'package:qnote_flutter/pages/settings/q_knowledge_page.dart';
 import 'package:qnote_flutter/pages/settings/q_memory_page.dart';
 import 'package:qnote_flutter/pages/settings/q_personality_page.dart';
 import 'package:qnote_flutter/pages/settings/q_skills_page.dart';
@@ -17,6 +18,7 @@ import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 /// - 个性：人设、语气风格与自定义 Prompt；
 /// - 技能：用户技能、使用次数统计、创建/编辑/归档；
 /// - 记忆：长期记忆（用户画像与小Q手记）、条目编辑与沉淀管理；
+/// - 图谱：知识图谱开关、语义提取额度、索引状态与重建；
 /// - 语音：自动朗读开关、音色与语速（语音回复功能）。
 ///
 /// 模型放在第一位：它是小Q能否工作的前置状态——没有可用模型时，人设、技能、
@@ -25,7 +27,7 @@ import 'package:qnote_flutter/widgets/settings_segment_bar.dart';
 class QSettingsPage extends ConsumerStatefulWidget {
   const QSettingsPage({super.key, this.initialTab = 0, this.autoOpenAddModelService = false});
 
-  /// 初始分区索引：0 模型 / 1 个性 / 2 技能 / 3 记忆 / 4 语音
+  /// 初始分区索引：0 模型 / 1 个性 / 2 技能 / 3 记忆 / 4 图谱 / 5 语音
   final int initialTab;
 
   /// 直达「模型」分段并立即拉起添加模型服务弹窗（供「去配置模型」引导链接使用）
@@ -41,6 +43,7 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
     SettingsSegmentItem(title: '个性', icon: Icons.mood_outlined),
     SettingsSegmentItem(title: '技能', icon: Icons.auto_fix_high_outlined),
     SettingsSegmentItem(title: '记忆', icon: Icons.psychology_outlined),
+    SettingsSegmentItem(title: '图谱', icon: Icons.hub_outlined),
     SettingsSegmentItem(title: '语音', icon: Icons.graphic_eq_outlined),
   ];
 
@@ -101,7 +104,8 @@ class _QSettingsPageState extends ConsumerState<QSettingsPage> {
                     child: QSkillsPage(key: _skillsKey, embedded: true),
                   ),
                   TickerMode(enabled: _currentIndex == 3, child: const QMemoryPage(embedded: true)),
-                  TickerMode(enabled: _currentIndex == 4, child: const QVoicePage(embedded: true)),
+                  TickerMode(enabled: _currentIndex == 4, child: const QKnowledgePage(embedded: true)),
+                  TickerMode(enabled: _currentIndex == 5, child: const QVoicePage(embedded: true)),
                 ],
               ),
             ),

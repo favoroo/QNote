@@ -34,6 +34,7 @@ import 'package:qnote_flutter/widgets/chat/chat_image_view.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
+import 'package:qnote_flutter/widgets/common/motion_reveal.dart';
 import 'package:qnote_flutter/widgets/common/thinking_process_view.dart';
 import 'package:qnote_flutter/widgets/q_text_selection_toolbar.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
@@ -315,7 +316,7 @@ class _FloatingQOverlayState extends ConsumerState<FloatingQOverlay> with Ticker
     if (state.runActive || state.pendingUndoCount > 0) {
       final dialogContext = rootNavigatorKey.currentContext;
       if (dialogContext == null || !dialogContext.mounted) return;
-      final confirmed = await showDialog<bool>(
+      final confirmed = await AppMotion.showDialog<bool>(
         context: dialogContext,
         builder: (context) => AlertDialog(
           title: const Text('结束本次对话？'),

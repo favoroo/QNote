@@ -63,6 +63,19 @@ class HealthMetricRepository {
     return rows.map((r) => HealthDailyMetrics.fromMap(r)).toList();
   }
 
+  /// 增量索引：只取指定时间之后更新过的日汇总
+  Future<List<HealthDailyMetrics>> getUpdatedSince(DateTime since, {int limit = 400}) async {
+    final db = await _db;
+    final rows = await db.query(
+      'health_daily_metrics',
+      where: 'updated_at > ?',
+      whereArgs: [since.toIso8601String()],
+      orderBy: 'updated_at ASC',
+      limit: limit,
+    );
+    return rows.map((r) => HealthDailyMetrics.fromMap(r)).toList();
+  }
+
   /// 获取最近 N 天的数据
   Future<List<HealthDailyMetrics>> getRecentDailyMetrics({int limit = 30}) async {
     final db = await _db;

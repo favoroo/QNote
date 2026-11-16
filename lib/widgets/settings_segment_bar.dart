@@ -4,6 +4,7 @@ import 'package:qnote_flutter/core/theme/app_accent.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/widgets/common/motion_reveal.dart';
 import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 
 /// 设置页分区切换器的单个分区描述
@@ -150,54 +151,14 @@ class SettingsSegmentBar extends StatelessWidget {
 /// 内部通常放 [IndexedStack] 以保留各分段的滚动位置与编辑态；`index` 变化时
 /// 只对新内容做一次短促的淡入 + 4px 上移，避免「胶囊滑过去了、内容啪一下换掉」。
 /// 只做位移与透明度，不改变子树结构，因此不会打断 [IndexedStack] 的状态。
-class SettingsSegmentContent extends StatefulWidget {
+class SettingsSegmentContent extends StatelessWidget {
   final int index;
   final Widget child;
 
   const SettingsSegmentContent({super.key, required this.index, required this.child});
 
   @override
-  State<SettingsSegmentContent> createState() => _SettingsSegmentContentState();
-}
-
-class _SettingsSegmentContentState extends State<SettingsSegmentContent> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _opacity;
-  late final Animation<Offset> _offset;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: AppDurations.normal, value: 1.0);
-    final curved = CurvedAnimation(parent: _controller, curve: AppCurves.emphasized, reverseCurve: AppCurves.exit);
-    _opacity = Tween<double>(begin: 0.55, end: 1.0).animate(curved);
-    _offset = Tween<Offset>(begin: const Offset(0, 0.008), end: Offset.zero).animate(curved);
-  }
-
-  @override
-  void didUpdateWidget(covariant SettingsSegmentContent oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.index == widget.index) return;
-    if (AppMotion.reduce(context)) {
-      _controller.value = 1.0;
-    } else {
-      _controller.forward(from: 0.0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: FadeTransition(
-        opacity: _opacity,
-        child: SlideTransition(position: _offset, child: widget.child),
-      ),
-    );
+    return MotionReveal(triggerKey: index, beginOpacity: 0.55, beginOffsetY: 0.008, child: child);
   }
 }

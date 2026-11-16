@@ -91,13 +91,21 @@ class _ChatImageViewState extends State<ChatImageView> {
   /// ActionMenu 需要一个指向图片本身的 GlobalKey 来定位浮层位置
   final GlobalKey _anchorKey = GlobalKey(debugLabel: 'chatImage');
 
+  /// 每张聊天缩略图独立持有的 Hero tag，避免同图多次出现或 Offstage 分支碰撞
+  final Object _heroTag = Object();
+
   List<String> get _gallery => widget.galleryImages ?? <String>[widget.imagePath];
 
   int get _galleryIndex => widget.galleryIndex.clamp(0, _gallery.isEmpty ? 0 : _gallery.length - 1);
 
   void _openGallery() {
+    final gallery = _gallery;
+    final idx = _galleryIndex;
+    final heroTags = List<Object?>.generate(gallery.length, (i) => i == idx ? _heroTag : null);
     Navigator.of(context).push(
-      AppMotion.galleryRoute(FullScreenImageGallery(images: _gallery, initialIndex: _galleryIndex, onSave: _save)),
+      AppMotion.galleryRoute(
+        FullScreenImageGallery(images: gallery, initialIndex: idx, onSave: _save, heroTags: heroTags),
+      ),
     );
   }
 
@@ -134,9 +142,20 @@ class _ChatImageViewState extends State<ChatImageView> {
       behavior: HitTestBehavior.opaque,
       onTap: _openGallery,
       onLongPress: widget.enableLongPressMenu ? _showLongPressMenu : null,
-      child: ClipRRect(
-        borderRadius: widget.borderRadius ?? BorderRadius.zero,
-        child: UnifiedImage(imagePath: widget.imagePath, width: widget.width, height: widget.height, fit: widget.fit),
+      child: HeroMode(
+        enabled: !AppMotion.reduce(context),
+        child: Hero(
+          tag: _heroTag,
+          child: ClipRRect(
+            borderRadius: widget.borderRadius ?? BorderRadius.zero,
+            child: UnifiedImage(
+              imagePath: widget.imagePath,
+              width: widget.width,
+              height: widget.height,
+              fit: widget.fit,
+            ),
+          ),
+        ),
       ),
     );
   }

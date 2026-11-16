@@ -44,6 +44,18 @@ class _StatRecordDetailSheetState extends State<StatRecordDetailSheet> {
   late final PageController _pageController;
   late int _currentIndex;
   late final List<DiaryRecord> _records;
+  final Map<String, List<Object>> _heroTagsByRecord = {};
+
+  List<Object> _heroTagsFor(DiaryRecord record) {
+    final tags = _heroTagsByRecord.putIfAbsent(record.id, () => <Object>[]);
+    while (tags.length < record.photos.length) {
+      tags.add(Object());
+    }
+    if (tags.length > record.photos.length) {
+      tags.removeRange(record.photos.length, tags.length);
+    }
+    return tags;
+  }
 
   @override
   void initState() {
@@ -192,21 +204,44 @@ class _StatRecordDetailSheetState extends State<StatRecordDetailSheet> {
             const SizedBox(height: 20),
             _sectionTitle(theme, colorScheme, '图片'),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (var i = 0; i < record.photos.length; i++)
-                  GestureDetector(
-                    onTap: () => Navigator.of(
-                      context,
-                    ).push(AppMotion.galleryRoute(FullScreenImageGallery(images: record.photos, initialIndex: i))),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(AppRadius.small),
-                      child: UnifiedImage(imagePath: record.photos[i], width: 84, height: 84, fit: BoxFit.cover),
-                    ),
-                  ),
-              ],
+            Builder(
+              builder: (context) {
+                final heroTags = _heroTagsFor(record);
+                final reduce = AppMotion.reduce(context);
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < record.photos.length; i++)
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          AppMotion.galleryRoute(
+                            FullScreenImageGallery(
+                              images: record.photos,
+                              initialIndex: i,
+                              heroTags: List<Object?>.from(heroTags),
+                            ),
+                          ),
+                        ),
+                        child: HeroMode(
+                          enabled: !reduce,
+                          child: Hero(
+                            tag: heroTags[i],
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(AppRadius.small),
+                              child: UnifiedImage(
+                                imagePath: record.photos[i],
+                                width: 84,
+                                height: 84,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ],

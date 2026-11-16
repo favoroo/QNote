@@ -6,6 +6,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 import 'package:qnote_flutter/widgets/stats_card.dart';
@@ -101,7 +102,7 @@ class _SeverityTrendChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '${parts[1]}/${parts[2]}',
-                    style: const TextStyle(fontSize: 10, color: AppPalette.textMuted),
+                    style: const TextStyle(fontSize: AppTypography.caption, color: AppPalette.textMuted),
                   ),
                 );
               },
@@ -122,7 +123,10 @@ class _SeverityTrendChart extends StatelessWidget {
                 } else {
                   label = '';
                 }
-                return Text(label, style: const TextStyle(fontSize: 9, color: AppPalette.textMuted));
+                return Text(
+                  label,
+                  style: const TextStyle(fontSize: AppTypography.micro, color: AppPalette.textMuted),
+                );
               },
             ),
           ),
@@ -175,7 +179,11 @@ class _SymptomDistribution extends StatelessWidget {
                   ),
                   Text(
                     '${item.value} 次',
-                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppPalette.textMuted),
+                    style: const TextStyle(
+                      fontSize: AppTypography.caption,
+                      fontWeight: FontWeight.bold,
+                      color: AppPalette.textMuted,
+                    ),
                   ),
                 ],
               ),

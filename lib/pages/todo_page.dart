@@ -11,6 +11,7 @@ import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/app_typography.dart';
 import 'package:qnote_flutter/core/utils/reorder_gesture.dart';
 import 'package:qnote_flutter/core/utils/reminder_utils.dart';
 import 'package:qnote_flutter/models/folder.dart';
@@ -153,11 +154,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   final Map<String, ScrollController> _scrollControllers = {};
   bool _isCompletedCollapsed = true;
 
-  /// 折叠时把已完成内容多保留一个动画周期，让 AnimatedCrossFade 能同时
-  /// 收敛高度与透明度；动画结束后再真正移除，避免长列表常驻构建。
-  bool _keepCompletedItems = false;
-  Timer? _completedCollapseTimer;
-
   /// 用户点击分类标签后，PageView 正在按目标页播放滑动动画。
   /// 此期间不要用 build 里的同步逻辑 jumpToPage，否则会把动画直接打断成瞬跳。
   bool _isSwitchingFolder = false;
@@ -213,36 +209,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getBool(_kTodoCompletedCollapsedKey);
     if (saved != null && mounted) {
-      setState(() {
-        _isCompletedCollapsed = saved;
-        _keepCompletedItems = !saved;
-      });
+      setState(() => _isCompletedCollapsed = saved);
     }
   }
 
   void _toggleCompletedCollapsed() {
-    final nextCollapsed = !_isCompletedCollapsed;
-    _completedCollapseTimer?.cancel();
-
-    setState(() {
-      _isCompletedCollapsed = nextCollapsed;
-      if (!nextCollapsed) {
-        _keepCompletedItems = true;
-      }
-    });
-
-    if (nextCollapsed) {
-      final duration = AppMotion.duration(context, AppDurations.normal);
-      if (duration == Duration.zero) {
-        setState(() => _keepCompletedItems = false);
-      } else {
-        // 比交叉淡化多留 50ms，确保动画收尾后再移除长列表。
-        _completedCollapseTimer = Timer(duration + const Duration(milliseconds: 50), () {
-          if (!mounted || !_isCompletedCollapsed) return;
-          setState(() => _keepCompletedItems = false);
-        });
-      }
-    }
+    setState(() => _isCompletedCollapsed = !_isCompletedCollapsed);
 
     SharedPreferences.getInstance().then((prefs) {
       prefs.setBool(_kTodoCompletedCollapsedKey, _isCompletedCollapsed);
@@ -252,7 +224,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   @override
   void dispose() {
     _confirmTimer?.cancel();
-    _completedCollapseTimer?.cancel();
     _pageController.dispose();
     for (final controller in _scrollControllers.values) {
       controller.dispose();
@@ -761,7 +732,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                       '已完成 ${completedTodos.length}',
                       key: ValueKey<int>(completedTodos.length),
                       style: TextStyle(
-                        fontSize: 13.5,
+                        fontSize: AppTypography.bodyLarge,
                         fontWeight: FontWeight.w600,
                         color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
@@ -771,47 +742,39 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               ),
             ),
           ),
-          // 折叠/展开同时过渡高度与透明度；折叠完成后才移除长列表。
-          AnimatedCrossFade(
-            duration: AppMotion.duration(context, AppDurations.normal),
-            sizeCurve: AppCurves.emphasized,
-            firstCurve: AppCurves.exit,
-            secondCurve: AppCurves.emphasized,
-            crossFadeState: _isCompletedCollapsed ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-            alignment: Alignment.topCenter,
-            firstChild: const SizedBox(width: double.infinity),
-            secondChild: _keepCompletedItems
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 4),
-                      ...completedTodos.map(
-                        (todo) => AppCollapsible(
-                          expanded: !_deletingTodoIds.contains(todo.id),
-                          rise: 0,
-                          child: _TodoItem(
-                            key: ValueKey('todo_completed_${todo.id}'),
-                            todo: todo,
-                            index: -1,
-                            isDraggable: false,
-                            animateIn: false,
-                            isSelectionMode: _isSelectionMode,
-                            isSelected: _selectedTodoIds.contains(todo.id),
-                            onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
-                            onToggleComplete: () {
-                              ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
-                            },
-                            onLongPress: (globalKey) {
-                              _showActionMenu(context, todo, key: globalKey);
-                            },
-                            onDelete: () => _confirmDelete(todo),
-                            onSelectToggle: () => _toggleSelectTodo(todo.id),
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : const SizedBox(width: double.infinity),
+          // 折叠/展开由 AppCollapsible 托管高度与透明度渐变，并在收起后自动卸载长列表。
+          AppCollapsible(
+            expanded: !_isCompletedCollapsed,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 4),
+                ...completedTodos.map(
+                  (todo) => AppCollapsible(
+                    expanded: !_deletingTodoIds.contains(todo.id),
+                    rise: 0,
+                    child: _TodoItem(
+                      key: ValueKey('todo_completed_${todo.id}'),
+                      todo: todo,
+                      index: -1,
+                      isDraggable: false,
+                      animateIn: false,
+                      isSelectionMode: _isSelectionMode,
+                      isSelected: _selectedTodoIds.contains(todo.id),
+                      onTap: () => _showTodoBottomSheet(context, todo: todo, folderId: folderId),
+                      onToggleComplete: () {
+                        ref.read(todoListProvider.notifier).toggleComplete(todo.id, false);
+                      },
+                      onLongPress: (globalKey) {
+                        _showActionMenu(context, todo, key: globalKey);
+                      },
+                      onDelete: () => _confirmDelete(todo),
+                      onSelectToggle: () => _toggleSelectTodo(todo.id),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1138,7 +1101,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                             leading: Icon(Icons.folder_open, color: colorScheme.onSurfaceVariant),
                             title: Text(
                               folder.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: AppTypography.subtitle),
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

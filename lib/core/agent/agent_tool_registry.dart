@@ -4,6 +4,7 @@ import 'package:qnote_flutter/core/agent/tools/general/ask_user_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/describe_image_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/fetch_url_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/generate_image_tool.dart';
+import 'package:qnote_flutter/core/agent/tools/general/graph_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/grep_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/general/web_search_tool.dart';
 import 'package:qnote_flutter/core/agent/tools/workspace/delete_file_tool.dart';
@@ -60,6 +61,8 @@ class AgentToolRegistry {
 
       // 通用搜索、联网与交互（可选，可在设置中禁用）
       GrepTool(),
+      // 个人知识图谱查询：只读，问关联/规律/建议时替代反复 grep
+      GraphTool(),
       if (!disabled.contains('fetch_url')) FetchUrlTool(),
       if (!disabled.contains('web_search')) WebSearchTool(),
       if (!disabled.contains('skill_market')) SkillMarketTool(),

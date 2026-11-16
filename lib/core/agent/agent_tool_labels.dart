@@ -24,6 +24,7 @@ abstract final class AgentToolLabels {
     'read_files',
     'list_dir',
     'grep',
+    'graph',
     'view_image',
     'describe_image',
     'web_search',
@@ -61,6 +62,7 @@ abstract final class AgentToolLabels {
     'list_dir': '正在查看目录',
     'view_image': '正在查看图片',
     'grep': '正在搜索笔记',
+    'graph': '正在查询知识图谱',
     'skill': '正在调用技能',
     'ask_user': '正在等待你的回答',
   };
@@ -82,6 +84,7 @@ abstract final class AgentToolLabels {
     'list_dir': '查看目录',
     'view_image': '查看图片',
     'grep': '搜索笔记',
+    'graph': '知识图谱',
     'skill': '调用技能',
     'ask_user': '向你提问',
   };
@@ -113,6 +116,7 @@ abstract final class AgentToolLabels {
       'read_files' => '已批量读取',
       'list_dir' => '已查看目录',
       'grep' => '已搜索笔记',
+      'graph' => '已查询图谱',
       'write_file' => '已写入',
       'write_files' => '已批量写入',
       'edit_file' => '已编辑',
@@ -149,6 +153,7 @@ abstract final class AgentToolLabels {
       'read_files' => const ['start_date', 'end_date'],
       'move_file' => const ['from', 'to'],
       'grep' => const ['pattern', 'query', 'keyword'],
+      'graph' => const ['op', 'query', 'node'],
       'web_search' => const ['query'],
       'skill' => const ['name', 'skill'],
       'skill_market' => const ['search', 'install', 'as'],
@@ -245,6 +250,11 @@ abstract final class AgentToolLabels {
         return to == null ? from : '$from → $to';
       case 'grep':
         return _stringOf(data, const ['pattern', 'query', 'keyword']);
+      case 'graph':
+        final op = _stringOf(data, const ['op']);
+        final target = _stringOf(data, const ['query', 'node', 'from']);
+        if (op == null) return target;
+        return target == null ? op : '$op · $target';
       case 'web_search':
         return _stringOf(data, const ['query']);
       case 'skill':

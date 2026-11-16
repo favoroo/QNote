@@ -571,6 +571,14 @@ class ExportService {
     'body_states',
     'daily_scores',
     'fixed_event_templates',
+    // 知识图谱是派生数据：覆盖导入/清空数据后必须清掉，避免旧图引用已恢复前的记录
+    'kg_nodes',
+    'kg_aliases',
+    'kg_edges',
+    'kg_mentions',
+    'kg_documents',
+    'kg_insights',
+    'kg_meta',
   ];
 
   /// 「清空所有本地数据」要清空的表：在导入清单之上补齐同步配置、健康/用量与变更日志。

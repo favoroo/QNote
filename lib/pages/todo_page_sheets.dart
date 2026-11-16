@@ -346,7 +346,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                     textInputAction: TextInputAction.send,
                     onSubmitted: _handleSubmitted,
                     style: TextStyle(
-                      fontSize: 17.5,
+                      fontSize: AppTypography.headline,
                       height: 1.35,
                       fontWeight: FontWeight.w500,
                       color: isDark ? Colors.white : colorScheme.onSurface,
@@ -362,7 +362,7 @@ class _TodoEditBottomSheetState extends State<_TodoEditBottomSheet> {
                       filled: false,
                       hintText: widget.todo == null ? '回车连续添加' : '输入待办内容',
                       hintStyle: TextStyle(
-                        fontSize: 17.5,
+                        fontSize: AppTypography.headline,
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.35)
                             : colorScheme.onSurfaceVariant.withValues(alpha: 0.45),

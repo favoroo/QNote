@@ -1362,16 +1362,7 @@ class _TypingBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: AppMotion.duration(context, AppDurations.fast),
-      curve: AppCurves.emphasized,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(offset: Offset(0, (1 - value) * 8), child: child),
-        );
-      },
+    return MotionFadeSlideEntrance(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1692,16 +1683,15 @@ class _OneShotBubbleEntranceState extends State<_OneShotBubbleEntrance> with Sin
       return widget.child;
     }
     final anim = _curved!;
-    return AnimatedBuilder(
-      animation: anim,
-      child: widget.child,
-      builder: (context, child) {
-        final v = anim.value;
-        return Opacity(
-          opacity: v.clamp(0.0, 1.0),
-          child: Transform.translate(offset: Offset(0, (1 - v) * widget.beginOffsetY), child: child),
-        );
-      },
+    return FadeTransition(
+      opacity: anim,
+      child: AnimatedBuilder(
+        animation: anim,
+        child: widget.child,
+        builder: (context, child) {
+          return Transform.translate(offset: Offset(0, (1 - anim.value) * widget.beginOffsetY), child: child);
+        },
+      ),
     );
   }
 }

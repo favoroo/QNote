@@ -14,6 +14,7 @@ import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
 import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
 import 'package:qnote_flutter/providers/agent_memory_provider.dart';
@@ -223,7 +224,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('导入数据'),
@@ -288,7 +289,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('从云端恢复', style: TextStyle(color: Colors.red)),
@@ -412,7 +413,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('强制全量同步'),
@@ -445,7 +446,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清理旧备份文件'),
@@ -466,7 +467,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
   }
 
   void _openLogViewer() {
-    Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const LogViewerPage()));
+    Navigator.of(context).push(AppMotion.fadeRoute(const LogViewerPage(), fullscreenDialog: true));
   }
 
   Future<void> _handleClearData() async {
@@ -477,7 +478,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       return;
     }
 
-    final firstConfirm = await showDialog<bool>(
+    final firstConfirm = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清除数据'),
@@ -495,7 +496,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
     if (firstConfirm != true) return;
 
     if (!mounted) return;
-    final secondConfirm = await showDialog<bool>(
+    final secondConfirm = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('再次确认'),
@@ -557,7 +558,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       return;
     }
     final usage = _chatUsage;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('立即回收'),
@@ -610,7 +611,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
       Toast.warning(context, '同步中，稍后再整理');
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('整理数据库'),

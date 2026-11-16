@@ -730,33 +730,7 @@ class _DiaryItemState extends State<DiaryItem> {
                                           final itemWidth = ((maxWidth - spacing * 2 - 2.0) / 3).clamp(50.0, 70.0);
                                           return Padding(
                                             padding: const EdgeInsets.only(left: _contentIndent, top: 4),
-                                            child: Wrap(
-                                              spacing: spacing,
-                                              runSpacing: spacing,
-                                              children: record.photos.asMap().entries.map((entry) {
-                                                final index = entry.key;
-                                                final photo = entry.value;
-                                                return GestureDetector(
-                                                  behavior: HitTestBehavior.opaque,
-                                                  onTap: () {
-                                                    Navigator.of(context).push(
-                                                      AppMotion.galleryRoute(
-                                                        FullScreenImageGallery(
-                                                          images: record.photos,
-                                                          initialIndex: index,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: UnifiedImage(
-                                                    imagePath: photo,
-                                                    width: itemWidth,
-                                                    height: itemWidth,
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            ),
+                                            child: _DiaryPhotoGrid(photos: record.photos, itemWidth: itemWidth),
                                           );
                                         },
                                       ),
@@ -854,21 +828,26 @@ class _DiaryItemState extends State<DiaryItem> {
                 width: 28,
                 height: 28,
                 child: Center(
-                  child: isHealthSyncing
-                      ? SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 1.8, color: pillInk),
-                        )
-                      : Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: primaryTagColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
+                  child: AppMotion.switcher(
+                    context: context,
+                    child: isHealthSyncing
+                        ? SizedBox(
+                            key: const ValueKey('health_sync_loading'),
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 1.8, color: pillInk),
+                          )
+                        : Container(
+                            key: const ValueKey('health_sync_idle'),
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: primaryTagColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.sync_rounded, size: 15, color: pillInk),
                           ),
-                          child: Icon(Icons.sync_rounded, size: 15, color: pillInk),
-                        ),
+                  ),
                 ),
               ),
             ),
@@ -2165,7 +2144,7 @@ class _DiaryItemState extends State<DiaryItem> {
                 value,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  fontSize: 12.5,
+                  fontSize: AppTypography.body,
                   color: colorScheme.onSurface,
                   letterSpacing: -0.2,
                 ),
@@ -2175,7 +2154,7 @@ class _DiaryItemState extends State<DiaryItem> {
                 Text(
                   unit,
                   style: TextStyle(
-                    fontSize: 9.5,
+                    fontSize: AppTypography.caption,
                     fontWeight: FontWeight.w500,
                     color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
                   ),
@@ -2367,5 +2346,84 @@ class _UndoCountdownPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _UndoCountdownPainter oldDelegate) {
     return oldDelegate.progress != progress || oldDelegate.color != color;
+  }
+}
+
+/// 日记卡片照片九宫格：为每个缩略图槽位维护独立且跨重绘稳定的 Hero tag，
+/// 避免同图多次出现或 ShellBranchContainer Offstage 分支引起的 Hero tag 碰撞。
+class _DiaryPhotoGrid extends StatefulWidget {
+  final List<String> photos;
+  final double itemWidth;
+
+  const _DiaryPhotoGrid({required this.photos, required this.itemWidth});
+
+  @override
+  State<_DiaryPhotoGrid> createState() => _DiaryPhotoGridState();
+}
+
+class _DiaryPhotoGridState extends State<_DiaryPhotoGrid> {
+  final List<Object> _heroTags = <Object>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _syncHeroTags();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DiaryPhotoGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.photos.length != _heroTags.length) {
+      _syncHeroTags();
+    }
+  }
+
+  void _syncHeroTags() {
+    while (_heroTags.length < widget.photos.length) {
+      _heroTags.add(Object());
+    }
+    if (_heroTags.length > widget.photos.length) {
+      _heroTags.removeRange(widget.photos.length, _heroTags.length);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = AppMotion.reduce(context);
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: widget.photos.asMap().entries.map((entry) {
+        final index = entry.key;
+        final photo = entry.value;
+        final tag = _heroTags[index];
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            Navigator.of(context).push(
+              AppMotion.galleryRoute(
+                FullScreenImageGallery(
+                  images: widget.photos,
+                  initialIndex: index,
+                  heroTags: List<Object?>.from(_heroTags),
+                ),
+              ),
+            );
+          },
+          child: HeroMode(
+            enabled: !reduce,
+            child: Hero(
+              tag: tag,
+              child: UnifiedImage(
+                imagePath: photo,
+                width: widget.itemWidth,
+                height: widget.itemWidth,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
   }
 }

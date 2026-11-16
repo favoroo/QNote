@@ -9,8 +9,10 @@ import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/display_scale.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/theme_provider.dart';
+import 'package:qnote_flutter/widgets/common/sliding_pill_bar.dart';
 import 'package:qnote_flutter/widgets/drawer_nav_controls.dart';
 
 class PersonalizationPage extends ConsumerWidget {
@@ -22,6 +24,7 @@ class PersonalizationPage extends ConsumerWidget {
     final accentColor = ref.watch(accentColorProvider);
     final background = ref.watch(backgroundSettingProvider);
     final savedScheme = ref.watch(savedColorSchemeProvider);
+    final displayScale = ref.watch(displayScaleProvider);
     final platformBrightness = MediaQuery.platformBrightnessOf(context);
 
     return Scaffold(
@@ -184,6 +187,33 @@ class PersonalizationPage extends ConsumerWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('显示大小', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 16),
+                  // 三档分段选择：点选即时生效并持久化，全 App 文字随之缩放（含对话框与悬浮小Q）
+                  _DisplayScaleSelector(
+                    selected: displayScale,
+                    onChanged: (scale) => ref.read(displayScaleProvider.notifier).setScale(scale),
+                  ),
+                  const SizedBox(height: 14),
+                  // 示例文本：让用户直接看到当前档位的实际观感
+                  Text('示例文本 Aa 123', style: theme.textTheme.bodyMedium),
+                ],
+              ),
+            ),
             const SizedBox(height: 120),
             Container(
               width: double.infinity,
@@ -200,6 +230,7 @@ class PersonalizationPage extends ConsumerWidget {
                   onTap: () {
                     ref.read(backgroundSettingProvider.notifier).reset();
                     ref.read(accentColorProvider.notifier).setAccentColor(const Color(0xFF005BCB));
+                    ref.read(displayScaleProvider.notifier).reset();
                   },
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -230,7 +261,7 @@ class PersonalizationPage extends ConsumerWidget {
       return;
     }
     final current = ref.read(backgroundSettingProvider);
-    final picked = await showDialog<Color>(
+    final picked = await AppMotion.showDialog<Color>(
       context: context,
       builder: (context) =>
           _BackgroundColorPickerDialog(initialColor: current.customColor, accentColor: ref.read(accentColorProvider)),
@@ -295,7 +326,7 @@ class PersonalizationPage extends ConsumerWidget {
 
   Future<void> _onCustomAccentTap(BuildContext context, WidgetRef ref) async {
     final current = ref.read(accentColorProvider);
-    final picked = await showDialog<Color>(
+    final picked = await AppMotion.showDialog<Color>(
       context: context,
       builder: (context) => _AccentColorPickerDialog(initialColor: current),
     );
@@ -1046,6 +1077,47 @@ class _BackgroundColorPickerDialogState extends State<_BackgroundColorPickerDial
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
         FilledButton(onPressed: () => Navigator.pop(context, _color), child: const Text('应用')),
       ],
+    );
+  }
+}
+
+/// 显示大小三档分段选择器。
+///
+/// 沿用页面既有的圆角胶囊风格：轨道用淡底，选中段填充主题色。点选即时生效，
+/// 不需要点「保存」——与背景/主题色的即时应用保持一致。
+class _DisplayScaleSelector extends StatelessWidget {
+  const _DisplayScaleSelector({required this.selected, required this.onChanged});
+
+  /// 当前档位。
+  final DisplayScale selected;
+
+  /// 切换到某一档。
+  final ValueChanged<DisplayScale> onChanged;
+
+  /// 胶囊高度：满足移动端常规触控尺寸。
+  static const double _height = 44;
+
+  /// 段与轨道间距。
+  static const double _padding = 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final selectedIndex = DisplayScale.values.indexOf(selected);
+    return SlidingPillBar(
+      labels: DisplayScale.values.map((s) => s.label).toList(growable: false),
+      selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
+      onSelected: (index) => onChanged(DisplayScale.values[index]),
+      height: _height,
+      padding: _padding,
+      outerRadius: _height / 2,
+      pillRadius: (_height - _padding * 2) / 2,
+      trackColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      pillColor: colorScheme.primary,
+      selectedColorOf: (_) => colorScheme.onPrimary,
+      unselectedColor: colorScheme.onSurfaceVariant,
+      fontSize: theme.textTheme.labelLarge?.fontSize ?? 14,
     );
   }
 }

@@ -71,7 +71,7 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
   }
 
   Future<void> _confirmAndRescore(BuildContext context, DateTime date) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('重新评分'),
@@ -117,14 +117,29 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
         const SizedBox(height: 12),
 
         // Core scoring display
-        // 评分中 / 有评分 / 无评分三态交叉淡化：避免评估开始与结束时
-        // 卡片内容与高度瞬间跳变
+        // 评分中 / 加载 / 有评分 / 无评分各态按独立 key 交叉淡化；
+        // 切日期时 skipLoadingOnReload 保留已评分骨架，让圆环与维度条平滑过渡到新分数。
         AppMotion.switcher(
           context: context,
-          child: KeyedSubtree(
-            key: ValueKey(_isScoring ? 'scoring' : 'content'),
-            child: _isScoring
-                ? Card(
+          child: _isScoring
+              ? Card(
+                  key: const ValueKey('score_scoring'),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
+                  ),
+                  elevation: 0,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(
+                      child: Column(children: [CircularProgressIndicator(), SizedBox(height: 16), Text('正在评估今日数据')]),
+                    ),
+                  ),
+                )
+              : scoreAsync.when(
+                  skipLoadingOnReload: true,
+                  loading: () => Card(
+                    key: const ValueKey('score_loading'),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                       side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
@@ -132,41 +147,161 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                     elevation: 0,
                     child: const Padding(
                       padding: EdgeInsets.symmetric(vertical: 48),
-                      child: Center(
-                        child: Column(children: [CircularProgressIndicator(), SizedBox(height: 16), Text('正在评估今日数据')]),
-                      ),
+                      child: Center(child: CircularProgressIndicator()),
                     ),
-                  )
-                : scoreAsync.when(
-                    loading: () => Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
-                      ),
-                      elevation: 0,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 48),
-                        child: Center(child: CircularProgressIndicator()),
-                      ),
+                  ),
+                  error: (err, stack) => Card(
+                    key: const ValueKey('score_error'),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
                     ),
-                    error: (err, stack) => Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 0.5),
-                      ),
-                      elevation: 0,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-                        child: Center(child: Text('评分加载失败：$err')),
-                      ),
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+                      child: Center(child: Text('评分加载失败：$err')),
                     ),
-                    data: (score) {
-                      if (score != null) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Score wheel card
-                            Card(
+                  ),
+                  data: (score) {
+                    if (score != null) {
+                      return Column(
+                        key: const ValueKey('score_scored'),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Score wheel card
+                          Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                width: 0.5,
+                              ),
+                            ),
+                            elevation: 0,
+                            color: theme.colorScheme.surface,
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                children: [
+                                  _ScoreCircle(score: score.totalScore),
+                                  const SizedBox(height: 12),
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.refresh, size: 16),
+                                    label: const Text('重新评分', style: TextStyle(fontSize: AppTypography.bodySmall)),
+                                    onPressed: () => _confirmAndRescore(context, selectedDate),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Dimension breakdown card
+                          Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                width: 0.5,
+                              ),
+                            ),
+                            elevation: 0,
+                            color: theme.colorScheme.surface,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      AppIconBadge(
+                                        icon: Icons.bar_chart,
+                                        size: 30,
+                                        iconSize: 18,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        '维度评分',
+                                        style: TextStyle(fontSize: AppTypography.subtitle, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _DimensionScoreBar(
+                                    name: '睡眠',
+                                    score: score.dimensionScores['sleep'] ?? 0,
+                                    color: Colors.indigo,
+                                  ),
+                                  _DimensionScoreBar(
+                                    name: '饮食',
+                                    score: score.dimensionScores['diet'] ?? 0,
+                                    color: Colors.green,
+                                  ),
+                                  _DimensionScoreBar(
+                                    name: '活动',
+                                    score: score.dimensionScores['activity'] ?? 0,
+                                    color: Colors.orange,
+                                  ),
+                                  _DimensionScoreBar(
+                                    name: '健康',
+                                    score: score.dimensionScores['health'] ?? 0,
+                                    color: Colors.redAccent,
+                                  ),
+                                  _DimensionScoreBar(
+                                    name: '屏幕',
+                                    score: score.dimensionScores['screen'] ?? 0,
+                                    color: Colors.teal,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // AI Comments and Suggestions
+                          _AiSuggestionCard(summary: score.summary, suggestions: score.suggestions),
+                        ],
+                      );
+                    } else {
+                      // No score exists yet: evaluate records list
+                      return recordsAsync.when(
+                        skipLoadingOnReload: true,
+                        loading: () => Card(
+                          key: const ValueKey('score_records_loading'),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              width: 0.5,
+                            ),
+                          ),
+                          elevation: 0,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 48),
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                        ),
+                        error: (err, stack) => Card(
+                          key: const ValueKey('score_records_error'),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              width: 0.5,
+                            ),
+                          ),
+                          elevation: 0,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+                            child: Center(child: Text('记录检查失败：$err')),
+                          ),
+                        ),
+                        data: (records) {
+                          final count = records.length;
+                          if (count < 3) {
+                            return Card(
+                              key: const ValueKey('score_few'),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 side: BorderSide(
@@ -175,26 +310,38 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                 ),
                               ),
                               elevation: 0,
-                              color: theme.colorScheme.surface,
                               child: Padding(
                                 padding: const EdgeInsets.all(24),
                                 child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    _ScoreCircle(score: score.totalScore),
+                                    Icon(
+                                      Icons.warning_amber_rounded,
+                                      size: 48,
+                                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      '记录过少',
+                                      style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
+                                    ),
                                     const SizedBox(height: 12),
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.refresh, size: 16),
-                                      label: const Text('重新评分', style: TextStyle(fontSize: AppTypography.bodySmall)),
-                                      onPressed: () => _confirmAndRescore(context, selectedDate),
+                                    Text(
+                                      '今日仅 $count 条记录。AI 至少需要 3 条才能评分，再记几条试试。',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: AppTypography.body,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                        height: 1.5,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Dimension breakdown card
-                            Card(
+                            );
+                          } else {
+                            return Card(
+                              key: const ValueKey('score_ready'),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 side: BorderSide(
@@ -203,193 +350,50 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                 ),
                               ),
                               elevation: 0,
-                              color: theme.colorScheme.surface,
                               child: Padding(
-                                padding: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.all(24),
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Row(
-                                      children: [
-                                        AppIconBadge(
-                                          icon: Icons.bar_chart,
-                                          size: 30,
-                                          iconSize: 18,
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        const Text(
-                                          '维度评分',
-                                          style: TextStyle(
-                                            fontSize: AppTypography.subtitle,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                    Icon(Icons.insights, size: 48, color: theme.accentInk),
                                     const SizedBox(height: 16),
-                                    _DimensionScoreBar(
-                                      name: '睡眠',
-                                      score: score.dimensionScores['sleep'] ?? 0,
-                                      color: Colors.indigo,
+                                    const Text(
+                                      '今日表现',
+                                      style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
                                     ),
-                                    _DimensionScoreBar(
-                                      name: '饮食',
-                                      score: score.dimensionScores['diet'] ?? 0,
-                                      color: Colors.green,
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      '今天已记录 $count 条，让 AI 给出全天健康评分与建议。',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: AppTypography.body,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                        height: 1.5,
+                                      ),
                                     ),
-                                    _DimensionScoreBar(
-                                      name: '活动',
-                                      score: score.dimensionScores['activity'] ?? 0,
-                                      color: Colors.orange,
-                                    ),
-                                    _DimensionScoreBar(
-                                      name: '健康',
-                                      score: score.dimensionScores['health'] ?? 0,
-                                      color: Colors.redAccent,
-                                    ),
-                                    _DimensionScoreBar(
-                                      name: '屏幕',
-                                      score: score.dimensionScores['screen'] ?? 0,
-                                      color: Colors.teal,
+                                    const SizedBox(height: 20),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        ),
+                                        icon: const Icon(Icons.auto_awesome),
+                                        label: const Text('开始评分', style: TextStyle(fontWeight: FontWeight.bold)),
+                                        onPressed: () => _performScoreAction(selectedDate),
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // AI Comments and Suggestions
-                            _AiSuggestionCard(summary: score.summary, suggestions: score.suggestions),
-                          ],
-                        );
-                      } else {
-                        // No score exists yet: evaluate records list
-                        return recordsAsync.when(
-                          loading: () => Card(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(
-                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                                width: 0.5,
-                              ),
-                            ),
-                            elevation: 0,
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 48),
-                              child: Center(child: CircularProgressIndicator()),
-                            ),
-                          ),
-                          error: (err, stack) => Card(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(
-                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                                width: 0.5,
-                              ),
-                            ),
-                            elevation: 0,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-                              child: Center(child: Text('记录检查失败：$err')),
-                            ),
-                          ),
-                          data: (records) {
-                            final count = records.length;
-                            if (count < 3) {
-                              return Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: BorderSide(
-                                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                                    width: 0.5,
-                                  ),
-                                ),
-                                elevation: 0,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(24),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.warning_amber_rounded,
-                                        size: 48,
-                                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        '记录过少',
-                                        style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        '今日仅 $count 条记录。AI 至少需要 3 条才能评分，再记几条试试。',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: AppTypography.body,
-                                          color: theme.colorScheme.onSurfaceVariant,
-                                          height: 1.5,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            } else {
-                              return Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: BorderSide(
-                                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                                    width: 0.5,
-                                  ),
-                                ),
-                                elevation: 0,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(24),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.insights, size: 48, color: theme.accentInk),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        '今日表现',
-                                        style: TextStyle(fontSize: AppTypography.title, fontWeight: FontWeight.bold),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        '今天已记录 $count 条，让 AI 给出全天健康评分与建议。',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: AppTypography.body,
-                                          color: theme.colorScheme.onSurfaceVariant,
-                                          height: 1.5,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 20),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(vertical: 12),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                          ),
-                                          icon: const Icon(Icons.auto_awesome),
-                                          label: const Text('开始评分', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          onPressed: () => _performScoreAction(selectedDate),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }
-                          },
-                        );
-                      }
-                    },
-                  ),
-          ),
+                            );
+                          }
+                        },
+                      );
+                    }
+                  },
+                ),
         ),
 
         const SizedBox(height: 24),
@@ -504,57 +508,78 @@ class _ScoreCircle extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = _getScoreColor(score);
-    // 首屏从 0 计数到目标分数，分数环同步扫过；避免静态数字「蹦」出来。
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: score.toDouble()),
-      duration: AppMotion.duration(context, AppDurations.slow),
+    // 首屏从 0 计数到目标分数，分数环同步扫过；切日期时颜色与数值均平滑过渡。
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(begin: color, end: color),
+      duration: AppMotion.duration(context, AppDurations.medium),
       curve: AppCurves.emphasized,
-      builder: (context, animatedScore, _) {
-        return Center(
-          child: Column(
-            children: [
-              SizedBox(
-                width: 160,
-                height: 160,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 150,
-                      height: 150,
-                      child: CircularProgressIndicator(
-                        value: animatedScore / 100,
-                        strokeWidth: 12,
-                        backgroundColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-                        valueColor: AlwaysStoppedAnimation(color),
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
+      builder: (context, animatedColor, _) {
+        final effectiveColor = animatedColor ?? color;
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: score.toDouble()),
+          duration: AppMotion.duration(context, AppDurations.slow),
+          curve: AppCurves.emphasized,
+          builder: (context, animatedScore, _) {
+            return Center(
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: 160,
+                    height: 160,
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        Text(
-                          '${animatedScore.round()}',
-                          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                        SizedBox(
+                          width: 150,
+                          height: 150,
+                          child: CircularProgressIndicator(
+                            value: animatedScore / 100,
+                            strokeWidth: 12,
+                            strokeCap: StrokeCap.round,
+                            backgroundColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                            valueColor: AlwaysStoppedAnimation(effectiveColor),
+                          ),
                         ),
-                        Text(
-                          '/ 100',
-                          style: TextStyle(
-                            fontSize: AppTypography.bodyLarge,
-                            color: theme.colorScheme.onSurfaceVariant,
+                        // 固定 160 环内：显示大小放大时整体收缩，避免分数溢出圆环
+                        SizedBox(
+                          width: 126,
+                          height: 126,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${animatedScore.round()}',
+                                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  '/ 100',
+                                  style: TextStyle(
+                                    fontSize: AppTypography.bodyLarge,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _getScoreLabel(score),
+                    style: TextStyle(
+                      fontSize: AppTypography.headline,
+                      fontWeight: FontWeight.bold,
+                      color: effectiveColor,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                _getScoreLabel(score),
-                style: TextStyle(fontSize: AppTypography.headline, fontWeight: FontWeight.bold, color: color),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );

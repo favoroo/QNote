@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/widgets/ai/q_avatar.dart';
 
 /// 弹出小Q人机交互确认弹窗
@@ -14,7 +15,7 @@ Future<String?> showAskUserDialog({
   List<String>? options,
   void Function(BuildContext dialogContext)? onDialogBuilt,
 }) {
-  return showDialog<String>(
+  return AppMotion.showDialog<String>(
     context: context,
     barrierDismissible: true,
     builder: (dialogContext) {

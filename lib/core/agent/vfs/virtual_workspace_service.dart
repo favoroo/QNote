@@ -14,6 +14,9 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/health/screen_usage_service.dart';
+import 'package:qnote_flutter/core/knowledge/kg_communities.dart';
+import 'package:qnote_flutter/core/knowledge/kg_indexer.dart';
+import 'package:qnote_flutter/core/knowledge/kg_query_service.dart';
 import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/notification/notification_service.dart';
 import 'package:qnote_flutter/core/storage/color_mark_repository.dart';
@@ -28,6 +31,7 @@ import 'package:qnote_flutter/core/storage/fixed_event_repository.dart';
 import 'package:qnote_flutter/core/storage/folder_repository.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
+import 'package:qnote_flutter/core/storage/knowledge_graph_repository.dart';
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/utils/daily_score_adjust.dart';
@@ -44,6 +48,7 @@ import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/fixed_event_template.dart';
 import 'package:qnote_flutter/models/folder.dart';
+import 'package:qnote_flutter/models/knowledge_graph.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -374,6 +379,7 @@ class VirtualWorkspaceService {
 - `/journal/`: 每日深度长篇日记与复盘（如 `/journal/2026-09-11.md`）。
 - `/folders/`: 分类与笔记本层级管理（`todos.json` 待办分类、`notes.json` 笔记本目录，支持增删改查与重命名）。
 - `/stats/`: 数据洞察与生活评分（`summary.json` 综合统计与完成率、`daily_scores.json` 近两周评分与建议、`score_index.json` 近一年评分索引（只有分值无评语）、`adjust.json` 按日期区间批量调整历史评分（只写）、`scores/YYYY-MM-DD.json` 单日评分读写）。
+- `/graph/`: 个人知识图谱（只读派生数据）：`summary.json` 概览、`insights.json` 关联发现、`topics.json` 主题、`entities/<id>.md` 实体详情、`days/YYYY-MM-DD.json` 单日关联；源记录变更后需由用户在「设置 → 小Q → 图谱」手动更新，不能直接写入。
 - `/health/`: 小米运动健康数据（`summary.json` 近期汇总、`YYYY-MM-DD.json` 单日步数/睡眠分期/心率曲线/血氧/压力/运动详情；撰写每日健康复盘与生活评分时可主动读取）。
 - `/chats/`: 对话会话管理（`sessions.json` 历史会话查看、标题重命名与软删除）。
 - `/settings/`: 系统偏好与个性化配置（包含 `appearance.json`、`ai.json`、`shortcuts.json`、`fixed_events.json`、`profile.json`、`weight.json`、`color_marks.json`、`webdav.json`）。
@@ -384,10 +390,22 @@ class VirtualWorkspaceService {
    `read_files(paths: [...], start_date: ..., end_date: ...)` 一次取回，避免逐文件/逐天调用；单文件详情仍用 `read_file`。
 3. **严禁凭空口头承诺**：必须通过实际的文件系统工具调用执行成功后，再向用户汇报结果！
 4. **查阅 Skill 手册**：在处理待办规划、笔记重排、时间打卡、系统与AI配置等专业任务时，通过 `read_file(path: "/skills/<skill-name>.md")` 或 `skill(name: "...")` 查阅标准作业程序。
+5. **关联问题先查图谱**：问原因、规律、关联、建议或灵感时，先用 `graph` 工具或读 `/graph/`，再按证据路径读原文；`INFERRED/AMBIGUOUS` 关系只作线索，相关性不等于因果。
 ''';
 
   /// 规范化路径
   String normalizePath(String path) => normalizeWorkspacePath(path);
+
+  /// 图谱是源记录派生出的只读视图：写入必须改源文件，再由用户手动更新图谱
+  static void _rejectGraphWrite(String path) {
+    if (path == '/graph' || path.startsWith('/graph/')) {
+      throw Exception(
+        '$path 是知识图谱派生出的只读端点，不能直接写入或删除。'
+        '请修改对应的源记录（/timeline、/notes、/todos、/journal 等）；'
+        '图谱需要用户在「设置 → 小Q → 图谱」里手动更新。',
+      );
+    }
+  }
 
   // ==========================================
   // 1. listDir: 列出目录内容
@@ -411,7 +429,22 @@ class VirtualWorkspaceService {
         'chats/',
         'settings/',
         'quick_prompts/',
+        'graph/',
       ];
+    }
+
+    if (path == '/graph' || path == '/graph/') {
+      return ['summary.json', 'insights.json', 'topics.json', 'entities/', 'days/'];
+    }
+
+    if (path == '/graph/entities' || path == '/graph/entities/') {
+      final top = await KnowledgeGraphRepository().topEntities(limit: 30);
+      return [for (final row in top) '${row['id']}.md'];
+    }
+
+    if (path == '/graph/days' || path == '/graph/days/') {
+      final dates = await _diaryRepo.getActiveDates(limit: 30);
+      return [for (final date in dates) '$date.json'];
     }
 
     if (path == '/skills' || path == '/skills/') {
@@ -631,6 +664,8 @@ class VirtualWorkspaceService {
       fullContent = await _readChatsFile(path);
     } else if (path.startsWith('/settings/')) {
       fullContent = await _readSettingsFile(path);
+    } else if (path.startsWith('/graph/')) {
+      fullContent = await _readGraphFile(path);
     } else {
       throw Exception('未知的文件路径: $path');
     }
@@ -754,9 +789,11 @@ class VirtualWorkspaceService {
       if (r.photos.isNotEmpty) {
         // 仅路径文本模型无法感知画面，附提示引导其调用工具加载图片
         // （行尾括注由写回解析按「（可调用…）」剥离，改措辞要保持这个前缀）
+        final hasAnalysis = r.aiAnalysis.trim().isNotEmpty;
         buffer.writeln(
           '- 图片: ${r.photos.join(', ')}'
-          '（可调用 view_image 查看画面；当前模型不支持看图时用 describe_image 取文字识别结果）',
+          '（可调用 view_image 查看画面；'
+          '${hasAnalysis ? '已有小Q分析，优先参考分析，需要更细画面时再看图' : '当前模型不支持看图时用 describe_image 取文字识别结果'}）',
         );
       }
       for (final entry in r.tagEntries) {
@@ -766,6 +803,11 @@ class VirtualWorkspaceService {
       }
       if (r.content.isNotEmpty) {
         buffer.writeln('- 详情: ${r.content}');
+      }
+      if (r.aiAnalysis.trim().isNotEmpty) {
+        // 写回解析按行读取，分析里的换行会丢掉第二行之后的内容，输出时压成单行
+        final analysis = r.aiAnalysis.replaceAll(RegExp(r'[\r\n]+'), ' ').trim();
+        buffer.writeln('- 小Q分析: $analysis');
       }
       buffer.writeln();
     }
@@ -1050,6 +1092,97 @@ class VirtualWorkspaceService {
       );
     }
     throw Exception('未知的分类配置文件: $path');
+  }
+
+  /// 读取 `/graph/` 只读视图：概览、洞察、主题、实体详情、单日关联。
+  ///
+  /// 与 `graph` 工具共用同一套查询服务，区别只是输出形态：这里是给 agent
+  /// 按路径读取的稳定文件，工具则按 op 返回预算内子图。
+  Future<String> _readGraphFile(String path) async {
+    final name = path.substring('/graph/'.length).trim();
+    final repo = KnowledgeGraphRepository();
+
+    if (name == 'summary.json') {
+      final status = await KnowledgeGraphIndexer.instance.status();
+      return const JsonEncoder.withIndent('  ').convert(status);
+    }
+
+    if (name == 'insights.json') {
+      final insights = await repo.getInsights(limit: 20);
+      return const JsonEncoder.withIndent('  ').convert([
+        for (final insight in insights)
+          {
+            'id': insight.id,
+            'kind': insight.kind,
+            'title': insight.title,
+            'body': insight.body,
+            'support': insight.support,
+            'confidence': insight.confidence,
+            'lift': insight.lift,
+            'status': insight.status,
+            'evidence': insight.evidence.map((e) => e.toMap()).toList(),
+          },
+      ]);
+    }
+
+    if (name == 'topics.json') {
+      final topics = await KnowledgeGraphCommunityService.instance.topics(limit: 20);
+      return const JsonEncoder.withIndent('  ').convert(topics);
+    }
+
+    if (name.startsWith('entities/') && name.endsWith('.md')) {
+      final id = name.substring('entities/'.length, name.length - 3);
+      final resolution = await KnowledgeGraphQueryService.instance.resolveNode(id);
+      final node = resolution.node;
+      if (node == null) {
+        throw Exception('图谱实体不存在: $path。可先用 graph(op:"search") 或 grep(scope:"graph") 定位实体 id。');
+      }
+      final graph = await KnowledgeGraphQueryService.instance.neighbors(node, depth: 1);
+      final mentions = await KnowledgeGraphQueryService.instance.timeline(node, limit: 10);
+      final buffer = StringBuffer()
+        ..writeln('# ${node.name}')
+        ..writeln()
+        ..writeln('- 类型: ${KgEntityType.labels[node.type] ?? node.type}')
+        ..writeln('- 提及: ${node.mentionCount} 次')
+        ..writeln('- 别名: ${node.aliases.isEmpty ? '无' : node.aliases.join('、')}')
+        ..writeln('- 摘要: ${node.summary.isEmpty ? '暂无' : node.summary}')
+        ..writeln()
+        ..writeln('## 关联')
+        ..writeln()
+        ..writeln(KnowledgeGraphQueryService.instance.formatNeighbors(graph, budget: 1800))
+        ..writeln()
+        ..writeln('## 最近出现')
+        ..writeln()
+        ..writeln(KnowledgeGraphQueryService.instance.formatTimeline(mentions, node.name, budget: 1200));
+      return buffer.toString().trimRight();
+    }
+
+    if (name.startsWith('days/') && name.endsWith('.json')) {
+      final date = name.substring('days/'.length, name.length - 5);
+      final day = DateTime.tryParse(date);
+      if (day == null) throw Exception('图谱日期格式无效: $path（应为 /graph/days/YYYY-MM-DD.json）');
+      final mentions = await repo.getMentionsInRange(day, day, limit: 500);
+      final nodes = await repo.getNodesByIds(mentions.map((m) => m.nodeId));
+      return const JsonEncoder.withIndent('  ').convert({
+        'date': date,
+        'nodes': [
+          for (final node in nodes)
+            {
+              'id': node.id,
+              'name': node.name,
+              'kind': node.kind,
+              'type': node.type,
+              'mention_count': node.mentionCount,
+            },
+        ],
+        'mentions': [
+          for (final mention in mentions)
+            {'node_id': mention.nodeId, 'path': mention.path, 'field': mention.field, 'snippet': mention.snippet},
+        ],
+      });
+    }
+
+    throw Exception('未知的图谱文件: $path。可用: summary.json、insights.json、topics.json、entities/<id>.md、days/YYYY-MM-DD.json');
   }
 
   Future<String> _readStatsFile(String path) async {
@@ -1355,6 +1488,7 @@ class VirtualWorkspaceService {
   /// [_mergeAppendContent]），仅文本累积型端点支持。
   Future<Map<String, dynamic>> writeFile(String rawPath, String content, {bool append = false}) async {
     final path = normalizePath(rawPath);
+    _rejectGraphWrite(path);
     final effectiveContent = append ? await _mergeAppendContent(path, content) : content;
     // 撤回录制：捕获本轮首次修改前的旧状态（editFile 内部最终也走 writeFile，靠同路径去重）
     await _captureUndoState(path);
@@ -1395,6 +1529,7 @@ class VirtualWorkspaceService {
     bool replaceAll = false,
   }) async {
     final path = normalizePath(rawPath);
+    _rejectGraphWrite(path);
     // 撤回录制：捕获替换前的旧状态（后续 writeFile 入口的捕获会同路径去重）
     await _captureUndoState(path);
     // 去掉行号前缀：锚定"行首数字+制表符"，避免误伤正文中含制表符的内容
@@ -1423,6 +1558,7 @@ class VirtualWorkspaceService {
   // ==========================================
   Future<Map<String, dynamic>> deleteFile(String rawPath) async {
     final path = normalizePath(rawPath);
+    _rejectGraphWrite(path);
     // 撤回录制：先捕获删除前的旧状态（目录路径 readFile 会失败记为不存在，
     // 由下方目录分支对被连坐软删的实体逐一补捕获）
     await _captureUndoState(path);
@@ -1762,6 +1898,7 @@ class VirtualWorkspaceService {
     'settings',
     'chats',
     'stats',
+    'graph',
   ];
 
   /// 单条命中文本（match）的最大长度，控制回传给模型的体积
@@ -1844,7 +1981,9 @@ class VirtualWorkspaceService {
       final records = await _diaryRepo.getAll();
       for (final r in records) {
         if (results.length >= limit) break;
-        if (!reg.hasMatch(r.title) && !reg.hasMatch(r.content) && !reg.hasMatch(r.displayTag)) {
+        // 小Q分析也是记录的一部分：图片解读里的关键词同样应能检索到
+        final searchable = '${r.content}\n${r.aiAnalysis}'.trim();
+        if (!reg.hasMatch(r.title) && !reg.hasMatch(searchable) && !reg.hasMatch(r.displayTag)) {
           continue;
         }
         final dateStr = _formatDate(r.time);
@@ -1859,7 +1998,7 @@ class VirtualWorkspaceService {
           'time': r.time.toIso8601String(),
           'tags': r.tags,
           'match': '[$timeStr] ${r.displayTag} - ${r.title}',
-          'snippet': _grepSnippet(r.content, reg),
+          'snippet': _grepSnippet(searchable, reg),
         });
       }
     }
@@ -1907,7 +2046,27 @@ class VirtualWorkspaceService {
       );
     }
 
-    // 7. 统计评分（/stats/scores/YYYY-MM-DD.json 及 /stats/daily_scores.json）
+    // 7. 知识图谱实体（/graph/entities/<id>.md）：让 grep 也能发现实体节点
+    if (inScope('graph')) {
+      final graphNodes = await KnowledgeGraphQueryService.instance.search(
+        keyword,
+        limit: (limit - results.length).clamp(1, limit),
+      );
+      for (final node in graphNodes) {
+        if (results.length >= limit) break;
+        results.add({
+          'type': 'graph',
+          'path': '/graph/entities/${node.id}.md',
+          'id': node.id,
+          'title': node.name,
+          'snippet': node.summary.isNotEmpty
+              ? node.summary
+              : (node.aliases.isNotEmpty ? '别名: ${node.aliases.join('、')}' : '图谱实体'),
+        });
+      }
+    }
+
+    // 8. 统计评分（/stats/scores/YYYY-MM-DD.json 及 /stats/daily_scores.json）
     if (inScope('stats')) {
       final now = DateTime.now();
       final startDate = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 30));

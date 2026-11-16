@@ -368,12 +368,23 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
       int? mood;
       String detail = '';
       String weather = '';
+      // null 表示本次写回没有带小Q分析行：更新时保留原分析；
+      // 空串表示显式写了空行，用于清除分析
+      String? analysis;
       final photos = <String>[];
       final customFields = <String, dynamic>{};
       final explicitTags = <String>[];
 
       for (final line in body.split('\n')) {
-        final l = line.trim().replaceAll('：', ':');
+        final raw = line.trim();
+        // 小Q分析是系统生成的补充信息，不是标签字段：必须在通用「- key: value」
+        // 分支之前识别，否则会被当成自定义指标写成卡片胶囊
+        if (raw.startsWith('- 小Q分析：') || raw.startsWith('- 小Q分析:')) {
+          final idx = raw.indexOf(RegExp('[:：]'));
+          analysis = idx == -1 ? '' : raw.substring(idx + 1).trim();
+          continue;
+        }
+        final l = raw.replaceAll('：', ':');
         if (l.startsWith('- 分类:') || l.startsWith('- category:')) {
           category = _fieldValue(l);
         } else if (l.startsWith('- 标签:') || l.startsWith('- tags:') || l.startsWith('- tag:')) {
@@ -498,6 +509,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         final updated = existing.copyWith(
           title: title.isNotEmpty ? title : existing.title,
           content: detail,
+          aiAnalysis: analysis ?? existing.aiAnalysis,
           displayTag: category,
           tags: recordTags,
           time: recordTime,
@@ -522,6 +534,7 @@ extension _VirtualWorkspaceWrites on VirtualWorkspaceService {
         id: const Uuid().v4(),
         title: title,
         content: detail,
+        aiAnalysis: analysis ?? '',
         displayTag: category,
         tags: recordTags,
         time: recordTime,

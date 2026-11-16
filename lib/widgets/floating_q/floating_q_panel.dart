@@ -939,20 +939,7 @@ class _PanelEntrance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      duration: AppMotion.duration(context, AppDurations.fast),
-      curve: AppCurves.emphasized,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.translate(
-          // 位移只作用于绘制阶段，不影响布局，避免列表抖动
-          offset: Offset(0, 8 * (1 - t)),
-          child: child,
-        ),
-      ),
-      child: child,
-    );
+    return MotionFadeSlideEntrance(child: child);
   }
 }
 

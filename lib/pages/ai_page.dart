@@ -52,8 +52,9 @@ import 'package:qnote_flutter/widgets/ai/user_bubble_reedit_tap.dart';
 import 'package:qnote_flutter/widgets/ai/workflow_process_view.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/loading_ring.dart';
-import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/common/morphing_infinity.dart';
+import 'package:qnote_flutter/widgets/common/motion_reveal.dart';
+import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/common/streaming_elapsed_text.dart';
 import 'package:qnote_flutter/widgets/common/thinking_process_view.dart';
 import 'package:qnote_flutter/core/agent/services/agent_interaction_service.dart';
@@ -92,6 +93,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   /// 合并成一次 post-frame 滚动，避免同一帧重复 jumpTo 造成多余布局。
   bool _scrollToBottomScheduled = false;
   bool _scrollToBottomImmediate = false;
+  bool _showScrollToBottom = false;
 
   bool _isTyping = false;
   AiModelRef? _activeModelId;
@@ -168,6 +170,7 @@ class _AiPageState extends ConsumerState<AiPage> {
     super.initState();
     _inputFocusNode.addListener(_onInputFocusChanged);
     _inputController.addListener(_onInputChanged);
+    _scrollController.addListener(_onScrollChanged);
     WorkspaceEventBus.instance.addListener(_onSkillsChanged);
     _loadSlashSkills();
     _initActiveModelId();
@@ -467,8 +470,21 @@ class _AiPageState extends ConsumerState<AiPage> {
     _inputFocusNode.removeListener(_onInputFocusChanged);
     _inputFocusNode.dispose();
     _inputController.dispose();
+    _scrollController.removeListener(_onScrollChanged);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScrollChanged() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    final pos = _scrollController.position;
+    final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
+    final shouldShow = pos.maxScrollExtent > 80 && distanceFromBottom > 240;
+    if (shouldShow != _showScrollToBottom) {
+      setState(() => _showScrollToBottom = shouldShow);
+    }
   }
 
   void _scrollToBottom({bool immediate = false}) {
@@ -1298,11 +1314,16 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     ref.listen(currentChatProvider, (prev, next) {
       _scrollToBottom();
-      // 会话切换时重置打字点/停止按钮状态：流式气泡已随会话卸载，
+      // 会话切换时重置打字点/停止按钮与贴底按钮状态：流式气泡已随会话卸载，
       // 旧会话的等待指示不能残留到新会话。
       // prev == null 是发送时自动创建会话的场景，属于本次发送自己的会话，不重置
-      if (prev != null && next?.id != prev.id && _isTyping && mounted) {
-        setState(() => _isTyping = false);
+      if (prev != null && next?.id != prev.id && mounted) {
+        if (_isTyping || _showScrollToBottom) {
+          setState(() {
+            if (_isTyping) _isTyping = false;
+            _showScrollToBottom = false;
+          });
+        }
       }
       // 会话被换掉或那条提问已不在末轮：编辑态随之作废，否则下一次发送会按错下标撤回
       _invalidateReeditIfNeeded(next);
@@ -1452,162 +1473,229 @@ class _AiPageState extends ConsumerState<AiPage> {
 
     bool isUserMsg(ChatMessage m) => m.role == 'user';
 
-    return SelectionArea(
-      // 追踪聊天区域当前的框选文本，供悬浮球点击与「给小Q」工具栏引用
-      onSelectionChanged: (selection) {
-        _currentSelectedText = selection?.plainText;
-      },
-      contextMenuBuilder: (context, selectableRegionState) {
-        final selectedText = _currentSelectedText?.trim();
-        final hasSelection = selectedText != null && selectedText.isNotEmpty;
-        return QTextSelectionToolbar(
-          anchors: selectableRegionState.contextMenuAnchors,
-          buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems.where((item) => item.type != ContextMenuButtonType.custom),
-            if (hasSelection)
-              ContextMenuButtonItem(
-                label: '给小Q',
-                onPressed: () {
-                  selectableRegionState.hideToolbar();
-                  _applyQuote(
-                    QTextQuote(source: QQuoteSource.chat, sourceId: '', sourceTitle: '对话内容', quotedText: selectedText),
-                  );
-                },
-              ),
-          ],
-        );
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () {
-          // 点击聊天区域空白背景收起软键盘
-          _inputFocusNode.unfocus();
-        },
-        child: showEmptyState
-            ? const ChatEmptyState()
-            : ListView.builder(
-                controller: _scrollController,
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                itemCount: totalCount,
-                itemBuilder: (context, index) {
-                  // 隔离每条消息的重绘，流式输出时只重绘最后一条
-                  if (index < displayItems.length) {
-                    final entry = displayItems[index];
-                    final currentMsg = entry.message;
-                    final currentIsUser = isUserMsg(currentMsg);
+    final showScrollButton = !showEmptyState && _showScrollToBottom;
+    return Stack(
+      children: [
+        SelectionArea(
+          // 追踪聊天区域当前的框选文本，供悬浮球点击与「给小Q」工具栏引用
+          onSelectionChanged: (selection) {
+            _currentSelectedText = selection?.plainText;
+          },
+          contextMenuBuilder: (context, selectableRegionState) {
+            final selectedText = _currentSelectedText?.trim();
+            final hasSelection = selectedText != null && selectedText.isNotEmpty;
+            return QTextSelectionToolbar(
+              anchors: selectableRegionState.contextMenuAnchors,
+              buttonItems: [
+                ...selectableRegionState.contextMenuButtonItems.where(
+                  (item) => item.type != ContextMenuButtonType.custom,
+                ),
+                if (hasSelection)
+                  ContextMenuButtonItem(
+                    label: '给小Q',
+                    onPressed: () {
+                      selectableRegionState.hideToolbar();
+                      _applyQuote(
+                        QTextQuote(
+                          source: QQuoteSource.chat,
+                          sourceId: '',
+                          sourceTitle: '对话内容',
+                          quotedText: selectedText,
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            );
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              // 点击聊天区域空白背景收起软键盘
+              _inputFocusNode.unfocus();
+            },
+            child: MotionReveal(
+              // 用会话状态作为触发键：保持单棵子树切换，避免共享 _scrollController 报错，
+              // 同时让空态 <-> 对话与历史会话切换都有平缓过渡。
+              triggerKey: showEmptyState ? 'empty' : 'chat_${currentChat?.id ?? 'none'}',
+              duration: AppDurations.normal,
+              beginOpacity: 0.35,
+              beginOffsetY: 0.012,
+              child: showEmptyState
+                  ? const ChatEmptyState()
+                  : ListView.builder(
+                      controller: _scrollController,
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                      itemCount: totalCount,
+                      itemBuilder: (context, index) {
+                        // 隔离每条消息的重绘，流式输出时只重绘最后一条
+                        if (index < displayItems.length) {
+                          final entry = displayItems[index];
+                          final currentMsg = entry.message;
+                          final currentIsUser = isUserMsg(currentMsg);
 
-                    // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
-                    var isFirstInGroup = true;
-                    if (index > 0) {
-                      final prevMsg = displayItems[index - 1].message;
-                      final prevIsUser = isUserMsg(prevMsg);
-                      if (prevIsUser == currentIsUser) {
-                        final prevTime = prevMsg.timestamp;
-                        final currTime = currentMsg.timestamp;
-                        if (prevTime == null || currTime == null || currTime.difference(prevTime).abs().inMinutes < 5) {
-                          isFirstInGroup = false;
+                          // 1. 判断是否是同组的第一条消息（若前一条也是同一方且时间相近，则不重复显示头像）
+                          var isFirstInGroup = true;
+                          if (index > 0) {
+                            final prevMsg = displayItems[index - 1].message;
+                            final prevIsUser = isUserMsg(prevMsg);
+                            if (prevIsUser == currentIsUser) {
+                              final prevTime = prevMsg.timestamp;
+                              final currTime = currentMsg.timestamp;
+                              if (prevTime == null ||
+                                  currTime == null ||
+                                  currTime.difference(prevTime).abs().inMinutes < 5) {
+                                isFirstInGroup = false;
+                              }
+                            }
+                          }
+
+                          // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
+                          var isLastInGroup = true;
+                          if (index < displayItems.length - 1) {
+                            final nextMsg = displayItems[index + 1].message;
+                            final nextIsUser = isUserMsg(nextMsg);
+                            if (nextIsUser == currentIsUser) {
+                              final nextTime = nextMsg.timestamp;
+                              final currTime = currentMsg.timestamp;
+                              if (nextTime == null ||
+                                  currTime == null ||
+                                  nextTime.difference(currTime).abs().inMinutes < 5) {
+                                isLastInGroup = false;
+                              }
+                            }
+                          } else {
+                            // 当前是已存列表的最后一条，如果紧接着有 typing 或 streaming，且小Q是发送方，则不是最后一条
+                            if (!currentIsUser && (showTyping || showStreaming)) {
+                              isLastInGroup = false;
+                            }
+                          }
+
+                          // 重新生成只对会话最后一条回复开放：更早的轮次重发会连带撤销
+                          // 其后所有轮次的数据修改，误触代价太高
+                          final canRegenerate =
+                              !currentIsUser &&
+                              !hasStreaming &&
+                              entry.stateIndex != null &&
+                              entry.stateIndex == stateMessages.length - 1;
+
+                          // 失败错误折在工作流尾部：仅当它就是会话最后一条消息时才给重试入口，
+                          // 与旧错误气泡长按菜单的「只允许重试最后一轮」保持一致
+                          final workflow = currentMsg.role == 'workflow'
+                              ? (currentMsg.uiDetails?['workflow'] as WorkflowData?)
+                              : null;
+                          final canRetryWorkflowError =
+                              !hasStreaming && workflow?.errorStep?.stateIndex == stateMessages.length - 1;
+
+                          final bubble = ChatBubble(
+                            message: currentMsg,
+                            isFirstInGroup: isFirstInGroup,
+                            isLastInGroup: isLastInGroup,
+                            actionsEnabled: !hasStreaming,
+                            generatedImageKeys: generatedImageKeys,
+                            onSendToQ: _attachImageToInput,
+                            onRegenerate: canRegenerate ? () => _retryFailedTurn(entry.stateIndex!) : null,
+                            // 回退与重发期间置灰，避免连点触发两轮
+                            regenerateEnabled: !_isTyping,
+                            onContinue: () => ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
+                            onPause: () => ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
+                            isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
+                            onWorkflowExpandedChanged: _setWorkflowExpanded,
+                            onErrorActions: _showErrorAssistantActions,
+                            onRetryError: canRetryWorkflowError
+                                ? (errorIndex) => unawaited(_retryFailedTurn(errorIndex))
+                                : null,
+                          );
+                          // 我最后发的那条提问：点一下把提问填回输入框慢慢改，长按弹菜单可直接撤回（不重发）
+                          final canReedit = currentIsUser && reeditIndex != null && entry.stateIndex == reeditIndex;
+                          return RepaintBoundary(
+                            child: canReedit
+                                ? UserBubbleReeditTap(
+                                    enabled: !_isTyping && !hasStreaming,
+                                    active: _reeditIndex == entry.stateIndex,
+                                    onTap: () => _beginReedit(entry.stateIndex!),
+                                    onLongPress: () => _showUserMessageActions(entry.stateIndex!),
+                                    child: bubble,
+                                  )
+                                : bubble,
+                          );
                         }
-                      }
-                    }
 
-                    // 2. 判断是否是同组的最后一条消息（若后面还有同方连续消息/流式输出，则收缩底部间距）
-                    var isLastInGroup = true;
-                    if (index < displayItems.length - 1) {
-                      final nextMsg = displayItems[index + 1].message;
-                      final nextIsUser = isUserMsg(nextMsg);
-                      if (nextIsUser == currentIsUser) {
-                        final nextTime = nextMsg.timestamp;
-                        final currTime = currentMsg.timestamp;
-                        if (nextTime == null || currTime == null || nextTime.difference(currTime).abs().inMinutes < 5) {
-                          isLastInGroup = false;
+                        if (showTyping && index == displayItems.length) {
+                          // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
+                          final prevIsAssistant = displayItems.isNotEmpty && !isUserMsg(displayItems.last.message);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _TypingBubble(isFirstInGroup: !prevIsAssistant, isLastInGroup: !showStreaming),
+                          );
                         }
-                      }
-                    } else {
-                      // 当前是已存列表的最后一条，如果紧接着有 typing 或 streaming，且小Q是发送方，则不是最后一条
-                      if (!currentIsUser && (showTyping || showStreaming)) {
-                        isLastInGroup = false;
-                      }
-                    }
 
-                    // 重新生成只对会话最后一条回复开放：更早的轮次重发会连带撤销
-                    // 其后所有轮次的数据修改，误触代价太高
-                    final canRegenerate =
-                        !currentIsUser &&
-                        !hasStreaming &&
-                        entry.stateIndex != null &&
-                        entry.stateIndex == stateMessages.length - 1;
-
-                    // 失败错误折在工作流尾部：仅当它就是会话最后一条消息时才给重试入口，
-                    // 与旧错误气泡长按菜单的「只允许重试最后一轮」保持一致
-                    final workflow = currentMsg.role == 'workflow'
-                        ? (currentMsg.uiDetails?['workflow'] as WorkflowData?)
-                        : null;
-                    final canRetryWorkflowError =
-                        !hasStreaming && workflow?.errorStep?.stateIndex == stateMessages.length - 1;
-
-                    final bubble = ChatBubble(
-                      message: currentMsg,
-                      isFirstInGroup: isFirstInGroup,
-                      isLastInGroup: isLastInGroup,
-                      actionsEnabled: !hasStreaming,
-                      generatedImageKeys: generatedImageKeys,
-                      onSendToQ: _attachImageToInput,
-                      onRegenerate: canRegenerate ? () => _retryFailedTurn(entry.stateIndex!) : null,
-                      // 回退与重发期间置灰，避免连点触发两轮
-                      regenerateEnabled: !_isTyping,
-                      onContinue: () => ref.read(currentChatProvider.notifier).continueAfterTurnLimit(),
-                      onPause: () => ref.read(currentChatProvider.notifier).pauseAfterTurnLimit(),
-                      isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
-                      onWorkflowExpandedChanged: _setWorkflowExpanded,
-                      onErrorActions: _showErrorAssistantActions,
-                      onRetryError: canRetryWorkflowError
-                          ? (errorIndex) => unawaited(_retryFailedTurn(errorIndex))
-                          : null,
-                    );
-                    // 我最后发的那条提问：点一下把提问填回输入框慢慢改，长按弹菜单可直接撤回（不重发）
-                    final canReedit = currentIsUser && reeditIndex != null && entry.stateIndex == reeditIndex;
-                    return RepaintBoundary(
-                      child: canReedit
-                          ? UserBubbleReeditTap(
-                              enabled: !_isTyping && !hasStreaming,
-                              active: _reeditIndex == entry.stateIndex,
-                              onTap: () => _beginReedit(entry.stateIndex!),
-                              onLongPress: () => _showUserMessageActions(entry.stateIndex!),
-                              child: bubble,
-                            )
-                          : bubble,
-                    );
-                  }
-
-                  if (showTyping && index == displayItems.length) {
-                    // 如果上一条已经是小Q回复，打字指示器隐藏头像并紧凑排列
-                    final prevIsAssistant = displayItems.isNotEmpty && !isUserMsg(displayItems.last.message);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _TypingBubble(isFirstInGroup: !prevIsAssistant, isLastInGroup: !showStreaming),
-                    );
-                  }
-
-                  // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
-                  final lastMsg = displayItems.isNotEmpty ? displayItems.last.message : null;
-                  final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _StreamingBubble(
-                      isFirstInGroup: !prevIsAssistant && !showTyping,
-                      isLastInGroup: true,
-                      generatedImageKeys: generatedImageKeys,
-                      onSendToQ: _attachImageToInput,
-                      hasLiveWorkflowInList: hasLiveWorkflowInList,
-                      activeTurnKey: activeTurnKey,
-                      isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
-                      onWorkflowExpandedChanged: _setWorkflowExpanded,
+                        // 流式气泡（含思考中状态卡）：底部增加留白，确保不紧贴输入栏
+                        final lastMsg = displayItems.isNotEmpty ? displayItems.last.message : null;
+                        final prevIsAssistant = lastMsg != null && !isUserMsg(lastMsg);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _StreamingBubble(
+                            isFirstInGroup: !prevIsAssistant && !showTyping,
+                            isLastInGroup: true,
+                            generatedImageKeys: generatedImageKeys,
+                            onSendToQ: _attachImageToInput,
+                            hasLiveWorkflowInList: hasLiveWorkflowInList,
+                            activeTurnKey: activeTurnKey,
+                            isWorkflowExpanded: (key) => _workflowExpandedByTurn[key] ?? false,
+                            onWorkflowExpandedChanged: _setWorkflowExpanded,
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
-      ),
+            ),
+          ),
+        ),
+        Positioned(
+          right: 14,
+          bottom: 12,
+          child: AppMotion.switcher(
+            context: context,
+            child: showScrollButton
+                ? PressableScale(
+                    key: const ValueKey('ai_scroll_to_bottom_btn'),
+                    onTap: () {
+                      setState(() => _showScrollToBottom = false);
+                      _scrollToBottom();
+                    },
+                    child: Tooltip(
+                      message: '回到底部',
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHigh,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            size: 20,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('ai_scroll_to_bottom_empty')),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1694,19 +1782,45 @@ class _AiPageState extends ConsumerState<AiPage> {
                 child: Row(
                   children: [
                     // 已选输出类型：可点开面板更换，× 直接清除（仅对下一条消息生效）
-                    if (selectedOutputType != null) ...[
-                      _OutputTypeChip(
-                        option: selectedOutputType,
-                        onTap: () => _showAddPanel(),
-                        onClear: () => setState(() => _outputTypeId = null),
+                    AnimatedSize(
+                      duration: AppMotion.duration(context, AppDurations.fast),
+                      curve: AppCurves.emphasized,
+                      alignment: Alignment.centerLeft,
+                      child: AppMotion.switcher(
+                        context: context,
+                        child: selectedOutputType != null
+                            ? Padding(
+                                key: ValueKey('output_type_${selectedOutputType.id}'),
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _OutputTypeChip(
+                                  option: selectedOutputType,
+                                  onTap: () => _showAddPanel(),
+                                  onClear: () => setState(() => _outputTypeId = null),
+                                ),
+                              )
+                            : const SizedBox.shrink(key: ValueKey('no_output_type')),
                       ),
-                      const SizedBox(width: 8),
-                    ],
+                    ),
                     // 编辑态专属撤回入口：直接删掉被编辑的那轮、不重发（与长按菜单同一动作）
-                    if (_reeditIndex != null) ...[
-                      _InputPill(icon: Icons.undo_rounded, label: '撤回', onTap: () => _retractLastTurn()),
-                      const SizedBox(width: 8),
-                    ],
+                    AnimatedSize(
+                      duration: AppMotion.duration(context, AppDurations.fast),
+                      curve: AppCurves.emphasized,
+                      alignment: Alignment.centerLeft,
+                      child: AppMotion.switcher(
+                        context: context,
+                        child: _reeditIndex != null
+                            ? Padding(
+                                key: const ValueKey('reedit_chip'),
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _InputPill(
+                                  icon: Icons.undo_rounded,
+                                  label: '撤回',
+                                  onTap: () => _retractLastTurn(),
+                                ),
+                              )
+                            : const SizedBox.shrink(key: ValueKey('no_reedit')),
+                      ),
+                    ),
                     // 常用提示词（点击弹出列表，选中即覆盖输入框）；胶囊文案用「常用」保持短小。
                     // 弹窗内可同时勾选本轮附加技能，选中后技能随提示词一起挂到输入区
                     _InputPill(
@@ -1959,38 +2073,41 @@ class _AiPageState extends ConsumerState<AiPage> {
           children: [
             // 已选图片缩略图
             ..._attachedImages.map((imgPath) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 52,
-                        height: 52,
-                        // 显式传尺寸让 UnifiedImage 按 52×2 解码，避免 52px 缩略图按 720px 解码
-                        child: UnifiedImage(imagePath: imgPath, width: 52, height: 52, fit: BoxFit.cover),
-                      ),
-                    ),
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _attachedImages.remove(imgPath);
-                          });
-                        },
-                        child: Container(
-                          width: 18,
-                          height: 18,
-                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                          child: const Icon(Icons.close, size: 12, color: Colors.white),
+              return MotionFadeSlideEntrance(
+                key: ValueKey('att_img_$imgPath'),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 52,
+                          height: 52,
+                          // 显式传尺寸让 UnifiedImage 按 52×2 解码，避免 52px 缩略图按 720px 解码
+                          child: UnifiedImage(imagePath: imgPath, width: 52, height: 52, fit: BoxFit.cover),
                         ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _attachedImages.remove(imgPath);
+                            });
+                          },
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                            child: const Icon(Icons.close, size: 12, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }),
@@ -1998,39 +2115,42 @@ class _AiPageState extends ConsumerState<AiPage> {
             // 已选分享日记
             ..._attachedJournalIds.map((jId) {
               final title = _journalTitles[jId] ?? '日记';
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.auto_stories_outlined, size: 14, color: Color(0xFFE91E63)),
-                      const SizedBox(width: 4),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 100),
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+              return MotionFadeSlideEntrance(
+                key: ValueKey('att_journal_$jId'),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.auto_stories_outlined, size: 14, color: Color(0xFFE91E63)),
+                        const SizedBox(width: 4),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 100),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _attachedJournalIds.remove(jId);
-                          });
-                        },
-                        child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _attachedJournalIds.remove(jId);
+                            });
+                          },
+                          child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -2039,39 +2159,42 @@ class _AiPageState extends ConsumerState<AiPage> {
             // 已选分享笔记
             ..._attachedNoteIds.map((noteId) {
               final title = _noteTitles[noteId] ?? '笔记';
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 4),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 100),
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+              return MotionFadeSlideEntrance(
+                key: ValueKey('att_note_$noteId'),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.description_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 100),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _attachedNoteIds.remove(noteId);
-                          });
-                        },
-                        child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _attachedNoteIds.remove(noteId);
+                            });
+                          },
+                          child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -2080,39 +2203,42 @@ class _AiPageState extends ConsumerState<AiPage> {
             // 已选分享待办
             ..._attachedTodoIds.map((todoId) {
               final title = _todoTitles[todoId] ?? '待办';
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.checklist_rounded, size: 14, color: theme.colorScheme.secondary),
-                      const SizedBox(width: 4),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 100),
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+              return MotionFadeSlideEntrance(
+                key: ValueKey('att_todo_$todoId'),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.checklist_rounded, size: 14, color: theme.colorScheme.secondary),
+                        const SizedBox(width: 4),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 100),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _attachedTodoIds.remove(todoId);
-                          });
-                        },
-                        child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _attachedTodoIds.remove(todoId);
+                            });
+                          },
+                          child: Icon(Icons.close, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -2169,42 +2295,45 @@ class _AiPageState extends ConsumerState<AiPage> {
               ),
             ),
             ..._pendingSkillNames.map((name) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: scheme.primary.withValues(alpha: 0.30)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_awesome_rounded, size: 13, color: theme.accentInk),
-                      const SizedBox(width: 4),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 140),
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.accentInk,
-                            fontWeight: FontWeight.w600,
+              return MotionFadeSlideEntrance(
+                key: ValueKey('pending_skill_$name'),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: scheme.primary.withValues(alpha: 0.30)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome_rounded, size: 13, color: theme.accentInk),
+                        const SizedBox(width: 4),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.accentInk,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () => setState(() => _pendingSkillNames.remove(name)),
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.all(2),
-                          child: Icon(Icons.close, size: 14, color: theme.accentInk),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => setState(() => _pendingSkillNames.remove(name)),
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.all(2),
+                            child: Icon(Icons.close, size: 14, color: theme.accentInk),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -2265,36 +2394,38 @@ class _AiPageState extends ConsumerState<AiPage> {
             child: ValueListenableBuilder<TextEditingValue>(
               valueListenable: _inputController,
               builder: (context, value, _) {
-                if (value.text.isEmpty) return const SizedBox.shrink();
                 // 暗色下 colorScheme.error 是为文字设计的浅粉红，实心填充会发灰，改用饱和红令牌。
                 final clearButtonColor = AppPalette.errorStrong(theme.brightness == Brightness.dark);
-                return MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: () {
-                      _inputController.clear();
-                    },
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: clearButtonColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: clearButtonColor.withValues(alpha: 0.25),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
+                return AppMotion.switcher(
+                  context: context,
+                  child: value.text.isEmpty
+                      ? const SizedBox.shrink(key: ValueKey('input_clear_empty'))
+                      : PressableScale(
+                          key: const ValueKey('input_clear_btn'),
+                          onTap: _inputController.clear,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  color: clearButtonColor,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: clearButtonColor.withValues(alpha: 0.25),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Center(child: Icon(Icons.close, size: 12, color: Colors.white)),
+                              ),
                             ),
-                          ],
+                          ),
                         ),
-                        child: const Center(child: Icon(Icons.close, size: 12, color: Colors.white)),
-                      ),
-                    ),
-                  ),
                 );
               },
             ),

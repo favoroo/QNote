@@ -79,6 +79,26 @@ class TodoRepository {
     return maps.map((m) => Todo.fromMap(m)).toList();
   }
 
+  /// 增量索引：只取指定时间之后更新过的未删除待办
+  Future<List<Todo>> getUpdatedSince(DateTime since, {int limit = 500}) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'todos',
+      where: 'updated_at > ? AND is_deleted = 0',
+      whereArgs: [since.toIso8601String()],
+      orderBy: 'updated_at ASC',
+      limit: limit,
+    );
+    return maps.map((m) => Todo.fromMap(m)).toList();
+  }
+
+  /// 轻量取出全部未删除待办 id，供图谱对账清理已删除源数据
+  Future<Set<String>> getAllIds() async {
+    final db = await _dbHelper.database;
+    final maps = await db.query('todos', columns: ['id'], where: 'is_deleted = 0');
+    return maps.map((m) => m['id'] as String).toSet();
+  }
+
   Future<Todo?> getById(String id) async {
     final db = await _dbHelper.database;
     final maps = await db.query('todos', where: 'id = ?', whereArgs: [id]);

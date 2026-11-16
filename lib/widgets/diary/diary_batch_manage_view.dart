@@ -43,6 +43,18 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   List<String> _allTags = [];
   bool _isConfirming = false;
   Timer? _confirmTimer;
+  final Map<String, List<Object>> _heroTagsByRecord = {};
+
+  List<Object> _heroTagsFor(DiaryRecord record) {
+    final tags = _heroTagsByRecord.putIfAbsent(record.id, () => <Object>[]);
+    while (tags.length < record.photos.length) {
+      tags.add(Object());
+    }
+    if (tags.length > record.photos.length) {
+      tags.removeRange(record.photos.length, tags.length);
+    }
+    return tags;
+  }
 
   // 读库进行中与失败标记：避免首帧就把「数据还没到」渲染成「无符合条件的记录」
   bool _loading = true;
@@ -122,7 +134,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   }
 
   void _pickDateRange() async {
-    final result = await showDialog<DateTimeRange>(
+    final result = await AppMotion.showDialog<DateTimeRange>(
       context: context,
       builder: (context) => CustomDateRangePickerDialog(
         initialDateRange: _dateRange,
@@ -955,9 +967,12 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   }
 
   void _openGallery(DiaryRecord record, int index) {
-    Navigator.of(
-      context,
-    ).push(AppMotion.galleryRoute(FullScreenImageGallery(images: record.photos, initialIndex: index)));
+    final heroTags = _heroTagsFor(record);
+    Navigator.of(context).push(
+      AppMotion.galleryRoute(
+        FullScreenImageGallery(images: record.photos, initialIndex: index, heroTags: List<Object?>.from(heroTags)),
+      ),
+    );
   }
 
   @override
@@ -1365,13 +1380,19 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                       onTap: () => _openGallery(record, idx),
                                       child: Padding(
                                         padding: const EdgeInsets.only(right: 8),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: UnifiedImage(
-                                            imagePath: photo,
-                                            width: 48,
-                                            height: 48,
-                                            fit: BoxFit.cover,
+                                        child: HeroMode(
+                                          enabled: !AppMotion.reduce(context),
+                                          child: Hero(
+                                            tag: _heroTagsFor(record)[idx],
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: UnifiedImage(
+                                                imagePath: photo,
+                                                width: 48,
+                                                height: 48,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1471,6 +1492,18 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
   late int _currentIndex;
   late Set<String> _localSelectedIds;
   late List<DiaryRecord> _localRecords;
+  final Map<String, List<Object>> _heroTagsByRecord = {};
+
+  List<Object> _heroTagsFor(DiaryRecord record) {
+    final tags = _heroTagsByRecord.putIfAbsent(record.id, () => <Object>[]);
+    while (tags.length < record.photos.length) {
+      tags.add(Object());
+    }
+    if (tags.length > record.photos.length) {
+      tags.removeRange(record.photos.length, tags.length);
+    }
+    return tags;
+  }
 
   @override
   void initState() {
@@ -1795,30 +1828,48 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: record.photos.asMap().entries.map((entry) {
-                final idx = entry.key;
-                final photo = entry.value;
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.of(
-                      context,
-                    ).push(AppMotion.galleryRoute(FullScreenImageGallery(images: record.photos, initialIndex: idx)));
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: UnifiedImage(imagePath: photo, width: 100, height: 100, fit: BoxFit.cover),
-                    ),
-                  ),
+            Builder(
+              builder: (context) {
+                final heroTags = _heroTagsFor(record);
+                final reduce = AppMotion.reduce(context);
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: record.photos.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final photo = entry.value;
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          AppMotion.galleryRoute(
+                            FullScreenImageGallery(
+                              images: record.photos,
+                              initialIndex: idx,
+                              heroTags: List<Object?>.from(heroTags),
+                            ),
+                          ),
+                        );
+                      },
+                      child: HeroMode(
+                        enabled: !reduce,
+                        child: Hero(
+                          tag: heroTags[idx],
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: UnifiedImage(imagePath: photo, width: 100, height: 100, fit: BoxFit.cover),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 );
-              }).toList(),
+              },
             ),
           ],
         ],

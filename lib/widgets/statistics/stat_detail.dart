@@ -504,6 +504,7 @@ class StatRatioBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final total = segments.fold<double>(0, (sum, s) => sum + s.value);
     final visible = segments.where((s) => s.value > 0).toList();
+    final primaryShare = total > 0 && visible.isNotEmpty ? (visible.first.value / total).clamp(0.0, 1.0) : 0.0;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(height / 2),
@@ -511,19 +512,59 @@ class StatRatioBar extends StatelessWidget {
         height: height,
         child: total <= 0
             ? ColoredBox(color: AppPalette.progressTrack(isDark))
-            : Row(
-                // 关键：ColoredBox 没有子节点时默认高度为 0，
-                // 必须让 Row 拉伸子项到轨道高度，否则整条占比条不可见。
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var i = 0; i < visible.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 2),
-                    Expanded(
-                      flex: (visible[i].value / total * 1000).round().clamp(1, 1000),
-                      child: ColoredBox(color: visible[i].color),
+            : TweenAnimationBuilder<double>(
+                // 首次呈现从左向右扫开，两段对比在切换时间跨度时平滑调整比例
+                tween: Tween<double>(begin: 0.0, end: 1.0),
+                duration: AppMotion.duration(context, AppDurations.medium),
+                curve: AppCurves.emphasized,
+                builder: (context, reveal, _) {
+                  return ClipRect(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: reveal,
+                      child: visible.length == 2
+                          ? TweenAnimationBuilder<double>(
+                              tween: Tween<double>(begin: primaryShare, end: primaryShare),
+                              duration: AppMotion.duration(context, AppDurations.medium),
+                              curve: AppCurves.emphasized,
+                              builder: (context, share, _) {
+                                final firstFlex = (share * 1000).round().clamp(1, 999);
+                                final secondFlex = (1000 - firstFlex).clamp(1, 999);
+                                return Row(
+                                  // 关键：ColoredBox 没有子节点时默认高度为 0，
+                                  // 必须让 Row 拉伸子项到轨道高度，否则整条占比条不可见。
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Expanded(
+                                      flex: firstFlex,
+                                      child: ColoredBox(color: visible[0].color),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Expanded(
+                                      flex: secondFlex,
+                                      child: ColoredBox(color: visible[1].color),
+                                    ),
+                                  ],
+                                );
+                              },
+                            )
+                          : Row(
+                              // 关键：ColoredBox 没有子节点时默认高度为 0，
+                              // 必须让 Row 拉伸子项到轨道高度，否则整条占比条不可见。
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var i = 0; i < visible.length; i++) ...[
+                                  if (i > 0) const SizedBox(width: 2),
+                                  Expanded(
+                                    flex: (visible[i].value / total * 1000).round().clamp(1, 1000),
+                                    child: ColoredBox(color: visible[i].color),
+                                  ),
+                                ],
+                              ],
+                            ),
                     ),
-                  ],
-                ],
+                  );
+                },
               ),
       ),
     );

@@ -63,6 +63,7 @@ class _TextSegment extends _Segment {
 
 class _ImageSegment extends _Segment {
   final String path;
+  final Object heroTag = Object();
   _ImageSegment(this.path);
 }
 
@@ -1220,14 +1221,20 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
     });
   }
 
-  void _previewImage(String path) {
-    final images = _segments.whereType<_ImageSegment>().map((seg) => seg.path).toList();
-    final initialIndex = images.indexOf(path);
+  void _previewImage(_ImageSegment seg) {
+    final imageSegs = _segments.whereType<_ImageSegment>().toList();
+    final images = imageSegs.map((s) => s.path).toList();
+    final heroTags = imageSegs.map((s) => s.heroTag).toList();
+    final initialIndex = imageSegs.indexOf(seg);
     final fallbackIndex = initialIndex >= 0 ? initialIndex : 0;
 
     Navigator.of(context).push(
       AppMotion.galleryRoute(
-        FullScreenImageGallery(images: images.isNotEmpty ? images : [path], initialIndex: fallbackIndex),
+        FullScreenImageGallery(
+          images: images.isNotEmpty ? images : [seg.path],
+          initialIndex: fallbackIndex,
+          heroTags: heroTags.isNotEmpty ? heroTags : <Object?>[seg.heroTag],
+        ),
       ),
     );
   }
@@ -2134,7 +2141,13 @@ class _NoteEditorViewState extends ConsumerState<NoteEditorView> {
               ),
             ),
             childWhenDragging: Opacity(opacity: 0.35, child: imageCard),
-            child: GestureDetector(onTap: () => _previewImage(seg.path), child: imageCard),
+            child: HeroMode(
+              enabled: !AppMotion.reduce(context),
+              child: Hero(
+                tag: seg.heroTag,
+                child: GestureDetector(onTap: () => _previewImage(seg), child: imageCard),
+              ),
+            ),
           ),
           Positioned(
             top: 8,

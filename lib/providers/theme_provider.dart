@@ -7,6 +7,7 @@ import 'package:qnote_flutter/core/theme/app_color_schemes.dart';
 import 'package:qnote_flutter/core/theme/app_surface.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/appearance_bootstrap.dart';
+import 'package:qnote_flutter/core/theme/display_scale.dart';
 
 /// 背景设置：预设 + 自定义颜色。
 ///
@@ -136,6 +137,53 @@ class AccentColorNotifier extends Notifier<Color> {
       background: ref.read(backgroundSettingProvider),
       accentColor: color,
     );
+  }
+}
+
+/// 全局显示大小档位。
+///
+/// 与背景/强调色同源：保存在本地 SharedPreferences，不参与外观的 WebDAV 同步，
+/// 并通过 [AppearanceBootstrap] 首帧预热避免先用中档渲染再跳字。
+final displayScaleProvider = NotifierProvider<DisplayScaleNotifier, DisplayScale>(DisplayScaleNotifier.new);
+
+class DisplayScaleNotifier extends Notifier<DisplayScale> {
+  @override
+  DisplayScale build() {
+    _listenWorkspaceEvents();
+    final bootstrapped = AppearanceBootstrap.displayScale;
+    if (bootstrapped != null) {
+      return bootstrapped;
+    }
+    _load();
+    return DisplayScale.medium;
+  }
+
+  void _listenWorkspaceEvents() {
+    void onWorkspaceChange(WorkspaceChangeEvent event) {
+      if (event.path == '/settings/appearance.json') {
+        _load();
+      }
+    }
+
+    WorkspaceEventBus.instance.addListener(onWorkspaceChange);
+    ref.onDispose(() {
+      WorkspaceEventBus.instance.removeListener(onWorkspaceChange);
+    });
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = DisplayScale.fromIndex(prefs.getInt(AppearanceKeys.displayScale));
+  }
+
+  Future<void> setScale(DisplayScale scale) async {
+    state = scale;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(AppearanceKeys.displayScale, scale.index);
+  }
+
+  Future<void> reset() async {
+    await setScale(DisplayScale.medium);
   }
 }
 
