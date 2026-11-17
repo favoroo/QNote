@@ -12,7 +12,6 @@ import 'package:qnote_flutter/models/agent_memory.dart';
 import 'package:qnote_flutter/models/agent_skill.dart';
 import 'package:qnote_flutter/models/shortcut_config.dart';
 import 'package:qnote_flutter/models/user_profile.dart';
-import 'package:qnote_flutter/models/weight_record.dart';
 import 'package:qnote_flutter/models/webdav_config.dart';
 import 'package:qnote_flutter/models/chat_session.dart';
 import 'package:qnote_flutter/config/defaults.dart';
@@ -131,11 +130,6 @@ class ConfigRepository {
     return updated;
   }
 
-  Future<void> deleteWebdavConfig(String id) async {
-    final db = await _dbHelper.database;
-    await db.delete('webdav_configs', where: 'id = ?', whereArgs: [id]);
-  }
-
   Future<List<ChatSession>> getAllChatSessions({bool includeDeleted = false}) async {
     final db = await _dbHelper.database;
     final maps = await db.query(
@@ -201,23 +195,6 @@ class ConfigRepository {
       operation: 'update',
       data: existing.copyWith(isPinned: isPinned).toMap(),
     );
-  }
-
-  /// 软删除会话（只打标记，不释放空间）。
-  ///
-  /// 保留仅为兼容旧客户端写入的墓碑与灰度回退，新代码一律改用 [hardDeleteChatSessions]：
-  /// 软删的行仍完整留在 `chat_sessions.messages` 里（SQLite 文件不会变小），且它会把
-  /// 整行内容当 `update` 写进 sync_log，导致已删会话在其它设备被全量快照回灌复活。
-  @Deprecated('软删除不释放空间且会造成多端复活，请改用 hardDeleteChatSessions')
-  Future<void> softDeleteChatSession(String id) async {
-    final db = await _dbHelper.database;
-    final existing = await getChatSession(id);
-    if (existing == null) return;
-
-    final nowStr = DateTime.now().toIso8601String();
-    await db.update('chat_sessions', {'is_deleted': 1, 'updated_at': nowStr}, where: 'id = ?', whereArgs: [id]);
-    final updated = existing.copyWith(isDeleted: true, updatedAt: DateTime.parse(nowStr));
-    await _syncLog.logChange(tableName: 'chat_sessions', recordId: id, operation: 'update', data: updated.toMap());
   }
 
   /// 物理删除会话：真正释放这条对话占用的消息记录与独占生成图片。
@@ -479,19 +456,6 @@ class ConfigRepository {
 
   /// 小Q用户技能在 app_configs 中的键前缀
   static const String userSkillKeyPrefix = 'agent_skill_';
-
-  Future<List<WeightRecord>> getWeightHistory() async {
-    final profile = await getUserProfile();
-    if (profile == null) return [];
-    return profile.weightHistory;
-  }
-
-  Future<void> saveWeightHistory(List<WeightRecord> records) async {
-    final profile = await getUserProfile();
-    if (profile == null) return;
-    final updated = profile.copyWith(weightHistory: records, updatedAt: DateTime.now());
-    await upsertUserProfile(updated);
-  }
 
   Future<void> ensureDefaultShortcuts() async {
     final existing = await getAllShortcutConfigs();

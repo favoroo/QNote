@@ -446,13 +446,20 @@ class _TodoItemState extends State<_TodoItem> with TickerProviderStateMixin {
                           child: Container(
                             width: 48,
                             height: 48,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE54B3C),
+                            decoration: BoxDecoration(
+                              // 破坏性操作用错误色实心底，与 ColorScheme.error 同源而非写死橙红
+                              color: colorScheme.error,
                               shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: Color(0x33E54B3C), blurRadius: 8, offset: Offset(0, 3))],
+                              boxShadow: [
+                                BoxShadow(
+                                  color: colorScheme.error.withValues(alpha: 0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
                             alignment: Alignment.center,
-                            child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+                            child: Icon(Icons.delete_outline, color: colorScheme.onError, size: 24),
                           ),
                         ),
                       ),

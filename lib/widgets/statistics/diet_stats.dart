@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -29,13 +30,18 @@ class DietStatsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
     final healthy = stats.healthDistribution['健康'] ?? 0;
     final rate = stats.totalMeals > 0 ? (healthy / stats.totalMeals * 100).round() : 0;
     final healthSegments = [
       for (final key in _healthOrder)
         if ((stats.healthDistribution[key] ?? 0) > 0)
-          StatDonutSegment(label: key, value: stats.healthDistribution[key] ?? 0, color: dietHealthColor(key)),
+          StatDonutSegment(
+            label: key,
+            value: stats.healthDistribution[key] ?? 0,
+            color: dietHealthColor(key, brightness),
+          ),
     ];
     final foodData = stats.typeDistribution.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
@@ -44,9 +50,9 @@ class DietStatsWidget extends StatelessWidget {
         StatSummaryCard(
           primaryLabel: '记录餐次',
           primaryValue: '${stats.totalMeals}次',
-          primaryColor: TagColors.diet,
+          primaryColor: TagColors.diet(brightness),
           metrics: [
-            StatMetric(label: '健康', value: '$healthy次', color: const Color(0xFF10B981)),
+            StatMetric(label: '健康', value: '$healthy次', color: HealthColors.levelGood(brightness)),
             StatMetric(label: '健康率', value: '$rate%'),
             // 仅在至少有一餐估算了热量时展示，避免全 0 误导
             if (stats.calorieMealCount > 0) StatMetric(label: '总热量', value: '${stats.totalCalories.round()} kcal'),
@@ -118,6 +124,7 @@ class _FoodRanking extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
     final maxVal = data.fold<int>(0, (max, e) => e.value > max ? e.value : max);
 
     return Column(
@@ -142,7 +149,7 @@ class _FoodRanking extends StatelessWidget {
                 child: StatProgressBar(
                   isDark: isDark,
                   value: maxVal > 0 ? item.value / maxVal : 0,
-                  color: TagColors.diet,
+                  color: TagColors.diet(brightness),
                   minHeight: 8,
                 ),
               ),

@@ -78,20 +78,25 @@ class FinanceStatsWidget extends StatelessWidget {
 
   Widget _buildSummary(BuildContext context) {
     final hasFlow = stats.totalIncome > 0 || stats.totalExpense > 0;
+    final brightness = Theme.of(context).brightness;
     return StatSummaryCard(
       primaryLabel: '结余',
       primaryValue: '¥${stats.balance.toStringAsFixed(0)}',
-      primaryColor: stats.balance >= 0 ? statIncomeColor : statExpenseColor,
+      primaryColor: stats.balance >= 0 ? statIncomeColor(brightness) : statExpenseColor(brightness),
       metrics: [
-        StatMetric(label: '收入', value: '¥${stats.totalIncome.toStringAsFixed(0)}', color: statIncomeColor),
-        StatMetric(label: '支出', value: '¥${stats.totalExpense.toStringAsFixed(0)}', color: statExpenseColor),
+        StatMetric(label: '收入', value: '¥${stats.totalIncome.toStringAsFixed(0)}', color: statIncomeColor(brightness)),
+        StatMetric(
+          label: '支出',
+          value: '¥${stats.totalExpense.toStringAsFixed(0)}',
+          color: statExpenseColor(brightness),
+        ),
         StatMetric(label: '记录', value: '${stats.totalRecords}笔'),
       ],
       child: hasFlow
           ? StatRatioBar(
               segments: [
-                StatRatioSegment(color: statIncomeColor, value: stats.totalIncome),
-                StatRatioSegment(color: statExpenseColor, value: stats.totalExpense),
+                StatRatioSegment(color: statIncomeColor(brightness), value: stats.totalIncome),
+                StatRatioSegment(color: statExpenseColor(brightness), value: stats.totalExpense),
               ],
             )
           : null,
@@ -172,6 +177,9 @@ class _FinanceTrendChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final incomeColor = statIncomeColor(brightness);
+    final expenseColor = statExpenseColor(brightness);
     final incomeSpots = <FlSpot>[];
     final expenseSpots = <FlSpot>[];
     for (var i = 0; i < dailyData.length; i++) {
@@ -224,7 +232,7 @@ class _FinanceTrendChart extends StatelessWidget {
           LineChartBarData(
             spots: incomeSpots,
             isCurved: true,
-            color: statIncomeColor,
+            color: incomeColor,
             barWidth: 2,
             dotData: const FlDotData(show: false),
             belowBarData: BarAreaData(show: false),
@@ -232,7 +240,7 @@ class _FinanceTrendChart extends StatelessWidget {
           LineChartBarData(
             spots: expenseSpots,
             isCurved: true,
-            color: statExpenseColor,
+            color: expenseColor,
             barWidth: 2,
             dotData: const FlDotData(show: false),
             belowBarData: BarAreaData(show: false),
@@ -242,10 +250,10 @@ class _FinanceTrendChart extends StatelessWidget {
           touchTooltipData: LineTouchTooltipData(
             getTooltipItems: (spots) {
               return spots.map((spot) {
-                final isIncome = spot.bar.color == statIncomeColor;
+                final isIncome = spot.bar.color == incomeColor;
                 return LineTooltipItem(
                   '${isIncome ? "收入" : "支出"}: ¥${spot.y.toStringAsFixed(0)}',
-                  TextStyle(color: isIncome ? statIncomeColor : statExpenseColor, fontSize: 12),
+                  TextStyle(color: isIncome ? incomeColor : expenseColor, fontSize: 12),
                 );
               }).toList();
             },
@@ -283,7 +291,8 @@ class _CategoryBreakdownState extends State<_CategoryBreakdown> {
       ..sort((a, b) => b.value.compareTo(a.value));
     final shown = data.take(5).toList();
     final maxVal = shown.fold<double>(0, (max, e) => e.value > max ? e.value : max);
-    final color = effectiveIncome ? statIncomeColor : statExpenseColor;
+    final brightness = Theme.of(context).brightness;
+    final color = effectiveIncome ? statIncomeColor(brightness) : statExpenseColor(brightness);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,7 +335,8 @@ class _CategoryBreakdownState extends State<_CategoryBreakdown> {
       pillRadius: 8,
       trackColor: AppPalette.chipBackground(isDark),
       pillColor: Theme.of(context).colorScheme.surface,
-      selectedColorOf: (index) => index == 1 ? statIncomeColor : statExpenseColor,
+      selectedColorOf: (index) =>
+          index == 1 ? statIncomeColor(Theme.of(context).brightness) : statExpenseColor(Theme.of(context).brightness),
       unselectedColor: AppPalette.textMuted,
       fontSize: AppTypography.bodySmall,
       showPillShadow: true,

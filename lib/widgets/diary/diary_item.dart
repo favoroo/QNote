@@ -9,6 +9,7 @@ import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/q_analysis.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
@@ -225,10 +226,6 @@ class _DiaryItemState extends State<DiaryItem> {
 
   static const _defaultIcon = Icons.description_outlined;
 
-  static const _tagColors = TagColors.map;
-
-  static const _defaultColor = TagColors.defaultTag;
-
   /// 正文与图片相对标签 pill 的左侧缩进，避免视觉上“凸出”在标签外
   static const _contentIndent = 4.0;
 
@@ -241,7 +238,7 @@ class _DiaryItemState extends State<DiaryItem> {
 
   IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
 
-  Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
+  Color _tagColor(String displayTag, Brightness brightness) => TagColors.of(displayTag, brightness);
 
   String _formatDouble(dynamic val) {
     if (val == null) return '';
@@ -562,7 +559,7 @@ class _DiaryItemState extends State<DiaryItem> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final tagColor = _tagColor(record.displayTag);
+    final tagColor = _tagColor(record.displayTag, theme.brightness);
 
     // 轴线画在 Row 之外、由 Stack 拉满整卡高度，而不是给整张卡片套
     // IntrinsicHeight：后者会让每张卡多付一次完整的内在尺寸测量（时间线视口里
@@ -966,7 +963,8 @@ class _DiaryItemState extends State<DiaryItem> {
   }
 
   Widget _buildTagEntryPills(ThemeData theme, TagEntry entry, {bool showIcon = false, String? showTime}) {
-    final color = _tagColor(entry.name);
+    final color = _tagColor(entry.name, theme.brightness);
+
     final icon = _tagIcon(entry.name);
     // 标签名胶囊走淡彩底：多标签卡片里每段都铺一块饱和实心，视觉重量会盖过正文
     final nameInk = AppContrast.inkOnTint(color, theme.colorScheme.surface, 0.14);
@@ -1409,12 +1407,14 @@ class _DiaryItemState extends State<DiaryItem> {
   /// 专属「运动健康」高颜值日结卡片渲染
   Widget _buildHealthDailySummaryCard(ThemeData theme, Color primaryColor) {
     final colorScheme = theme.colorScheme;
+    final brightness = theme.brightness;
     final bs = record.bodyState ?? {};
+    final cardBg = Color.alphaBlend(colorScheme.surfaceContainerHighest.withValues(alpha: 0.28), colorScheme.surface);
+    // 日结卡内部配色统一走 HealthColors：活动 / 睡眠 / 屏幕三条主线各占一个色系，
+    // 组内只用明度区分，不再让一张卡同时出现 8 种色相。
+    final sleepPurple = HealthColors.sleep(brightness);
     // 睡眠紫贴中性卡偏淡，先在卡片真实底色上压深到可读，再作图标/文字前景
-    final sleepInk = AppContrast.readable(
-      TagColors.sleep,
-      Color.alphaBlend(colorScheme.surfaceContainerHighest.withValues(alpha: 0.28), colorScheme.surface),
-    );
+    final sleepInk = AppContrast.readable(sleepPurple, cardBg);
 
     final steps = (bs['steps'] as num?)?.toInt() ?? 0;
     final stepTarget = (bs['step_target'] as num?)?.toInt() ?? 8000;
@@ -1458,20 +1458,10 @@ class _DiaryItemState extends State<DiaryItem> {
     final progress = stepTarget > 0 ? (steps / stepTarget).clamp(0.0, 1.0) : 0.0;
     final isTargetReached = steps >= stepTarget;
 
-    const brandGreen = TagColors.health;
-    const sleepPurple = TagColors.sleep;
-    const screenBlue = Color(0xFF0284C7);
-    final screenCardBg = Color.alphaBlend(
-      colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
-      colorScheme.surface,
-    );
-    final screenInk = AppContrast.readable(screenBlue, screenCardBg);
-    const screenAppColors = [
-      Color(0xFF0284C7), // 主蓝
-      Color(0xFF14B8A6), // 青绿
-      Color(0xFF818CF8), // 靛蓝
-      Color(0xFFF59E0B), // 琥珀
-    ];
+    final brandGreen = HealthColors.activity(brightness);
+    final screenBlue = HealthColors.screen(brightness);
+    final screenInk = AppContrast.readable(screenBlue, cardBg);
+    final screenAppColors = HealthColors.screenApps(brightness);
 
     // 屏幕使用时长（优先使用持久化数据，若无则使用当日异步检测补全数据）
     final screenMs = (bs['screen_time_ms'] as num?)?.toInt() ?? _liveScreenUsage?.totalTimeMs ?? 0;
@@ -1602,7 +1592,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     value: progress,
                     minHeight: 5,
                     backgroundColor: colorScheme.outlineVariant.withValues(alpha: 0.25),
-                    valueColor: const AlwaysStoppedAnimation(brandGreen),
+                    valueColor: AlwaysStoppedAnimation(brandGreen),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1612,7 +1602,7 @@ class _DiaryItemState extends State<DiaryItem> {
                       child: _buildMetricItem(
                         theme,
                         icon: Icons.local_fire_department_rounded,
-                        iconColor: const Color(0xFFF97316),
+                        iconColor: HealthColors.calorie(brightness),
                         value: calories.toStringAsFixed(0),
                         unit: 'kcal',
                         label: '消耗',
@@ -1622,7 +1612,7 @@ class _DiaryItemState extends State<DiaryItem> {
                       child: _buildMetricItem(
                         theme,
                         icon: Icons.place_rounded,
-                        iconColor: const Color(0xFF3B82F6),
+                        iconColor: HealthColors.distance(brightness),
                         value: (distanceMeters / 1000).toStringAsFixed(2),
                         unit: 'km',
                         label: '距离',
@@ -1632,7 +1622,7 @@ class _DiaryItemState extends State<DiaryItem> {
                       child: _buildMetricItem(
                         theme,
                         icon: Icons.timer_outlined,
-                        iconColor: const Color(0xFFEAB308),
+                        iconColor: HealthColors.activeMinute(brightness),
                         value: '$activeMinutes',
                         unit: '分钟',
                         label: '计步',
@@ -1643,7 +1633,7 @@ class _DiaryItemState extends State<DiaryItem> {
                         child: _buildMetricItem(
                           theme,
                           icon: Icons.accessibility_new_rounded,
-                          iconColor: const Color(0xFF8B5CF6),
+                          iconColor: HealthColors.standing(brightness),
                           value: '$standingCount',
                           unit: '次',
                           label: '站立',
@@ -1713,6 +1703,7 @@ class _DiaryItemState extends State<DiaryItem> {
                   ),
                   const SizedBox(height: 8),
                   _buildSleepStagesBar(
+                    brightness: brightness,
                     deepMinutes: deepSleep,
                     lightMinutes: lightSleep,
                     remMinutes: remSleep,
@@ -1721,11 +1712,11 @@ class _DiaryItemState extends State<DiaryItem> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      if (deepSleep > 0) _buildSleepLegend('深睡', '$deepSleep分', const Color(0xFF6366F1)),
+                      if (deepSleep > 0) _buildSleepLegend('深睡', '$deepSleep分', HealthColors.deepSleep(brightness)),
                       if (deepSleep > 0) const SizedBox(width: 10),
-                      if (lightSleep > 0) _buildSleepLegend('浅睡', '$lightSleep分', const Color(0xFFA855F7)),
+                      if (lightSleep > 0) _buildSleepLegend('浅睡', '$lightSleep分', HealthColors.lightSleep(brightness)),
                       if (lightSleep > 0) const SizedBox(width: 10),
-                      if (remSleep > 0) _buildSleepLegend('REM', '$remSleep分', const Color(0xFF38BDF8)),
+                      if (remSleep > 0) _buildSleepLegend('REM', '$remSleep分', HealthColors.remSleep(brightness)),
                       const Spacer(),
                       if (sleepTimeDisplay != null)
                         Flexible(
@@ -1873,7 +1864,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     child: _buildVitalsChip(
                       theme,
                       icon: Icons.favorite_rounded,
-                      iconColor: const Color(0xFFEF4444),
+                      iconColor: HealthColors.heartRate(brightness),
                       label: '静息心率',
                       value: '$restingHr bpm',
                     ),
@@ -1884,7 +1875,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     child: _buildVitalsChip(
                       theme,
                       icon: Icons.water_drop_rounded,
-                      iconColor: const Color(0xFF0EA5E9),
+                      iconColor: HealthColors.spo2(brightness),
                       label: '平均血氧',
                       value: '$avgSpo2%',
                     ),
@@ -1896,7 +1887,7 @@ class _DiaryItemState extends State<DiaryItem> {
                     child: _buildVitalsChip(
                       theme,
                       icon: Icons.speed_rounded,
-                      iconColor: const Color(0xFFF97316),
+                      iconColor: HealthColors.stress(brightness),
                       label: '压力指数',
                       value: '$avgStress',
                     ),
@@ -1911,7 +1902,7 @@ class _DiaryItemState extends State<DiaryItem> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Icon(Icons.directions_run_rounded, size: 16, color: brandGreen),
+                Icon(Icons.directions_run_rounded, size: 16, color: brandGreen),
                 const SizedBox(width: 4),
                 Text(
                   '今日运动 ${sportsRaw.length} 项',
@@ -1931,6 +1922,7 @@ class _DiaryItemState extends State<DiaryItem> {
   }
 
   Widget _buildSleepStagesBar({
+    required Brightness brightness,
     required int deepMinutes,
     required int lightMinutes,
     required int remMinutes,
@@ -1946,22 +1938,22 @@ class _DiaryItemState extends State<DiaryItem> {
             if (deepMinutes > 0)
               Expanded(
                 flex: (deepMinutes * 100 ~/ sum).clamp(1, 100),
-                child: Container(color: const Color(0xFF6366F1)),
+                child: Container(color: HealthColors.deepSleep(brightness)),
               ),
             if (lightMinutes > 0)
               Expanded(
                 flex: (lightMinutes * 100 ~/ sum).clamp(1, 100),
-                child: Container(color: const Color(0xFFA855F7)),
+                child: Container(color: HealthColors.lightSleep(brightness)),
               ),
             if (remMinutes > 0)
               Expanded(
                 flex: (remMinutes * 100 ~/ sum).clamp(1, 100),
-                child: Container(color: const Color(0xFF38BDF8)),
+                child: Container(color: HealthColors.remSleep(brightness)),
               ),
             if (awakeMinutes > 0)
               Expanded(
                 flex: (awakeMinutes * 100 ~/ sum).clamp(1, 100),
-                child: Container(color: const Color(0xFFCBD5E1)),
+                child: Container(color: HealthColors.awake(brightness)),
               ),
           ],
         ),
@@ -2233,6 +2225,8 @@ class _DiaryItemState extends State<DiaryItem> {
 
   Widget _buildSportItemCard(ThemeData theme, Map<String, dynamic> sport) {
     final colorScheme = theme.colorScheme;
+    // 运动条目用活动主线色，与上方步数进度条同色系
+    final sportColor = HealthColors.activity(theme.brightness);
     final title = sport['title'] as String? ?? '运动';
     final distMeters = (sport['distance_meters'] as num?)?.toDouble() ?? 0.0;
     final durSec = (sport['duration_seconds'] as num?)?.toInt() ?? 0;
@@ -2274,8 +2268,8 @@ class _DiaryItemState extends State<DiaryItem> {
           Container(
             width: 28,
             height: 28,
-            decoration: BoxDecoration(color: TagColors.health.withValues(alpha: 0.12), shape: BoxShape.circle),
-            child: Icon(sportIcon, size: 15, color: TagColors.health),
+            decoration: BoxDecoration(color: sportColor.withValues(alpha: 0.12), shape: BoxShape.circle),
+            child: Icon(sportIcon, size: 15, color: sportColor),
           ),
           const SizedBox(width: 10),
           Expanded(

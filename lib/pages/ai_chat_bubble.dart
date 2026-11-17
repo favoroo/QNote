@@ -681,24 +681,35 @@ class ChatBubble extends ConsumerWidget {
                 ),
                 const Spacer(),
                 if (isConfirmed)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.check, size: 12, color: Colors.green),
-                        const SizedBox(width: 4),
-                        Text(
-                          choice != null ? '已选：$choice' : '已确认',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green),
+                  Builder(
+                    builder: (context) {
+                      // 绿色只作状态强调，11px 文字需在 15% 淡底上压到正文级
+                      final confirmColor = HealthColors.levelGood(Theme.of(context).brightness);
+                      final confirmInk = AppContrast.inkOnTint(
+                        confirmColor,
+                        Theme.of(context).colorScheme.surface,
+                        0.15,
+                      );
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: confirmColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: confirmColor.withValues(alpha: 0.3)),
                         ),
-                      ],
-                    ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check, size: 12, color: confirmInk),
+                            const SizedBox(width: 4),
+                            Text(
+                              choice != null ? '已选：$choice' : '已确认',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: confirmInk),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   )
                 else if (isCancelled)
                   Container(

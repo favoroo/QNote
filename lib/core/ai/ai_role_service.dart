@@ -239,10 +239,6 @@ class AiRoleService {
     return await _repo.getAiTemperatures() ?? const AiTemperatures();
   }
 
-  Future<void> saveTemperatures(AiTemperatures temps) async {
-    await _repo.saveAiTemperatures(temps);
-  }
-
   Future<AiRoleSettings> getSettingsForRole(String role) async {
     final temps = await getTemperatures();
     switch (role) {
@@ -253,16 +249,6 @@ class AiRoleService {
       default:
         return const AiRoleSettings();
     }
-  }
-
-  Future<double> getTemperatureForRole(String role) async {
-    final settings = await getSettingsForRole(role);
-    return settings.temperature;
-  }
-
-  Future<int> getMaxTokensForRole(String role) async {
-    final settings = await getSettingsForRole(role);
-    return settings.maxTokens;
   }
 
   /// 取角色绑定的模型引用（未绑定返回 null）

@@ -10,19 +10,21 @@ import 'package:qnote_flutter/core/utils/expand_reveal.dart';
 import 'package:qnote_flutter/widgets/common/app_collapsible.dart';
 import 'package:qnote_flutter/widgets/common/thought_tail_scroll_view.dart';
 
-/// 取思考文本中最新的一行（最后一个非空行）
+/// 折叠态预览：取思考文本末尾的一段单行摘要
 ///
-/// 流式输出可能以换行结尾，直接取最后一段会得到空串；模型也常整段不换行，
-/// 此时整段就是「最新一行」，由横向滚动把末尾露出来。
-String latestThoughtLine(String thought) {
-  final lines = thought.split('\n');
-  for (var i = lines.length - 1; i >= 0; i--) {
-    final line = lines[i].trim();
-    if (line.isNotEmpty) {
-      return line;
-    }
+/// 只取「最后一个非空行」时，模型常在结尾单独换行写「简短回答」之类的短语，
+/// 折叠行就只剩几个字、标题右侧看起来像一大段空白。这里折叠换行与连续空白，
+/// 截取末尾 [maxChars] 个字符（超长时前置省略号），保证预览始终带上下文；
+/// 横向滚动默认贴尾，所以实际露出的仍是最新内容。
+String thoughtPreviewText(String thought, {int maxChars = 120}) {
+  final flat = thought.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (flat.isEmpty) {
+    return '';
   }
-  return '';
+  if (flat.characters.length <= maxChars) {
+    return flat;
+  }
+  return '…${flat.characters.takeLast(maxChars).string}';
 }
 
 /// 思考耗时文案（如「3 秒」「1 分 20 秒」）；无有效秒数返回空串
@@ -123,7 +125,7 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final latest = latestThoughtLine(widget.thought);
+    final latest = thoughtPreviewText(widget.thought);
     final durationText = widget.isStreaming ? '' : thinkingDurationLabel(widget.durationSeconds);
     final expanded = _isExpanded;
 
@@ -166,13 +168,19 @@ class _ThinkingProcessViewState extends State<ThinkingProcessView> {
                             ? const SizedBox.shrink(key: ValueKey('thought_latest_empty'))
                             : KeyedSubtree(
                                 key: const ValueKey('thought_latest_line'),
-                                child: RollingSingleLineText(
-                                  text: latest,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    // 折叠态是正文之外最常被扫读的一行，透明度太低
-                                    // 会和背景糊成一片，看起来像空白
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                                // AnimatedSwitcher 的默认 Stack 会按 center 对齐，
+                                // 短预览会被推到整行中间、左右各留一大段空白；
+                                // 撑满可用宽度后文本才从标题右侧正常起排。
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: RollingSingleLineText(
+                                    text: latest,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      // 折叠态是正文之外最常被扫读的一行，透明度太低
+                                      // 会和背景糊成一片，看起来像空白
+                                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                                    ),
                                   ),
                                 ),
                               ),

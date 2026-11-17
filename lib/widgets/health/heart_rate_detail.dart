@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/widgets/health/health_day_line_chart.dart';
 import 'package:qnote_flutter/widgets/health/health_detail_parts.dart';
@@ -14,17 +15,19 @@ class HeartRateDetail extends StatelessWidget {
 
   final HealthDailyMetrics metrics;
 
-  static const List<({String label, int min, int max, Color color})> _zones = [
-    (label: '< 60 静息区', min: 0, max: 59, color: Color(0xFF0EA5E9)),
-    (label: '60-100 日常区', min: 60, max: 99, color: Color(0xFF10B981)),
-    (label: '100-140 有氧区', min: 100, max: 139, color: Color(0xFFF59E0B)),
-    (label: '≥ 140 高强度区', min: 140, max: 100000, color: Color(0xFFEF4444)),
+  /// 心率四区间：静息 → 日常 → 有氧 → 高强度，颜色取 [HealthColors] 等级色阶。
+  static List<({String label, int min, int max, Color color})> _zones(Brightness brightness) => [
+    (label: '< 60 静息区', min: 0, max: 59, color: HealthColors.levelInfo(brightness)),
+    (label: '60-100 日常区', min: 60, max: 99, color: HealthColors.levelGood(brightness)),
+    (label: '100-140 有氧区', min: 100, max: 139, color: HealthColors.levelWarn(brightness)),
+    (label: '≥ 140 高强度区', min: 140, max: 100000, color: HealthColors.levelAlert(brightness)),
   ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final zones = _zones(theme.brightness);
     final samples = metrics.parseHeartRateSamples();
     final values = samples.map((s) => (s['v'] as num?)?.toInt()).whereType<int>().toList();
 
@@ -39,7 +42,7 @@ class HeartRateDetail extends StatelessWidget {
             children: [
               HealthDayLineChart(
                 samples: samples,
-                color: Colors.redAccent,
+                color: HealthColors.heartRate(theme.brightness),
                 unit: '',
                 emptyHint: '暂无心率采样',
                 referenceValue: (metrics.restingHeartRate != null && metrics.restingHeartRate! > 0)
@@ -49,7 +52,10 @@ class HeartRateDetail extends StatelessWidget {
               ),
               if (metrics.restingHeartRate != null && metrics.restingHeartRate! > 0) ...[
                 const SizedBox(height: 8),
-                HealthChartReferenceNote(label: '静息心率 ${metrics.restingHeartRate} bpm', color: Colors.redAccent),
+                HealthChartReferenceNote(
+                  label: '静息心率 ${metrics.restingHeartRate} bpm',
+                  color: HealthColors.heartRate(theme.brightness),
+                ),
               ],
             ],
           ),
@@ -64,14 +70,14 @@ class HeartRateDetail extends StatelessWidget {
                 label: '静息',
                 value: metrics.restingHeartRate?.toString() ?? '--',
                 unit: 'bpm',
-                valueColor: Colors.lightBlue,
+                valueColor: HealthColors.levelInfo(theme.brightness),
               ),
               HealthStatTile(label: '最低', value: metrics.minHeartRate?.toString() ?? '--', unit: 'bpm'),
               HealthStatTile(
                 label: '最高',
                 value: metrics.maxHeartRate?.toString() ?? '--',
                 unit: 'bpm',
-                valueColor: Colors.redAccent,
+                valueColor: HealthColors.levelAlert(theme.brightness),
               ),
             ],
           ),
@@ -87,7 +93,7 @@ class HeartRateDetail extends StatelessWidget {
                   children: [
                     HealthRatioBar(
                       segments: [
-                        for (final z in _zones)
+                        for (final z in zones)
                           (
                             label: z.label,
                             value: values.where((v) => v >= z.min && v <= z.max).length.toDouble(),
@@ -98,7 +104,7 @@ class HeartRateDetail extends StatelessWidget {
                     const SizedBox(height: 10),
                     HealthRatioLegend(
                       segments: [
-                        for (final z in _zones)
+                        for (final z in zones)
                           (
                             label: z.label,
                             text: '${values.where((v) => v >= z.min && v <= z.max).length}',

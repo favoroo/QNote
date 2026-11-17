@@ -300,6 +300,16 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
     final selection = ref.read(diaryInputTimeProvider);
     if (selection != null) {
       restored = _draftWithSelection(restored, selection, selectedDate: ref.read(selectedDateProvider));
+    } else {
+      // 时间线上没有选中时间时，记录时间就是「此刻」：草稿里可能还留着
+      // 上一次选中、之后又在时间线上取消掉的时间，直接沿用会让面板显示
+      // 一个过期的时间点。与面板内取消选择（ref.listen 的 null 分支）保持同一口径。
+      restored = restored.copyWith(
+        startTime: TimeOfDay.now(),
+        clearStartOffset: true,
+        clearEndTime: true,
+        clearEndOffset: true,
+      );
     }
     _draft = restored;
     _textController.text = _draft.inputText;
@@ -3676,21 +3686,27 @@ class _DiaryRecordSheetState extends ConsumerState<DiaryRecordSheet> with Ticker
                                 behavior: HitTestBehavior.opaque,
                                 child: Padding(
                                   padding: const EdgeInsets.all(8),
-                                  child: Container(
-                                    width: 26,
-                                    height: 26,
-                                    decoration: BoxDecoration(
-                                      color: Colors.red.withValues(alpha: 0.85),
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.red.withValues(alpha: 0.25),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 2),
+                                  child: Builder(
+                                    builder: (context) {
+                                      // 删除草稿：用主题错误色实心圆钮，前景按底色亮度取黑/白
+                                      final scheme = Theme.of(context).colorScheme;
+                                      return Container(
+                                        width: 26,
+                                        height: 26,
+                                        decoration: BoxDecoration(
+                                          color: scheme.error,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: scheme.error.withValues(alpha: 0.25),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                    child: const Center(child: Icon(Icons.close, size: 16, color: Colors.white)),
+                                        child: Center(child: Icon(Icons.close, size: 16, color: scheme.onError)),
+                                      );
+                                    },
                                   ),
                                 ),
                               ),

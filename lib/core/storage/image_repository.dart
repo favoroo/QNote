@@ -172,13 +172,6 @@ class ImageRepository {
     return originalPath;
   }
 
-  Future<File?> getImage(String path) async {
-    final resolved = await resolveLocalPath(path);
-    final file = File(resolved);
-    if (await file.exists()) return file;
-    return null;
-  }
-
   Future<void> deleteImage(String path) async {
     final resolved = await resolveLocalPath(path);
     final file = File(resolved);
@@ -242,13 +235,5 @@ class ImageRepository {
     final bytes = base64Decode(base64Data);
     await File(newPath).writeAsBytes(bytes);
     return newPath;
-  }
-
-  Future<List<String>> exportAllImagePaths() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final imagesDir = Directory(p.join(appDir.path, 'images'));
-    if (!await imagesDir.exists()) return [];
-    final files = await imagesDir.list(recursive: true).where((f) => f is File).cast<File>().toList();
-    return files.map((f) => f.path).toList();
   }
 }

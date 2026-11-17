@@ -47,34 +47,12 @@ class TodoRepository {
     return maps.map((m) => Todo.fromMap(m)).toList();
   }
 
-  Future<List<Todo>> getByIsLongTerm(bool isLongTerm) async {
-    final db = await _dbHelper.database;
-    final maps = await db.query(
-      'todos',
-      where: 'is_long_term = ? AND is_deleted = 0',
-      whereArgs: [isLongTerm ? 1 : 0],
-      orderBy: 'sort_order ASC, created_at ASC',
-    );
-    return maps.map((m) => Todo.fromMap(m)).toList();
-  }
-
   Future<List<Todo>> getUpcomingReminders() async {
     final db = await _dbHelper.database;
     final maps = await db.query(
       'todos',
       where: 'reminder_time IS NOT NULL AND is_completed = 0 AND is_deleted = 0',
       orderBy: 'reminder_time ASC',
-    );
-    return maps.map((m) => Todo.fromMap(m)).toList();
-  }
-
-  Future<List<Todo>> getCompletedByIsLongTerm(bool isLongTerm) async {
-    final db = await _dbHelper.database;
-    final maps = await db.query(
-      'todos',
-      where: 'is_completed = 1 AND is_long_term = ? AND is_deleted = 0',
-      whereArgs: [isLongTerm ? 1 : 0],
-      orderBy: 'updated_at DESC',
     );
     return maps.map((m) => Todo.fromMap(m)).toList();
   }

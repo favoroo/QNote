@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/storage/health_metric_repository.dart';
 import 'package:qnote_flutter/core/health/health_sync_service.dart';
 import 'package:qnote_flutter/core/utils/health_step_trend.dart';
@@ -267,7 +268,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                     value: '$avgDailySteps',
                     unit: '步/天',
                     icon: Icons.directions_walk,
-                    color: Colors.blue,
+                    color: HealthColors.distance(theme.brightness),
                   ),
                 ),
                 Expanded(
@@ -277,7 +278,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                     value: totalCalories.toStringAsFixed(0),
                     unit: 'kcal',
                     icon: Icons.local_fire_department,
-                    color: Colors.deepOrange,
+                    color: HealthColors.calorie(theme.brightness),
                   ),
                 ),
                 Expanded(
@@ -288,7 +289,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                     value: '${totalActiveMinutes ~/ 60}h${totalActiveMinutes % 60}m',
                     unit: '总计',
                     icon: Icons.timer,
-                    color: Colors.green,
+                    color: HealthColors.activeMinute(theme.brightness),
                   ),
                 ),
               ],
@@ -352,6 +353,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
     required int? avgSpo2,
     required int? avgStress,
   }) {
+    final brightness = Theme.of(context).brightness;
     final sleepStr = avgSleepMin > 0 ? '${avgSleepMin ~/ 60}h ${avgSleepMin % 60}m' : '--';
     final hrStr = avgHr != null ? '$avgHr bpm' : '--';
     final spo2Str = avgSpo2 != null ? '$avgSpo2%' : '--';
@@ -371,7 +373,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           value: sleepStr,
           subText: '含深浅与REM分期',
           icon: Icons.bedtime_rounded,
-          color: Colors.purple,
+          color: HealthColors.sleep(brightness),
         ),
         _buildVitalCard(
           context,
@@ -379,7 +381,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           value: hrStr,
           subText: '全天连续采样',
           icon: Icons.favorite_rounded,
-          color: Colors.red,
+          color: HealthColors.heartRate(brightness),
         ),
         _buildVitalCard(
           context,
@@ -387,7 +389,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           value: spo2Str,
           subText: '正常范围 ≥ 95%',
           icon: Icons.bloodtype_rounded,
-          color: Colors.teal,
+          color: HealthColors.spo2(brightness),
         ),
         _buildVitalCard(
           context,
@@ -395,7 +397,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
           value: stressStr,
           subText: (avgStress != null && avgStress < 50) ? '状态适度放松' : '注意规律休息',
           icon: Icons.mood_rounded,
-          color: Colors.amber.shade800,
+          color: HealthColors.stress(brightness),
         ),
       ],
     );
@@ -453,6 +455,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
   Widget _buildSportRecordTile(BuildContext context, HealthSportRecord r) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final brightness = theme.brightness;
 
     final distStr = r.distanceMeters > 0 ? '${(r.distanceMeters / 1000).toStringAsFixed(2)} km' : '';
     final durStr = '${r.durationSeconds ~/ 60} 分钟';
@@ -497,7 +500,7 @@ class _HealthStatsViewState extends ConsumerState<HealthStatsView> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.favorite, size: 14, color: Colors.red),
+                    Icon(Icons.favorite, size: 14, color: HealthColors.heartRate(brightness)),
                     const SizedBox(width: 2),
                     Text(
                       '${r.avgHeartRate}',

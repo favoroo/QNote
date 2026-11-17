@@ -130,7 +130,7 @@ class _StatRecordDetailSheetState extends State<StatRecordDetailSheet> {
   }
 
   Widget _buildRecord(BuildContext context, DiaryRecord record, ThemeData theme, ColorScheme colorScheme) {
-    final tagColor = TagColors.of(record.displayTag);
+    final tagColor = TagColors.of(record.displayTag, theme.brightness);
     final tagInk = AppContrast.inkOnTint(tagColor, colorScheme.surface, 0.12);
     final fields = _recordFields(record);
 

@@ -106,7 +106,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.text('思考'), findsOneWidget);
-    expect(find.text('正在分析笔记结构'), findsOneWidget);
+    expect(find.text('第一行 正在分析笔记结构'), findsOneWidget);
     // 「工作中 · N s」已上移到小Q名字右侧徽章（AgentWorkingBadge），折叠行不再渲染副行
     expect(find.text('工作中'), findsNothing);
 

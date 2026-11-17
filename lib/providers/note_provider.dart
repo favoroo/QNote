@@ -86,15 +86,6 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     state = AsyncData((state.valueOrNull ?? []).map((n) => n.id == id ? n.copyWith(isPinned: isPinned) : n).toList());
   }
 
-  Future<void> searchNotes(String keyword) async {
-    final repo = ref.read(noteRepositoryProvider);
-    if (keyword.isEmpty) {
-      await refresh();
-      return;
-    }
-    state = AsyncData(await repo.search(keyword));
-  }
-
   /// 批量保存重排结果。
   ///
   /// 调用方必须先在传入的 Note 上设置好 `folderId` / `sortOrder`。
@@ -111,8 +102,3 @@ class NoteListNotifier extends AsyncNotifier<List<Note>> {
     state = AsyncData([for (final note in currentList) replacements[note.id] ?? note]);
   }
 }
-
-final noteDetailProvider = FutureProvider.family<Note?, String>((ref, id) async {
-  final repo = ref.read(noteRepositoryProvider);
-  return repo.getById(id);
-});

@@ -84,23 +84,24 @@ class StatDetailPage extends ConsumerWidget {
   }
 
   Widget _buildSummary(Object stats, bool isDark) {
+    final brightness = isDark ? Brightness.dark : Brightness.light;
     if (_isFinance) {
       final s = stats as FinanceStatistics;
       final hasFlow = s.totalIncome > 0 || s.totalExpense > 0;
       return StatSummaryCard(
         primaryLabel: '结余',
         primaryValue: '¥${s.balance.toStringAsFixed(0)}',
-        primaryColor: s.balance >= 0 ? statIncomeColor : statExpenseColor,
+        primaryColor: s.balance >= 0 ? statIncomeColor(brightness) : statExpenseColor(brightness),
         metrics: [
-          StatMetric(label: '收入', value: '¥${s.totalIncome.toStringAsFixed(0)}', color: statIncomeColor),
-          StatMetric(label: '支出', value: '¥${s.totalExpense.toStringAsFixed(0)}', color: statExpenseColor),
+          StatMetric(label: '收入', value: '¥${s.totalIncome.toStringAsFixed(0)}', color: statIncomeColor(brightness)),
+          StatMetric(label: '支出', value: '¥${s.totalExpense.toStringAsFixed(0)}', color: statExpenseColor(brightness)),
           StatMetric(label: '记录', value: '${s.totalRecords}笔'),
         ],
         child: hasFlow
             ? StatRatioBar(
                 segments: [
-                  StatRatioSegment(color: statIncomeColor, value: s.totalIncome),
-                  StatRatioSegment(color: statExpenseColor, value: s.totalExpense),
+                  StatRatioSegment(color: statIncomeColor(brightness), value: s.totalIncome),
+                  StatRatioSegment(color: statExpenseColor(brightness), value: s.totalExpense),
                 ],
               )
             : null,
@@ -112,9 +113,9 @@ class StatDetailPage extends ConsumerWidget {
     return StatSummaryCard(
       primaryLabel: '记录餐次',
       primaryValue: '${s.totalMeals}次',
-      primaryColor: TagColors.diet,
+      primaryColor: TagColors.diet(brightness),
       metrics: [
-        StatMetric(label: '健康', value: '$healthy次', color: statIncomeColor),
+        StatMetric(label: '健康', value: '$healthy次', color: statIncomeColor(brightness)),
         StatMetric(label: '健康率', value: '$rate%'),
         // 仅在至少有一餐估算了热量时展示，避免全 0 误导
         if (s.calorieMealCount > 0) StatMetric(label: '总热量', value: '${s.totalCalories.round()} kcal'),

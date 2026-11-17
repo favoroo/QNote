@@ -11,16 +11,8 @@ final todoRepositoryProvider = Provider<TodoRepository>((ref) {
   return TodoRepository();
 });
 
-final isLongTermFilterProvider = StateProvider<bool>((ref) => false);
-
 final todoListProvider = AsyncNotifierProvider<TodoListNotifier, List<Todo>>(() {
   return TodoListNotifier();
-});
-
-final todoFilterProvider = StateProvider<TodoFilter>((ref) => TodoFilter.all);
-
-final filteredTodoListProvider = AsyncNotifierProvider<FilteredTodoListNotifier, List<Todo>>(() {
-  return FilteredTodoListNotifier();
 });
 
 final completedTodoListProvider = FutureProvider<List<Todo>>((ref) async {
@@ -74,16 +66,6 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
         },
       );
     }
-  }
-
-  Future<void> loadByIsLongTerm(bool isLongTerm) async {
-    final repo = ref.read(todoRepositoryProvider);
-    state = AsyncData(await repo.getByIsLongTerm(isLongTerm));
-  }
-
-  Future<void> loadCompletedByIsLongTerm(bool isLongTerm) async {
-    final repo = ref.read(todoRepositoryProvider);
-    state = AsyncData(await repo.getCompletedByIsLongTerm(isLongTerm));
   }
 
   Future<Todo> addTodo({
@@ -362,52 +344,6 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     WidgetUtils.updateHomeWidgets();
   }
 
-  Future<void> togglePriority(String id) async {
-    final repo = ref.read(todoRepositoryProvider);
-    final todo = await repo.getById(id);
-    if (todo == null) return;
-    final newPriority = todo.priority == 'important' ? 'normal' : 'important';
-    final updated = todo.copyWith(priority: newPriority);
-    await repo.update(updated);
-    // 内存替换，priority 变化不影响 completed/reminders 派生 Provider
-    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
-    WidgetUtils.updateHomeWidgets();
-  }
-
-  Future<void> restoreTodo(String id) async {
-    final repo = ref.read(todoRepositoryProvider);
-    final todo = await repo.getById(id);
-    if (todo == null) return;
-    final updated = todo.copyWith(isCompleted: false);
-    await repo.update(updated);
-    await NotificationService.instance.scheduleTodoReminder(updated);
-    // 内存替换
-    state = AsyncData((state.valueOrNull ?? []).map((t) => t.id == id ? updated : t).toList());
-    ref.invalidate(completedTodoListProvider);
-    ref.invalidate(upcomingRemindersProvider);
-    WidgetUtils.updateHomeWidgets();
-  }
-
-  Future<void> permanentDelete(String id) async {
-    final repo = ref.read(todoRepositoryProvider);
-    await repo.hardDelete(id);
-    await NotificationService.instance.cancelNotification(id.hashCode);
-    // 内存移除
-    state = AsyncData((state.valueOrNull ?? []).where((t) => t.id != id).toList());
-    ref.invalidate(completedTodoListProvider);
-    ref.invalidate(upcomingRemindersProvider);
-    WidgetUtils.updateHomeWidgets();
-  }
-
-  Future<void> searchTodos(String keyword) async {
-    final repo = ref.read(todoRepositoryProvider);
-    if (keyword.isEmpty) {
-      await refresh();
-      return;
-    }
-    state = AsyncData(await repo.search(keyword));
-  }
-
   Future<void> reorderTodos(List<Todo> reordered) async {
     final repo = ref.read(todoRepositoryProvider);
     final now = DateTime.now();
@@ -427,21 +363,3 @@ class TodoListNotifier extends AsyncNotifier<List<Todo>> {
     WidgetUtils.updateHomeWidgets();
   }
 }
-
-class FilteredTodoListNotifier extends AsyncNotifier<List<Todo>> {
-  @override
-  Future<List<Todo>> build() async {
-    final filter = ref.watch(todoFilterProvider);
-    final todos = ref.watch(todoListProvider).valueOrNull ?? [];
-    switch (filter) {
-      case TodoFilter.all:
-        return todos;
-      case TodoFilter.pending:
-        return todos.where((t) => !t.isCompleted).toList();
-      case TodoFilter.completed:
-        return todos.where((t) => t.isCompleted).toList();
-    }
-  }
-}
-
-enum TodoFilter { all, pending, completed }

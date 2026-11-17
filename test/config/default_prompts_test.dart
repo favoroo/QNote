@@ -34,9 +34,16 @@ void main() {
       // 小Q分析必须是独立字段，且明确「没有价值时省略」
       expect(prompt, contains('"analysis"'));
       expect(prompt, contains('省略 analysis'));
-      // 防注入数据边界与非食物门禁不能回归
+      // 防注入数据边界与非食物门禁不能回归（门禁改写成正向表述，语义保留）
       expect(prompt, contains('[用户数据开始]'));
-      expect(prompt, contains('非食物照片不要输出 diet 标签'));
+      expect(prompt, contains('非食物照片'));
+      expect(prompt, contains('仅当画面与文字都没出现食物/饮品'));
+      // 饮食必须正向归类：只要提到吃了/喝了什么就归 diet，不得漂到其他标签
+      expect(prompt, contains('一律归 diet'));
+      expect(prompt, contains('严禁改归其他标签'));
+      // id 必须逐字用 Schema 英文 id；其他(other) 只能兜底
+      expect(prompt, contains('严禁输出中文名、别名或自造 id'));
+      expect(prompt, contains('一律不得归 other'));
       // 曾经诱导模型瞎猜时间的坏示例不能回归
       expect(prompt, isNot(contains('"time":"18:00"')));
       expect(prompt, isNot(contains('"time":"20:00"')));

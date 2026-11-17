@@ -118,11 +118,6 @@ List<String> kgTokenize(String query) {
   return result;
 }
 
-/// 判断文本是否含中文（用于分词与展示长度判断）
-bool kgContainsCjk(String text) {
-  return RegExp(r'[\u4e00-\u9fff\u3400-\u4dbf]').hasMatch(text);
-}
-
 /// Levenshtein 编辑距离，供保守消歧使用。
 int kgEditDistance(String a, String b) {
   if (a == b) return 0;

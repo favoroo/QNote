@@ -114,7 +114,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         ref.invalidate(aiRolesProvider);
       }
     } catch (e) {
-      debugPrint('内置服务配置刷新失败: $e');
+      LoggerService.instance.warning('内置服务配置刷新失败: $e');
     }
   }
 
@@ -133,7 +133,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
     try {
       ref.read(screenUsageSnapshotServiceProvider).ensureSnapshot(force: force);
     } catch (e) {
-      debugPrint('屏幕时长快照触发失败: $e');
+      LoggerService.instance.warning('屏幕时长快照触发失败: $e');
     }
   }
 
@@ -257,7 +257,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       }
       _refreshProviders();
     } catch (e) {
-      debugPrint('检查 sync_log 失败，回退到 refresh: $e');
+      LoggerService.instance.logSync('检查 sync_log 失败，回退到 refresh: $e', level: LogLevel.warning);
       _refreshProviders();
     }
   }
@@ -267,7 +267,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       ref.read(diaryListProvider.notifier).refresh();
       ref.read(todoListProvider.notifier).refresh();
     } catch (e) {
-      debugPrint('刷新 Provider 失败: $e');
+      LoggerService.instance.warning('刷新 Provider 失败: $e');
     }
   }
 
@@ -301,7 +301,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         await Future.delayed(const Duration(milliseconds: 200));
         await _tryNavigatePendingRoute(retryCount: retryCount - 1);
       } else {
-        debugPrint('获取挂起路由失败: $e');
+        LoggerService.instance.warning('获取挂起路由失败: $e');
       }
     }
   }
@@ -311,7 +311,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
       final router = ref.read(routerProvider);
       router.go(route);
     } catch (e) {
-      debugPrint('路由导航失败: $e');
+      LoggerService.instance.warning('路由导航失败: $e');
       if (retryCount > 0) {
         Future.delayed(const Duration(milliseconds: 300), () {
           _navigateToRoute(route, retryCount: retryCount - 1);
@@ -358,7 +358,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         await Future.delayed(const Duration(milliseconds: 200));
         await _tryConsumePendingSharedText(retryCount: retryCount - 1);
       } else {
-        debugPrint('获取挂起外部分享文本失败: $e');
+        LoggerService.instance.warning('获取挂起外部分享文本失败: $e');
       }
     }
   }
@@ -377,7 +377,7 @@ class _QNoteAppState extends ConsumerState<QNoteApp> with WidgetsBindingObserver
         await Future.delayed(const Duration(milliseconds: 200));
         await _tryConsumePendingSharedImages(retryCount: retryCount - 1);
       } else {
-        debugPrint('获取挂起外部分享图片失败: $e');
+        LoggerService.instance.warning('获取挂起外部分享图片失败: $e');
       }
     }
   }

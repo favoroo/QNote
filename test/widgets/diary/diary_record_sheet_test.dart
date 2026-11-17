@@ -246,6 +246,27 @@ void main() {
     expect(find.textContaining('12:00'), findsNothing);
   });
 
+  testWidgets('时间线上没有选中时间时，打开面板用当前时间而不是草稿里的旧时间', (tester) async {
+    final before = TimeOfDay.now();
+    // 与当前时间必然相差 5 小时，模拟「选中过又在时间线上取消」后残留的旧草稿时间。
+    final stale = TimeOfDay(hour: (before.hour + 5) % 24, minute: before.minute);
+    String label(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+    await _pumpSheet(
+      tester,
+      draft: DiaryComposeDraft(id: 'd1', startTime: stale),
+    );
+
+    // 跨过分钟边界时 initState 读到的「现在」可能是下一分钟，两个值都接受。
+    final after = TimeOfDay.now();
+    final currentLabels = {label(before), label(after)};
+    expect(find.text(label(stale)), findsNothing);
+    expect(
+      find.byWidgetPredicate((w) => w is Text && w.data != null && currentLabels.contains(w.data)),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('点右上角圆形关闭键收起卡片', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

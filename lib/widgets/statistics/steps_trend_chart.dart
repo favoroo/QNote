@@ -4,10 +4,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/utils/health_step_trend.dart';
 
 /// 左侧步数刻度预留宽度，柱状图可用宽度按它扣减
@@ -59,7 +61,9 @@ class StepsTrendChart extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '目标 ${NumberFormat('#,###').format(dailyTarget)} 步',
-                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.green),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppContrast.readable(HealthColors.activity(theme.brightness), colorScheme.surface),
+                  ),
                 ),
               ],
             ),
@@ -91,7 +95,7 @@ class StepsTrendChart extends StatelessWidget {
                                 toY: buckets[i].hasData
                                     ? buckets[i].value.clamp(0.0, maxY)
                                     : (maxY * _emptyStubRatio).clamp(0.0, maxY),
-                                color: _rodColor(buckets[i], colorScheme),
+                                color: _rodColor(buckets[i], colorScheme, theme.brightness),
                                 width: barWidth,
                                 borderRadius: BorderRadius.vertical(top: Radius.circular(buckets[i].hasData ? 4 : 2)),
                               ),
@@ -172,7 +176,7 @@ class StepsTrendChart extends StatelessWidget {
                         horizontalLines: [
                           HorizontalLine(
                             y: dailyTarget.toDouble(),
-                            color: Colors.green.withValues(alpha: 0.55),
+                            color: HealthColors.activity(theme.brightness).withValues(alpha: 0.55),
                             strokeWidth: 1,
                             dashArray: const [5, 4],
                           ),
@@ -192,10 +196,10 @@ class StepsTrendChart extends StatelessWidget {
     );
   }
 
-  Color _rodColor(StepTrendBucket bucket, ColorScheme colorScheme) {
+  Color _rodColor(StepTrendBucket bucket, ColorScheme colorScheme, Brightness brightness) {
     if (!bucket.hasData) {
       return colorScheme.onSurface.withValues(alpha: 0.06);
     }
-    return bucket.value >= dailyTarget ? Colors.green : colorScheme.primary;
+    return bucket.value >= dailyTarget ? HealthColors.activity(brightness) : colorScheme.primary;
   }
 }

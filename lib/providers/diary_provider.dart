@@ -8,7 +8,6 @@ import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/date_color_mark.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
 import 'package:flutter/material.dart';
-import 'package:qnote_flutter/providers/selected_date_provider.dart';
 import 'package:qnote_flutter/core/utils/widget_utils.dart';
 export 'package:qnote_flutter/providers/selected_date_provider.dart';
 
@@ -28,12 +27,6 @@ final diaryRepositoryProvider = Provider<DiaryRepository>((ref) {
 
 final colorMarkRepositoryProvider = Provider<ColorMarkRepository>((ref) {
   return ColorMarkRepository();
-});
-
-final colorMarkProvider = FutureProvider<DateColorMark?>((ref) async {
-  final selectedDate = ref.watch(selectedDateProvider);
-  final repo = ref.read(colorMarkRepositoryProvider);
-  return repo.getByDate(selectedDate);
 });
 
 final diaryInputTimeProvider = StateProvider<TimelineTimeSelectEvent?>((ref) => null);
@@ -102,14 +95,6 @@ class DiaryComposeDraft {
       endOffset: clearEndOffset ? null : (endOffset ?? this.endOffset),
     );
   }
-
-  DiaryComposeDraft updateTagEntryFields(String tagId, Map<String, dynamic> fields) {
-    final newEntries = tagEntries.map((e) {
-      if (e.id == tagId) return e.copyWith(fields: fields);
-      return e;
-    }).toList();
-    return copyWith(tagEntries: newEntries);
-  }
 }
 
 /// 记录面板草稿。面板卸载后草稿仍在，重新打开时接着填。
@@ -132,8 +117,6 @@ enum WidgetAction { input, photo, camera, send }
 final pendingWidgetActionProvider = StateProvider<WidgetAction?>((ref) => null);
 
 final currentInputTimeProvider = StateProvider<TimeOfDay>((ref) => TimeOfDay.now());
-
-final diaryDraftsProvider = StateProvider<List<DiaryRecord>>((ref) => []);
 
 final diaryScrollTriggerProvider = StateProvider<int>((ref) => 0);
 
@@ -184,11 +167,6 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
         },
       );
     }
-  }
-
-  Future<void> loadByDate(DateTime date) async {
-    final repo = ref.read(diaryRepositoryProvider);
-    state = AsyncData(await repo.getByDate(date));
   }
 
   Future<DiaryRecord> addDiary({
@@ -265,36 +243,7 @@ class DiaryListNotifier extends AsyncNotifier<List<DiaryRecord>> {
     state = AsyncData([...(state.valueOrNull ?? []), restored]);
     WidgetUtils.updateHomeWidgets();
   }
-
-  void addDraft(DiaryRecord draft) {
-    final drafts = ref.read(diaryDraftsProvider);
-    ref.read(diaryDraftsProvider.notifier).state = [...drafts, draft];
-  }
-
-  void removeDraft(String id) {
-    final drafts = ref.read(diaryDraftsProvider);
-    ref.read(diaryDraftsProvider.notifier).state = drafts.where((d) => d.id != id).toList();
-  }
-
-  void updateDraft(DiaryRecord draft) {
-    final drafts = ref.read(diaryDraftsProvider);
-    ref.read(diaryDraftsProvider.notifier).state = drafts.map((d) => d.id == draft.id ? draft : d).toList();
-  }
-
-  Future<void> searchDiary(String keyword) async {
-    final repo = ref.read(diaryRepositoryProvider);
-    if (keyword.isEmpty) {
-      await refresh();
-      return;
-    }
-    state = AsyncData(await repo.search(keyword));
-  }
 }
-
-final diaryDetailProvider = FutureProvider.family<DiaryRecord?, String>((ref, id) async {
-  final repo = ref.read(diaryRepositoryProvider);
-  return repo.getById(id);
-});
 
 /// 按时间范围拉取日记记录（statistics_page 专用，避免全量加载）
 /// 自动响应 diaryListProvider 变更（增删改后 invalidate）
@@ -335,12 +284,6 @@ class DiaryColorMarkNotifier extends AsyncNotifier<List<DateColorMark>> {
   Future<void> setMark(DateColorMark mark) async {
     final repo = ref.read(colorMarkRepositoryProvider);
     await repo.insert(mark);
-    await refresh();
-  }
-
-  Future<void> removeMark(String id) async {
-    final repo = ref.read(colorMarkRepositoryProvider);
-    await repo.delete(id);
     await refresh();
   }
 

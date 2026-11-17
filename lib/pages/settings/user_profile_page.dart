@@ -13,6 +13,8 @@ import 'package:intl/intl.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/storage/image_repository.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -263,13 +265,17 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
     return '肥胖';
   }
 
+  /// BMI 分档色：偏瘦（注意）→ 正常（良好）→ 偏重（注意）→ 肥胖（异常）。
+  ///
+  /// 与健康数据的等级色阶同源，避免这里用 Material 命名色、健康页用另一套。
   Color _bmiColor(ThemeData theme) {
     final bmi = _bmi;
     if (bmi == null) return theme.colorScheme.outline;
-    if (bmi < 18.5) return Colors.amber.shade700;
-    if (bmi < 24.0) return Colors.green.shade600;
-    if (bmi < 28.0) return Colors.orange.shade700;
-    return Colors.red.shade600;
+    final brightness = theme.brightness;
+    if (bmi < 18.5) return HealthColors.levelWarn(brightness);
+    if (bmi < 24.0) return HealthColors.levelGood(brightness);
+    if (bmi < 28.0) return HealthColors.levelWarn(brightness);
+    return HealthColors.levelAlert(brightness);
   }
 
   Future<void> _save() async {
@@ -394,7 +400,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
               icon: Icon(_saveSuccess ? Icons.check_circle_rounded : Icons.check_rounded, size: 16),
               label: Text(_saveSuccess ? '已保存' : '保存'),
               style: FilledButton.styleFrom(
-                backgroundColor: _saveSuccess ? Colors.green.shade600 : theme.colorScheme.primary,
+                backgroundColor: _saveSuccess ? HealthColors.levelGood(theme.brightness) : theme.colorScheme.primary,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 minimumSize: const Size(0, 34),
                 // 按钮统一胶囊形，与页面内的分段控件、标签保持一致
@@ -430,7 +436,12 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                       ),
                       child: Text(
                         'BMI ${_bmi!.toStringAsFixed(1)} · $_bmiLabel',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _bmiColor(theme)),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          // 同一支色既铺淡底又作 11px 文字：文字压在淡底上取可读前景
+                          color: AppContrast.inkOnTint(_bmiColor(theme), theme.colorScheme.surface, 0.12),
+                        ),
                       ),
                     )
                   : null,
@@ -1402,7 +1413,7 @@ class _UserProfilePageState extends ConsumerState<UserProfilePage> {
                 });
                 Navigator.pop(context);
               },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
               child: const Text('删除'),
             ),
           ],

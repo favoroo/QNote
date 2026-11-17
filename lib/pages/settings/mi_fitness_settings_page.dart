@@ -6,9 +6,11 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:qnote_flutter/core/logger/logger_service.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/core/agent/vfs/workspace_event_bus.dart';
 import 'package:qnote_flutter/core/health/mi_fitness_auth_service.dart';
@@ -241,33 +243,33 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               ),
               const SizedBox(height: 8),
               ListTile(
-                leading: const AppIconBadge(
+                leading: AppIconBadge(
                   icon: Icons.today_rounded,
                   size: 36,
                   iconSize: 20,
-                  backgroundColor: Colors.blue,
+                  backgroundColor: HealthColors.distance(theme.brightness),
                 ),
                 title: const Text('同步最近 7 天'),
                 subtitle: const Text('日常快速同步'),
                 onTap: () => Navigator.of(ctx).pop(7),
               ),
               ListTile(
-                leading: const AppIconBadge(
+                leading: AppIconBadge(
                   icon: Icons.calendar_month_rounded,
                   size: 36,
                   iconSize: 20,
-                  backgroundColor: Colors.teal,
+                  backgroundColor: HealthColors.screen(theme.brightness),
                 ),
                 title: const Text('同步最近 30 天'),
                 subtitle: const Text('近一个月数据与运动记录'),
                 onTap: () => Navigator.of(ctx).pop(30),
               ),
               ListTile(
-                leading: const AppIconBadge(
+                leading: AppIconBadge(
                   icon: Icons.history_rounded,
                   size: 36,
                   iconSize: 20,
-                  backgroundColor: Colors.purple,
+                  backgroundColor: HealthColors.sleep(theme.brightness),
                 ),
                 title: const Text('同步最近 90 天'),
                 subtitle: const Text('近一季度历史数据，首次同步推荐'),
@@ -730,7 +732,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.directions_walk, size: 20, color: Colors.blue),
+                    Icon(Icons.directions_walk, size: 20, color: HealthColors.distance(theme.brightness)),
                     const SizedBox(width: 6),
                     Text('运动步数', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                   ],
@@ -747,7 +749,9 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     steps >= targetSteps ? '已达标' : '目标 ${NumberFormat('#,###').format(targetSteps)} 步',
                     style: TextStyle(
                       fontSize: 12,
-                      color: steps >= targetSteps ? Colors.green : colorScheme.onSurfaceVariant,
+                      color: steps >= targetSteps
+                          ? AppContrast.readable(HealthColors.activity(theme.brightness), colorScheme.surface)
+                          : colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -773,7 +777,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                 value: progress,
                 minHeight: 6,
                 backgroundColor: colorScheme.surfaceContainerHighest,
-                color: steps >= targetSteps ? Colors.green : colorScheme.primary,
+                color: steps >= targetSteps ? HealthColors.activity(theme.brightness) : colorScheme.primary,
               ),
             ),
             const SizedBox(height: 16),
@@ -834,7 +838,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final colorScheme = theme.colorScheme;
     final m = _selectedMetrics;
 
-    const sleepPurple = Color(0xFF8B5CF6);
+    final sleepPurple = HealthColors.sleep(theme.brightness);
     final sleepMins = m?.sleepDurationMinutes ?? 0;
     final deepMins = m?.deepSleepMinutes ?? 0;
     final lightMins = m?.lightSleepMinutes ?? 0;
@@ -863,7 +867,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             // 头部：图标 + 标题 + 睡眠时长 + 评分
             Row(
               children: [
-                const AppIconBadge(icon: Icons.nightlight_round, size: 30, iconSize: 18, backgroundColor: sleepPurple),
+                AppIconBadge(icon: Icons.nightlight_round, size: 30, iconSize: 18, backgroundColor: sleepPurple),
                 const SizedBox(width: 8),
                 Text('作息睡眠', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const Spacer(),
@@ -884,7 +888,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                         ),
                         if (sleepScore != null && sleepScore > 0) ...[
                           const SizedBox(width: 6),
-                          _buildSleepScoreBadge(sleepScore),
+                          _buildSleepScoreBadge(context, sleepScore),
                         ],
                       ],
                     ),
@@ -944,28 +948,28 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                         Expanded(
                           flex: (deepMins * 100 ~/ calcTotal).clamp(1, 100),
                           child: Container(
-                            color: const Color(0xFF6366F1), // 深睡
+                            color: HealthColors.deepSleep(theme.brightness), // 深睡
                           ),
                         ),
                       if (lightMins > 0)
                         Expanded(
                           flex: (lightMins * 100 ~/ calcTotal).clamp(1, 100),
                           child: Container(
-                            color: const Color(0xFFA855F7), // 浅睡
+                            color: HealthColors.lightSleep(theme.brightness), // 浅睡
                           ),
                         ),
                       if (remMins > 0)
                         Expanded(
                           flex: (remMins * 100 ~/ calcTotal).clamp(1, 100),
                           child: Container(
-                            color: const Color(0xFF38BDF8), // REM
+                            color: HealthColors.remSleep(theme.brightness), // REM
                           ),
                         ),
                       if (awakeMins > 0)
                         Expanded(
                           flex: (awakeMins * 100 ~/ calcTotal).clamp(1, 100),
                           child: Container(
-                            color: const Color(0xFFCBD5E1), // 清醒
+                            color: HealthColors.awake(theme.brightness), // 清醒
                           ),
                         ),
                     ],
@@ -983,7 +987,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       label: '深睡',
                       minutes: deepMins,
                       pct: calcTotal > 0 ? (deepMins * 100 ~/ calcTotal) : 0,
-                      color: const Color(0xFF6366F1),
+                      color: HealthColors.deepSleep(theme.brightness),
                     ),
                   ),
                   Expanded(
@@ -992,7 +996,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       label: '浅睡',
                       minutes: lightMins,
                       pct: calcTotal > 0 ? (lightMins * 100 ~/ calcTotal) : 0,
-                      color: const Color(0xFFA855F7),
+                      color: HealthColors.lightSleep(theme.brightness),
                     ),
                   ),
                   Expanded(
@@ -1001,7 +1005,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       label: '快速眼动',
                       minutes: remMins,
                       pct: calcTotal > 0 ? (remMins * 100 ~/ calcTotal) : 0,
-                      color: const Color(0xFF38BDF8),
+                      color: HealthColors.remSleep(theme.brightness),
                     ),
                   ),
                   Expanded(
@@ -1010,7 +1014,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                       label: '清醒',
                       minutes: awakeMins,
                       pct: calcTotal > 0 ? (awakeMins * 100 ~/ calcTotal) : 0,
-                      color: const Color(0xFF94A3B8),
+                      color: HealthColors.awake(theme.brightness),
                     ),
                   ),
                 ],
@@ -1039,22 +1043,25 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     );
   }
 
-  Widget _buildSleepScoreBadge(int score) {
-    Color badgeColor;
-    String scoreText;
+  Widget _buildSleepScoreBadge(BuildContext context, int score) {
+    final brightness = Theme.of(context).brightness;
+    final Color badgeColor;
+    final String scoreText;
     if (score >= 90) {
-      badgeColor = const Color(0xFF10B981);
+      badgeColor = HealthColors.levelGood(brightness);
       scoreText = '$score分 极佳';
     } else if (score >= 75) {
-      badgeColor = const Color(0xFF8B5CF6);
+      badgeColor = HealthColors.sleep(brightness);
       scoreText = '$score分 良好';
     } else if (score >= 60) {
-      badgeColor = const Color(0xFFF59E0B);
+      badgeColor = HealthColors.levelWarn(brightness);
       scoreText = '$score分 一般';
     } else {
-      badgeColor = const Color(0xFFEF4444);
+      badgeColor = HealthColors.levelAlert(brightness);
       scoreText = '$score分 偏低';
     }
+    // 同一支色既铺淡底又作 11px 文字：文字需在淡底上压到正文级
+    final ink = AppContrast.inkOnTint(badgeColor, Theme.of(context).colorScheme.surface, 0.14);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -1065,7 +1072,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
       ),
       child: Text(
         scoreText,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: badgeColor),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: ink),
       ),
     );
   }
@@ -1114,7 +1121,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final colorScheme = theme.colorScheme;
     final m = _selectedMetrics;
 
-    const hrColor = Color(0xFFEF4444);
+    final hrColor = HealthColors.heartRate(theme.brightness);
     final avgHr = m?.avgHeartRate;
     final restingHr = m?.restingHeartRate;
     final minHr = m?.minHeartRate;
@@ -1136,7 +1143,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             // 头部
             Row(
               children: [
-                const AppIconBadge(icon: Icons.favorite_rounded, size: 30, iconSize: 18, backgroundColor: hrColor),
+                AppIconBadge(icon: Icons.favorite_rounded, size: 30, iconSize: 18, backgroundColor: hrColor),
                 const SizedBox(width: 8),
                 Text('心率健康', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const Spacer(),
@@ -1173,7 +1180,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     value: restingHr != null && restingHr > 0 ? '$restingHr' : '--',
                     unit: 'bpm',
                     tag: restingHr != null && restingHr > 0 && restingHr <= 75 ? '优质' : null,
-                    tagColor: Colors.green,
+                    tagColor: HealthColors.activity(theme.brightness),
                   ),
                 ),
                 Expanded(
@@ -1206,8 +1213,8 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     final colorScheme = theme.colorScheme;
     final m = _selectedMetrics;
 
-    const spo2Color = Color(0xFF0D9488);
-    const stressColor = Color(0xFFF97316);
+    final spo2Color = HealthColors.spo2(theme.brightness);
+    final stressColor = HealthColors.stress(theme.brightness);
 
     final avgSpo2 = m?.avgSpo2;
     final minSpo2 = m?.minSpo2;
@@ -1237,7 +1244,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.water_drop_rounded, size: 16, color: spo2Color),
+                          Icon(Icons.water_drop_rounded, size: 16, color: spo2Color),
                           const SizedBox(width: 4),
                           Text(
                             '血氧饱和度',
@@ -1249,7 +1256,11 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: (avgSpo2 >= 95 ? Colors.green : Colors.orange).withValues(alpha: 0.12),
+                            color:
+                                (avgSpo2 >= 95
+                                        ? HealthColors.levelGood(theme.brightness)
+                                        : HealthColors.levelWarn(theme.brightness))
+                                    .withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -1257,7 +1268,13 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: avgSpo2 >= 95 ? Colors.green : Colors.orange,
+                              color: AppContrast.inkOnTint(
+                                avgSpo2 >= 95
+                                    ? HealthColors.levelGood(theme.brightness)
+                                    : HealthColors.levelWarn(theme.brightness),
+                                colorScheme.surface,
+                                0.12,
+                              ),
                             ),
                           ),
                         ),
@@ -1310,7 +1327,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.mood_rounded, size: 16, color: stressColor),
+                          Icon(Icons.mood_rounded, size: 16, color: stressColor),
                           const SizedBox(width: 4),
                           Text(
                             '全天压力',
@@ -1319,20 +1336,23 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
                         ],
                       ),
                       if (hasStress)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: _getStressColor(avgStress).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            _getStressLabel(avgStress),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: _getStressColor(avgStress),
-                            ),
-                          ),
+                        Builder(
+                          builder: (context) {
+                            final levelColor = _getStressColor(avgStress, theme.brightness);
+                            // 同一支色既铺淡底又作 10px 文字：文字压在淡底上取可读前景
+                            final levelInk = AppContrast.inkOnTint(levelColor, colorScheme.surface, 0.12);
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: levelColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _getStressLabel(avgStress),
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: levelInk),
+                              ),
+                            );
+                          },
                         ),
                     ],
                   ),
@@ -1381,6 +1401,9 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    // 徽标色既铺 14% 淡底又作 9px 文字：文字需压在淡底上取可读前景
+    final badgeBase = tagColor ?? HealthColors.activity(theme.brightness);
+    final badgeInk = AppContrast.inkOnTint(badgeBase, colorScheme.surface, 0.14);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1393,12 +1416,12 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
-                  color: (tagColor ?? Colors.green).withValues(alpha: 0.14),
+                  color: badgeBase.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   tag,
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: tagColor ?? Colors.green),
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: badgeInk),
                 ),
               ),
             ],
@@ -1431,11 +1454,11 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
     return timeStr;
   }
 
-  Color _getStressColor(int stress) {
-    if (stress < 30) return const Color(0xFF10B981); // 轻松 绿
-    if (stress < 60) return const Color(0xFF3B82F6); // 正常 蓝
-    if (stress < 80) return const Color(0xFFF59E0B); // 中等 橙
-    return const Color(0xFFEF4444); // 偏高 红
+  Color _getStressColor(int stress, Brightness brightness) {
+    if (stress < 30) return HealthColors.levelGood(brightness); // 轻松 绿
+    if (stress < 60) return HealthColors.levelInfo(brightness); // 正常 蓝
+    if (stress < 80) return HealthColors.levelWarn(brightness); // 中等 琥珀
+    return HealthColors.levelAlert(brightness); // 偏高 红
   }
 
   String _getStressLabel(int stress) {
@@ -1567,7 +1590,7 @@ class MiFitnessSettingsPageState extends ConsumerState<MiFitnessSettingsPage> {
             const Divider(height: 1),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.flag_rounded, size: 20, color: Colors.blue),
+              leading: Icon(Icons.flag_rounded, size: 20, color: HealthColors.distance(theme.brightness)),
               title: const Text('每日目标步数'),
               subtitle: Text(
                 '${NumberFormat('#,###').format(_stepTarget)} 步',

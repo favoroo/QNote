@@ -271,7 +271,7 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
 
     // 2. 正在思考（运行中且折叠态）
     if (!expanded && hasLiveThought) {
-      final latest = latestThoughtLine(liveThought);
+      final latest = thoughtPreviewText(liveThought);
       return Row(
         key: ValueKey('wf_live_thought_$stepCount'),
         children: [
@@ -431,10 +431,10 @@ class _WorkflowProcessViewState extends State<WorkflowProcessView> {
               ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                latestThoughtLine(step.message.content),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              // 与实时思考行同样贴尾滚动：步骤完成后仍露出最新内容，
+              // 只取最后一行时遇到结尾的「简短回答」这类短语会只剩几个字
+              child: RollingSingleLineText(
+                text: thoughtPreviewText(step.message.content),
                 style: TextStyle(
                   fontSize: AppTypography.bodySmall,
                   color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),

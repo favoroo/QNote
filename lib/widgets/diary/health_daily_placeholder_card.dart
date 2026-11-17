@@ -83,7 +83,7 @@ class _HealthDailyPlaceholderCardState extends ConsumerState<HealthDailyPlacehol
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    const healthColor = TagColors.health;
+    final healthColor = TagColors.fitness(theme.brightness);
     final healthInk = AppContrast.inkOnTint(healthColor, colorScheme.surface, 0.1);
 
     final availability = ref.watch(healthDayAvailabilityProvider(diaryDateKey(widget.date)));

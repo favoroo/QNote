@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
+
 /// 健康详情页共用的指标小块
 ///
 /// 各详情页都要展示「均值/极值/占比」这类小指标，样式统一在这里，避免每页各写一套
@@ -24,6 +26,8 @@ class HealthStatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    // 传入的多是「图形级」语义色（区间色、评分色），作 16px 数值文字时需压深到正文级
+    final ink = valueColor == null ? scheme.onSurface : AppContrast.readable(valueColor!, scheme.surface);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -36,10 +40,7 @@ class HealthStatTile extends StatelessWidget {
           children: [
             Text(
               value,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: valueColor ?? scheme.onSurface,
-              ),
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: ink),
             ),
             if (unit.isNotEmpty) ...[
               const SizedBox(width: 2),

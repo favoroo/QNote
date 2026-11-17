@@ -19,6 +19,12 @@ abstract class AppContrast {
   /// 正文的 AA 对比度下限。
   static const double minimumTextRatio = 4.5;
 
+  /// 非文本图形（图标、进度条、分割线、边框）的 AA 对比度下限（WCAG 1.4.11）。
+  ///
+  /// 标签色、图表系列色这类会被直接当图标/填充用的内容色按这一档验收：
+  /// 它们不承担正文阅读，过高的门槛只会逼出色相发闷的深色。
+  static const double minimumGraphicRatio = 3.0;
+
   /// 在 [background] 上取黑白中对比度更高的一侧作为前景色。
   ///
   /// 与「亮度超过某个阈值就取黑」等价，但直接比较对比度可避免阈值漂移，也能在两色

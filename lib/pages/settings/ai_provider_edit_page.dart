@@ -12,6 +12,8 @@ import 'package:qnote_flutter/core/ai/api_key_pool.dart';
 import 'package:qnote_flutter/core/ai/model_fetch_service.dart';
 import 'package:qnote_flutter/core/ai/model_reasoning_capability.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
+import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/image_model_detection.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/account_quota.dart';
@@ -701,9 +703,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
             style: theme.textTheme.bodySmall?.copyWith(
               fontSize: 11,
               color: isFree
-                  ? Colors.green.shade700
+                  ? HealthColors.levelGood(theme.brightness)
                   : isImageGen
-                  ? Colors.purple.shade400
+                  ? TagColors.thought(theme.brightness)
                   : (isOriginalRate ? colorScheme.onSurfaceVariant : null),
               decoration: isOriginalRate ? TextDecoration.lineThrough : null,
             ),
@@ -713,7 +715,12 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
     }
     final note = model.rateNote;
     if (note != null && note.isNotEmpty) {
-      children.add(Text(note, style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: Colors.orange.shade700)));
+      children.add(
+        Text(
+          note,
+          style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: HealthColors.levelWarn(theme.brightness)),
+        ),
+      );
     }
     if (children.isEmpty) return null;
     return Padding(
@@ -842,17 +849,13 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
 
   /// 按耗时快慢分级着色：绿=快、橙=一般、红=慢。
   ///
-  /// 深浅色主题各取一档，避免浅色下的深绿/深橙在暗色卡片上对比度不足。
+  /// 延迟分档色：与健康数据的等级色阶同源，深浅主题各取一支。
   Color _latencyColor(ThemeData theme, _ModelLatency result) {
     if (result.failed) return theme.colorScheme.error;
-    final isDark = theme.brightness == Brightness.dark;
+    final brightness = theme.brightness;
     final ms = result.duration!.inMilliseconds;
-    if (ms <= 1000) {
-      return isDark ? Colors.green.shade400 : Colors.green.shade700;
-    }
-    if (ms <= 3000) {
-      return isDark ? Colors.orange.shade300 : Colors.orange.shade800;
-    }
+    if (ms <= 1000) return HealthColors.levelGood(brightness);
+    if (ms <= 3000) return HealthColors.levelWarn(brightness);
     return theme.colorScheme.error;
   }
 
@@ -1655,7 +1658,9 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
                           child: Text(
                             result,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: result.startsWith('正常') ? Colors.green.shade700 : colorScheme.error,
+                              color: result.startsWith('正常')
+                                  ? HealthColors.levelGood(theme.brightness)
+                                  : colorScheme.error,
                             ),
                           ),
                         ),
@@ -1736,7 +1741,7 @@ class _AiProviderEditPageState extends ConsumerState<AiProviderEditPage> {
               child: Text(
                 _scanMessage!,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: _scanMessageIsError ? colorScheme.error : Colors.green.shade700,
+                  color: _scanMessageIsError ? colorScheme.error : HealthColors.levelGood(theme.brightness),
                 ),
               ),
             ),

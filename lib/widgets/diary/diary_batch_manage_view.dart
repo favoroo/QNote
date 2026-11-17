@@ -9,6 +9,7 @@ import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/models/diary_record.dart';
 import 'package:qnote_flutter/models/tag_entry.dart';
@@ -242,7 +243,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                             runSpacing: 10,
                             children: _allTags.map((tag) {
                               final isSelected = tempSelectedTags.contains(tag);
-                              final tagColor = _tagColor(tag);
+                              final tagColor = _tagColor(tag, theme.brightness);
                               // 选中态文字压深到标签色淡底可读，避免琥珀等亮色直接当字色
                               final tagInk = _contentInk(tagColor, colorScheme, 0.18);
                               return FilterChip(
@@ -381,17 +382,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
   }
 
   // 标签颜色配置，与 DiaryItem 保持一致
-  static const _tagColors = <String, Color>{
-    '睡眠': TagColors.sleep,
-    '饮食': TagColors.diet,
-    '活动': TagColors.activity,
-    '记账': TagColors.finance,
-    '随想': TagColors.thought,
-  };
-
-  static const _defaultColor = TagColors.defaultTag;
-
-  Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
+  Color _tagColor(String displayTag, Brightness brightness) => TagColors.of(displayTag, brightness);
 
   String _formatDouble(dynamic val) {
     if (val == null) return '';
@@ -631,7 +622,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
 
     if (record.tagEntries.isNotEmpty) {
       for (final entry in record.tagEntries) {
-        final color = _tagColor(entry.name);
+        final color = _tagColor(entry.name, theme.brightness);
         // 胶囊文字统一用同色系可读前景，避免亮色标签贴淡底时只剩 2~3:1
         final nameInk = _contentInk(color, colorScheme, 0.12);
         final fieldInk = _contentInk(color, colorScheme, 0.02);
@@ -687,14 +678,16 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
       }
     } else if (record.displayTag.isNotEmpty) {
       // Just display tag if no tagEntries
-      final color = _tagColor(record.displayTag);
+      final color = _tagColor(record.displayTag, theme.brightness);
+      // 标签色本身只保证图形级对比度，作文字要在 12% 淡底上压深
+      final ink = _contentInk(color, colorScheme, 0.12);
       rowItems.add(
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
           child: Text(
             record.displayTag,
-            style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.bold),
+            style: theme.textTheme.labelSmall?.copyWith(color: ink, fontWeight: FontWeight.bold),
           ),
         ),
       );
@@ -736,9 +729,12 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
 
     final progress = stepTarget > 0 ? (steps / stepTarget).clamp(0.0, 1.0) : 0.0;
     final isTargetReached = steps >= stepTarget;
-    const brandGreen = TagColors.health;
-    const sleepPurple = TagColors.sleep;
-    const activityOrange = Color(0xFFF97316);
+    final brandGreen = HealthColors.activity(theme.brightness);
+    final sleepPurple = HealthColors.sleep(theme.brightness);
+    final activityOrange = HealthColors.calorie(theme.brightness);
+    final spo2Color = HealthColors.spo2(theme.brightness);
+    final stressColor = HealthColors.stress(theme.brightness);
+    final screenColor = HealthColors.screen(theme.brightness);
 
     // 格式化屏幕时长
     String? screenStr;
@@ -809,7 +805,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     value: progress,
                     minHeight: 3.5,
                     backgroundColor: colorScheme.outlineVariant.withValues(alpha: 0.2),
-                    valueColor: const AlwaysStoppedAnimation(brandGreen),
+                    valueColor: AlwaysStoppedAnimation(brandGreen),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -826,14 +822,14 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                     Text(
                       '⏱ $activeMinutes 分钟',
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: const Color(0xFFD97706),
+                        color: _contentInk(HealthColors.activeMinute(theme.brightness), colorScheme, 0.0),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     Text(
                       '📍 ${(distanceMeters / 1000).toStringAsFixed(2)} km',
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: const Color(0xFF2563EB),
+                        color: _contentInk(HealthColors.distance(theme.brightness), colorScheme, 0.0),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -877,15 +873,15 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFDC2626).withValues(alpha: 0.08),
+                      color: spo2Color.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       '血氧 $avgSpo2%',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: AppTypography.caption,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFDC2626),
+                        color: _contentInk(spo2Color, colorScheme, 0.08),
                       ),
                     ),
                   ),
@@ -893,7 +889,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.08),
+                      color: stressColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -901,7 +897,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                       style: TextStyle(
                         fontSize: AppTypography.caption,
                         fontWeight: FontWeight.w600,
-                        color: _contentInk(const Color(0xFF8B5CF6), colorScheme, 0.08),
+                        color: _contentInk(stressColor, colorScheme, 0.08),
                       ),
                     ),
                   ),
@@ -909,24 +905,20 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                      color: screenColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.phone_android_rounded,
-                          size: 10,
-                          color: _contentInk(const Color(0xFF0284C7), colorScheme, 0.08),
-                        ),
+                        Icon(Icons.phone_android_rounded, size: 10, color: _contentInk(screenColor, colorScheme, 0.08)),
                         const SizedBox(width: 3),
                         Text(
                           '屏幕 $screenStr',
                           style: TextStyle(
                             fontSize: AppTypography.caption,
                             fontWeight: FontWeight.w600,
-                            color: _contentInk(const Color(0xFF0284C7), colorScheme, 0.08),
+                            color: _contentInk(screenColor, colorScheme, 0.08),
                           ),
                         ),
                       ],
@@ -1270,9 +1262,13 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
         itemBuilder: (context, index) {
           final record = _filteredRecords[index];
           final isSelected = _selectedIds.contains(record.id);
-          final tagColor = _tagColor(record.displayTag);
+          final tagColor = _tagColor(record.displayTag, theme.brightness);
           // 时间标签胶囊前景：内容色贴 8% 淡底需压深才可读
-          final pillInk = _contentInk(_isHealthDailySummary(record) ? TagColors.health : tagColor, colorScheme, 0.08);
+          final pillInk = _contentInk(
+            _isHealthDailySummary(record) ? TagColors.fitness(theme.brightness) : tagColor,
+            colorScheme,
+            0.08,
+          );
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: GestureDetector(
@@ -1331,7 +1327,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: TagColors.health.withValues(alpha: 0.1),
+                                    color: TagColors.fitness(theme.brightness).withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
@@ -1339,7 +1335,7 @@ class _DiaryBatchManageViewState extends ConsumerState<DiaryBatchManageView> {
                                     style: TextStyle(
                                       fontSize: AppTypography.caption,
                                       fontWeight: FontWeight.w600,
-                                      color: _contentInk(TagColors.health, colorScheme, 0.1),
+                                      color: _contentInk(TagColors.fitness(theme.brightness), colorScheme, 0.1),
                                     ),
                                   ),
                                 ),
@@ -1670,7 +1666,7 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
   }
 
   Widget _buildRecordDetail(BuildContext context, DiaryRecord record, ThemeData theme, ColorScheme colorScheme) {
-    final tagColor = _tagColor(record.displayTag);
+    final tagColor = _tagColor(record.displayTag, theme.brightness);
     final tagIcon = _tagIcon(record.displayTag);
     final fields = record.bodyState ?? {};
     // 内容色淡底胶囊的前景：按各自淡底透明度压深到可读
@@ -1888,18 +1884,8 @@ class _RecordDetailSheetState extends ConsumerState<_RecordDetailSheet> {
 
   static const _defaultIcon = Icons.description_outlined;
 
-  static const _tagColors = <String, Color>{
-    '睡眠': TagColors.sleep,
-    '饮食': TagColors.diet,
-    '活动': TagColors.activity,
-    '记账': TagColors.finance,
-    '随想': TagColors.thought,
-  };
-
-  static const _defaultColor = TagColors.defaultTag;
-
   IconData _tagIcon(String displayTag) => _tagIcons[displayTag] ?? _defaultIcon;
-  Color _tagColor(String displayTag) => _tagColors[displayTag] ?? _defaultColor;
+  Color _tagColor(String displayTag, Brightness brightness) => TagColors.of(displayTag, brightness);
 
   bool _isHealthDailySummary(DiaryRecord record) {
     final bs = record.bodyState ?? {};

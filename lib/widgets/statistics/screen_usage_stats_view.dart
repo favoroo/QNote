@@ -34,6 +34,11 @@ class ScreenUsageStatsView extends ConsumerStatefulWidget {
 }
 
 class ScreenUsageStatsViewState extends ConsumerState<ScreenUsageStatsView> with WidgetsBindingObserver {
+  /// 屏幕使用统计的固定品牌蓝。
+  ///
+  /// 这个模块独立于主题色（用户换主题色后仍需一眼识别「屏幕」），所以不走
+  /// `colorScheme.primary`；但取的是图形级可用的 600 档（白底 3.42:1），
+  /// 不用更暗的深蓝，避免整页发闷。
   static const Color _accent = Color(0xFF388AF6);
 
   /// 未采集日占位柱相对 Y 轴上限的高度比例，只作「这里没有数据」的轻微提示

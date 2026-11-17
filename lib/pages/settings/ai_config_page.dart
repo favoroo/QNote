@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
+import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -691,7 +693,7 @@ class AiConfigPageState extends ConsumerState<AiConfigPage> {
                   ? Icons.auto_awesome_motion_rounded
                   : Icons.image_outlined,
               size: 20,
-              color: isAssistant ? theme.accentInk : Colors.purple.shade400,
+              color: isAssistant ? theme.accentInk : TagColors.thought(Theme.of(context).brightness),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -718,7 +720,7 @@ class AiConfigPageState extends ConsumerState<AiConfigPage> {
                   child: _badge(
                     theme,
                     imageTestOk ? '支持识图' : '不支持识图',
-                    imageTestOk ? Colors.green.shade700 : colorScheme.error,
+                    imageTestOk ? HealthColors.levelGood(theme.brightness) : colorScheme.error,
                   ),
                 ),
               IconButton(

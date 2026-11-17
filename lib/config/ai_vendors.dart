@@ -873,10 +873,6 @@ AiProviderConfig? getProviderById(String id) {
   }
 }
 
-/// 按分组取厂商模板（选择器分区用）
-List<AiProviderConfig> aiVendorsOf(VendorCategory category) =>
-    aiProviders.where((p) => p.category == category).toList();
-
 /// 需要账号登录的厂商模板（凭证来自登录态，不填 API Key）
 ///
 /// 「添加模型服务」的厂商选择器据此把两类厂商分区展示：账号型要点登录，

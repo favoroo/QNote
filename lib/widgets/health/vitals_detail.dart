@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/models/health_daily_metrics.dart';
 import 'package:qnote_flutter/widgets/health/health_day_line_chart.dart';
 import 'package:qnote_flutter/widgets/health/health_detail_parts.dart';
@@ -13,21 +14,24 @@ class VitalsDetail extends StatelessWidget {
 
   final HealthDailyMetrics metrics;
 
-  static const List<({String label, int min, int max, Color color})> _spo2Zones = [
-    (label: '< 90 偏低', min: 0, max: 89, color: Color(0xFFEF4444)),
-    (label: '90-94 正常偏低', min: 90, max: 94, color: Color(0xFFF59E0B)),
-    (label: '≥ 95 正常', min: 95, max: 1000, color: Color(0xFF10B981)),
+  /// 血氧三区间：偏低 → 正常偏低 → 正常，颜色取 [HealthColors] 等级色阶。
+  static List<({String label, int min, int max, Color color})> _spo2Zones(Brightness brightness) => [
+    (label: '< 90 偏低', min: 0, max: 89, color: HealthColors.levelAlert(brightness)),
+    (label: '90-94 正常偏低', min: 90, max: 94, color: HealthColors.levelWarn(brightness)),
+    (label: '≥ 95 正常', min: 95, max: 1000, color: HealthColors.levelGood(brightness)),
   ];
 
-  static const List<({String label, int min, int max, Color color})> _stressZones = [
-    (label: '0-29 放松', min: 0, max: 29, color: Color(0xFF10B981)),
-    (label: '30-59 正常', min: 30, max: 59, color: Color(0xFF0EA5E9)),
-    (label: '60-79 中等', min: 60, max: 79, color: Color(0xFFF59E0B)),
-    (label: '80-100 偏高', min: 80, max: 1000, color: Color(0xFFEF4444)),
+  /// 压力四区间：放松 → 正常 → 中等 → 偏高，颜色取 [HealthColors] 等级色阶。
+  static List<({String label, int min, int max, Color color})> _stressZones(Brightness brightness) => [
+    (label: '0-29 放松', min: 0, max: 29, color: HealthColors.levelGood(brightness)),
+    (label: '30-59 正常', min: 30, max: 59, color: HealthColors.levelInfo(brightness)),
+    (label: '60-79 中等', min: 60, max: 79, color: HealthColors.levelWarn(brightness)),
+    (label: '80-100 偏高', min: 80, max: 1000, color: HealthColors.levelAlert(brightness)),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
     final spo2Samples = metrics.parseSpo2Samples();
     final stressSamples = metrics.parseStressSamples();
     final spo2Values = spo2Samples.map((s) => (s['v'] as num?)?.toInt()).whereType<int>().toList();
@@ -50,15 +54,22 @@ class VitalsDetail extends StatelessWidget {
                     label: '最低',
                     value: metrics.minSpo2?.toString() ?? '--',
                     unit: '%',
-                    valueColor: (metrics.minSpo2 != null && metrics.minSpo2! < 90) ? Colors.redAccent : null,
+                    valueColor: (metrics.minSpo2 != null && metrics.minSpo2! < 90)
+                        ? HealthColors.levelAlert(brightness)
+                        : null,
                     hint: (metrics.minSpo2 != null && metrics.minSpo2! < 90) ? '低于 90%，需关注' : null,
                   ),
                 ],
               ),
               const SizedBox(height: 14),
-              HealthDayLineChart(samples: spo2Samples, color: Colors.teal, unit: '%', emptyHint: '暂无血氧测量'),
+              HealthDayLineChart(
+                samples: spo2Samples,
+                color: HealthColors.spo2(brightness),
+                unit: '%',
+                emptyHint: '暂无血氧测量',
+              ),
               const SizedBox(height: 12),
-              _zoneDistribution(context, spo2Values, _spo2Zones),
+              _zoneDistribution(context, spo2Values, _spo2Zones(brightness)),
             ],
           ),
         ),
@@ -77,15 +88,22 @@ class VitalsDetail extends StatelessWidget {
                     label: '最高',
                     value: metrics.maxStress?.toString() ?? '--',
                     unit: '指数',
-                    valueColor: (metrics.maxStress != null && metrics.maxStress! >= 80) ? Colors.orange : null,
+                    valueColor: (metrics.maxStress != null && metrics.maxStress! >= 80)
+                        ? HealthColors.levelWarn(brightness)
+                        : null,
                   ),
                   HealthStatTile(label: '放松时段', value: '${stressValues.where((v) => v <= 29).length}', unit: '点'),
                 ],
               ),
               const SizedBox(height: 14),
-              HealthDayLineChart(samples: stressSamples, color: Colors.indigo, unit: '', emptyHint: '暂无压力采样'),
+              HealthDayLineChart(
+                samples: stressSamples,
+                color: HealthColors.stress(brightness),
+                unit: '',
+                emptyHint: '暂无压力采样',
+              ),
               const SizedBox(height: 12),
-              _zoneDistribution(context, stressValues, _stressZones),
+              _zoneDistribution(context, stressValues, _stressZones(brightness)),
             ],
           ),
         ),

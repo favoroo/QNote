@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/models/health_sport_record.dart';
 import 'package:qnote_flutter/widgets/health/health_detail_parts.dart';
 
@@ -13,17 +14,22 @@ class SportDetail extends StatelessWidget {
 
   final HealthSportRecord record;
 
-  static const List<({String key, String label, Color color})> _hrZones = [
-    (key: 'hrm_warm_up_duration', label: '热身', color: Color(0xFF94A3B8)),
-    (key: 'hrm_fat_burning_duration', label: '燃脂', color: Color(0xFF0EA5E9)),
-    (key: 'hrm_aerobic_duration', label: '有氧', color: Color(0xFF10B981)),
-    (key: 'hrm_anaerobic_duration', label: '无氧', color: Color(0xFFF59E0B)),
-    (key: 'hrm_extreme_duration', label: '极限', color: Color(0xFFEF4444)),
+  /// 心率五区间：从「热身」到「极限」的强度梯度。
+  ///
+  /// 颜色走 [HealthColors] 的等级色阶（中性 → 蓝 → 绿 → 琥珀 → 红），
+  /// 与心率详情、血氧/压力区间共用同一套语义，不再各写一份 Tailwind 500 档。
+  static List<({String key, String label, Color color})> _hrZones(Brightness brightness) => [
+    (key: 'hrm_warm_up_duration', label: '热身', color: HealthColors.awake(brightness)),
+    (key: 'hrm_fat_burning_duration', label: '燃脂', color: HealthColors.levelInfo(brightness)),
+    (key: 'hrm_aerobic_duration', label: '有氧', color: HealthColors.levelGood(brightness)),
+    (key: 'hrm_anaerobic_duration', label: '无氧', color: HealthColors.levelWarn(brightness)),
+    (key: 'hrm_extreme_duration', label: '极限', color: HealthColors.levelAlert(brightness)),
   ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final zones = _hrZones(theme.brightness);
     final detail = record.parseDetail();
 
     return ListView(
@@ -91,7 +97,7 @@ class SportDetail extends StatelessWidget {
                 label: '最高',
                 value: (record.maxHeartRate != null && record.maxHeartRate! > 0) ? '${record.maxHeartRate}' : '--',
                 unit: 'bpm',
-                valueColor: Colors.redAccent,
+                valueColor: HealthColors.levelAlert(theme.brightness),
               ),
               HealthStatTile(label: '最低', value: _intOf(detail, 'min_hrm')?.toString() ?? '--', unit: 'bpm'),
             ],
@@ -107,13 +113,13 @@ class SportDetail extends StatelessWidget {
               children: [
                 HealthRatioBar(
                   segments: [
-                    for (final z in _hrZones) (label: z.label, value: _numOf(detail, z.key) ?? 0, color: z.color),
+                    for (final z in zones) (label: z.label, value: _numOf(detail, z.key) ?? 0, color: z.color),
                   ],
                 ),
                 const SizedBox(height: 10),
                 HealthRatioLegend(
                   segments: [
-                    for (final z in _hrZones) (label: z.label, text: _minutes(_numOf(detail, z.key)), color: z.color),
+                    for (final z in zones) (label: z.label, text: _minutes(_numOf(detail, z.key)), color: z.color),
                   ],
                 ),
               ],
@@ -179,8 +185,17 @@ class SportDetail extends StatelessWidget {
     return v is num ? v.toInt() : null;
   }
 
+  /// 心率五区间的 key 是固定的，求和不需要颜色；单独列出避免为取色而传 brightness。
+  static const List<String> _hrZoneKeys = [
+    'hrm_warm_up_duration',
+    'hrm_fat_burning_duration',
+    'hrm_aerobic_duration',
+    'hrm_anaerobic_duration',
+    'hrm_extreme_duration',
+  ];
+
   double _zoneSeconds(Map<String, dynamic> detail) =>
-      _hrZones.fold<double>(0, (a, z) => a + (_numOf(detail, z.key) ?? 0));
+      _hrZoneKeys.fold<double>(0, (a, key) => a + (_numOf(detail, key) ?? 0));
 
   String _minutes(double? seconds) {
     if (seconds == null || seconds <= 0) return '0分';

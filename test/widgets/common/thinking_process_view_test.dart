@@ -12,21 +12,28 @@ void main() {
     );
   }
 
-  group('latestThoughtLine', () {
-    test('取最后一个非空行', () {
-      expect(latestThoughtLine('第一行\n第二行'), '第二行');
+  group('thoughtPreviewText', () {
+    test('折叠换行后保留整段摘要', () {
+      expect(thoughtPreviewText('第一行\n第二行'), '第一行 第二行');
     });
 
-    test('结尾空行不会让最新一行变成空串', () {
-      expect(latestThoughtLine('思考\n\n'), '思考');
+    test('结尾空行不会让预览变成空串', () {
+      expect(thoughtPreviewText('思考\n\n'), '思考');
     });
 
-    test('整段不换行时返回整段', () {
-      expect(latestThoughtLine('连续输出的一整段思考'), '连续输出的一整段思考');
+    test('连续空白折叠为一个空格', () {
+      expect(thoughtPreviewText('第一段\n\n  第二段'), '第一段 第二段');
+    });
+
+    test('超长文本截取末尾并前置省略号', () {
+      final text = thoughtPreviewText('${'前' * 200}结尾');
+      expect(text.startsWith('…'), isTrue);
+      expect(text.characters.length, 121);
+      expect(text.endsWith('结尾'), isTrue);
     });
 
     test('空白文本返回空串', () {
-      expect(latestThoughtLine('   \n \n'), '');
+      expect(thoughtPreviewText('   \n \n'), '');
     });
   });
 
@@ -47,11 +54,11 @@ void main() {
     });
   });
 
-  testWidgets('折叠态只展示最新一行，点击后展开全文', (tester) async {
+  testWidgets('折叠态展示末尾摘要，点击后展开全文', (tester) async {
     await tester.pumpWidget(wrap(const ThinkingProcessView(thought: '先想第一步\n再想第二步')));
 
     expect(find.text('思考'), findsOneWidget);
-    expect(find.text('再想第二步'), findsOneWidget);
+    expect(find.text('先想第一步 再想第二步'), findsOneWidget);
     expect(find.byType(ThoughtTailScrollView), findsNothing);
 
     await tester.tap(find.text('思考'));
@@ -59,12 +66,27 @@ void main() {
 
     expect(find.byType(ThoughtTailScrollView), findsOneWidget);
     expect(find.text('先想第一步\n再想第二步'), findsOneWidget);
-    expect(find.text('再想第二步'), findsNothing, reason: '标题行不再重复最新一行');
+    expect(find.text('先想第一步 再想第二步'), findsNothing, reason: '标题行不再重复摘要');
 
     await tester.tap(find.text('思考'));
     await tester.pumpAndSettle();
 
     expect(find.byType(ThoughtTailScrollView), findsNothing);
+  });
+
+  testWidgets('折叠态短预览紧贴标题左侧，不被居中', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const Center(
+          child: SizedBox(width: 600, child: ThinkingProcessView(thought: '简短回答。', durationSeconds: 2)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final durationRect = tester.getRect(find.text(' · 2 秒'));
+    final previewRect = tester.getRect(find.text('简短回答。'));
+    expect(previewRect.left - durationRect.right, closeTo(8, 1.5), reason: '预览应从耗时文案右侧 8px 开始；居中会把短预览推到行中间，看起来像一大段空白');
   });
 
   testWidgets('已结束的思考段展示耗时', (tester) async {

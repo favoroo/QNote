@@ -208,10 +208,6 @@ class AiProviderListNotifier extends AsyncNotifier<List<AiProvider>> {
   }
 }
 
-final defaultAiProviderProvider = FutureProvider<AiProvider?>((ref) async {
-  return AiProviderRepository.instance.getDefault();
-});
-
 /// 模型路由组列表：AI 配置页的分区、模型选择器的「路由组」区、角色解析都从这里读
 final aiRouteGroupListProvider = AsyncNotifierProvider<AiRouteGroupListNotifier, List<AiRouteGroup>>(() {
   return AiRouteGroupListNotifier();
@@ -267,16 +263,6 @@ class AiRouteGroupListNotifier extends AsyncNotifier<List<AiRouteGroup>> {
     await AiRoleService.instance.pruneStaleRoleBindings();
     ref.invalidate(aiRolesProvider);
   }
-}
-
-Future<void> saveAiRoles(AiRoles roles) async {
-  final repo = ConfigRepository.instance;
-  await repo.saveAiRoles(roles);
-}
-
-Future<void> saveAiTemperatures(AiTemperatures temps) async {
-  final repo = ConfigRepository.instance;
-  await repo.saveAiTemperatures(temps);
 }
 
 /// 是否为「空白新对话」：标题仍是默认值，且没有任何真实消息
@@ -414,13 +400,6 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
     ref.read(currentChatProvider.notifier).patchMetadata(id, title: trimmed);
   }
 
-  /// 删除单个会话（真删，不可恢复）。
-  ///
-  /// 保留单条签名兼容既有调用方，实际实现与批量共用 [deleteSessions]。
-  Future<ChatSessionDeleteReport> deleteSession(String id) {
-    return deleteSessions([id]);
-  }
-
   /// 批量删除会话：走**单个事务**，避免 N 次事务与 N 次全表引用扫描。
   ///
   /// 与旧实现的关键差异是这里调 `hardDeleteChatSessions` 真正删行并释放磁盘上的
@@ -437,15 +416,6 @@ class ChatSessionListNotifier extends AsyncNotifier<List<ChatSession>> {
     // 内存移除
     final gone = ids.toSet();
     state = AsyncData((state.valueOrNull ?? []).where((s) => !gone.contains(s.id)).toList());
-    return report;
-  }
-
-  /// 回收旧版本软删除留下的墓碑（数据仍占着库，属于历史欠账）。
-  Future<ChatSessionDeleteReport> purgeTombstonedSessions() async {
-    final report = await ConfigRepository.instance.purgeTombstonedChatSessions();
-    if (report.deletedSessions > 0) {
-      state = AsyncData(state.valueOrNull ?? const []);
-    }
     return report;
   }
 }
@@ -539,9 +509,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     return id != null && _activeRuns.containsKey(id);
   }
 
-  /// 是否正在执行撤回（防重入，UI 据此禁用输入与重复触发）
-  bool get isRollingBack => _isRollingBack;
-
   /// 主动取消/中止当前会话的 Agent 执行（对齐 Pi Agent 的 abort 控制）
   void cancelCurrentAgent([String? reason]) {
     final id = state?.id;
@@ -585,11 +552,6 @@ class CurrentChatNotifier extends StateNotifier<ChatSession?> {
     final session = state;
     if (session == null) return;
     _ref.read(chatSessionListProvider.notifier).upsertLocal(session);
-  }
-
-  /// 步数上限消息是否待处理（UI 据此渲染/启用「继续/暂停」按钮）
-  bool get hasPendingTurnLimit {
-    return state?.messages.any((m) => m.uiDetails?['type'] == 'turn_limit' && m.uiDetails?['handled'] != true) ?? false;
   }
 
   /// 点击「继续」：标记按钮已处理后以「继续」指令重启 Agent 循环接着执行

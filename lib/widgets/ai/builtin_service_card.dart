@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import 'package:qnote_flutter/core/theme/app_contrast.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 
 import 'package:qnote_flutter/core/ai/builtin_provider.dart';
 import 'package:qnote_flutter/core/ai/builtin_request_signer.dart';
@@ -223,11 +224,10 @@ class _BuiltinServiceCardState extends State<BuiltinServiceCard> {
     );
   }
 
-  Color _successColor(ThemeData theme) =>
-      theme.brightness == Brightness.dark ? Colors.green.shade400 : Colors.green.shade700;
+  /// 状态色取健康等级色阶，与全 App 的「良好 / 注意」同语义。
+  Color _successColor(ThemeData theme) => HealthColors.levelGood(theme.brightness);
 
-  Color _warningColor(ThemeData theme) =>
-      theme.brightness == Brightness.dark ? Colors.orange.shade300 : Colors.orange.shade800;
+  Color _warningColor(ThemeData theme) => HealthColors.levelWarn(theme.brightness);
 
   /// 只测连通性：`max_tokens: 8` 的非流式请求，成本极低
   Future<void> _runTest() async {

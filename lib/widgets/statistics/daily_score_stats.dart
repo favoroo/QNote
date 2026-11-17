@@ -8,10 +8,14 @@ import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/ai/no_model_exception.dart';
 import 'package:qnote_flutter/core/storage/daily_score_service.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/app_palette.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
+import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/models/daily_score.dart';
 import 'package:qnote_flutter/widgets/common/app_icon_badge.dart';
@@ -231,27 +235,27 @@ class _DailyScoreStatsState extends ConsumerState<DailyScoreStats> {
                                   _DimensionScoreBar(
                                     name: '睡眠',
                                     score: score.dimensionScores['sleep'] ?? 0,
-                                    color: Colors.indigo,
+                                    color: TagColors.sleep(theme.brightness),
                                   ),
                                   _DimensionScoreBar(
                                     name: '饮食',
                                     score: score.dimensionScores['diet'] ?? 0,
-                                    color: Colors.green,
+                                    color: TagColors.diet(theme.brightness),
                                   ),
                                   _DimensionScoreBar(
                                     name: '活动',
                                     score: score.dimensionScores['activity'] ?? 0,
-                                    color: Colors.orange,
+                                    color: TagColors.activity(theme.brightness),
                                   ),
                                   _DimensionScoreBar(
                                     name: '健康',
                                     score: score.dimensionScores['health'] ?? 0,
-                                    color: Colors.redAccent,
+                                    color: TagColors.health(theme.brightness),
                                   ),
                                   _DimensionScoreBar(
                                     name: '屏幕',
                                     score: score.dimensionScores['screen'] ?? 0,
-                                    color: Colors.teal,
+                                    color: TagColors.fitness(theme.brightness),
                                   ),
                                 ],
                               ),
@@ -488,12 +492,16 @@ class _ScoreCircle extends StatelessWidget {
   final int score;
   const _ScoreCircle({required this.score});
 
-  Color _getScoreColor(int score) {
-    if (score >= 90) return Colors.green;
-    if (score >= 80) return Colors.blue;
-    if (score >= 60) return Colors.orangeAccent;
-    if (score >= 40) return Colors.orange;
-    return Colors.red;
+  /// 评分色阶：优秀 → 良好 → 一般 → 需改进 → 较差。
+  ///
+  /// 与心率/血氧/压力区间、睡眠评分共用 [HealthColors] 的等级色阶，
+  /// 不再用 Material 命名色（Colors.green #4CAF50 在白底只有 2.78:1）。
+  Color _getScoreColor(int score, Brightness brightness) {
+    if (score >= 90) return HealthColors.levelGood(brightness);
+    if (score >= 80) return HealthColors.levelInfo(brightness);
+    if (score >= 60) return HealthColors.levelWarn(brightness);
+    if (score >= 40) return HealthColors.levelAlert(brightness);
+    return HealthColors.critical(brightness);
   }
 
   String _getScoreLabel(int score) {
@@ -507,7 +515,8 @@ class _ScoreCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _getScoreColor(score);
+    final brightness = theme.brightness;
+    final color = _getScoreColor(score, brightness);
     // 首屏从 0 计数到目标分数，分数环同步扫过；切日期时颜色与数值均平滑过渡。
     return TweenAnimationBuilder<Color?>(
       tween: ColorTween(begin: color, end: color),
@@ -573,7 +582,8 @@ class _ScoreCircle extends StatelessWidget {
                     style: TextStyle(
                       fontSize: AppTypography.headline,
                       fontWeight: FontWeight.bold,
-                      color: effectiveColor,
+                      // 环用原色（图形级），文字另压深到正文级
+                      color: AppContrast.readable(effectiveColor, theme.colorScheme.surface),
                     ),
                   ),
                 ],
@@ -644,9 +654,15 @@ class _DimensionScoreBar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
-            child: Text(
-              _getScoreLabel(score),
-              style: TextStyle(fontSize: AppTypography.caption, color: color, fontWeight: FontWeight.bold),
+            child: Builder(
+              builder: (context) {
+                // 同一支色既铺淡底又作 10px 文字：文字需压在淡底上取可读前景
+                final ink = AppContrast.inkOnTint(color, Theme.of(context).colorScheme.surface, 0.1);
+                return Text(
+                  _getScoreLabel(score),
+                  style: TextStyle(fontSize: AppTypography.caption, color: ink, fontWeight: FontWeight.bold),
+                );
+              },
             ),
           ),
         ],
@@ -694,6 +710,7 @@ class _AiSuggestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Card(
       shape: RoundedRectangleBorder(
@@ -735,11 +752,15 @@ class _AiSuggestionCard extends StatelessWidget {
             if (suggestions.isNotEmpty) ...[
               Row(
                 children: [
-                  Icon(Icons.lightbulb_outline, size: 16, color: Colors.amber[700]),
+                  Icon(Icons.lightbulb_outline, size: 16, color: AppPalette.warning(isDark)),
                   const SizedBox(width: 4),
-                  const Text(
+                  Text(
                     '建议',
-                    style: TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                    style: TextStyle(
+                      fontSize: AppTypography.body,
+                      fontWeight: FontWeight.bold,
+                      color: AppPalette.textSecondary(isDark),
+                    ),
                   ),
                 ],
               ),

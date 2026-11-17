@@ -22,7 +22,7 @@ void main() {
     );
   }
 
-  testWidgets('thought 步骤行展示「思考」与最新一行，可展开全文', (tester) async {
+  testWidgets('thought 步骤行展示「思考」与末尾摘要，可展开全文', (tester) async {
     await tester.pumpWidget(
       harness(
         ChatBubble(
@@ -35,7 +35,7 @@ void main() {
     expect(find.byType(ThinkingProcessView), findsOneWidget);
     expect(find.text('思考'), findsOneWidget);
     expect(find.text(' · 4 秒'), findsOneWidget);
-    expect(find.text('第二步'), findsOneWidget);
+    expect(find.text('第一步 第二步'), findsOneWidget);
 
     await tester.tap(find.text('思考'));
     await tester.pumpAndSettle();

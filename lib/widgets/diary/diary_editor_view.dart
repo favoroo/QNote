@@ -1367,7 +1367,6 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
       '记账': Icons.account_balance_wallet,
       '随想': Icons.psychology_alt_outlined,
     };
-    const tagColors = TagColors.map;
 
     final shortcuts = ref.watch(shortcutListProvider).valueOrNull ?? [];
     final shortcutNames = shortcuts.map((s) => s.name).toSet();
@@ -1391,7 +1390,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
           children: [
             ...shortcuts.where((s) => s.isVisible).map((config) {
               final isSelected = _tags.contains(config.name);
-              final color = tagColors[config.name] ?? colorScheme.primary;
+              final color = TagColors.of(config.name, theme.brightness);
               // 选中态的前景压在标签色实心底上，按底色亮度取黑/白才不会在琥珀色等浅底上看不清
               final onColor = AppContrast.onColor(color);
               final icon = tagIcons[config.name] ?? Icons.label;
@@ -1459,7 +1458,7 @@ class _DiaryEditorViewState extends ConsumerState<DiaryEditorView> {
         if (_tagEntries.isNotEmpty) ...[
           const SizedBox(height: 12),
           ..._tagEntries.map((entry) {
-            final color = tagColors[entry.name] ?? colorScheme.primary;
+            final color = TagColors.of(entry.name, theme.brightness);
             final icon = tagIcons[entry.name] ?? Icons.label;
 
             final sc = shortcuts.where((s) => s.id == entry.id || s.name == entry.name).firstOrNull;

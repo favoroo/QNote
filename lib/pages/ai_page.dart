@@ -16,9 +16,10 @@ import 'package:qnote_flutter/models/ai_route_group.dart';
 import 'package:qnote_flutter/models/ai_roles.dart';
 import 'package:qnote_flutter/models/note.dart';
 import 'package:qnote_flutter/models/todo.dart';
+import 'package:qnote_flutter/core/logger/logger_service.dart';
 import 'package:qnote_flutter/core/storage/journal_service.dart';
-import 'package:qnote_flutter/core/storage/note_repository.dart';
-import 'package:qnote_flutter/core/storage/todo_repository.dart';
+import 'package:qnote_flutter/providers/note_provider.dart';
+import 'package:qnote_flutter/providers/todo_provider.dart';
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
 import 'package:qnote_flutter/core/agent/agent_tool_labels.dart';
 import 'package:qnote_flutter/core/agent/output_types/output_type_registry.dart';
@@ -28,12 +29,14 @@ import 'package:qnote_flutter/core/utils/gallery_helper.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/providers/navigation_provider.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/app_contrast.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_theme.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/tts/tts_player.dart';
 import 'package:qnote_flutter/widgets/unified_image.dart';
 import 'package:qnote_flutter/widgets/ai/agent_turn_limit_actions.dart';
@@ -624,7 +627,7 @@ class _AiPageState extends ConsumerState<AiPage> {
             quoteBlock: quoteBlock,
           );
     } catch (e) {
-      debugPrint('发送消息失败: $e');
+      LoggerService.instance.logAI('发送消息失败: $e', level: LogLevel.warning);
     } finally {
       if (mounted) {
         setState(() => _isTyping = false);
@@ -1146,7 +1149,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         });
       }
     } catch (e) {
-      debugPrint('拍照失败: $e');
+      LoggerService.instance.logUI('拍照失败: $e', level: LogLevel.warning);
     }
   }
 
@@ -1163,7 +1166,7 @@ class _AiPageState extends ConsumerState<AiPage> {
         });
       }
     } catch (e) {
-      debugPrint('相册选图失败: $e');
+      LoggerService.instance.logUI('相册选图失败: $e', level: LogLevel.warning);
     }
   }
 
@@ -1207,7 +1210,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Future<void> _pickNotes() async {
-    final notes = await NoteRepository().getAll();
+    final notes = await ref.read(noteRepositoryProvider).getAll();
     if (!mounted) return;
     // 排除日记笔记，保持普通笔记专属
     final validNotes = notes.where((n) => !n.isDeleted && !JournalService.isJournalNote(n.id)).toList();
@@ -1227,7 +1230,7 @@ class _AiPageState extends ConsumerState<AiPage> {
   }
 
   Future<void> _pickTodos() async {
-    final todos = await TodoRepository().getAll();
+    final todos = await ref.read(todoRepositoryProvider).getAll();
     if (!mounted) return;
     final validTodos = todos.where((t) => !t.isDeleted).toList();
     final result = await AppMotion.showDialog<List<String>>(

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:qnote_flutter/core/ai/ai_role_service.dart';
-import 'package:qnote_flutter/models/ai_provider.dart';
 import 'package:qnote_flutter/providers/ai_provider.dart';
 import 'package:qnote_flutter/widgets/ai/model_picker_sheet.dart';
 import 'package:qnote_flutter/widgets/ai/no_model_guide.dart';
@@ -43,22 +42,4 @@ Future<String?> showTimelineModelSelector(BuildContext context, WidgetRef ref) a
   ref.invalidate(aiRolesProvider);
 
   return aiBindingDisplayName(result.ref, providers, groups);
-}
-
-/// 当前生效的时间线模型展示名（绑定失效时回落到默认厂商的首个模型）
-Future<String> timelineModelDisplayName(WidgetRef ref) async {
-  final providers = await ref.read(aiProviderListProvider.future);
-  final groups = await ref.read(aiRouteGroupListProvider.future);
-  final roles = await ref.read(aiRolesProvider.future);
-  final bound = roles?.timelineOptimization;
-  if (isBindingUsable(bound, providers, groups)) {
-    return aiBindingDisplayName(bound, providers, groups);
-  }
-  return _defaultDisplayName(providers);
-}
-
-String _defaultDisplayName(List<AiProvider> providers) {
-  final provider =
-      providers.where((p) => p.isDefault && p.isUsable).firstOrNull ?? providers.where((p) => p.isUsable).firstOrNull;
-  return provider?.firstModel?.name ?? '未配置模型';
 }

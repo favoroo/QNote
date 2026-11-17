@@ -40,60 +40,6 @@ class ExportService {
   final ColorMarkRepository _colorMarkRepo = ColorMarkRepository();
   final ImageRepository _imageRepo = ImageRepository();
 
-  Future<String> exportDiaryAsMarkdown(List<DiaryRecord> records) async {
-    final buffer = StringBuffer();
-    buffer.writeln('# QNote 日记导出');
-    buffer.writeln();
-    for (final record in records) {
-      buffer.writeln('## ${record.title}');
-      buffer.writeln();
-      buffer.writeln('日期: ${record.createdAt.toIso8601String().substring(0, 10)}');
-      buffer.writeln('心情: ${record.mood}/5');
-      if (record.weather.isNotEmpty) buffer.writeln('天气: ${record.weather}');
-      if (record.tags.isNotEmpty) buffer.writeln('标签: ${record.tags}');
-      buffer.writeln();
-      buffer.writeln(record.content);
-      buffer.writeln();
-      buffer.writeln('---');
-      buffer.writeln();
-    }
-    return buffer.toString();
-  }
-
-  Future<String> exportNotesAsMarkdown(List<Note> notes) async {
-    final buffer = StringBuffer();
-    buffer.writeln('# QNote 笔记导出');
-    buffer.writeln();
-    for (final note in notes) {
-      buffer.writeln('## ${note.title}');
-      buffer.writeln();
-      if (note.tags.isNotEmpty) buffer.writeln('标签: ${note.tags}');
-      buffer.writeln();
-      buffer.writeln(note.content);
-      buffer.writeln();
-      buffer.writeln('---');
-      buffer.writeln();
-    }
-    return buffer.toString();
-  }
-
-  Future<String> exportTodosAsMarkdown(List<Todo> todos) async {
-    final buffer = StringBuffer();
-    buffer.writeln('# QNote 待办导出');
-    buffer.writeln();
-    for (final todo in todos) {
-      final status = todo.isCompleted ? '✅' : '⬜';
-      buffer.writeln('- $status ${todo.title}');
-      if (todo.description.isNotEmpty) {
-        buffer.writeln('  - ${todo.description}');
-      }
-      if (todo.dueDate != null) {
-        buffer.writeln('  - 截止: ${todo.dueDate!.toIso8601String().substring(0, 10)}');
-      }
-    }
-    return buffer.toString();
-  }
-
   /// 导出所有数据为 Map（不序列化为字符串）。
   ///
   /// P1-13: 抽出此方法以便 WebDAV 等下游消费方直接拿到 Map 而非 String，
@@ -1140,11 +1086,6 @@ class ExportService {
     await Share.shareXFiles([XFile(filePath)], subject: subject ?? 'QNote 导出');
   }
 
-  Future<void> shareMarkdown(String content, String type) async {
-    final fileName = 'qnote_${type}_${DateTime.now().millisecondsSinceEpoch}.md';
-    await shareFile(content, fileName, subject: 'QNote $type 导出');
-  }
-
   Future<void> shareJson(String content) async {
     final fileName = 'qnote_backup_${DateTime.now().millisecondsSinceEpoch}.json';
     await shareFile(content, fileName, subject: 'QNote 数据备份');
@@ -1185,7 +1126,9 @@ class ExportService {
       for (final id in deletes) {
         try {
           await _diaryRepo.hardDelete(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1217,7 +1160,9 @@ class ExportService {
       for (final id in deletes) {
         try {
           await _noteRepo.hardDelete(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1237,7 +1182,9 @@ class ExportService {
       for (final id in deletes) {
         try {
           await _todoRepo.hardDelete(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1257,7 +1204,9 @@ class ExportService {
       for (final id in deletes) {
         try {
           await _folderRepo.delete(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1270,12 +1219,16 @@ class ExportService {
           await AiProviderRepository.instance.insertSilently(
             AiProvider.fromMap(Map<String, dynamic>.from(item as Map)),
           );
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步 AI 厂商', e);
+        }
       }
       for (final id in deletes) {
         try {
           await AiProviderRepository.instance.delete(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1288,12 +1241,16 @@ class ExportService {
           await AiRouteGroupRepository.instance.insertSilently(
             AiRouteGroup.fromMap(Map<String, dynamic>.from(item as Map)),
           );
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步路由组', e);
+        }
       }
       for (final id in deletes) {
         try {
           await AiRouteGroupRepository.instance.delete(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1317,13 +1274,17 @@ class ExportService {
         } catch (_) {
           try {
             await _configRepo.updateShortcutConfig(ShortcutConfig.fromMap(Map<String, dynamic>.from(item as Map)));
-          } catch (_) {}
+          } catch (e) {
+            _recordImportFailure('增量同步快捷配置', e);
+          }
         }
       }
       for (final id in deletes) {
         try {
           await _configRepo.deleteShortcutConfig(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1346,7 +1307,9 @@ class ExportService {
         } catch (_) {
           try {
             await _configRepo.updateChatSession(ChatSession.fromMap(map));
-          } catch (_) {}
+          } catch (e) {
+            _recordImportFailure('增量同步对话', e);
+          }
         }
       }
       final victimIds = <String>[...tombstoneIds, ...deletes.map((id) => id as String)];
@@ -1355,7 +1318,9 @@ class ExportService {
         // 旧的 softDeleteChatSession 在行已消失时是静默 no-op，会让「A 删 → B → C」断链
         try {
           await _configRepo.hardDeleteChatSessions(victimIds);
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量删除对话', e);
+        }
       }
     }
 
@@ -1365,7 +1330,9 @@ class ExportService {
       for (final item in upserts) {
         try {
           await _configRepo.upsertUserProfile(UserProfile.fromMap(Map<String, dynamic>.from(item as Map)));
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步用户资料', e);
+        }
       }
     }
 
@@ -1376,12 +1343,16 @@ class ExportService {
       for (final item in upserts) {
         try {
           await _colorMarkRepo.insert(DateColorMark.fromMap(Map<String, dynamic>.from(item as Map)));
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步日期标记', e);
+        }
       }
       for (final id in deletes) {
         try {
           await _colorMarkRepo.delete(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1397,12 +1368,16 @@ class ExportService {
             Map<String, dynamic>.from(item as Map),
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步身体状态', e);
+        }
       }
       for (final id in deletes) {
         try {
           await db.delete('body_states', where: 'id = ?', whereArgs: [id]);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1418,12 +1393,16 @@ class ExportService {
             Map<String, dynamic>.from(item as Map),
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步每日评分', e);
+        }
       }
       for (final id in deletes) {
         try {
           await db.delete('daily_scores', where: 'id = ?', whereArgs: [id]);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1439,12 +1418,16 @@ class ExportService {
             Map<String, dynamic>.from(item as Map),
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步固定事件', e);
+        }
       }
       for (final id in deletes) {
         try {
           await db.delete('fixed_event_templates', where: 'id = ?', whereArgs: [id]);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 
@@ -1456,12 +1439,16 @@ class ExportService {
         final map = Map<String, dynamic>.from(item as Map);
         try {
           await _configRepo.setAppConfig(map['key'] as String, map['value'] as String);
-        } catch (_) {}
+        } catch (e) {
+          _recordImportFailure('增量同步应用配置', e);
+        }
       }
       for (final id in deletes) {
         try {
           await _configRepo.deleteAppConfig(id as String);
-        } catch (_) {}
+        } catch (_) {
+          // 远端删除但本地行已不存在时忽略
+        }
       }
     }
 

@@ -8,6 +8,7 @@ import 'package:qnote_flutter/core/network/sync_scheduler.dart';
 import 'package:qnote_flutter/core/network/webdav_service.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/theme/app_accent.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/theme/app_curves.dart';
 import 'package:qnote_flutter/core/theme/app_durations.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
@@ -321,7 +322,9 @@ class SyncSettingsViewState extends ConsumerState<SyncSettingsView> {
     return switch (status) {
       SyncStatus.idle => colorScheme.outline,
       SyncStatus.syncing => colorScheme.primary,
-      SyncStatus.success => Colors.green,
+      // 成功态取等级色阶的「良好」绿，与健康数据同语义；
+      // 用 ColorScheme 的明暗推导，避免写死 Material 绿（白底仅 2.78:1）
+      SyncStatus.success => HealthColors.levelGood(colorScheme.brightness),
       SyncStatus.error => colorScheme.error,
     };
   }

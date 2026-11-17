@@ -15,6 +15,7 @@ import 'package:qnote_flutter/core/storage/chat_image_gc.dart';
 import 'package:qnote_flutter/core/storage/chat_storage_usage.dart';
 import 'package:qnote_flutter/core/storage/config_repository.dart';
 import 'package:qnote_flutter/core/theme/app_motion.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/utils/toast_utils.dart';
 import 'package:qnote_flutter/pages/settings/sync_settings_page.dart';
 import 'package:qnote_flutter/providers/agent_memory_provider.dart';
@@ -292,12 +293,17 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
     final confirmed = await AppMotion.showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('从云端恢复', style: TextStyle(color: Colors.red)),
+        // 破坏性操作的标题与按钮统一走 ColorScheme.error，随主题明暗自动取可读红
+        title: Text('从云端恢复', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
         content: const Text('将用云端备份覆盖本地数据，不可撤销。\n换机或重装后恢复时使用。'),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            // 前景随 error 底色亮度取黑/白，避免深色主题下白字贴浅红
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('覆盖恢复'),
           ),
@@ -352,7 +358,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
             _ActionTile(
               icon: Icons.settings_backup_restore_rounded,
               title: '从云端恢复',
-              color: Colors.orange.shade700,
+              color: HealthColors.levelWarn(theme.brightness),
               onTap: _isRestoring ? null : _handleRestoreFromCloud,
               isLoading: _isRestoring,
             ),
@@ -487,7 +493,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('确定'),
           ),
         ],
@@ -505,7 +511,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
             child: const Text('确认清除'),
           ),
         ],
@@ -652,7 +658,7 @@ class _MaintenanceTabState extends ConsumerState<_MaintenanceTab> {
             _ActionTile(
               icon: Icons.cleaning_services_outlined,
               title: '清理旧备份文件',
-              color: Colors.teal.shade600,
+              color: HealthColors.screen(theme.brightness),
               onTap: isSyncing ? null : _cleanupOldBackups,
             ),
           ],

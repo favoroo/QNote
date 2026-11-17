@@ -61,15 +61,55 @@ void main() {
     });
 
     test('全部标签色在浅深两种底色上都能读出前景', () {
-      for (final color in TagColors.map.values) {
-        for (final background in [Colors.white, const Color(0xFF1A1D24)]) {
+      for (final tag in TagColors.knownTags) {
+        for (final brightness in Brightness.values) {
+          final color = TagColors.of(tag, brightness);
+          final background = brightness == Brightness.dark ? const Color(0xFF1A1D24) : Colors.white;
           final ink = AppContrast.inkOnTint(color, background, 0.1);
           final tint = Color.alphaBlend(color.withValues(alpha: 0.1), background);
           expect(
             AppContrast.contrastRatio(ink, tint),
             greaterThanOrEqualTo(AppContrast.minimumTextRatio),
-            reason: '标签色 #${color.toARGB32().toRadixString(16)} 在 $background 上不可读',
+            reason: '标签「$tag」#${color.toARGB32().toRadixString(16)} 在 $background 上不可读',
           );
+        }
+      }
+    });
+
+    test('标签色本身作为图标色时在各自底色上达到图形级对比度', () {
+      // 标签色会直接当图标 / 进度条颜色用（AI 提取按钮、转圈、轴线圆点），
+      // 这些地方没有 inkOnTint 兜底，由色板自身保证 WCAG 1.4.11 的 3:1。
+      for (final tag in TagColors.knownTags) {
+        for (final brightness in Brightness.values) {
+          final color = TagColors.of(tag, brightness);
+          final background = brightness == Brightness.dark ? const Color(0xFF1A1D24) : Colors.white;
+          expect(
+            AppContrast.contrastRatio(color, background),
+            greaterThanOrEqualTo(AppContrast.minimumGraphicRatio),
+            reason: '标签「$tag」原色 #${color.toARGB32().toRadixString(16)} 在 $background 上作图标不可读',
+          );
+        }
+      }
+    });
+
+    test('活动 / 健康 / 运动健康三支颜色互不相同', () {
+      // 这三类过去共用同一支翡翠绿，多标签卡片并排时无法区分
+      for (final brightness in Brightness.values) {
+        final colors = {
+          TagColors.activity(brightness).toARGB32(),
+          TagColors.health(brightness).toARGB32(),
+          TagColors.fitness(brightness).toARGB32(),
+        };
+        expect(colors.length, 3, reason: '$brightness 下存在撞色');
+      }
+    });
+
+    test('未知标签回落到中性灰，且与内置标签不撞色', () {
+      for (final brightness in Brightness.values) {
+        final fallback = TagColors.of('我的自定义标签', brightness);
+        expect(fallback, TagColors.defaultTag(brightness));
+        for (final tag in TagColors.knownTags) {
+          expect(TagColors.of(tag, brightness).toARGB32(), isNot(fallback.toARGB32()));
         }
       }
     });

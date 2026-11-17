@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, kDebugMode, visibleForTesting;
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
@@ -200,7 +200,7 @@ class DatabaseHelper {
         await db.execute(sql);
       } catch (e) {
         if (kDebugMode) {
-          print('创建知识图谱 schema 失败: $sql, 错误: $e');
+          debugPrint('创建知识图谱 schema 失败: $sql, 错误: $e');
         }
       }
     }
@@ -899,7 +899,7 @@ class DatabaseHelper {
         await db.execute(sql);
       } catch (e) {
         if (kDebugMode) {
-          print('创建索引失败: $sql, 错误: $e');
+          debugPrint('创建索引失败: $sql, 错误: $e');
         }
       }
     }
@@ -911,7 +911,7 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE notes ADD COLUMN sort_order INTEGER DEFAULT 0');
       } catch (e) {
         if (kDebugMode) {
-          print('升级数据库添加 sort_order 失败: $e');
+          debugPrint('升级数据库添加 sort_order 失败: $e');
         }
       }
     }

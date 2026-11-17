@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image_picker_android/image_picker_android.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
+import 'package:qnote_flutter/core/logger/logger_service.dart';
+
 /// 统一封装系统相册选图与头像裁剪入口。
 class GalleryHelper {
   static final ImagePicker _imagePicker = ImagePicker();
@@ -93,7 +95,7 @@ class GalleryHelper {
     try {
       return await action();
     } on PlatformException catch (e) {
-      debugPrint('GalleryHelper $label 失败 (${e.code}): ${e.message}');
+      LoggerService.instance.logUI('GalleryHelper $label 失败 (${e.code}): ${e.message}', level: LogLevel.warning);
       // 连点导致的并发占位或明确无权限不再重试，避免重复弹窗。
       if (e.code == 'already_active' || e.code == 'photo_access_denied') {
         return fallbackValue;
@@ -104,7 +106,7 @@ class GalleryHelper {
           androidImpl.useAndroidPhotoPicker = false;
           return await action();
         } catch (fallbackError) {
-          debugPrint('GalleryHelper $label 回退失败: $fallbackError');
+          LoggerService.instance.logUI('GalleryHelper $label 回退失败: $fallbackError', level: LogLevel.warning);
           return fallbackValue;
         } finally {
           androidImpl.useAndroidPhotoPicker = true;
@@ -112,7 +114,7 @@ class GalleryHelper {
       }
       return fallbackValue;
     } catch (e) {
-      debugPrint('GalleryHelper $label 异常: $e');
+      LoggerService.instance.logUI('GalleryHelper $label 异常: $e', level: LogLevel.warning);
       return fallbackValue;
     }
   }

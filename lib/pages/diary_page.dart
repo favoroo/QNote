@@ -3657,7 +3657,7 @@ class _DiaryPageState extends ConsumerState<DiaryPage> with TickerProviderStateM
     }
 
     final shift = drag.shift;
-    final tagColor = TagColors.of(drag.record.displayTag);
+    final tagColor = TagColors.of(drag.record.displayTag, theme.brightness);
     final maxTop = math.max(drag.topLimit, drag.bottomLimit);
     final top = math.min(math.max(drag.proxyTop, drag.topLimit), maxTop);
     final indicatorY = top + 23;

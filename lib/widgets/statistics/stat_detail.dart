@@ -10,28 +10,35 @@ import 'package:qnote_flutter/core/theme/app_motion.dart';
 import 'package:qnote_flutter/core/theme/app_palette.dart';
 import 'package:qnote_flutter/core/theme/app_radius.dart';
 import 'package:qnote_flutter/core/theme/app_typography.dart';
+import 'package:qnote_flutter/core/theme/health_colors.dart';
 import 'package:qnote_flutter/core/theme/tag_colors.dart';
 import 'package:qnote_flutter/core/utils/stats_utils.dart';
 import 'package:qnote_flutter/widgets/common/pressable_scale.dart';
 import 'package:qnote_flutter/widgets/statistics/stat_shared.dart';
 
-/// 统计明细通用配色：收入（绿）/ 支出（红），与时间线卡片口径一致。
-const Color statIncomeColor = Color(0xFF10B981);
-const Color statExpenseColor = Color(0xFFEF4444);
+/// 统计明细通用配色：收入（绿）/ 支出（红）。
+///
+/// 过去写死 Tailwind 500 档（#10B981 / #EF4444），作 24px 大数字与 13px 明细文字时
+/// 只有 2.5~3.8:1；现在按主题取 600/400 档，并把「作文字」的位置另行压深到正文级。
+Color statIncomeColor(Brightness brightness) => HealthColors.levelGood(brightness);
+Color statExpenseColor(Brightness brightness) => HealthColors.levelAlert(brightness);
 
 /// 饮食健康评价配色，供明细行与占比条复用。
-Color dietHealthColor(String key) {
+///
+/// 四档评价走同一条等级色阶（绿 → 琥珀 → 红 → 玫红），与心率/血氧/压力区间同语义；
+/// 「过于放纵」不再用压得很黑的 #991B1B，改用更清透的玫红。
+Color dietHealthColor(String key, Brightness brightness) {
   switch (key) {
     case '健康':
-      return const Color(0xFF10B981);
+      return HealthColors.levelGood(brightness);
     case '一般':
-      return const Color(0xFFF59E0B);
+      return HealthColors.levelWarn(brightness);
     case '不健康':
-      return const Color(0xFFEF4444);
+      return HealthColors.levelAlert(brightness);
     case '过于放纵':
-      return const Color(0xFF991B1B);
+      return HealthColors.critical(brightness);
     default:
-      return const Color(0xFF6B7280);
+      return HealthColors.neutral(brightness);
   }
 }
 
@@ -181,10 +188,11 @@ class StatSummaryCard extends StatelessWidget {
                       primaryValue,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      // 主数值是 24px 正文级文字：区间色/标签色需压深到 4.5:1
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: primaryColor,
+                        color: AppContrast.readable(primaryColor, theme.colorScheme.surface),
                         letterSpacing: -0.5,
                       ),
                     ),
@@ -198,7 +206,7 @@ class StatSummaryCard extends StatelessWidget {
                   children: [
                     for (var i = 0; i < metrics.length; i++) ...[
                       if (i > 0) const SizedBox(height: 5),
-                      _buildMetric(metrics[i], isDark),
+                      _buildMetric(context, metrics[i], isDark),
                     ],
                   ],
                 ),
@@ -211,7 +219,11 @@ class StatSummaryCard extends StatelessWidget {
     );
   }
 
-  Widget _buildMetric(StatMetric metric, bool isDark) {
+  Widget _buildMetric(BuildContext context, StatMetric metric, bool isDark) {
+    // 指标值同样是正文级文字，颜色传入的多为图形级语义色
+    final valueColor = metric.color == null
+        ? AppPalette.textPrimary(isDark)
+        : AppContrast.readable(metric.color!, Theme.of(context).colorScheme.surface);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -222,11 +234,7 @@ class StatSummaryCard extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           metric.value,
-          style: TextStyle(
-            fontSize: AppTypography.body,
-            fontWeight: FontWeight.bold,
-            color: metric.color ?? AppPalette.textPrimary(isDark),
-          ),
+          style: TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.bold, color: valueColor),
         ),
       ],
     );
@@ -291,7 +299,9 @@ class StatLedgerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = entry.isIncome ? statIncomeColor : statExpenseColor;
+    final color = entry.isIncome
+        ? statIncomeColor(Theme.of(context).brightness)
+        : statExpenseColor(Theme.of(context).brightness);
     final note = entry.note;
 
     return PressableScale(
@@ -332,7 +342,12 @@ class StatLedgerRow extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               '${entry.isIncome ? '+' : '-'}¥${formatAmount(entry.amount)}',
-              style: TextStyle(fontSize: AppTypography.bodyLarge, fontWeight: FontWeight.bold, color: color),
+              // 金额是正文级文字，区间色需压深到 4.5:1
+              style: TextStyle(
+                fontSize: AppTypography.bodyLarge,
+                fontWeight: FontWeight.bold,
+                color: AppContrast.readable(color, Theme.of(context).colorScheme.surface),
+              ),
             ),
           ],
         ),
@@ -351,7 +366,7 @@ class StatMealRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final healthColor = dietHealthColor(entry.health);
+    final healthColor = dietHealthColor(entry.health, Theme.of(context).brightness);
     final title = entry.item ?? entry.note ?? '饮食记录';
     final subtitle = entry.item != null ? entry.note : null;
     final time = '${entry.time.hour.toString().padLeft(2, '0')}:${entry.time.minute.toString().padLeft(2, '0')}';
@@ -362,7 +377,7 @@ class StatMealRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            const _IconCircle(icon: Icons.restaurant, color: TagColors.diet),
+            _IconCircle(icon: Icons.restaurant, color: TagColors.diet(Theme.of(context).brightness)),
             const SizedBox(width: 10),
             Expanded(
               child: Column(

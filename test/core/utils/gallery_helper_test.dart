@@ -161,6 +161,8 @@ void main() {
       expect(result?.path, '/tmp/fallback.jpg');
       expect(fake.singleCallsWithPhotoPicker, [true, false]);
       expect(fake.useAndroidPhotoPicker, isTrue);
+      // 失败路径会写日志，LoggerService 的 5 秒持久化防抖需在测试帧内排空，避免遗留 pending timer。
+      await tester.pump(const Duration(seconds: 6));
     });
 
     testWidgets('already_active 与 photo_access_denied 不触发重试并返回空结果', (tester) async {
@@ -176,6 +178,8 @@ void main() {
       final singleResult = await GalleryHelper.pickSingleImage(context);
       expect(singleResult, isNull);
       expect(fake.singleCallsWithPhotoPicker, [true]);
+      // 同上：两次失败日志都会挂防抖计时器，排空后再结束测试。
+      await tester.pump(const Duration(seconds: 6));
     });
 
     testWidgets('非 Android 平台实现可正常调用单选与多选', (tester) async {
